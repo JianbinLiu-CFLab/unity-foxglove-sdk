@@ -111,7 +111,7 @@ def mutate(path: Path, old: str, new: str) -> Iterator[None]:
     needle = old.encode("utf-8")
     if original.count(needle) != 1:
         raise ValueError(f"mutation target occurs {original.count(needle)} times: {path}")
-    snapshot = worktree_snapshot()
+    snapshot = worktree_snapshot(exclude=("build/",))
     digest = hashlib.sha256(original).digest()
     backups = BUILD_ROOT / ".backup"
     backups.mkdir(parents=True, exist_ok=True)
@@ -123,7 +123,7 @@ def mutate(path: Path, old: str, new: str) -> Iterator[None]:
             yield
         finally:
             path.write_bytes(backup.read_bytes())
-            if hashlib.sha256(path.read_bytes()).digest() != digest or worktree_snapshot() != snapshot:
+            if hashlib.sha256(path.read_bytes()).digest() != digest or worktree_snapshot(exclude=("build/",)) != snapshot:
                 raise RuntimeError(f"mutation changed the worktree after restoration: {path}")
 
 

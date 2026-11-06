@@ -60,6 +60,7 @@ class PlanAuditLibraryTests(unittest.TestCase):
 
     def test_temp_git_tree_is_independent(self) -> None:
         """Exported audit trees resolve their own repository root."""
+        audit_lib.BUILD_ROOT.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(dir=audit_lib.BUILD_ROOT) as temp:
             destination = Path(temp) / "tree"
             audit_lib.temp_git_tree("HEAD", destination, ("Scripts/README.md",))
@@ -110,6 +111,10 @@ class PlanAuditLibraryTests(unittest.TestCase):
                 self.assertEqual("FAIL", unity_acceptance._plan_check("base").status)
                 path.write_text("Status: implemented\n", encoding="utf-8")
                 self.assertEqual("PASS", unity_acceptance._plan_check("base").status)
+                path.write_text("Status: Not implemented\n", encoding="utf-8")
+                self.assertEqual("FAIL", unity_acceptance._plan_check("base").status)
+                path.write_text("Status: Not completed\n", encoding="utf-8")
+                self.assertEqual("FAIL", unity_acceptance._plan_check("base").status)
 
     def test_resolve_revision_falls_back_when_origin_main_is_missing(self) -> None:
         """Revision resolution remains usable without a fetched origin/main ref."""
@@ -209,6 +214,19 @@ class PlanAuditLibraryTests(unittest.TestCase):
                 unity_lane.os.environ, {"UNITY_EXECUTABLE": str(unity)}, clear=False
             ), mock.patch.object(unity_lane.subprocess, "run", return_value=SimpleNamespace(stdout="")):
                 self.assertFalse(unity_lane._lockfile_is_held(lockfile))
+                self.assertEqual((True, "preflight passed"), unity_lane._preflight())
+
+    def test_preflight_ignores_unrelated_unity_project(self) -> None:
+        """A Unity process for another project does not block the audit."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            unity = root / "Unity.exe"
+            unity.write_bytes(b"")
+            with mock.patch.object(unity_lane.audit_lib, "ROOT", root), mock.patch.dict(
+                unity_lane.os.environ, {"UNITY_EXECUTABLE": str(unity)}, clear=False
+            ), mock.patch.object(
+                unity_lane.subprocess, "run", return_value=SimpleNamespace(stdout='-projectPath "C:\\other-project"', returncode=0)
+            ):
                 self.assertEqual((True, "preflight passed"), unity_lane._preflight())
 
     def test_preflight_rejects_held_lockfile(self) -> None:

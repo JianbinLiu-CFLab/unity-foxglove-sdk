@@ -31,9 +31,10 @@ def _plan_check(base_sha: str) -> audit_lib.Check:
     status_line = next((line for line in text.splitlines() if "Status:" in line), "")
     status_value = status_line.split("Status:", 1)[1].strip().lower() if "Status:" in status_line else ""
     stale = "plan only" in status_value
+    negated = bool(re.search(r"\bnot\s+(?:implemented|complete|completed|delivered|accepted|verified)\b", status_value))
     recognized = bool(re.search(r"\b(?:implemented|complete|completed|delivered|accepted|verified)\b", status_value))
-    status = "PASS" if recognized and not stale else "FAIL"
-    detail = status_line if recognized and not stale else f"{status_line or 'Status line missing'}; status is missing or unrecognized"
+    status = "PASS" if recognized and not stale and not negated else "FAIL"
+    detail = status_line if recognized and not stale and not negated else f"{status_line or 'Status line missing'}; status is missing, negated, or unrecognized"
     return audit_lib.Check(
         "195-PLAN",
         "Plan/195_PHASE195_WORKSTREAM_E_UNITY_ACCEPTANCE_HARDENING_PLAN.md",
@@ -48,7 +49,20 @@ def _plan_check(base_sha: str) -> audit_lib.Check:
 def _dod_check(checks: list[audit_lib.Check]) -> audit_lib.Check:
     """Map the plan definition of done to the produced check statuses."""
     by_id = {check.id: check for check in checks}
-    required = ("195-PLAN", "195-W0-local100", "195-W1-assets", "195-W1-script", "195-W1-workflow", "195-W2", "195-W3", "195-W4")
+    required = (
+        "195-PLAN",
+        "195-W0-local100",
+        "195-W1-assets",
+        "195-W1-script",
+        "195-W1-workflow",
+        "195-W1-dispatch",
+        "195-W1-zero-tests",
+        "195-W1-red",
+        "195-OBS-jazzy-meta",
+        "195-W2",
+        "195-W3",
+        "195-W4",
+    )
     missing = [check_id for check_id in required if check_id not in by_id]
     failed = [check_id for check_id in required if check_id in by_id and by_id[check_id].status != "PASS"]
     status = "PASS" if not missing and not failed else "FAIL"
