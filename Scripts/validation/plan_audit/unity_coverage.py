@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+import sys
+import xml.etree.ElementTree as ElementTree
 from pathlib import Path
 
 from . import audit_lib
@@ -25,6 +27,25 @@ def _source_files() -> list[Path]:
     return sorted(tests.rglob("*.cs")) if tests.is_dir() else []
 
 
+def _unity_acceptance_result(results: Path, category: str) -> tuple[str, str]:
+    """Read a Unity NUnit result file and require every selected case to pass."""
+    if not results.is_file():
+        return "NOT_RUN", f"results file is missing: {results}"
+    try:
+        root = ElementTree.parse(results).getroot()
+    except (ElementTree.ParseError, OSError) as exc:
+        return "FAIL", f"unable to parse Unity results: {exc}"
+    cases = []
+    for case in root.iter("test-case"):
+        categories = {node.attrib.get("value") for node in case.findall("./properties/property") if node.attrib.get("name") == "Category"}
+        if category in categories:
+            cases.append(case)
+    failed = [case.attrib.get("fullname") or case.attrib.get("name") or "<unnamed>" for case in cases if case.attrib.get("result", "").lower() != "passed"]
+    if not cases:
+        return "FAIL", f"no Unity test cases selected by category {category}"
+    return ("PASS" if not failed else "FAIL"), f"category={category}; cases={len(cases)}; failed={failed or 'none'}"
+
+
 def _coverage(checks: list[audit_lib.Check], output: Path, workstream: str, terms: tuple[str, ...], platform: str) -> None:
     """Classify workstream artifacts without treating tokens as acceptance evidence."""
     named = [path for path in _source_files() if any(term.lower() in path.name.lower() for term in terms)]
@@ -34,8 +55,49 @@ def _coverage(checks: list[audit_lib.Check], output: Path, workstream: str, term
     command = "rg --files Unity2Foxglove/Assets/Tests | rg '(Camera|Readback)'" if workstream == "W2" else "rg --files Unity2Foxglove/Assets/Tests | rg '(Lidar|LiDAR)'"
     if not named:
         _record(checks, f"195-{workstream}", "auto", "MISSING", command, evidence, f"no named {workstream} acceptance test artifact exists")
+    elif workstream == "W3":
+        results = audit_lib.BUILD_ROOT / "unity_acceptance" / "w3" / "playmode.xml"
+        status, detail = _unity_acceptance_result(results, "LidarAcceptance")
+        _record(checks, "195-W3", "probe", status, "python -B Scripts/release/run_unity_tests.py --test-platform PlayMode", results, detail)
     else:
         _record(checks, f"195-{workstream}", "probe", "NOT_RUN", f"python -B -m Scripts.validation.plan_audit.unity_acceptance --platform {platform}", evidence, f"candidate files={len(named)}; Unity execution and defect mutation are required")
+
+
+def _w3_mutation(checks: list[audit_lib.Check], output: Path) -> None:
+    """Require the elapsed-physics-time test to fail under nominal-tick mutation."""
+    source = audit_lib.ROOT / "Packages/dev.unity2foxglove.sdk/Runtime/Sensors/Lidar/VirtualLidar.cs"
+    evidence = output / "logs" / "w3-mutation.log"
+    command = [
+        sys.executable,
+        "-B",
+        "Scripts/release/run_unity_tests.py",
+        "--project-path",
+        "Unity2Foxglove",
+        "--test-platform",
+        "PlayMode",
+        "--test-results",
+        "build/plan-audit/unity_acceptance/w3/red/playmode.xml",
+        "--log-file",
+        "build/plan-audit/unity_acceptance/w3/red/playmode.log",
+        "--nographics",
+    ]
+    old = "                    dt,\n                    _scanBuffers.ScanColumnCount,"
+    new = "                    0.02,\n                    _scanBuffers.ScanColumnCount,"
+    try:
+        with audit_lib.mutate(source, old, new):
+            result = audit_lib.run(command, evidence, 3600)
+        payload_path = audit_lib.BUILD_ROOT / "unity_acceptance" / "w3" / "red" / "playmode.json"
+        try:
+            payload = json.loads(payload_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            payload = {}
+        status = "PASS" if result["exit_code"] != 0 and payload.get("verdict") == "FAIL" else "FAIL"
+        detail = f"mutated elapsed-time argument; exit={result['exit_code']}; verdict={payload.get('verdict', 'missing')}"
+    except (OSError, ValueError, RuntimeError) as exc:
+        status = "NOT_RUN"
+        detail = f"mutation not run: {exc}"
+        evidence.write_text(detail + "\n", encoding="utf-8")
+    _record(checks, "195-W3-mutation", "mutation", status, "mutate VirtualLidar elapsed-time argument and run PlayMode", evidence, detail)
 
 
 def _workflow_w4(checks: list[audit_lib.Check], output: Path) -> None:
@@ -104,6 +166,8 @@ def coverage_checks(output: Path) -> list[audit_lib.Check]:
     checks: list[audit_lib.Check] = []
     _coverage(checks, output, "W2", ("Camera", "Readback"), "PlayMode")
     _coverage(checks, output, "W3", ("Lidar", "LiDAR"), "PlayMode")
+    if any(check.id == "195-W3" and check.status == "PASS" for check in checks):
+        _w3_mutation(checks, output)
     _workflow_w4(checks, output)
     _guid_audit(checks, output)
     return checks
