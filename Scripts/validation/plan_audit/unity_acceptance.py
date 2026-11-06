@@ -60,7 +60,9 @@ def _dod_check(checks: list[audit_lib.Check]) -> audit_lib.Check:
         "195-W1-red",
         "195-OBS-jazzy-meta",
         "195-W2",
+        "195-W2-mutation",
         "195-W3",
+        "195-W3-mutation",
         "195-W4",
     )
     missing = [check_id for check_id in required if check_id not in by_id]

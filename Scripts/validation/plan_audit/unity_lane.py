@@ -207,18 +207,23 @@ def _preflight() -> tuple[bool, str]:
     lockfile = project / "Temp" / "UnityLockfile"
     if _lockfile_is_held(lockfile):
         return False, "Unity2Foxglove/Temp/UnityLockfile is held"
-    process_query = subprocess.run(
-        [
-            "powershell",
-            "-NoProfile",
-            "-NonInteractive",
-            "-Command",
-            "(Get-CimInstance Win32_Process -Filter \"Name = 'Unity.exe'\").CommandLine",
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        process_query = subprocess.run(
+            [
+                "powershell",
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                "(Get-CimInstance Win32_Process -Filter \"Name = 'Unity.exe'\").CommandLine",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError as exc:
+        return False, f"Unity process ownership query unavailable: {exc}"
+    if process_query.returncode != 0:
+        return False, f"Unity process ownership query failed with exit={process_query.returncode}"
     project_text = str(project.resolve()).replace("/", "\\").lower()
     if any(project_text in line.lower() for line in str(getattr(process_query, "stdout", "")).splitlines()):
         return False, "Unity.exe is active for the audited project"

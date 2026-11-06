@@ -146,8 +146,8 @@ namespace Unity2Foxglove.Tests.PlayMode
             SetField(lidar, "_customPixelsPerColumn", 1);
             SetField(lidar, "_customColumnsPerFrame", 32);
             SetField(lidar, "_customScanRateHz", 1f);
-            SetField(lidar, "_customFovTopDeg", 0f);
-            SetField(lidar, "_customFovBottomDeg", 0f);
+            SetField(lidar, "_customFovTopDeg", 8f);
+            SetField(lidar, "_customFovBottomDeg", -8f);
             SetField(lidar, "_customMinRangeMeters", 0.1f);
             SetField(lidar, "_frameId", frameId);
             SetField(lidar, "_columnStep", 1);

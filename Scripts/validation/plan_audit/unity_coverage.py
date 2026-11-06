@@ -12,6 +12,22 @@ from pathlib import Path
 from . import audit_lib
 
 PLAN_PATH = "Plan/195_PHASE195_WORKSTREAM_E_UNITY_ACCEPTANCE_HARDENING_PLAN.md"
+EXPECTED_CASES = {
+    "W2": frozenset(
+        {
+            "GraphicsAcceptance_CameraInfoUsesImageSourceCamera",
+            "GraphicsAcceptance_ResizeDuringReadbackProducesNoErrors",
+            "GraphicsAcceptance_ResizeFramesKeepDimensionsAndPayloadsConsistent",
+        }
+    ),
+    "W3": frozenset(
+        {
+            "LidarAcceptance_ConfigurationChangesApplyAfterReenable",
+            "LidarAcceptance_ElapsedPhysicsTimeSpansMultipleTicks",
+            "LidarAcceptance_SensorTransformDefinesPointFrame",
+        }
+    ),
+}
 
 
 def _record(checks: list[audit_lib.Check], check_id: str, kind: str, status: str, command: str, evidence: Path, detail: str) -> None:
@@ -27,7 +43,7 @@ def _source_files() -> list[Path]:
     return sorted(tests.rglob("*.cs")) if tests.is_dir() else []
 
 
-def _unity_acceptance_result(results: Path, category: str) -> tuple[str, str]:
+def _unity_acceptance_result(results: Path, category: str, expected_names: frozenset[str]) -> tuple[str, str]:
     """Read a Unity NUnit result file and require every selected case to pass."""
     if not results.is_file():
         return "NOT_RUN", f"results file is missing: {results}"
@@ -40,12 +56,33 @@ def _unity_acceptance_result(results: Path, category: str) -> tuple[str, str]:
         categories = {node.attrib.get("value") for node in case.findall("./properties/property") if node.attrib.get("name") == "Category"}
         if category in categories:
             cases.append(case)
+    names = [case.attrib.get("name", "<unnamed>") for case in cases]
+    unexpected = sorted(set(names) ^ expected_names)
+    duplicates = sorted(name for name in expected_names if names.count(name) != 1)
+    if unexpected or duplicates:
+        return "FAIL", f"category={category}; unexpected={unexpected or 'none'}; duplicate-or-missing={duplicates or 'none'}"
     failed = [case.attrib.get("fullname") or case.attrib.get("name") or "<unnamed>" for case in cases if case.attrib.get("result", "").lower() != "passed"]
     if not cases:
         return "FAIL", f"no Unity test cases selected by category {category}"
     if all(case.attrib.get("result", "").lower() in {"skipped", "ignored", "inconclusive"} for case in cases):
         return "MANUAL", f"category={category}; cases={len(cases)}; graphics device unavailable"
     return ("PASS" if not failed else "FAIL"), f"category={category}; cases={len(cases)}; failed={failed or 'none'}"
+
+
+def _mutation_failure_observed(results: Path, category: str, expected_name: str) -> bool:
+    """Require the deliberate mutation to fail the exact behavioral case."""
+    if not results.is_file():
+        return False
+    try:
+        root = ElementTree.parse(results).getroot()
+    except (ElementTree.ParseError, OSError):
+        return False
+    matches = []
+    for case in root.iter("test-case"):
+        categories = {node.attrib.get("value") for node in case.findall("./properties/property") if node.attrib.get("name") == "Category"}
+        if category in categories and case.attrib.get("name") == expected_name:
+            matches.append(case)
+    return len(matches) == 1 and matches[0].attrib.get("result", "").lower() in {"failed", "error"}
 
 
 def _coverage(checks: list[audit_lib.Check], output: Path, workstream: str, terms: tuple[str, ...], platform: str) -> None:
@@ -59,11 +96,11 @@ def _coverage(checks: list[audit_lib.Check], output: Path, workstream: str, term
         _record(checks, f"195-{workstream}", "auto", "MISSING", command, evidence, f"no named {workstream} acceptance test artifact exists")
     elif workstream == "W3":
         results = audit_lib.BUILD_ROOT / "unity_acceptance" / "w3" / "playmode.xml"
-        status, detail = _unity_acceptance_result(results, "LidarAcceptance")
+        status, detail = _unity_acceptance_result(results, "LidarAcceptance", EXPECTED_CASES["W3"])
         _record(checks, "195-W3", "probe", status, "python -B Scripts/release/run_unity_tests.py --test-platform PlayMode", results, detail)
     elif workstream == "W2":
         results = audit_lib.BUILD_ROOT / "unity_acceptance" / "w2" / "playmode.xml"
-        status, detail = _unity_acceptance_result(results, "GraphicsAcceptance")
+        status, detail = _unity_acceptance_result(results, "GraphicsAcceptance", EXPECTED_CASES["W2"])
         _record(checks, "195-W2", "probe", status, "python -B Scripts/release/run_unity_tests.py --test-platform PlayMode --test-category GraphicsAcceptance", results, detail)
     else:
         _record(checks, f"195-{workstream}", "probe", "NOT_RUN", f"python -B -m Scripts.validation.plan_audit.unity_acceptance --platform {platform}", evidence, f"candidate files={len(named)}; Unity execution and defect mutation are required")
@@ -98,8 +135,10 @@ def _w2_mutation(checks: list[audit_lib.Check], output: Path) -> None:
             payload = json.loads(payload_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             payload = {}
-        status = "PASS" if result["exit_code"] != 0 and payload.get("verdict") == "FAIL" else "FAIL"
-        detail = f"mutated retired render texture release; exit={result['exit_code']}; verdict={payload.get('verdict', 'missing')}"
+        results_path = audit_lib.BUILD_ROOT / "unity_acceptance" / "w2" / "red" / "playmode.xml"
+        observed = _mutation_failure_observed(results_path, "GraphicsAcceptance", "GraphicsAcceptance_ResizeDuringReadbackProducesNoErrors")
+        status = "PASS" if result["exit_code"] != 0 and payload.get("verdict") == "FAIL" and observed else "FAIL"
+        detail = f"mutated retired render texture release; exit={result['exit_code']}; verdict={payload.get('verdict', 'missing')}; named_failure={observed}"
     except (OSError, ValueError, RuntimeError) as exc:
         status = "NOT_RUN"
         detail = f"mutation not run: {exc}"
@@ -135,8 +174,10 @@ def _w3_mutation(checks: list[audit_lib.Check], output: Path) -> None:
             payload = json.loads(payload_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             payload = {}
-        status = "PASS" if result["exit_code"] != 0 and payload.get("verdict") == "FAIL" else "FAIL"
-        detail = f"mutated elapsed-time argument; exit={result['exit_code']}; verdict={payload.get('verdict', 'missing')}"
+        results_path = audit_lib.BUILD_ROOT / "unity_acceptance" / "w3" / "red" / "playmode.xml"
+        observed = _mutation_failure_observed(results_path, "LidarAcceptance", "LidarAcceptance_ElapsedPhysicsTimeSpansMultipleTicks")
+        status = "PASS" if result["exit_code"] != 0 and payload.get("verdict") == "FAIL" and observed else "FAIL"
+        detail = f"mutated elapsed-time argument; exit={result['exit_code']}; verdict={payload.get('verdict', 'missing')}; named_failure={observed}"
     except (OSError, ValueError, RuntimeError) as exc:
         status = "NOT_RUN"
         detail = f"mutation not run: {exc}"

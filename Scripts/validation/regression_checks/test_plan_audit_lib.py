@@ -12,6 +12,7 @@ from unittest import mock
 
 from Scripts.validation.plan_audit import audit_lib
 from Scripts.validation.plan_audit import bridge_history
+from Scripts.validation.plan_audit import unity_coverage
 from Scripts.validation.plan_audit import unity_acceptance
 from Scripts.validation.plan_audit import unity_lane
 
@@ -240,7 +241,7 @@ class PlanAuditLibraryTests(unittest.TestCase):
             lockfile.write_bytes(b"")
             with mock.patch.object(unity_lane.audit_lib, "ROOT", root), mock.patch.dict(
                 unity_lane.os.environ, {"UNITY_EXECUTABLE": str(unity)}, clear=False
-            ), mock.patch.object(unity_lane.subprocess, "run", return_value=SimpleNamespace(stdout="")):
+            ), mock.patch.object(unity_lane.subprocess, "run", return_value=SimpleNamespace(stdout="", returncode=0)):
                 self.assertFalse(unity_lane._lockfile_is_held(lockfile))
                 self.assertEqual((True, "preflight passed"), unity_lane._preflight())
 
@@ -257,6 +258,21 @@ class PlanAuditLibraryTests(unittest.TestCase):
             ):
                 self.assertEqual((True, "preflight passed"), unity_lane._preflight())
 
+    def test_preflight_fails_closed_when_process_query_fails(self) -> None:
+        """A failed ownership query must not launch Unity without verification."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            unity = root / "Unity.exe"
+            unity.write_bytes(b"")
+            with mock.patch.object(unity_lane.audit_lib, "ROOT", root), mock.patch.dict(
+                unity_lane.os.environ, {"UNITY_EXECUTABLE": str(unity)}, clear=False
+            ), mock.patch.object(
+                unity_lane.subprocess, "run", return_value=SimpleNamespace(stdout="", returncode=1)
+            ):
+                safe, reason = unity_lane._preflight()
+            self.assertFalse(safe)
+            self.assertIn("query failed", reason)
+
     def test_preflight_rejects_held_lockfile(self) -> None:
         """A lockfile held by another owner blocks the Unity red run."""
         with tempfile.TemporaryDirectory() as temp:
@@ -269,6 +285,38 @@ class PlanAuditLibraryTests(unittest.TestCase):
                 unity_lane.subprocess, "run", return_value=SimpleNamespace(stdout="")
             ):
                 self.assertEqual((False, "Unity2Foxglove/Temp/UnityLockfile is held"), unity_lane._preflight())
+
+    def test_unity_acceptance_requires_exact_behavior_case_set(self) -> None:
+        """Acceptance evidence must contain every named behavior case exactly once."""
+        with tempfile.TemporaryDirectory() as temp:
+            results = Path(temp) / "playmode.xml"
+            results.write_text(
+                """<test-run><test-case name=\"GraphicsAcceptance_CameraInfoUsesImageSourceCamera\" result=\"Passed\"><properties><property name=\"Category\" value=\"GraphicsAcceptance\" /></properties></test-case></test-run>""",
+                encoding="utf-8",
+            )
+            status, detail = unity_coverage._unity_acceptance_result(
+                results,
+                "GraphicsAcceptance",
+                unity_coverage.EXPECTED_CASES["W2"],
+            )
+        self.assertEqual("FAIL", status)
+        self.assertIn("duplicate-or-missing", detail)
+
+    def test_mutation_evidence_requires_named_failure(self) -> None:
+        """A mutation verdict must identify the expected failing behavior case."""
+        with tempfile.TemporaryDirectory() as temp:
+            results = Path(temp) / "playmode.xml"
+            results.write_text(
+                """<test-run><test-case name=\"Unrelated\" result=\"Failed\"><properties><property name=\"Category\" value=\"GraphicsAcceptance\" /></properties></test-case></test-run>""",
+                encoding="utf-8",
+            )
+            self.assertFalse(
+                unity_coverage._mutation_failure_observed(
+                    results,
+                    "GraphicsAcceptance",
+                    "GraphicsAcceptance_ResizeDuringReadbackProducesNoErrors",
+                )
+            )
 
 
 __all__ = ["PlanAuditLibraryTests"]
