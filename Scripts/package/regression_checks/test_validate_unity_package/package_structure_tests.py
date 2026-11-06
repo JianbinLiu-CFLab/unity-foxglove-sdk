@@ -312,6 +312,7 @@ class PackageStructureTests:
         original_read_text = Path.read_text
 
         def fail_target(path: Path, *args, **kwargs) -> str:
+            """Raise only for the selected metadata path."""
             if path == target:
                 raise OSError("denied")
             return original_read_text(path, *args, **kwargs)

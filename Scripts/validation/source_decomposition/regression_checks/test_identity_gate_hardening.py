@@ -178,6 +178,22 @@ class IdentityGateHardeningTests(unittest.TestCase):
         )
         self.assertEqual([], self._compatibility_errors(base, head))
 
+    def test_compatibility_rejects_executed_lambda_and_generator_environment_writes(self) -> None:
+        """Calls and eager consumers execute deferred expression bodies during import."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = (
+            "import os\n"
+            "list(os.environ.setdefault('A', '1') for _ in [1])\n"
+            "list(map(lambda key: os.environ.setdefault(key, '1'), ['B']))\n"
+            "(lambda: os.putenv('C', '1'))()\n"
+            "@lambda value: os.environ.setdefault('D', '1')\n"
+            "def helper():\n    return 1\n__all__ = ['helper']\n"
+        )
+        self.assertEqual(
+            ["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"],
+            self._compatibility_errors(base, head),
+        )
+
     def test_compatibility_allows_postponed_annotation_environment_expression(self) -> None:
         """Future annotations preserve deferred annotation evaluation semantics."""
         base = "def helper(value):\n    return value\n__all__ = ['helper']\n"

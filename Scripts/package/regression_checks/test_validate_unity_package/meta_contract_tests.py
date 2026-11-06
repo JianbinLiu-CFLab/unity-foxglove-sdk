@@ -70,9 +70,17 @@ class PackageMetaContractTests:
         with tempfile.TemporaryDirectory() as temp:
             package = Path(temp) / "dev.unity2foxglove.ros2bridge"
             generated = package / "Ros2Package~" / "Generated" / "Route.proto"
+            runtime = package / "Runtime" / "Route.proto"
             generated.parent.mkdir(parents=True)
+            runtime.parent.mkdir(parents=True)
             generated.write_text("syntax = \"proto3\";", encoding="utf-8")
+            runtime.write_text("syntax = \"proto3\";", encoding="utf-8")
             Path(str(generated) + ".meta").write_text(
+                "fileFormatVersion: 2\n"
+                "guid: 77777777777777777777777777777777\n",
+                encoding="utf-8",
+            )
+            Path(str(runtime) + ".meta").write_text(
                 "fileFormatVersion: 2\n"
                 "guid: 77777777777777777777777777777777\n",
                 encoding="utf-8",
