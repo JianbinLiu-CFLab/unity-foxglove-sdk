@@ -255,9 +255,6 @@ jobs:
       && vars.UNITY_SELF_HOSTED_RUNNER == 'enabled'
       && (github.event_name != 'pull_request'
           || github.event.pull_request.head.repo.full_name == github.repository)
-      && (github.event_name != 'workflow_dispatch'
-          || github.event.inputs.distro == 'both'
-          || github.event.inputs.distro == matrix.distro)
     runs-on: [self-hosted, Windows, X64, unity2foxglove-phase186-live]
     env:
       DISTRO: ${{ matrix.distro }}
@@ -289,7 +286,16 @@ jobs:
           persist-credentials: false
           clean: false
 
+      - name: Select requested distro
+        id: select_distro
+        shell: pwsh
+        run: |
+          $requested = "${{ github.event.inputs.distro }}"
+          $runDistro = "${{ github.event_name }}" -ne "workflow_dispatch" -or [string]::IsNullOrWhiteSpace($requested) -or $requested -eq "both" -or $requested -eq $env:DISTRO
+          "run_distro=$($runDistro.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
       - name: Recover interrupted distro workspace swap
+        if: steps.select_distro.outputs.run_distro == 'true'
         shell: pwsh
         run: |
           $markers = @(Get-ChildItem -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'build') -Filter 'phase195-distro-swap-*.json' -File -ErrorAction SilentlyContinue)
@@ -309,10 +315,12 @@ jobs:
           }
 
       - name: Clean runner workspace while preserving all Unity Library caches
+        if: steps.select_distro.outputs.run_distro == 'true'
         shell: pwsh
         run: git clean -ffdx -e 'Unity2Foxglove/Library*/'
 
       - name: Prepare distro manifest and isolated Library
+        if: steps.select_distro.outputs.run_distro == 'true'
         shell: pwsh
         run: |
           $project = Join-Path $env:GITHUB_WORKSPACE 'Unity2Foxglove'
@@ -352,19 +360,22 @@ jobs:
           Remove-Item -LiteralPath $lock -Force -ErrorAction SilentlyContinue
 
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        if: steps.select_distro.outputs.run_distro == 'true'
         with:
           python-version: "3.12"
 
       - name: Install Unity gate process ownership dependency
+        if: steps.select_distro.outputs.run_distro == 'true'
         shell: pwsh
         run: python -m pip install --disable-pip-version-check --no-input psutil==7.0.0
 
       - name: Run distro Unity batch import and compile gate
+        if: steps.select_distro.outputs.run_distro == 'true'
         shell: pwsh
         run: python -B Scripts/release/run_unity_batch_compile.py --project-path Unity2Foxglove --timeout-seconds 3600
 
       - name: Restore distro manifest and Library
-        if: always()
+        if: always() && steps.select_distro.outputs.run_distro == 'true'
         shell: pwsh
         run: |
           $project = Join-Path $env:GITHUB_WORKSPACE 'Unity2Foxglove'

@@ -315,7 +315,7 @@ printf '%s' "$required"
         workflow = UNITY_COMPILE_WORKFLOW_PATH.read_text(encoding="utf-8")
         compile_job = workflow.split("  unity_compile:\n", 1)[1].split("  unity_required:\n", 1)[0]
         self.assertIn("clean: false", compile_job)
-        self.assertIn("git clean -ffdx -e Unity2Foxglove/Library/", compile_job)
+        self.assertIn("git clean -ffdx -e 'Unity2Foxglove/Library*/'", compile_job)
         self.assertIn("--timeout-seconds 3600", compile_job)
         self.assertIn(
             "group: unity-compile-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}",
@@ -333,6 +333,21 @@ printf '%s' "$required"
         self.assertIn("--test-category GraphicsAcceptance", graphics_run)
         self.assertNotIn("--nographics", graphics_run)
         self.assertIn("build/unity-tests/graphics", graphics)
+
+    def test_unity_distro_compile_job_is_matrixed_and_restores_workspace(self) -> None:
+        """Distro compile coverage must isolate Humble/Lyrical caches and restore the checkout."""
+        workflow = UNITY_COMPILE_WORKFLOW_PATH.read_text(encoding="utf-8")
+        self.assertIn("distro:", workflow.split("  unity_distro_compile:\n", 1)[1].split("  unity_required:\n", 1)[0])
+        job = workflow.split("  unity_distro_compile:\n", 1)[1].split("  unity_required:\n", 1)[0]
+        self.assertIn("matrix:", job)
+        self.assertIn("distro: [humble, lyrical]", job)
+        self.assertIn("workflow_dispatch", workflow)
+        self.assertIn("inputs:", workflow)
+        self.assertIn("phase195-distro-swap-", job)
+        self.assertIn("if: always()", job)
+        self.assertIn("git status --porcelain", job)
+        self.assertIn("git clean -ffdx -e 'Unity2Foxglove/Library*/'", job)
+        self.assertNotIn("junction", job.lower())
 
     def test_phase186_live_workflow_preserves_library_and_bootstraps_powershell(self) -> None:
         """The live certification lane must reuse the Unity cache and resolve PowerShell 7."""

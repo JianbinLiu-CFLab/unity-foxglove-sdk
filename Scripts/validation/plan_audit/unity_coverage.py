@@ -186,7 +186,7 @@ def _w3_mutation(checks: list[audit_lib.Check], output: Path) -> None:
 
 
 def _workflow_w4(checks: list[audit_lib.Check], output: Path) -> None:
-    """Check explicit Humble and Lyrical workflow obligations."""
+    """Check explicit Humble and Lyrical workflow obligations and fresh runs."""
     workflow = audit_lib.ROOT / ".github" / "workflows" / "unity-compile.yml"
     text = workflow.read_text(encoding="utf-8", errors="replace") if workflow.is_file() else ""
     required = {"workflow_dispatch": "workflow_dispatch", "humble": "humble", "lyrical": "lyrical", "always": "if: always()", "library": "Library"}
@@ -198,9 +198,41 @@ def _workflow_w4(checks: list[audit_lib.Check], output: Path) -> None:
     missing = [name for name, needle in required.items() if needle not in text]
     if not re.search(r"Packages/dev\.unity2foxglove\.ros2forunity\.runtime\.(?:humble|lyrical)\.win64", text):
         missing.append("distro_paths")
-    status = "MISSING" if missing else "NOT_RUN"
-    detail = f"missing workflow requirements={missing}" if missing else "workflow wiring exists; one successful run per distro is still required"
-    _record(checks, "195-W4", "auto" if missing else "history", status, "Get-Content .github/workflows/unity-compile.yml", evidence, detail)
+    if missing:
+        _record(checks, "195-W4", "auto", "MISSING", "Get-Content .github/workflows/unity-compile.yml", evidence, f"missing workflow requirements={missing}")
+        return
+
+    branch = subprocess.run(["git", "branch", "--show-current"], cwd=audit_lib.ROOT, capture_output=True, text=True, check=False).stdout.strip()
+    command = ["gh", "run", "list", "--workflow", "unity-compile.yml", "--branch", branch, "--limit", "20", "--json", "databaseId,headSha,event,conclusion"]
+    result = audit_lib.run(command, output / "logs" / "w4-history.log", 120)
+    if result["exit_code"] != 0:
+        _record(checks, "195-W4", "history", "NOT_RUN", " ".join(command), output / "logs" / "w4-history.log", "workflow history unavailable")
+        return
+    try:
+        runs = json.loads(str(result["output"]))
+    except json.JSONDecodeError:
+        _record(checks, "195-W4", "history", "NOT_RUN", " ".join(command), output / "logs" / "w4-history.log", "workflow history was not valid JSON")
+        return
+    head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=audit_lib.ROOT, capture_output=True, text=True, check=False).stdout.strip()
+    verified: dict[str, str] = {}
+    for run in runs:
+        if run.get("conclusion") != "success" or run.get("headSha") != head:
+            continue
+        run_id = str(run.get("databaseId", ""))
+        if not run_id:
+            continue
+        view = audit_lib.run(["gh", "run", "view", run_id, "--json", "jobs"], output / "logs" / f"w4-history-{run_id}.log", 120)
+        try:
+            jobs = json.loads(str(view["output"])).get("jobs", [])
+        except json.JSONDecodeError:
+            continue
+        for distro in ("humble", "lyrical"):
+            name = f"unity-distro-compile ({distro})"
+            if any(job.get("name") == name and job.get("conclusion") == "success" for job in jobs):
+                verified[distro] = run_id
+    status = "PASS" if set(verified) == {"humble", "lyrical"} else "MANUAL"
+    detail = f"head={head}; verified distro runs={verified or 'none'}"
+    _record(checks, "195-W4", "history", status, " ".join(command), output / "logs" / "w4-history.log", detail)
 
 
 def _manifest_roots() -> list[Path]:
