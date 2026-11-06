@@ -41,7 +41,8 @@ def parse_nunit_results(results_path: Path) -> tuple[str, list[str], dict[str, i
             failed.append(testcase.attrib.get("fullname") or testcase.attrib.get("name") or "<unnamed>")
     summary = root if root.tag == "test-run" else root.find("./test-suite")
     counts = {key: int(summary.attrib.get(key, "0")) if summary is not None else 0 for key in ("total", "passed", "failed", "inconclusive", "skipped")}
-    return ("FAIL" if failed or counts.get("failed", 0) else "PASS"), failed, counts
+    has_no_tests = counts.get("total", 0) == 0
+    return ("FAIL" if failed or counts.get("failed", 0) or has_no_tests else "PASS"), failed, counts
 
 
 def _active_unity_project(project_path: Path) -> bool:

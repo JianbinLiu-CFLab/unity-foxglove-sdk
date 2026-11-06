@@ -241,6 +241,19 @@ class UnityTestRunnerTests(unittest.TestCase):
         self.assertEqual("FAIL", verdict)
         self.assertEqual(["Smoke.Fails"], failed)
 
+    def test_parse_nunit_results_rejects_empty_run(self) -> None:
+        """Reject a Unity run that discovered no tests."""
+        with tempfile.TemporaryDirectory() as temp:
+            results = Path(temp) / "results.xml"
+            results.write_text(
+                '<test-run total="0" passed="0" failed="0" inconclusive="0" skipped="0" />',
+                encoding="utf-8",
+            )
+            verdict, failed, counts = self.runner.parse_nunit_results(results)
+        self.assertEqual("FAIL", verdict)
+        self.assertEqual([], failed)
+        self.assertEqual(0, counts["total"])
+
     def test_run_marks_missing_environment_not_run(self) -> None:
         """Classify missing Unity environment variables as NOT_RUN."""
         with tempfile.TemporaryDirectory() as temp:
