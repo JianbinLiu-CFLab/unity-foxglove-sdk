@@ -176,6 +176,7 @@ def _one_result(trx: Path) -> tuple[bool, str]:
 def _local100_impl(output: Path) -> audit_lib.Check:
     """Restore, build once, prove discovery, and execute one test one hundred times."""
     logs = output / "logs"
+    base_sha, source_tree_sha = _cache_identity(output)
     use_wsl, runtime_detail = _linux_sdk()
     prefix, runtime = _runner(use_wsl)
     restore_cmd = prefix + ["restore", PROJECT_DISPLAY]
@@ -207,13 +208,14 @@ def _local100_impl(output: Path) -> audit_lib.Check:
         outcomes.append(ok)
         details.append(f"{index:03d}: exit={result['exit_code']} {detail}")
     summary = output / "logs" / "w0-local100-summary.json"
-    summary.write_text(json.dumps({"runtime": runtime, "passes": sum(outcomes), "runs": len(outcomes), "durations": durations, "details": details}, indent=2) + "\n", encoding="utf-8")
+    summary.write_text(json.dumps({"base_sha": base_sha, "source_tree_sha": source_tree_sha, "runtime": runtime, "passes": sum(outcomes), "runs": len(outcomes), "durations": durations, "details": details}, indent=2) + "\n", encoding="utf-8")
     return _check("PASS" if all(outcomes) else "FAIL", " ".join(prefix + ["test", "--no-build", "--no-restore", PROJECT_DISPLAY, "--filter", FILTER]), summary, f"{sum(outcomes)}/100 runs passed; {runtime_detail}; discovery and per-run TRX each recorded exactly one selected test", "auto")
 
 
 def _local100(output: Path) -> audit_lib.Check:
     """Run the local acceptance loop with isolated dotnet caches."""
     summary = output / "logs" / "w0-local100-summary.json"
+    base_sha, source_tree_sha = _cache_identity(output)
     if summary.is_file():
         try:
             previous = json.loads(summary.read_text(encoding="utf-8"))
@@ -221,10 +223,18 @@ def _local100(output: Path) -> audit_lib.Check:
             previous = {}
         run_logs = list((output / "logs").glob("w0-local100-*.log"))
         trx_files = list((output / "trx").glob("*/bridge-*.trx"))
-        if previous.get("runs") == 100 and previous.get("passes") == 100 and len(run_logs) >= 100 and len(trx_files) >= 100:
-            return _check("PASS", "dotnet restore; dotnet build; dotnet test --no-build --no-restore (100 iterations)", summary, "100-run evidence is present with 100 per-run logs and 100 TRX files", "auto")
+        if previous.get("base_sha") == base_sha and previous.get("source_tree_sha") == source_tree_sha and previous.get("runs") == 100 and previous.get("passes") == 100 and len(run_logs) >= 100 and len(trx_files) >= 100:
+            return _check("PASS", "dotnet restore; dotnet build; dotnet test --no-build --no-restore (100 iterations)", summary, "100-run evidence matches the current base and bridge source tree with 100 logs and 100 TRX files", "auto")
     with _dotnet_environment():
         return _local100_impl(output)
+
+
+def _cache_identity(output: Path) -> tuple[str, str]:
+    """Return the audited base SHA and bridge source tree SHA for cache validation."""
+    marker = output / "base.txt"
+    base_sha = marker.read_text(encoding="utf-8").strip() if marker.is_file() else subprocess.check_output(["git", "rev-parse", "origin/main"], cwd=audit_lib.ROOT, text=True).strip()
+    source_tree_sha = subprocess.check_output(["git", "rev-parse", f"{base_sha}:Packages/dev.unity2foxglove.ros2bridge"], cwd=audit_lib.ROOT, text=True).strip()
+    return base_sha, source_tree_sha
 
 
 def bridge_checks(output: Path) -> list[audit_lib.Check]:

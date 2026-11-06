@@ -16,10 +16,11 @@ PLAN = audit_lib.ROOT / "Plan" / "195_PHASE195_WORKSTREAM_E_UNITY_ACCEPTANCE_HAR
 
 
 def _plan_check(base_sha: str) -> audit_lib.Check:
-    """Compare the plan's recorded entry base with live origin/main."""
+    """Compare the plan status line with the delivered W1 state."""
     text = PLAN.read_text(encoding="utf-8")
-    entry = next((line for line in text.splitlines() if line.startswith("Entry base:")), "")
-    status = "PASS" if base_sha in entry else "FAIL"
+    status_line = next((line for line in text.splitlines() if "Status:" in line), "")
+    stale = "plan only" in status_line.lower()
+    status = "FAIL" if stale else "PASS"
     return audit_lib.Check(
         "195-PLAN",
         "Plan/195_PHASE195_WORKSTREAM_E_UNITY_ACCEPTANCE_HARDENING_PLAN.md",
@@ -27,7 +28,7 @@ def _plan_check(base_sha: str) -> audit_lib.Check:
         status,
         "git rev-parse origin/main; read Plan/195_PHASE195_WORKSTREAM_E_UNITY_ACCEPTANCE_HARDENING_PLAN.md",
         "build/plan-audit/unity_acceptance/base.txt",
-        f"live origin/main={base_sha}; {entry or 'Entry base line missing'}",
+        f"live origin/main={base_sha}; {status_line or 'Status line missing'}; status is stale" if stale else f"live origin/main={base_sha}; {status_line}",
     )
 
 

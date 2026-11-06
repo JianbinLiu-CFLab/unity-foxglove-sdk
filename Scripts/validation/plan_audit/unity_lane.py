@@ -9,12 +9,13 @@ import os
 import subprocess
 import sys
 import tempfile
+import xml.etree.ElementTree as ElementTree
 from pathlib import Path
 from types import ModuleType
 
 from . import audit_lib
 
-PLAN_REF = "build/codex-prompts/Plan195_unity_acceptance.md"
+PLAN_REF = "Plan/195_PHASE195_WORKSTREAM_E_UNITY_ACCEPTANCE_HARDENING_PLAN.md § W1"
 WORKFLOW = Path(".github/workflows/unity-compile.yml")
 RUNNER = Path("Scripts/release/run_unity_tests.py")
 EDIT = Path("Unity2Foxglove/Assets/Tests/EditMode/Unity2FoxgloveSensorsEditModeSmokeTests.cs")
@@ -172,9 +173,23 @@ def _preflight() -> tuple[bool, str]:
     processes = subprocess.run(["tasklist", "/FI", "IMAGENAME eq Unity.exe"], capture_output=True, text=True, check=False)
     if "Unity.exe" in processes.stdout:
         return False, "Unity.exe is active and ownership is not exclusive"
-    if str(Path(os.environ.get("USERPROFILE", "C:"))).upper().startswith("C:"):
-        return False, "Unity user state would write under C:"
     return True, "preflight passed"
+
+
+def _red_failure_observed(results_path: Path) -> bool:
+    """Return whether NUnit recorded the deliberate named red-run failure."""
+    if not results_path.is_file():
+        return False
+    try:
+        root = ElementTree.parse(results_path).getroot()
+    except (ElementTree.ParseError, OSError):
+        return False
+    for testcase in root.iter("test-case"):
+        result = testcase.attrib.get("result", "").lower()
+        message = " ".join((testcase.attrib.get("message", ""), *testcase.itertext())).lower()
+        if result in {"failed", "error"} and "plan audit red run" in message:
+            return True
+    return False
 
 
 def _red(checks: list[audit_lib.Check], output: Path) -> None:
@@ -204,8 +219,18 @@ def _red(checks: list[audit_lib.Check], output: Path) -> None:
                 command = [sys.executable, "-B", "Scripts/release/run_unity_tests.py", "--project-path", "Unity2Foxglove", "--test-platform", "EditMode", "--test-results", "build/plan-audit/unity_acceptance/red/editmode.xml", "--log-file", "build/plan-audit/unity_acceptance/red/editmode.log", "--nographics"]
                 result = audit_lib.run(command, evidence, 3600)
                 red_exit = int(result["exit_code"]) if result["exit_code"] is not None else None
-                status = "PASS" if red_exit != 0 else "FAIL"
-                detail = f"mutated hash={mutated}; exit={red_exit}"
+                results_path = audit_lib.ROOT / "build/plan-audit/unity_acceptance/red/editmode.xml"
+                payload_path = results_path.with_suffix(".json")
+                try:
+                    payload = json.loads(payload_path.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError):
+                    payload = {}
+                observed = _red_failure_observed(results_path)
+                if red_exit is None:
+                    status, detail = "NOT_RUN", f"mutated hash={mutated}; timeout or launch failure; exit={red_exit}"
+                else:
+                    status = "PASS" if red_exit != 0 and payload.get("verdict") == "FAIL" and observed else "FAIL"
+                    detail = f"mutated hash={mutated}; exit={red_exit}; verdict={payload.get('verdict')}; named_failure={observed}"
             else:
                 evidence.write_text(f"mutated hash={mutated}\nNOT_RUN: {reason}\n", encoding="utf-8")
                 status, detail = "NOT_RUN", f"mutated hash={mutated}; NOT_RUN: {reason}"

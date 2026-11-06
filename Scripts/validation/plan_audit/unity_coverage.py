@@ -9,13 +9,14 @@ from pathlib import Path
 
 from . import audit_lib
 
-PLAN_REF = "build/codex-prompts/Plan195_unity_acceptance.md"
+PLAN_PATH = "Plan/195_PHASE195_WORKSTREAM_E_UNITY_ACCEPTANCE_HARDENING_PLAN.md"
 
 
 def _record(checks: list[audit_lib.Check], check_id: str, kind: str, status: str, command: str, evidence: Path, detail: str) -> None:
     """Append a check with a repository-relative evidence path."""
     evidence = evidence.resolve()
-    checks.append(audit_lib.Check(check_id, PLAN_REF, kind, status, command, str(evidence.relative_to(audit_lib.ROOT)).replace("\\", "/"), detail))
+    section = {"195-W2": "§ W2", "195-W3": "§ W3", "195-W4": "§ W4", "195-OBS-jazzy-meta": "§ OBS"}.get(check_id, "§ 5")
+    checks.append(audit_lib.Check(check_id, f"{PLAN_PATH} {section}", kind, status, command, str(evidence.relative_to(audit_lib.ROOT)).replace("\\", "/"), detail))
 
 
 def _source_files() -> list[Path]:
