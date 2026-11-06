@@ -193,6 +193,7 @@ SAMPLE_SYNC_TOOLING_REGRESSION = (
 )
 PACKAGE_LANE_REGRESSION_MODULES = (
     "Scripts.validation.regression_checks.test_ci_safe_baseline",
+    "Scripts.validation.regression_checks.test_plan_audit_lib",
     "Scripts.validation.regression_checks.test_source_text_inventory",
     "Scripts.architecture.regression_checks.test_structure_guards",
     "Scripts.release.regression_checks.test_regression_inventory",
