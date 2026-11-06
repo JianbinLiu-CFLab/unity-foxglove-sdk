@@ -167,6 +167,20 @@ class IdentityGateHardeningTests(unittest.TestCase):
             self._compatibility_errors(base, head),
         )
 
+    def test_compatibility_rejects_environment_write_in_annotated_assignment_target(self) -> None:
+        """Annotated assignment targets execute before the assignment is stored."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = (
+            "import os\n"
+            "box = {}\n"
+            "box[os.environ.pop('CI', None)]: int = 1\n"
+            "def helper():\n    return 1\n__all__ = ['helper']\n"
+        )
+        self.assertEqual(
+            ["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"],
+            self._compatibility_errors(base, head),
+        )
+
     def test_compatibility_allows_deferred_lambda_and_generator_environment_writes(self) -> None:
         """Deferred lambda and generator bodies do not execute during import."""
         base = "class Settings:\n    VALUE = 1\n__all__ = ['Settings']\n"

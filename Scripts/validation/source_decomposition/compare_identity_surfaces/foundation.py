@@ -276,6 +276,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
         def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
             """Visit annotated assignments with postponed-annotation semantics."""
             self._check_targets([node.target])
+            self.visit(node.target)
             if node.value is not None:
                 self.visit(node.value)
             if node.annotation is not None and not future_annotations:
