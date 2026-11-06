@@ -70,6 +70,28 @@ namespace Unity.FoxgloveSDK.Tests.Manager
                     manager.RuntimeForTest.ServicesForTest,
                     item => item.Name == "/foxglove/topic-contracts");
                 var responseSchema = JObject.Parse(service.Response.Schema);
+                Assert.Equal("object", (string)responseSchema["type"]);
+                var responseRequired = (JArray)responseSchema["required"];
+                Assert.Equal(
+                    new[]
+                    {
+                        "claimCount",
+                        "claims",
+                        "conflictCount",
+                        "conflicts",
+                        "contractVersion",
+                        "responseTruncated",
+                        "totalClaimCount",
+                        "totalConflictCount"
+                    },
+                    responseRequired.Values<string>().OrderBy(field => field));
+                var responseProperties = (JObject)responseSchema["properties"];
+                Assert.Equal("integer", (string)responseProperties["contractVersion"]["type"]);
+                Assert.Equal("integer", (string)responseProperties["claimCount"]["type"]);
+                Assert.Equal("integer", (string)responseProperties["conflictCount"]["type"]);
+                Assert.Equal("integer", (string)responseProperties["totalClaimCount"]["type"]);
+                Assert.Equal("integer", (string)responseProperties["totalConflictCount"]["type"]);
+                Assert.Equal("boolean", (string)responseProperties["responseTruncated"]["type"]);
                 var itemSchema = (JObject)responseSchema["properties"]["claims"]["items"];
                 var required = (JArray)itemSchema["required"];
                 var fields = new[]
@@ -85,6 +107,13 @@ namespace Unity.FoxgloveSDK.Tests.Manager
                 };
 
                 Assert.Equal(fields.OrderBy(field => field), required.Values<string>().OrderBy(field => field));
+                var scopeSchema = (JObject)itemSchema["properties"]["scope"];
+                Assert.Equal("string", (string)scopeSchema["type"]);
+                Assert.Equal(new[] { "Live", "Recording" }, scopeSchema["enum"].Values<string>());
+                var conflictSchema = (JObject)responseProperties["conflicts"]["items"];
+                Assert.Equal(
+                    new[] { "existing", "incoming" },
+                    conflictSchema["required"].Values<string>());
 
                 manager.RecordTopicContract("/legacy", null, null, null);
                 manager.RecordTopicContract("/conflict", "schema.one", "json", "component");

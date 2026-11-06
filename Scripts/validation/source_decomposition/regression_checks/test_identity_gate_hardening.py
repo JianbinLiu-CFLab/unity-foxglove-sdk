@@ -153,6 +153,67 @@ class IdentityGateHardeningTests(unittest.TestCase):
             self._compatibility_errors(base, head),
         )
 
+    def test_compatibility_rejects_environment_write_in_top_level_class_body(self) -> None:
+        """A top-level class body executes while the module is imported."""
+        base = "class Settings:\n    VALUE = 1\n__all__ = ['Settings']\n"
+        head = (
+            "import os\nclass Settings:\n"
+            "    VALUE = 1\n"
+            "    os.environ.setdefault('FLAG', '1')\n"
+            "__all__ = ['Settings']\n"
+        )
+        self.assertEqual(
+            ["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"],
+            self._compatibility_errors(base, head),
+        )
+
+    def test_compatibility_rejects_environment_write_in_annotated_assignment_target(self) -> None:
+        """Annotated assignment targets execute before the assignment is stored."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = (
+            "import os\n"
+            "box = {}\n"
+            "box[os.environ.pop('CI', None)]: int = 1\n"
+            "def helper():\n    return 1\n__all__ = ['helper']\n"
+        )
+        self.assertEqual(
+            ["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"],
+            self._compatibility_errors(base, head),
+        )
+
+    def test_compatibility_rejects_executed_lambda_and_generator_environment_writes(self) -> None:
+        """Import-time lambda and generator expressions remain fail-closed."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = (
+            "import os\n"
+            "list(os.environ.setdefault('A', '1') for _ in [1])\n"
+            "list(map(lambda key: os.environ.setdefault(key, '1'), ['B']))\n"
+            "(lambda: os.putenv('C', '1'))()\n"
+            "f = lambda: os.putenv('E', '1')\n"
+            "f()\n"
+            "g = (os.putenv(key, '1') for key in ['F'])\n"
+            "list(g)\n"
+            "for _ in (os.putenv('G', '1') for _ in [1]):\n    pass\n"
+            "[* (os.putenv('H', '1') for _ in [1])]\n"
+            "a, = (os.putenv('I', '1') for _ in [1])\n"
+            "@lambda value: os.environ.setdefault('D', '1')\n"
+            "def helper():\n    return 1\n__all__ = ['helper']\n"
+        )
+        self.assertEqual(
+            ["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"],
+            self._compatibility_errors(base, head),
+        )
+
+    def test_compatibility_allows_postponed_annotation_environment_expression(self) -> None:
+        """Future annotations preserve deferred annotation evaluation semantics."""
+        base = "def helper(value):\n    return value\n__all__ = ['helper']\n"
+        head = (
+            "from __future__ import annotations\nimport os\n"
+            "def helper(value: os.environ.setdefault('FLAG', '1')) -> os.environ.setdefault('OTHER', '1'):\n"
+            "    return value\n__all__ = ['helper']\n"
+        )
+        self.assertEqual([], self._compatibility_errors(base, head))
+
     def test_compatibility_rejects_imported_environment_function_alias(self) -> None:
         """Imported putenv aliases are import-time environment writes too."""
         base = "def helper():\n    return 1\n__all__ = ['helper']\n"

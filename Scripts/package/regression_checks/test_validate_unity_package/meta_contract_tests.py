@@ -65,6 +65,36 @@ class PackageMetaContractTests:
         self.assertFalse(results[-1].ok)
         self.assertIn("Missing.cs.meta", results[-1].detail)
 
+    def test_bridge_guid_scan_ignores_ros2_package_sidecars(self) -> None:
+        """Generated Ros2Package metadata stays outside the Bridge GUID contract."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp) / "dev.unity2foxglove.ros2bridge"
+            generated = package / "Ros2Package~" / "Generated" / "Route.proto"
+            runtime = package / "Runtime" / "Route.proto"
+            generated.parent.mkdir(parents=True)
+            runtime.parent.mkdir(parents=True)
+            generated.write_text("syntax = \"proto3\";", encoding="utf-8")
+            runtime.write_text("syntax = \"proto3\";", encoding="utf-8")
+            Path(str(generated) + ".meta").write_text(
+                "fileFormatVersion: 2\n"
+                "guid: 77777777777777777777777777777777\n",
+                encoding="utf-8",
+            )
+            Path(str(runtime) + ".meta").write_text(
+                "fileFormatVersion: 2\n"
+                "guid: 77777777777777777777777777777777\n",
+                encoding="utf-8",
+            )
+            results = []
+            self.validator.check_package_meta_guid_uniqueness(
+                results,
+                package,
+                "Bridge GUIDs",
+                "Bridge",
+            )
+
+        self.assertTrue(results[-1].ok)
+
     def test_bridge_meta_requires_asset_and_folder_sidecars(self) -> None:
         """Bridge Unity assets and tracked folders need metadata sidecars."""
         with tempfile.TemporaryDirectory() as temp:

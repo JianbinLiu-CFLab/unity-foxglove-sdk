@@ -166,9 +166,21 @@ class RegressionInventoryTests(unittest.TestCase):
             "SOURCE_DECOMPOSITION_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}",
             step,
         )
+        self.assertEqual(
+            1,
+            step.count(
+                "SOURCE_DECOMPOSITION_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}"
+            ),
+        )
         self.assertIn(
             "SOURCE_DECOMPOSITION_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}",
             step,
+        )
+        self.assertEqual(
+            1,
+            step.count(
+                "SOURCE_DECOMPOSITION_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}"
+            ),
         )
 
     def test_decomposed_python_regression_surfaces_keep_expected_counts(self):

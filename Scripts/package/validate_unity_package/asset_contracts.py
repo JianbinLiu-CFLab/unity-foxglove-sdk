@@ -385,9 +385,7 @@ def _collect_meta_guid_offenders(
     malformed: list[str] = []
     duplicate: list[str] = []
     orphan: list[str] = []
-    for meta in sorted(package.rglob("*.meta"), key=rel):
-        if not meta.is_file():
-            continue
+    for meta in _iter_scoped_meta_files(package):
         asset = Path(str(meta)[:-len(".meta")])
         relative_meta = meta.relative_to(package).as_posix()
         if not asset.exists():

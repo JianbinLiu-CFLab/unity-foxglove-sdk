@@ -302,6 +302,24 @@ class PackageStructureTests:
                 self.assertEqual(0, self.validator.main())
         gate.assert_called_once_with(mock.ANY)
 
+    def test_main_converts_metadata_read_errors_to_structured_failure(self) -> None:
+        """The complete validator returns failure when a metadata read fails."""
+        target = next(
+            path
+            for path in self.validator.ROS2_BRIDGE_PACKAGE.joinpath("Runtime").rglob("*.meta")
+            if path.is_file()
+        )
+        original_read_text = Path.read_text
+
+        def fail_target(path: Path, *args, **kwargs) -> str:
+            """Raise only for the selected metadata path."""
+            if path == target:
+                raise OSError("denied")
+            return original_read_text(path, *args, **kwargs)
+
+        with mock.patch.object(Path, "read_text", autospec=True, side_effect=fail_target):
+            self.assertEqual(1, self.validator.main())
+
     def test_ros2_bridge_package_requires_the_duplex_sample_surface(self) -> None:
         """A distributable Bridge sample includes its behavior, builder, and guide."""
         with tempfile.TemporaryDirectory() as temp:

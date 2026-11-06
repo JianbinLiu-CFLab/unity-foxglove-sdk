@@ -239,39 +239,128 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
             and node.value.id in os_names
         )
 
-    def writes_environment(statement: ast.AST) -> bool:
-        """Return whether one import-time statement writes the process environment."""
-        if isinstance(statement, ast.Assign):
-            targets = statement.targets
-        elif isinstance(statement, (ast.AugAssign, ast.AnnAssign)):
-            targets = [statement.target]
-        elif isinstance(statement, ast.Delete):
-            targets = statement.targets
-        else:
-            targets = []
-        for target in targets:
-            if is_environ(target) or (isinstance(target, ast.Subscript) and is_environ(target.value)):
-                return True
-        for node in ast.walk(statement):
-            if not isinstance(node, ast.Call):
-                continue
+    future_annotations = any(
+        isinstance(node, ast.ImportFrom)
+        and node.module == "__future__"
+        and any(alias.name == "annotations" for alias in node.names)
+        for node in getattr(tree, "body", ())
+    )
+
+    class EnvironmentWriteVisitor(ast.NodeVisitor):
+        """Find environment writes that execute in the current expression."""
+
+        def __init__(self) -> None:
+            """Initialize the environment-write result state."""
+            self.found = False
+
+        def _check_targets(self, targets: list[ast.AST]) -> None:
+            """Check assignment targets for direct environment mutation."""
+            if any(
+                is_environ(target)
+                or (isinstance(target, ast.Subscript) and is_environ(target.value))
+                for target in targets
+            ):
+                self.found = True
+
+        def visit_Assign(self, node: ast.Assign) -> None:
+            """Visit assignment targets and their eagerly evaluated values."""
+            self._check_targets(node.targets)
+            self.generic_visit(node)
+
+        def visit_AugAssign(self, node: ast.AugAssign) -> None:
+            """Visit augmented assignment targets and values."""
+            self._check_targets([node.target])
+            self.generic_visit(node)
+
+        def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+            """Visit annotated assignments with postponed-annotation semantics."""
+            self._check_targets([node.target])
+            self.visit(node.target)
+            if node.value is not None:
+                self.visit(node.value)
+            if node.annotation is not None and not future_annotations:
+                self.visit(node.annotation)
+
+        def visit_Delete(self, node: ast.Delete) -> None:
+            """Visit deleted environment targets."""
+            self._check_targets(node.targets)
+            self.generic_visit(node)
+
+        def visit_Call(self, node: ast.Call) -> None:
+            """Visit calls and their eagerly evaluated expressions."""
             if isinstance(node.func, ast.Attribute):
                 if node.func.attr in _ENVIRONMENT_MUTATORS and is_environ(node.func.value):
-                    return True
+                    self.found = True
                 if (
                     node.func.attr in _ENVIRONMENT_FUNCTIONS
                     and isinstance(node.func.value, ast.Name)
                     and node.func.value.id in os_names
                 ):
-                    return True
+                    self.found = True
             elif isinstance(node.func, ast.Name) and node.func.id in environment_function_names:
-                return True
-        return False
+                self.found = True
+            self.generic_visit(node)
+
+        def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+            """Visit function definition expressions without entering its body."""
+            for decorator in node.decorator_list:
+                self.visit(decorator)
+            for expression in (*node.args.defaults, *node.args.kw_defaults):
+                if expression is not None:
+                    self.visit(expression)
+            if not future_annotations:
+                for argument in (
+                    *getattr(node.args, "posonlyargs", ()),
+                    *node.args.args,
+                    *node.args.kwonlyargs,
+                ):
+                    if argument.annotation is not None:
+                        self.visit(argument.annotation)
+                if node.args.vararg is not None and node.args.vararg.annotation is not None:
+                    self.visit(node.args.vararg.annotation)
+                if node.args.kwarg is not None and node.args.kwarg.annotation is not None:
+                    self.visit(node.args.kwarg.annotation)
+                if node.returns is not None:
+                    self.visit(node.returns)
+
+        def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+            """Visit async function definition expressions without entering its body."""
+            self.visit_FunctionDef(node)
+
+        def visit_Lambda(self, node: ast.Lambda) -> None:
+            """Visit lambda defaults and body conservatively."""
+            for expression in (*node.args.defaults, *node.args.kw_defaults):
+                if expression is not None:
+                    self.visit(expression)
+            self.visit(node.body)
+
+        def visit_ClassDef(self, node: ast.ClassDef) -> None:
+            """Visit class definition expressions and its executing body."""
+            for decorator in node.decorator_list:
+                self.visit(decorator)
+            for base in node.bases:
+                self.visit(base)
+            for keyword in node.keywords:
+                self.visit(keyword.value)
+            for statement in node.body:
+                self.visit(statement)
+
+        def visit_GeneratorExp(self, node: ast.GeneratorExp) -> None:
+            """Visit generator iterables and bodies conservatively."""
+            self.generic_visit(node)
+
+    def writes_environment(statement: ast.AST) -> bool:
+        """Return whether one import-time statement writes the process environment."""
+        visitor = EnvironmentWriteVisitor()
+        visitor.visit(statement)
+        return visitor.found
 
     signatures: set[str] = set()
 
     def record_import_time_environment(
-        node: ast.AST, scope: tuple[str, ...], in_function: bool
+        node: ast.AST,
+        scope: tuple[str, ...],
+        in_function: bool,
     ) -> None:
         """Record an environment write that executes during a definition."""
         if not in_function and writes_environment(node):
@@ -292,21 +381,22 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
                 for expression in (*arguments.defaults, *arguments.kw_defaults)
                 if expression is not None
             ]
-            definition_expressions.extend(
-                argument.annotation
-                for argument in (
-                    *getattr(arguments, "posonlyargs", ()),
-                    *arguments.args,
-                    *arguments.kwonlyargs,
+            if not future_annotations:
+                definition_expressions.extend(
+                    argument.annotation
+                    for argument in (
+                        *getattr(arguments, "posonlyargs", ()),
+                        *arguments.args,
+                        *arguments.kwonlyargs,
+                    )
+                    if argument.annotation is not None
                 )
-                if argument.annotation is not None
-            )
-            if arguments.vararg is not None and arguments.vararg.annotation is not None:
-                definition_expressions.append(arguments.vararg.annotation)
-            if arguments.kwarg is not None and arguments.kwarg.annotation is not None:
-                definition_expressions.append(arguments.kwarg.annotation)
-            if node.returns is not None:
-                definition_expressions.append(node.returns)
+                if arguments.vararg is not None and arguments.vararg.annotation is not None:
+                    definition_expressions.append(arguments.vararg.annotation)
+                if arguments.kwarg is not None and arguments.kwarg.annotation is not None:
+                    definition_expressions.append(arguments.kwarg.annotation)
+                if node.returns is not None:
+                    definition_expressions.append(node.returns)
             for expression in definition_expressions:
                 record_import_time_environment(expression, scope, in_function)
                 visit(expression, scope, in_function)
@@ -333,6 +423,10 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
                 visit(keyword.value, scope, in_function)
             class_scope = scope + (node.name,)
             for statement in node.body:
+                if not in_function and not isinstance(
+                    statement, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+                ):
+                    record_import_time_environment(statement, class_scope, in_function)
                 visit(statement, class_scope, in_function)
             return
         for child in ast.iter_child_nodes(node):
