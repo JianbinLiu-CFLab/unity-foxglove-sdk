@@ -229,8 +229,9 @@ namespace Unity.FoxgloveSDK.Tests
                     Ros2DecodeOptions(McapDecodeFailurePolicy.RawWithProblem)).Single();
                 Check(mismatched.Payload.Kind == McapDecodedPayloadKind.Provider
                       && mismatched.Payload.Value is Ros2CdrDiagnosticPayload
-                      && !(mismatched.Payload.Value is Foxglove.Log),
-                    "125-G6: typed decode requires the recorded ros2msg schema to match the bundled definition");
+                      && !(mismatched.Payload.Value is Foxglove.Log)
+                      && !((Ros2CdrDiagnosticPayload)mismatched.Payload.Value).SchemaKnown,
+                    "125-G6: mismatched recorded ros2msg schema is diagnostic and not schema-known");
             }
         }
 

@@ -7,6 +7,11 @@ del _PHASE192_FACADE_FILE
 class VersionBump:
     """Coordinates all package-version edits for one target release."""
 
+    RELEASE_PIN_EXCLUSIONS = {
+        "docs/releases",
+        "Scripts/release/regression_checks/test_release_tooling/version_bump_tests.py",
+    }
+
     def __init__(self, root: Path, version: str, release_date: str, dry_run: bool) -> None:
         """Store the release context and initialize the change log."""
         self.root = root
@@ -35,6 +40,47 @@ class VersionBump:
             self._original_files.setdefault(path, path.read_bytes() if path.is_file() else None)
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(content, encoding="utf-8", newline="\n")
+
+    def find_unplanned_release_pins(self, old_version: str) -> list[str]:
+        """Find old-version references outside the planned release update set."""
+        planned = {self.rel(change.path) for change in self.changes}
+        unplanned: list[str] = []
+        try:
+            repository_root = subprocess.run(
+                ["git", "-C", str(self.root), "rev-parse", "--show-toplevel"],
+                check=True,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+            ).stdout.strip()
+            if Path(repository_root).resolve() != self.root.resolve():
+                raise subprocess.CalledProcessError(1, "git rev-parse")
+            tracked = subprocess.run(
+                ["git", "-C", str(self.root), "ls-files", "-z"],
+                check=True,
+                capture_output=True,
+            ).stdout.split(b"\0")
+            paths = [self.root / Path(item.decode("utf-8")) for item in tracked if item]
+        except (OSError, subprocess.CalledProcessError, UnicodeDecodeError):
+            paths = [path for path in self.root.rglob("*") if path.is_file()]
+        for path in paths:
+            relative = self.rel(path)
+            if relative == "build" or relative.startswith("build/") or relative.startswith(".git/"):
+                continue
+            if relative.startswith("Plan/"):
+                continue
+            if any(relative == excluded or relative.startswith(excluded + "/") for excluded in self.RELEASE_PIN_EXCLUSIONS):
+                continue
+            try:
+                data = path.read_bytes()
+                if b"\0" in data:
+                    continue
+                text = data.decode("utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue
+            if re.search(rf"(?<![0-9.]){re.escape(old_version)}(?![0-9.])", text) and relative not in planned:
+                unplanned.append(relative)
+        return sorted(unplanned)
 
     def _restore_on_failure(self) -> None:
         """Restore every file touched by a failed non-dry bump."""
@@ -515,6 +561,11 @@ class VersionBump:
             self.update_package_readme(old_version)
             self.update_citation()
             self.update_changelog()
+            unplanned = self.find_unplanned_release_pins(old_version)
+            if unplanned:
+                raise ValueError(
+                    "Unplanned release pins found: " + ", ".join(unplanned)
+                )
             self.create_release_notes()
         except Exception:
             self._restore_on_failure()

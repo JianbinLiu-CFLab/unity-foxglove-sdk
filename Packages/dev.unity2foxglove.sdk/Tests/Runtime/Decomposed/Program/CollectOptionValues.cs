@@ -320,11 +320,11 @@ partial class Program
         foreach (var validation in validations)
         {
             if (RunValidation(validation) != 0)
-                failing.Add(validation.Flag);
+                failing.Add(CiSafeFailureKey(validation));
         }
 
         var problems = EvaluateCiSafeRatchet(
-            validations.Select(item => item.Flag).ToList(),
+            validations.Select(CiSafeFailureKey).ToList(),
             failing,
             known);
         Console.WriteLine(
@@ -354,6 +354,10 @@ partial class Program
 
         return known;
     }
+
+    /// <summary>Returns a stable key for every validation included in the CI-safe ratchet.</summary>
+    internal static string CiSafeFailureKey(PhaseValidationCase validation)
+        => string.IsNullOrWhiteSpace(validation.Flag) ? validation.Name : validation.Flag;
 
     /// <summary>Lists every difference between the observed failing flags and the known-failure baseline.</summary>
     internal static List<string> EvaluateCiSafeRatchet(

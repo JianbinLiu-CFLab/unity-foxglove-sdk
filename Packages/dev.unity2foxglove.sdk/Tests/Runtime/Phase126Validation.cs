@@ -84,6 +84,9 @@ namespace Unity.FoxgloveSDK.Tests
                   && ratchetProblems.Any(item => item.StartsWith("--b passes now", StringComparison.Ordinal))
                   && ratchetProblems.Any(item => item.StartsWith("--gone is listed", StringComparison.Ordinal)),
                 "126B-1c: the CI-safe ratchet rejects new failures, fixed known failures, and unknown baseline flags");
+            var skeleton = PhaseValidationRegistry.CiSafeValidations().Single(item => item.Name == "Skeleton");
+            Check(global::Program.CiSafeFailureKey(skeleton) == "Skeleton",
+                "126B-1c1: CI-safe validations without flags use a stable name key");
             var defaultFlags = new HashSet<string>(
                 PhaseValidationRegistry.DefaultValidations(includeLocalEvidence: false).Select(item => item.Flag),
                 StringComparer.Ordinal);

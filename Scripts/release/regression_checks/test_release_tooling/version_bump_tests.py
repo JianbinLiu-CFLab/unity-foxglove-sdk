@@ -471,6 +471,29 @@ class VersionBumpTests(unittest.TestCase):
 
     def test_dry_run_bump_plans_every_release_pin_in_the_repository(self) -> None:
         """A full dry-run bump of this repository plans every release-pinned file and writes nothing."""
+        def snapshot(root: Path) -> dict[str, tuple[int, int]]:
+            """Capture tracked-like file metadata outside build output."""
+            result = {}
+            try:
+                tracked = subprocess.run(
+                    ["git", "-C", str(root), "ls-files", "-z"],
+                    check=True,
+                    capture_output=True,
+                ).stdout.split(b"\0")
+                paths = [root / Path(item.decode("utf-8")) for item in tracked if item]
+            except (OSError, subprocess.CalledProcessError, UnicodeDecodeError):
+                paths = [path for path in root.rglob("*") if path.is_file()]
+            for path in paths:
+                relative = path.relative_to(root).as_posix()
+                if relative.startswith(".git/") or relative.startswith("build/"):
+                    continue
+                try:
+                    stat = path.stat()
+                    result[relative] = (stat.st_mtime_ns, stat.st_size)
+                except OSError:
+                    continue
+            return result
+
         expected = {
             "CHANGELOG.md",
             "CITATION.cff",
@@ -506,6 +529,7 @@ class VersionBumpTests(unittest.TestCase):
             "docs/releases/RELEASE_NOTES_v99.0.0.md",
         }
 
+        before = snapshot(ROOT)
         bump = self.bump_module.VersionBump(ROOT, "99.0.0", "2099-01-01", True)
         with contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(0, bump.run())
@@ -513,8 +537,22 @@ class VersionBumpTests(unittest.TestCase):
         planned = {bump.rel(change.path) for change in bump.changes}
         self.assertEqual([], sorted(expected - planned), "release pins missing from the bump plan")
         self.assertEqual([], sorted(planned - expected), "new release pins: add them to this contract")
-        self.assertEqual({}, bump._original_files)
+        self.assertEqual(before, snapshot(ROOT))
         self.assertFalse((ROOT / "docs/releases/RELEASE_NOTES_v99.0.0.md").exists())
+
+    def test_release_pin_scan_rejects_unplanned_current_version_reference(self) -> None:
+        """Reject a new release pin that is absent from the bump plan."""
+        temporary_root = ROOT / "build" / "tmp"
+        temporary_root.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=temporary_root) as directory:
+            root = Path(directory)
+            planned = root / "README.md"
+            unexpected = root / "new-release-pin.txt"
+            planned.write_text("1.9.7\n", encoding="utf-8")
+            unexpected.write_text("1.9.7\n", encoding="utf-8")
+            bump = self.bump_module.VersionBump(root, "2.0.0", "2026-06-08", True)
+            bump.changes.append(self.bump_module.PlannedChange(planned, "test"))
+            self.assertEqual(["new-release-pin.txt"], bump.find_unplanned_release_pins("1.9.7"))
 
 VersionBumpTests.__module__ = 'Scripts.release.regression_checks.test_release_tooling'
 
