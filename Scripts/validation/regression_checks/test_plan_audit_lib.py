@@ -139,15 +139,15 @@ class PlanAuditLibraryTests(unittest.TestCase):
         self.assertIn("195-W2", check.detail)
         self.assertIn("195-W4", check.detail)
 
-    def test_local100_cache_rejects_mismatched_source_identity(self) -> None:
-        """A cached 100-run result is rerun when the audited source identity changes."""
+    def test_local100_does_not_trust_cached_summary(self) -> None:
+        """A cached 100-run summary never bypasses a fresh acceptance loop."""
         audit_lib.BUILD_ROOT.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(dir=audit_lib.BUILD_ROOT) as temp:
             output = Path(temp)
             summary = output / "logs" / "w0-local100-summary.json"
             summary.parent.mkdir(parents=True, exist_ok=True)
-            summary.write_text(json.dumps({"base_sha": "old", "source_tree_sha": "old", "runs": 100, "passes": 100}), encoding="utf-8")
-            with mock.patch.object(bridge_history, "_cache_identity", return_value=("new", "new")), mock.patch.object(
+            summary.write_text(json.dumps({"base_sha": "current", "source_tree_sha": "current", "runs": 100, "passes": 100}), encoding="utf-8")
+            with mock.patch.object(
                 bridge_history, "_local100_impl", return_value=audit_lib.Check("x", "Plan", "auto", "PASS", "true", "build/x", "rerun")
             ) as implementation:
                 check = bridge_history._local100(output)

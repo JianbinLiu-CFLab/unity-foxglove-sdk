@@ -221,17 +221,6 @@ def _local100_impl(output: Path) -> audit_lib.Check:
 
 def _local100(output: Path) -> audit_lib.Check:
     """Run the local acceptance loop with isolated dotnet caches."""
-    summary = output / "logs" / "w0-local100-summary.json"
-    base_sha, source_tree_sha = _cache_identity(output)
-    if summary.is_file():
-        try:
-            previous = json.loads(summary.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            previous = {}
-        run_logs = list((output / "logs").glob("w0-local100-*.log"))
-        trx_files = list((output / "trx").glob("*/bridge-*.trx"))
-        if previous.get("base_sha") == base_sha and previous.get("source_tree_sha") == source_tree_sha and previous.get("runs") == 100 and previous.get("passes") == 100 and len(run_logs) >= 100 and len(trx_files) >= 100:
-            return _check("PASS", "dotnet restore; dotnet build; dotnet test --no-build --no-restore (100 iterations)", summary, "100-run evidence matches the current base and bridge source tree with 100 logs and 100 TRX files", "auto")
     with _dotnet_environment():
         return _local100_impl(output)
 
