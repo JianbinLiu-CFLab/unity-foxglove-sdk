@@ -404,6 +404,7 @@ jobs:
             if (Test-Path -LiteralPath $jazzy) { Move-Item -LiteralPath $jazzy -Destination $library }
             Remove-Item -LiteralPath $marker -Force
           }
+          git clean -ffdx -e 'Unity2Foxglove/Library*/' -e 'build/unity-batch-compile/'
           $status = @(git status --porcelain)
           $unexpected = @($status | Where-Object {
             $_ -notmatch '^\?\? Unity2Foxglove/Library(?:-[A-Za-z0-9._-]+)?/$'

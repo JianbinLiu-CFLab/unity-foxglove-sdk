@@ -348,6 +348,7 @@ printf '%s' "$required"
         self.assertIn("git status --porcelain", job)
         self.assertIn("Library(?:-[A-Za-z0-9._-]+)?", job)
         self.assertIn("git clean -ffdx -e 'Unity2Foxglove/Library*/'", job)
+        self.assertIn("-e 'build/unity-batch-compile/'", job)
         self.assertIn(
             '("dev.unity2foxglove.ros2forunity.runtime.{0}.win64" -f $env:DISTRO)',
             job,
