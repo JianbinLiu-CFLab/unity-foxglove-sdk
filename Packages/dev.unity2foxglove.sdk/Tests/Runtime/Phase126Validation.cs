@@ -74,16 +74,21 @@ namespace Unity.FoxgloveSDK.Tests
                   && registrySource.Contains("CiSafeValidations", StringComparison.Ordinal),
                 "126B-1b: the runner exposes an explicit all-CI-safe registry gate");
             var parsedKnown = global::Program.ParseCiSafeKnownFailures("--a  # first\r\n\n# comment only\n--b\n");
+            var duplicateKnown = global::Program.FindDuplicateCiSafeKnownFailures("--a\n--a # duplicate\n--b\n--a\n");
             var ratchetProblems = global::Program.EvaluateCiSafeRatchet(
                 new[] { "--a", "--b", "--c" },
                 new[] { "--a", "--c" },
                 new HashSet<string>(new[] { "--a", "--b", "--gone" }, StringComparer.Ordinal));
             Check(parsedKnown.SetEquals(new[] { "--a", "--b" })
+                  && duplicateKnown.SequenceEqual(new[] { "--a" })
                   && ratchetProblems.Count == 3
                   && ratchetProblems.Any(item => item.StartsWith("--c fails but is not a known failure", StringComparison.Ordinal))
                   && ratchetProblems.Any(item => item.StartsWith("--b passes now", StringComparison.Ordinal))
                   && ratchetProblems.Any(item => item.StartsWith("--gone is listed", StringComparison.Ordinal)),
                 "126B-1c: the CI-safe ratchet rejects new failures, fixed known failures, and unknown baseline flags");
+            var skeleton = PhaseValidationRegistry.CiSafeValidations().Single(item => item.Name == "Skeleton");
+            Check(global::Program.CiSafeFailureKey(skeleton) == "Skeleton",
+                "126B-1c1: CI-safe validations without flags use a stable name key");
             var defaultFlags = new HashSet<string>(
                 PhaseValidationRegistry.DefaultValidations(includeLocalEvidence: false).Select(item => item.Flag),
                 StringComparer.Ordinal);

@@ -139,6 +139,17 @@ jobs:
         if: always()
         run: dotnet run --no-restore --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj -- --ci-safe-ratchet
 
+      - name: Reject CI-safe known-failure baseline additions
+        if: always() && github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: python3 Scripts/validation/ci_safe_baseline.py --base-ref "$BASE_SHA" --head-ref "$HEAD_SHA"
+
+      - name: Run Phase163-25 Inspector lifecycle validation
+        if: always()
+        run: dotnet run --no-restore --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj -- --phase163-25
+
       - name: Run Workstream F explicit runtime closure validations
         if: always()
         run: |

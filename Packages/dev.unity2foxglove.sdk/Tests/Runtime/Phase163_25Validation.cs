@@ -46,12 +46,13 @@ namespace Unity.FoxgloveSDK.Tests
                   && drawer.Contains("EditorApplication.update -= CompleteFindLatestRecordingIfReady", StringComparison.Ordinal)
                   && drawer.Contains("_pendingLatestSerializedObject = null", StringComparison.Ordinal),
                 "163-25A-2: MCAP preflight cleanup drops update callbacks and stale serialized targets");
+            var beforeAssemblyReload = PhaseValidationSourceHelpers.SourceMethod(bridgeHealthDrawer, "BeforeAssemblyReload");
             Check(managerDisable.Contains("_mcapReplayPreflight.Dispose();", StringComparison.Ordinal)
                   && !manager.Contains("_ros2BridgeHealthDrawer", StringComparison.Ordinal)
                   && bridgeProviderDrawer.Contains("private readonly Ros2BridgeHealthDrawer", StringComparison.Ordinal)
                   && bridgeHealthDrawer.Contains("AssemblyReloadEvents.beforeAssemblyReload += BeforeAssemblyReload", StringComparison.Ordinal)
-                  && PhaseValidationSourceHelpers.SourceMethod(bridgeHealthDrawer, "BeforeAssemblyReload")
-                      .Contains("CancelHealthCheck();", StringComparison.Ordinal),
+                  && beforeAssemblyReload.Contains("CancelHealthCheck();", StringComparison.Ordinal)
+                  && beforeAssemblyReload.Contains("RelinquishHealthCheck();", StringComparison.Ordinal),
                 "163-25A-3: core Manager owns MCAP cleanup while the Bridge package owns health-drawer cleanup");
             Check(drawer.Contains("var sizeBytes = new FileInfo(path).Length;", StringComparison.Ordinal)
                   && drawer.IndexOf("var sizeBytes = new FileInfo(path).Length;", StringComparison.Ordinal)
@@ -60,7 +61,13 @@ namespace Unity.FoxgloveSDK.Tests
             Check(drawer.Contains("Directory.EnumerateFiles(recordingsDir, \"*.mcap\", SearchOption.AllDirectories)", StringComparison.Ordinal)
                   && drawer.Contains("LatestRecordingCandidate.FromPath(path)", StringComparison.Ordinal)
                   && drawer.Contains("candidate.LastWriteTimeUtc <= latestReadable.LastWriteTimeUtc", StringComparison.Ordinal)
-                  && !drawer.Contains("right.LastWriteTimeUtc.CompareTo(left.LastWriteTimeUtc)", StringComparison.Ordinal),
+                  && !drawer.Contains("right.LastWriteTimeUtc.CompareTo(left.LastWriteTimeUtc)", StringComparison.Ordinal)
+                  && !PhaseValidationSourceHelpers.SourceMethod(drawer, "FindLatestReadableRecordingWorker")
+                      .Contains(".OrderBy(", StringComparison.Ordinal)
+                  && !PhaseValidationSourceHelpers.SourceMethod(drawer, "FindLatestReadableRecordingWorker")
+                      .Contains(".OrderByDescending(", StringComparison.Ordinal)
+                  && !PhaseValidationSourceHelpers.SourceMethod(drawer, "FindLatestReadableRecordingWorker")
+                      .Contains(".Sort(", StringComparison.Ordinal),
                 "173-023B: latest recording search streams candidates and compares precomputed write timestamps");
         }
 

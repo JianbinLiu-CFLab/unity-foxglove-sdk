@@ -154,7 +154,7 @@ namespace Unity2Foxglove.Ros2Bridge
             {
                 return null;
             }
-            return new Decoder(schema?.Name ?? string.Empty);
+            return new Decoder(schema, schema?.Name ?? string.Empty);
         }
 
         private sealed class Decoder : IMcapMessageDecoder
@@ -162,12 +162,10 @@ namespace Unity2Foxglove.Ros2Bridge
             private readonly string _schemaName;
             private readonly bool _schemaKnown;
 
-            internal Decoder(string schemaName)
+            internal Decoder(McapSchema schema, string schemaName)
             {
                 _schemaName = schemaName ?? string.Empty;
-                _schemaKnown = FoxgloveRos2MsgSchemaCatalog.TryGet(
-                    _schemaName,
-                    out _);
+                _schemaKnown = McapRos2CdrTypedDecoderFactory.SchemaContentMatches(schema);
             }
 
             public McapDecodedPayload Decode(McapDataLoaderMessage message)

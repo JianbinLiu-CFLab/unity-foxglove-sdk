@@ -55,6 +55,15 @@ namespace Unity2Foxglove.Ros2Bridge
             return string.Equals(recordedText, CanonicalizeSchema(bundled), StringComparison.Ordinal);
         }
 
+        internal static bool SchemaContentMatches(McapSchema schema)
+        {
+            if (!FoxgloveRos2MsgSchemaCatalog.TryGet(schema?.Name ?? string.Empty, out var catalogEntry))
+                return false;
+            if (schema.Data == null || schema.Data.Length == 0)
+                return true;
+            return SchemaContentEqual(schema.Data, catalogEntry.Content);
+        }
+
         private static string CanonicalizeSchema(string value)
         {
             var normalized = (value ?? string.Empty)
