@@ -13,11 +13,11 @@ namespace Unity2Foxglove.Tests.PlayMode
             Assert.That(
                 Unity.FoxgloveSDK.Sensors.Lidar.LidarScanTiming.AdvanceColumnProgress(
                     0d,
-                    0.02d,
-                    100,
+                    3d,
+                    2,
                     1d,
                     2),
-                Is.EqualTo(2d).Within(1e-10d));
+                Is.EqualTo(4d).Within(1e-10d));
         }
     }
 }
