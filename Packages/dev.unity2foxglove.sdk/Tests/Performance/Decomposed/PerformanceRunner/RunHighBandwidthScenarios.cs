@@ -47,8 +47,8 @@ namespace Unity.FoxgloveSDK.Performance
             var jsonFour = PerformanceRunner.RunPublishJsonFanout(warmup, topics, 4, messages, thresholds);
             var protoOne = PerformanceRunner.RunPublishProtoFanout(warmup, topics, 1, messages, thresholds);
             var protoFour = PerformanceRunner.RunPublishProtoFanout(warmup, topics, 4, messages, thresholds);
-            var messagePackOne = RunMessagePackFanout(warmup, 1, messages, thresholds);
-            var messagePackFour = RunMessagePackFanout(warmup, 4, messages, thresholds);
+            var messagePackOne = RunMessagePackFanout(warmup, topics, 1, messages, thresholds);
+            var messagePackFour = RunMessagePackFanout(warmup, topics, 4, messages, thresholds);
             var result = CombineScenarioResults(
                 "FoxRunPublishPayload",
                 warmup,
@@ -60,7 +60,18 @@ namespace Unity.FoxgloveSDK.Performance
                 protoFour,
                 messagePackOne,
                 messagePackFour);
-            PerformanceRunner.ApplyThresholds(result, thresholds);
+            var components = new[] { jsonOne, jsonFour, protoOne, protoFour, messagePackOne, messagePackFour };
+            result.thresholdsEvaluated = false;
+            var componentFailures = new List<string>();
+            foreach (var component in components)
+            {
+                result.thresholdsEvaluated |= component.thresholdsEvaluated;
+                if (!component.passed)
+                    componentFailures.Add($"{component.name}: {component.thresholdNotes ?? "scenario failed"}");
+            }
+            result.thresholdNotes = componentFailures.Count == 0
+                ? (result.thresholdsEvaluated ? "component thresholds passed" : null)
+                : string.Join("; ", componentFailures);
             return result;
         }
 
@@ -226,6 +237,7 @@ namespace Unity.FoxgloveSDK.Performance
 
         private static PerformanceScenarioResult RunMessagePackFanout(
             int warmup,
+            int topics,
             int clients,
             int messages,
             PerformanceThresholdConfig thresholds)
@@ -234,24 +246,44 @@ namespace Unity.FoxgloveSDK.Performance
             registry.Register(new SchemaEntry { Name = "test.PerfMsgPack", Encoding = "msgpack", Content = string.Empty });
             var transport = new FakePerformanceTransport();
             var session = new FoxgloveSession("perf-msgpack", transport, schemaRegistry: registry);
-            session.RegisterSchemaChannel(1, "/perf/msgpack", "test.PerfMsgPack", "msgpack", "msgpack");
+            var channelIds = new List<uint>();
+            for (var t = 0; t < topics; t++)
+            {
+                var channelId = (uint)(t + 1);
+                session.RegisterSchemaChannel(channelId, $"/perf/msgpack/{t}", "test.PerfMsgPack", "msgpack", "msgpack");
+                channelIds.Add(channelId);
+            }
             for (var c = 0; c < clients; c++)
             {
                 var clientId = (uint)(c + 1);
                 transport.SimulateConnect(clientId);
-                transport.SimulateSubscribe(clientId, clientId, 1);
+                for (var t = 0; t < channelIds.Count; t++)
+                    transport.SimulateSubscribe(clientId, (uint)(c * topics + t + 1), channelIds[t]);
             }
             var payload = MakeMessagePackPayload();
-            var result = PerformanceRunner.TimedScenario($"FoxRunPublishPayload.MessagePack.{clients}", warmup, messages, () =>
-            {
-                for (var i = 0; i < warmup; i++)
-                    session.Publish(1, payload);
-            }, count =>
-            {
-                for (var i = 0; i < count; i++)
-                    session.Publish(1, payload);
-            }, thresholds);
-            result.notes = $"clients={clients};payloadBytes={payload.Length};generatedMessagePackShape=map";
+            var result = PerformanceRunner.TimedScenario(
+                $"FoxRunPublishPayload.MessagePack.{clients}",
+                warmup * topics,
+                messages * topics,
+                () =>
+                {
+                    for (var i = 0; i < warmup; i++)
+                    {
+                        for (var t = 0; t < channelIds.Count; t++)
+                            session.Publish(channelIds[t], payload);
+                    }
+                },
+                count =>
+                {
+                    var outer = count / topics;
+                    for (var i = 0; i < outer; i++)
+                    {
+                        for (var t = 0; t < channelIds.Count; t++)
+                            session.Publish(channelIds[t], payload);
+                    }
+                },
+                thresholds);
+            result.notes = $"clients={clients};topics={topics};payloadBytes={payload.Length};generatedMessagePackShape=map";
             return result;
         }
 

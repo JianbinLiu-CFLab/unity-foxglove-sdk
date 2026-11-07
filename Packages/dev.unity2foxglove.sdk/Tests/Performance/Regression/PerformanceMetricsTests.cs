@@ -102,6 +102,30 @@ namespace Unity.FoxgloveSDK.Performance.Tests
         }
 
         [Fact]
+        public void MessagePackPublishUsesConfiguredTopicCount()
+        {
+            var runnerType = typeof(PerformanceRunner).Assembly
+                .GetType("Unity.FoxgloveSDK.Performance.HighBandwidthScenarioRunner");
+            var method = runnerType.GetMethod("RunMessagePackFanout", BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.NotNull(method);
+
+            var result = (PerformanceScenarioResult)method.Invoke(
+                null,
+                new object[]
+                {
+                    1,
+                    3,
+                    2,
+                    4,
+                    new PerformanceThresholdConfig { enabled = false }
+                });
+
+            Assert.Equal(12, result.messageCount);
+            Assert.Contains("topics=3", result.notes);
+            Assert.Contains("clients=2", result.notes);
+        }
+
+        [Fact]
         public void LargePayloadThresholdsFailBelowObservedAllocation()
         {
             var thresholds = Thresholds(
