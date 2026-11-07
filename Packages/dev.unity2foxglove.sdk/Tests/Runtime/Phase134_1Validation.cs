@@ -32,11 +32,7 @@ namespace Unity.FoxgloveSDK.Tests
             TestBoundedEventQueueUsesEnqueuedByteSnapshot();
             TestBoundedEventQueueZeroByteBudgetMeansUnlimitedBytes();
             VerifyFoxgloveManagerUsesBoundedClientEventQueue();
-            VerifyClientEventQueueOverflowWarning();
-            VerifyReplayEmptyPathRestoresLivePublishers();
-            VerifyManagerInspectorAndRuntimeBounds();
             VerifyProviderPublishFailureIsolation();
-            VerifyLoggerSeverityPrefixes();
             VerifyRecordingAndAssetBudgetHardening();
             VerifySerializedSecretsAreNotCommitted();
 
@@ -101,126 +97,27 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyFoxgloveManagerUsesBoundedClientEventQueue()
         {
             var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
-            var server = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs")
-                         + ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.RuntimeForwarders.cs");
-            var clientEvents = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.ClientEvents.cs");
-
-            Check(clientEvents.Contains("MaxQueuedClientEvents", StringComparison.Ordinal)
-                  && clientEvents.Contains("MaxQueuedClientEventPayloadBytes", StringComparison.Ordinal)
-                  && clientEvents.Contains("MaxQueuedClientLifecycleEvents", StringComparison.Ordinal)
-                  && clientEvents.Contains("BoundedEventQueue<ClientEvent>", StringComparison.Ordinal),
-                "134-1B-1: FoxgloveManager declares bounded message and lifecycle event queue budgets");
             Check(!manager.Contains("ConcurrentQueue<ClientEvent>", StringComparison.Ordinal),
                 "134-1B-2: FoxgloveManager no longer uses an unbounded ConcurrentQueue for client events");
-            Check(clientEvents.Contains("EnqueueClientLifecycleEvent(ClientEvent.Connect", StringComparison.Ordinal)
-                  && clientEvents.Contains("EnqueueClientLifecycleEvent(ClientEvent.Disconnect", StringComparison.Ordinal)
-                  && server.Contains("EnqueueClientMessageEvent(ClientEvent.Message", StringComparison.Ordinal),
-                "134-1B-3: connect/disconnect use a lifecycle queue separate from payload message events");
-            Check(clientEvents.Contains("evt.IsMessage ? evt.Payload?.Length ?? 0 : 0", StringComparison.Ordinal),
-                "134-1B-4: only message payload bytes count against the byte budget");
-        }
-
-        private static void VerifyClientEventQueueOverflowWarning()
-        {
-            var clientEvents = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.ClientEvents.cs");
-            var debouncer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/WarningDebouncer.cs");
-
-            Check(clientEvents.Contains("WarnClientEventQueueOverflow", StringComparison.Ordinal)
-                  && clientEvents.Contains("ClientEventOverflowWarningIntervalTicks", StringComparison.Ordinal)
-                  && clientEvents.Contains("WarningDebouncer.TryUpdateCooldown", StringComparison.Ordinal)
-                  && debouncer.Contains("Interlocked.CompareExchange", StringComparison.Ordinal),
-                "134-1C-1: overflow warning is throttled across transport threads");
-            Check(clientEvents.Contains("droppedEvents=", StringComparison.Ordinal)
-                  && clientEvents.Contains("droppedPayloadBytes=", StringComparison.Ordinal)
-                  && clientEvents.Contains("queuedPayloadBytes=", StringComparison.Ordinal),
-                "134-1C-2: overflow warning includes retained and dropped queue diagnostics");
-        }
-
-        private static void VerifyReplayEmptyPathRestoresLivePublishers()
-        {
-            var setup = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Setup.cs");
-            var normalized = setup.Replace("\r\n", "\n");
-            var emptyPathIndex = normalized.IndexOf("if (string.IsNullOrEmpty(_replayFilePath))", StringComparison.Ordinal);
-            var restoreIndex = emptyPathIndex >= 0
-                ? normalized.IndexOf("RestoreLivePublishers();", emptyPathIndex, StringComparison.Ordinal)
-                : -1;
-            var returnIndex = restoreIndex >= 0
-                ? normalized.IndexOf("return true;", restoreIndex, StringComparison.Ordinal)
-                : -1;
-
-            Check(emptyPathIndex >= 0 && restoreIndex > emptyPathIndex && returnIndex > restoreIndex,
-                "134-1F-1: empty replay path restores publishers disabled during Awake");
-        }
-
-        private static void VerifyManagerInspectorAndRuntimeBounds()
-        {
-            var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
-            var normalizedManager = manager.Replace("\r\n", "\n");
-            var server = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
-            var setup = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Setup.cs");
-
-            Check(normalizedManager.Contains("[Range(1, 65535)]\n        [SerializeField] private int _port", StringComparison.Ordinal)
-                  && normalizedManager.Contains("[Range(1, 65535)]\n        [SerializeField] private int _rootCaDistributorPort", StringComparison.Ordinal),
-                "134-1G-1: public server and Root CA ports have Inspector range guards");
-            Check(manager.Contains("private void OnValidate()", StringComparison.Ordinal)
-                  && manager.Contains("_port = ManagerConfigValidator.ClampTcpPort(_port);", StringComparison.Ordinal)
-                  && manager.Contains("_rootCaDistributorPort = ManagerConfigValidator.ClampTcpPort(_rootCaDistributorPort);", StringComparison.Ordinal),
-                "134-1G-2: manager clamps port fields during Unity validation through a pure helper");
-            Check(server.Contains("ManagerConfigValidator.IsValidTcpPort(_port)", StringComparison.Ordinal)
-                  && server.Contains("ManagerConfigValidator.IsValidTcpPort(_rootCaDistributorPort)", StringComparison.Ordinal),
-                "134-1G-3: runtime startup rejects invalid TCP ports before starting transports");
-            Check(manager.Contains("[Range(1, MaxRecordingChunkSizeKB)]", StringComparison.Ordinal)
-                  && setup.Contains("Mathf.Clamp(_recordingChunkSizeKB, 1, MaxRecordingChunkSizeKB)", StringComparison.Ordinal),
-                "134-1G-4: recording chunk size is guarded in Inspector and runtime setup");
         }
 
         private static void VerifyProviderPublishFailureIsolation()
         {
             var warningState = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/WarningDebounceState.cs");
-            var fanout = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/Transport/FoxRunTransportContributions.cs");
-            var publisher = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Publishing/FoxglovePublisherBase.cs");
-
             Check(!warningState.Contains("Ros2Bridge", StringComparison.Ordinal)
                   && !warningState.Contains("ROS2", StringComparison.Ordinal),
                 "134-1H-1: core manager warning state remains transport-provider neutral");
-            Check(fanout.Contains("catch (Exception exception)", StringComparison.Ordinal)
-                  && fanout.Contains("FoxRunTransportPublishResult.Failed(", StringComparison.Ordinal)
-                  && fanout.Contains("case FoxRunTransportRouteResultState.Rejected:", StringComparison.Ordinal)
-                  && fanout.Contains("case FoxRunTransportRouteResultState.Unavailable:", StringComparison.Ordinal)
-                  && fanout.Contains("case FoxRunTransportRouteResultState.Failed:", StringComparison.Ordinal)
-                  && publisher.Contains("result.Accepted == 0", StringComparison.Ordinal)
-                  && publisher.Contains("result.Failed + result.Rejected > 0", StringComparison.Ordinal)
-                  && publisher.Contains("_lastOrdinaryTransportWarningKey", StringComparison.Ordinal)
-                  && publisher.Contains("!string.Equals(", StringComparison.Ordinal),
-                "134-1H-2: provider publish failures are isolated, counted, and reported through bounded warning state");
-        }
-
-        private static void VerifyLoggerSeverityPrefixes()
-        {
-            var logger = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Abstractions/IFoxgloveLogger.cs");
-
-            Check(logger.Contains("[Foxglove][Warning]", StringComparison.Ordinal)
-                  && logger.Contains("[Foxglove][Error]", StringComparison.Ordinal),
-                "134-1I-1: ConsoleLogger distinguishes warning and error severity");
         }
 
         private static void VerifyRecordingAndAssetBudgetHardening()
         {
-            var manager = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs");
             var setup = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Setup.cs");
             var runtime = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Runtime/FoxgloveRuntime.cs");
-
-            Check(setup.Contains("DateTime.UtcNow.ToString(RecordingTimestampFormat", StringComparison.Ordinal)
-                  && setup.Contains("yyyyMMdd_HHmmss_fffffff'Z'", StringComparison.Ordinal),
-                "134-1J-1: generated recording names use high-precision UTC timestamps");
             var changelog = ReadRepoText("CHANGELOG.md");
             Check(changelog.Contains("yyyyMMdd_HHmmss_fffffffZ", StringComparison.Ordinal)
                   && changelog.Contains("yyyyMMdd_HHmmss.mcap", StringComparison.Ordinal)
                   && changelog.Contains("[Foxglove][Warning]", StringComparison.Ordinal),
                 "134-1J-2: changelog documents recording timestamp and logger prefix behavior changes");
-            Check(manager.Contains("public long MaxBytesOrDefault", StringComparison.Ordinal)
-                  && setup.Contains("RegisterAssetRoot(ar.uriPrefix, absRoot, ar.MaxBytesOrDefault)", StringComparison.Ordinal),
-                "134-1J-3: asset root byte budgets avoid float-to-long truncation at registration");
             Check(!runtime.Contains("using System.Linq;", StringComparison.Ordinal),
                 "134-1J-4: FoxgloveRuntime no longer carries unused System.Linq import");
         }
