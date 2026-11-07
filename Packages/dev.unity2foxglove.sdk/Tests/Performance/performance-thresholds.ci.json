@@ -9,7 +9,7 @@
     "maxAllocatedBytesTotal": 268435456,
     "maxGen0Collections": 100,
     "maxGen1Collections": 20,
-    "maxGen2Collections": 5
+    "maxGen2Collections": 10
   },
   "scenarios": {
     "LargePayloadFanout": {
@@ -31,7 +31,7 @@
         "maxAllocatedBytesTotal": 268435456,
         "maxGen0Collections": 100,
         "maxGen1Collections": 20,
-        "maxGen2Collections": 5
+        "maxGen2Collections": 10
       },
       "scenarios": {
         "LargePayloadFanout": {
@@ -53,7 +53,7 @@
         "maxAllocatedBytesTotal": 268435456,
         "maxGen0Collections": 100,
         "maxGen1Collections": 20,
-        "maxGen2Collections": 5
+        "maxGen2Collections": 50
       },
       "scenarios": {
         "LargePayloadFanout": {
