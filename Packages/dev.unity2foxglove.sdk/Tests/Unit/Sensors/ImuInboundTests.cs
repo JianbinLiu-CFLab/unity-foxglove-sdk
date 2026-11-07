@@ -43,6 +43,38 @@ namespace Unity.FoxgloveSDK.Tests.Unit.Sensors
         }
 
         [Fact]
+        public void MapperRejectsOversizedFrameIds()
+        {
+            var message = new ImuInboundMessage(
+                42,
+                new string('x', 1024),
+                Vector3.Zero,
+                Vector3.Zero,
+                Quaternion.Identity,
+                false);
+
+            Assert.False(ImuInboundMapper.TryMap(message, out _, out var error));
+            Assert.Contains("frame id", error, StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
+        public void SlotRejectsOversizedFrameIdsBeforeQueueing()
+        {
+            using var slot = new ImuNativeFrameSlot();
+            var frame = new ImuNativeFrame(
+                42,
+                new string('x', 1024),
+                Vector3.Zero,
+                Vector3.Zero,
+                Quaternion.Identity,
+                false);
+
+            Assert.False(slot.Publish(frame));
+            Assert.Equal(0, slot.Count);
+            Assert.Equal(1, slot.Stats.Rejected);
+        }
+
+        [Fact]
         public void SlotRetainsFifoFramesUntilCapacityAndReportsOverflow()
         {
             using var slot = new ImuNativeFrameSlot(2);
