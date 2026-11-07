@@ -12,6 +12,7 @@ from unittest import mock
 
 from Scripts.validation.plan_audit import audit_lib
 from Scripts.validation.plan_audit import bridge_history
+from Scripts.validation.plan_audit import source_text_rules
 from Scripts.validation.plan_audit import unity_coverage
 from Scripts.validation.plan_audit import unity_acceptance
 from Scripts.validation.plan_audit import unity_lane
@@ -100,6 +101,47 @@ class PlanAuditLibraryTests(unittest.TestCase):
         with mock.patch.object(unity_acceptance, "PLAN", Path("build/plan-audit/missing-plan.md")):
             check = unity_acceptance._plan_check("base")
         self.assertEqual("MISSING", check.status)
+
+    def test_source_text_rules_missing_inputs_are_controlled(self) -> None:
+        """Missing local audit inputs produce explicit MISSING checks."""
+        audit_lib.BUILD_ROOT.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=audit_lib.BUILD_ROOT) as temp:
+            root = Path(temp)
+            output = root / "output"
+            (output / "logs").mkdir(parents=True)
+            with mock.patch.object(audit_lib, "ROOT", root), mock.patch.object(source_text_rules, "OUTPUT", output), mock.patch.object(source_text_rules, "PLAN", root / "Plan198.md"):
+                self.assertEqual("MISSING", source_text_rules._plan_check("base").status)
+                self.assertEqual("MISSING", source_text_rules._rules_check().status)
+
+    def test_source_text_registry_blocks_span_multiline_entries(self) -> None:
+        """Registry parsing keeps multiline entries scoped to their own flag."""
+        blocks = source_text_rules._registry_blocks(
+            'Ci("--phase-one",\n    "one", One.Validate, evidence: ValidationEvidence.Structural),\n'
+            'Ci("--phase-two", "two", Two.Validate, evidence: ValidationEvidence.Behavior),\n'
+        )
+        self.assertEqual(["--phase-one", "--phase-two"], [flag for flag, _ in blocks])
+        self.assertIn("One.Validate", blocks[0][1])
+        self.assertNotIn("Two.Validate", blocks[0][1])
+
+    def test_source_text_transfer_counts_are_exact(self) -> None:
+        """Transfer checks reject missing or incomplete source assertion sets."""
+        audit_lib.BUILD_ROOT.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=audit_lib.BUILD_ROOT) as temp:
+            root = Path(temp)
+            package = root / "Packages" / "fixture" / "Tests" / "Unit"
+            package.mkdir(parents=True)
+            runtime = package / "RuntimeReviewFindingTests.cs"
+            camera = package / "CameraDiagnosticsAttributionTests.cs"
+            runtime.write_text("\n".join('value.Contains("x");' for _ in range(18)), encoding="utf-8")
+            camera.write_text("\n".join('value.Contains("x");' for _ in range(71)), encoding="utf-8")
+            output = root / "output"
+            (output / "logs").mkdir(parents=True)
+            with mock.patch.object(audit_lib, "ROOT", root), mock.patch.object(source_text_rules, "OUTPUT", output):
+                checks = source_text_rules._transfer_checks([])
+                self.assertEqual(["PASS", "PASS", "PASS"], [check.status for check in checks])
+                camera.write_text("\n".join('value.Contains("x");' for _ in range(70)), encoding="utf-8")
+                checks = source_text_rules._transfer_checks([])
+                self.assertEqual("FAIL", checks[1].status)
 
     def test_plan_check_rejects_missing_or_unrecognized_status(self) -> None:
         """A plan must declare a recognized delivered status before passing."""

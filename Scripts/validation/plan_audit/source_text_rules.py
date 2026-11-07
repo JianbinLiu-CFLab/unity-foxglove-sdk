@@ -13,6 +13,28 @@ from . import audit_lib
 TOPIC = "source_text_rules"
 OUTPUT = audit_lib.BUILD_ROOT / TOPIC
 PLAN = audit_lib.ROOT / "Plan" / "198_PHASE198_SOURCE_TEXT_ASSERTION_TRIAGE_PLAN.md"
+PURE_SOURCE_FLAGS = {
+    "--phase163-32",
+    "--phase163-35",
+    "--phase163-58",
+    "--phase164-1",
+    "--phase164-4",
+    "--phase164-10",
+    "--phase164-33",
+    "--phase164-56",
+    "--phase77",
+    "--phase132",
+}
+ENTRY_START = re.compile(r'^\s*(?:Ci|Local|DefaultOnly)\("(?P<flag>--[A-Za-z0-9-]+)"', re.MULTILINE)
+
+
+def _registry_blocks(text: str) -> list[tuple[str, str]]:
+    """Split the validation registry into flag-scoped entry blocks."""
+    matches = list(ENTRY_START.finditer(text))
+    return [
+        (match.group("flag"), text[match.start() : matches[index + 1].start() if index + 1 < len(matches) else len(text)])
+        for index, match in enumerate(matches)
+    ]
 
 
 def _check(check_id: str, plan_ref: str, kind: str, status: str, command: str, evidence: Path, detail: str) -> audit_lib.Check:
@@ -32,7 +54,10 @@ def _plan_check(base_sha: str) -> audit_lib.Check:
     """Verify that the plan reflects the current main revision and open work."""
     evidence = OUTPUT / "logs" / "plan.log"
     evidence.parent.mkdir(parents=True, exist_ok=True)
-    text = PLAN.read_text(encoding="utf-8") if PLAN.is_file() else ""
+    if not PLAN.is_file():
+        evidence.write_text("plan=missing\n", encoding="utf-8")
+        return _check("198-PLAN", "Plan/198... § header and status", "history", "MISSING", "Test-Path Plan/198_PHASE198_SOURCE_TEXT_ASSERTION_TRIAGE_PLAN.md", evidence, "Plan198 is ignored local input and is absent from the repository tree")
+    text = PLAN.read_text(encoding="utf-8")
     status_line = next((line for line in text.splitlines() if line.startswith("Status:")), "")
     base_match = base_sha in text
     current = "W1 rules and W2 inventory are present on main" in status_line
@@ -44,7 +69,11 @@ def _plan_check(base_sha: str) -> audit_lib.Check:
 def _rules_check() -> audit_lib.Check:
     """Check the four Phase198 test-authoring rules in AGENTS.md."""
     evidence = OUTPUT / "logs" / "rules.log"
-    text = (audit_lib.ROOT / "AGENTS.md").read_text(encoding="utf-8", errors="replace")
+    rules_path = audit_lib.ROOT / "AGENTS.md"
+    if not rules_path.is_file():
+        evidence.write_text("AGENTS.md=missing\n", encoding="utf-8")
+        return _check("198-W1-rules", "Plan/198... § W1", "history", "MISSING", "Test-Path AGENTS.md", evidence, "AGENTS.md is local workflow input and is absent from the repository tree")
+    text = rules_path.read_text(encoding="utf-8", errors="replace")
     needles = (
         "New tests observe results through public or internal API",
         "Do not add positive source-text checks on product implementation",
@@ -79,11 +108,30 @@ def _run_inventory() -> tuple[audit_lib.Check, list[dict[str, str]]]:
 def _resolution_check(rows: list[dict[str, str]]) -> audit_lib.Check:
     """Require at least 90 percent of inventory rows to resolve a target path."""
     evidence = OUTPUT / "logs" / "resolution.log"
-    resolved = sum(row.get("target") != "<unresolved>" for row in rows)
+    resolved = sum(
+        bool(row.get("target"))
+        and "<directory>" not in row.get("target", "")
+        and "<unresolved>" not in row.get("target", "")
+        for row in rows
+    )
+    directories = sum("<directory>" in row.get("target", "") for row in rows)
+    unresolved = sum("<unresolved>" in row.get("target", "") for row in rows)
     ratio = resolved / len(rows) if rows else 0.0
-    evidence.write_text(f"resolved={resolved}\ntotal={len(rows)}\nratio={ratio:.6f}\n", encoding="utf-8")
+    evidence.write_text(
+        f"file_targets={resolved}\ndirectory_targets={directories}\nunresolved_targets={unresolved}\n"
+        f"total={len(rows)}\nratio={ratio:.6f}\n",
+        encoding="utf-8",
+    )
     status = "PASS" if ratio >= 0.90 else "FAIL"
-    return _check("198-W2-resolution", "Plan/198... § W2 resolution", "auto", status, "inspect source_text_inventory.csv resolution", evidence, f"resolved={resolved}/{len(rows)} ({ratio:.2%})")
+    return _check(
+        "198-W2-resolution",
+        "Plan/198... § W2 resolution",
+        "auto",
+        status,
+        "inspect source_text_inventory.csv file-target resolution",
+        evidence,
+        f"file_targets={resolved}/{len(rows)} ({ratio:.2%}); directories={directories}; unresolved={unresolved}",
+    )
 
 
 def _test_and_workflow_checks() -> list[audit_lib.Check]:
@@ -124,7 +172,7 @@ def _missing_work_packages(rows: list[dict[str, str]]) -> list[audit_lib.Check]:
             entry = by_flag.setdefault(flag, {"rows": 0, "targets": set(), "uncovered": set()})
             entry["rows"] = int(entry["rows"]) + 1
             target = row.get("target", "")
-            if target and target != "<unresolved>":
+            if target and "<directory>" not in target and "<unresolved>" not in target:
                 targets = entry["targets"]
                 assert isinstance(targets, set)
                 targets.add(target)
@@ -132,10 +180,15 @@ def _missing_work_packages(rows: list[dict[str, str]]) -> list[audit_lib.Check]:
                     uncovered = entry["uncovered"]
                     assert isinstance(uncovered, set)
                     uncovered.add(target)
+    registry = audit_lib.ROOT / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "PhaseValidationRegistry.cs"
+    registry_text = registry.read_text(encoding="utf-8", errors="replace")
+    blocks = _registry_blocks(registry_text)
+    ci_flags = {flag for flag, block in blocks if re.match(r"\s*Ci\(", block)}
+    behavior_flags = {flag for flag, block in blocks if re.match(r"\s*Ci\(", block) and "ValidationEvidence.Behavior" in block}
     eligible = {
         flag: entry
         for flag, entry in by_flag.items()
-        if entry["targets"] and not entry["uncovered"] and flag != "<unregistered>"
+        if entry["targets"] and not entry["uncovered"] and flag in ci_flags and flag in behavior_flags
     }
     lines = ["# W3/W4 candidates", "", "## W3 eligibility"]
     if eligible:
@@ -145,16 +198,32 @@ def _missing_work_packages(rows: list[dict[str, str]]) -> list[audit_lib.Check]:
         )
     else:
         lines.append("- No eligible validation meets the required xUnit-coverage condition.")
-    lines.extend(["", "## W4 reviewed correction", "- `--phase163-32` is pure source-text and wiring validation; its registry evidence is Structural.", ""])
+    lines.extend(["", "## W4 reviewed correction", "- Complete Behavior-tag candidate review is recorded in `behavior-tag-candidates.md`.", ""])
+    candidate_lines = ["# Behavior evidence-tag review", "", "| Flag | Runtime C rows | Decision |", "|---|---:|---|"]
+    for flag, entry in sorted(by_flag.items()):
+        if flag == "<unregistered>" or not entry["rows"]:
+            continue
+        marker = "Structural: source-text and wiring only" if flag in PURE_SOURCE_FLAGS else "Behavior: product code executes in validation"
+        candidate_lines.append(f"| `{flag}` | {entry['rows']} | {marker} |")
+    candidate_report = OUTPUT / "logs" / "behavior-tag-candidates.md"
+    candidate_report.write_text("\n".join(candidate_lines) + "\n", encoding="utf-8")
     candidates.write_text("\n".join(lines), encoding="utf-8")
     w3_status = "PASS" if len(eligible) >= 3 else "MANUAL"
     w3_detail = f"eligible={len(eligible)}; required=3; no C checks removed" if w3_status != "PASS" else f"eligible={len(eligible)}"
-    registry = audit_lib.ROOT / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "PhaseValidationRegistry.cs"
-    registry_text = registry.read_text(encoding="utf-8", errors="replace")
-    w4_status = "PASS" if 'Ci("--phase163-32"' in registry_text and 'evidence: ValidationEvidence.Structural' in registry_text else "FAIL"
+    missing_structural = [
+        flag
+        for flag in PURE_SOURCE_FLAGS
+        if not any(
+            entry_flag == flag
+            and re.match(r"\s*Ci\(", block)
+            and "evidence: ValidationEvidence.Structural" in block
+            for entry_flag, block in blocks
+        )
+    ]
+    w4_status = "PASS" if not missing_structural else "FAIL"
     return [
         _check("198-W3", "Plan/198... § W3", "manual", w3_status, "inspect source-text inventory and choose three covered pilots", candidates, w3_detail),
-        _check("198-W4", "Plan/198... § W4", "auto", w4_status, "inspect Phase163_32 registry evidence", candidates, "Phase163_32 source-text validation is tagged Structural"),
+        _check("198-W4", "Plan/198... § W4", "auto", w4_status, "inspect all Behavior-tagged source-text candidates", candidate_report, f"pure_source_flags={sorted(PURE_SOURCE_FLAGS)}; missing_structural={missing_structural or 'none'}"),
     ]
 
 
@@ -167,7 +236,8 @@ def _transfer_checks(rows: list[dict[str, str]]) -> list[audit_lib.Check]:
         count = len(re.findall(r"\.(?:Contains|DoesNotContain)\s*\(", text))
         evidence = OUTPUT / "logs" / f"transfer-{path.stem if path else name}.log"
         evidence.write_text(f"count={count}\nexpected_entry={expected}\n", encoding="utf-8")
-        checks.append(_check("198-TRANSFER-" + path.stem if path else "198-TRANSFER-missing", "Plan/198... § transfer", "auto", "PASS", "rg -n 'Contains|DoesNotContain' " + name, evidence, f"current_count={count}; plan_entry={expected}"))
+        status = "PASS" if path and count == expected else "FAIL"
+        checks.append(_check("198-TRANSFER-" + path.stem if path else "198-TRANSFER-missing", "Plan/198... § transfer", "auto", status, "rg -n 'Contains|DoesNotContain' " + name, evidence, f"current_count={count}; expected={expected}; path={path or 'missing'}"))
     comment_count = sum(row.get("comment_only") == "True" for row in rows)
     evidence = OUTPUT / "logs" / "comment-only.log"
     evidence.write_text(f"comment_only={comment_count}\n", encoding="utf-8")
