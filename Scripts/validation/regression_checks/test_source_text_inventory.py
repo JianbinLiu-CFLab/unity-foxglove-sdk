@@ -95,6 +95,48 @@ class SourceTextInventoryTests(unittest.TestCase):
             self.assertTrue((output / "source_text_inventory.csv").is_file())
             self.assertIn("Class C implementation: 5", (output / "SUMMARY.md").read_text(encoding="utf-8"))
 
+    def test_scope_partial_coverage_and_comment_only_detection(self):
+        """Resolve repeated local names, partial product types, and comment-only literals."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runtime = root / "Packages" / "fixture" / "Tests" / "Runtime"
+            runtime.mkdir(parents=True)
+            product = root / "Packages" / "fixture" / "Runtime" / "Foo.Part.cs"
+            product.parent.mkdir(parents=True)
+            product.write_text("public partial class Foo {}\n", encoding="utf-8")
+            (root / "Packages" / "fixture" / "Runtime" / "Bar.cs").write_text("public sealed class Bar {}\n", encoding="utf-8")
+            (root / "Packages" / "fixture" / "Runtime" / "Comment.cs").write_text("// comment-only marker\npublic sealed class Comment {}\n", encoding="utf-8")
+            unit = root / "Packages" / "fixture" / "Tests" / "Unit"
+            unit.mkdir(parents=True)
+            (unit / "FooTests.cs").write_text("public sealed class FooTests { private Foo _foo; }\n", encoding="utf-8")
+            (runtime / "ScopeValidation.cs").write_text(
+                "public static class ScopeValidation {\n"
+                "    public static void Validate() {\n"
+                '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Foo.Part.cs");\n'
+                '        Check(source.Contains("Foo"), "scope first");\n'
+                "    }\n"
+                "    public static void ValidateAgain() {\n"
+                '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Bar.cs");\n'
+                '        Check(source.Contains("Bar"), "scope second");\n'
+                "    }\n"
+                "    public static void ValidateComment() {\n"
+                '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Comment.cs");\n'
+                '        Check(source.Contains("comment-only marker"), "comment");\n'
+                "    }\n"
+                "}\n",
+                encoding="utf-8",
+            )
+            registry = root / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "PhaseValidationRegistry.cs"
+            registry.parent.mkdir(parents=True, exist_ok=True)
+            registry.write_text('Ci("--phase-scope", "fixture", ScopeValidation.Validate, evidence: ValidationEvidence.Behavior),\n', encoding="utf-8")
+            rows = inventory(root)
+            by_line = {row["line"]: row for row in rows if row["file"].endswith("ScopeValidation.cs")}
+            self.assertEqual("Packages/fixture/Runtime/Foo.Part.cs", by_line[4]["target"])
+            self.assertEqual("Packages/fixture/Runtime/Bar.cs", by_line[8]["target"])
+            self.assertIn("FooTests.cs", by_line[4]["xunit_coverage"])
+            self.assertEqual("Packages/fixture/Runtime/Comment.cs", by_line[12]["target"])
+            self.assertTrue(by_line[12]["comment_only"])
+
 
 if __name__ == "__main__":
     unittest.main()

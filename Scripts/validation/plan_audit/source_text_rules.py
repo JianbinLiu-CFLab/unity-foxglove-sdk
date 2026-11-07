@@ -25,6 +25,7 @@ PURE_SOURCE_FLAGS = {
     "--phase77",
     "--phase132",
 }
+PILOT_FLAGS = ("--phase86", "--phase134-1", "--phase72")
 ENTRY_START = re.compile(r'^\s*(?:Ci|Local|DefaultOnly)\("(?P<flag>--[A-Za-z0-9-]+)"', re.MULTILINE)
 
 
@@ -60,7 +61,10 @@ def _plan_check(base_sha: str) -> audit_lib.Check:
     text = PLAN.read_text(encoding="utf-8")
     status_line = next((line for line in text.splitlines() if line.startswith("Status:")), "")
     base_match = base_sha in text
-    current = "W1 rules and W2 inventory are present on main" in status_line
+    current = (
+        "W1 rules and W2 inventory are present on main" in status_line
+        or "W1-W4 complete" in status_line
+    )
     evidence.write_text(status_line + "\n" + f"base_match={base_match}\n", encoding="utf-8")
     status = "PASS" if base_match and current else "FAIL"
     return _check("198-PLAN", "Plan/198... § header and status", "history", status, "read Plan/198... and compare origin/main", evidence, f"base_match={base_match}; status_line={status_line or 'missing'}")
@@ -198,6 +202,15 @@ def _missing_work_packages(rows: list[dict[str, str]]) -> list[audit_lib.Check]:
         )
     else:
         lines.append("- No eligible validation meets the required xUnit-coverage condition.")
+    remaining_pilot_c = {
+        flag: sum(1 for row in rows if row.get("validation_flag") == flag and row.get("class") == "C")
+        for flag in PILOT_FLAGS
+    }
+    lines.extend(["", "## W3 completed pilots"])
+    lines.extend(
+        f"- `{flag}`: remaining Class C rows = {remaining_pilot_c[flag]}"
+        for flag in PILOT_FLAGS
+    )
     lines.extend(["", "## W4 reviewed correction", "- Complete Behavior-tag candidate review is recorded in `behavior-tag-candidates.md`.", ""])
     candidate_lines = ["# Behavior evidence-tag review", "", "| Flag | Runtime C rows | Decision |", "|---|---:|---|"]
     for flag, entry in sorted(by_flag.items()):
@@ -208,8 +221,8 @@ def _missing_work_packages(rows: list[dict[str, str]]) -> list[audit_lib.Check]:
     candidate_report = OUTPUT / "logs" / "behavior-tag-candidates.md"
     candidate_report.write_text("\n".join(candidate_lines) + "\n", encoding="utf-8")
     candidates.write_text("\n".join(lines), encoding="utf-8")
-    w3_status = "PASS" if len(eligible) >= 3 else "MANUAL"
-    w3_detail = f"eligible={len(eligible)}; required=3; no C checks removed" if w3_status != "PASS" else f"eligible={len(eligible)}"
+    w3_status = "PASS" if all(value == 0 for value in remaining_pilot_c.values()) else "FAIL"
+    w3_detail = f"pilots={','.join(PILOT_FLAGS)}; remaining_c={remaining_pilot_c}"
     missing_structural = [
         flag
         for flag in PURE_SOURCE_FLAGS
@@ -222,7 +235,7 @@ def _missing_work_packages(rows: list[dict[str, str]]) -> list[audit_lib.Check]:
     ]
     w4_status = "PASS" if not missing_structural else "FAIL"
     return [
-        _check("198-W3", "Plan/198... § W3", "manual", w3_status, "inspect source-text inventory and choose three covered pilots", candidates, w3_detail),
+        _check("198-W3", "Plan/198... § W3", "manual", w3_status, "inspect source-text inventory and verify three covered pilots", candidates, w3_detail),
         _check("198-W4", "Plan/198... § W4", "auto", w4_status, "inspect all Behavior-tagged source-text candidates", candidate_report, f"pure_source_flags={sorted(PURE_SOURCE_FLAGS)}; missing_structural={missing_structural or 'none'}"),
     ]
 
