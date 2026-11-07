@@ -18,8 +18,8 @@
       "maxAllocatedBytesPerMessage": 67108864,
       "maxAllocatedBytesTotal": 1099511627776,
       "maxGen0Collections": 10000,
-      "maxGen1Collections": 1000,
-      "maxGen2Collections": 1000
+      "maxGen1Collections": 2500,
+      "maxGen2Collections": 2500
     }
   },
   "modes": {

@@ -83,6 +83,20 @@ namespace Unity.FoxgloveSDK.Performance.Tests
         }
 
         [Fact]
+        public void LargeFrameQueueScenarioCoversAllConfiguredFrameSizes()
+        {
+            var result = InvokeScenario(
+                "RunWsSendQueueLargeFrame",
+                new PerformanceThresholdConfig { enabled = false });
+
+            Assert.True(result.passed);
+            Assert.Contains("65536B", result.notes);
+            Assert.Contains("1048576B", result.notes);
+            Assert.Contains("4194304B", result.notes);
+            Assert.Contains("dropped=", result.notes);
+        }
+
+        [Fact]
         public void TransportQueueTransfersAllMeasuredAllocationMetrics()
         {
             var invocations = new List<int>();
