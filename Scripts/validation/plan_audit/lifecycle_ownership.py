@@ -5,6 +5,8 @@ from __future__ import annotations
 import csv
 import fnmatch
 import json
+import math
+import xml.etree.ElementTree as ET
 import re
 import subprocess
 from pathlib import Path
@@ -50,8 +52,10 @@ def _plan_check(base_sha: str) -> audit_lib.Check:
     status = next((line for line in text.splitlines() if line.startswith("Status:")), "")
     stale_note = "stale 15-row snapshot" in text and "W1 audit pending" in status
     appendix_note = "provisional" in text and "W1 remains pending" in text
-    okay = base_sha == audit_lib.resolve_revision() and stale_note and appendix_note
-    detail = f"base={base_sha}; pending_status={stale_note}; provisional_gate_note={appendix_note}"
+    recorded = re.search(r"origin/main == ([0-9a-f]{40})", text)
+    recorded_match = recorded is not None and recorded.group(1) == base_sha
+    okay = recorded_match and stale_note and appendix_note
+    detail = f"base={base_sha}; recorded_base_match={recorded_match}; pending_status={stale_note}; provisional_gate_note={appendix_note}"
     return _check("197-PLAN", "Plan/197... § header and Appendix A", "history", "PASS" if okay else "FAIL", "git rev-parse origin/main; read Plan/197...", "build/plan-audit/lifecycle_ownership/plan.log", detail)
 
 
@@ -114,7 +118,7 @@ def _suggest_label(title: str, subjects: str, paths: list[str]) -> tuple[str, st
 
 def _appendix_labels() -> list[tuple[str, str]]:
     """Read the historical Appendix A labels when present."""
-    text = PLAN.read_text(encoding="utf-8")
+    text = PLAN.read_text(encoding="utf-8") if PLAN.is_file() else ""
     labels = []
     for line in text.splitlines():
         match = re.match(r"\|\s*#(\d+)\s*\|.*\|\s*(local|cross-lifecycle|cross-state|config|test-brittle|tooling)\s*\|", line, re.IGNORECASE)
@@ -128,9 +132,10 @@ def _gate_check(candidates: list[dict[str, str]]) -> audit_lib.Check:
     appendix = _appendix_labels()
     appendix_cross = sum(label in {"cross-lifecycle", "cross-state"} for _, label in appendix)
     candidate_cross = sum(row["suggested_label"] in {"cross-lifecycle", "cross-state"} for row in candidates)
-    threshold = int((len(candidates) * 0.2) // 1 + 1) if candidates else 0
+    threshold = math.ceil(len(candidates) * 0.2) if candidates else 0
     detail = f"appendix={appendix_cross}/{len(appendix)}; regenerated={candidate_cross}/{len(candidates)}; cross_fix_needed_for_20_percent={max(0, threshold - candidate_cross)}"
-    status = "FAIL" if len(candidates) != len(appendix) or "provisional" in PLAN.read_text(encoding="utf-8") else "PASS"
+    plan_text = PLAN.read_text(encoding="utf-8") if PLAN.is_file() else ""
+    status = "NOT_RUN" if not PLAN.is_file() else "FAIL" if len(candidates) != len(appendix) or "provisional" in plan_text else "PASS"
     return _check("197-W1-gate", "Plan/197... § Decision gate", "history", status, "git log --first-parent; gh pr list; compare Appendix A with fix-candidates.csv", "build/plan-audit/lifecycle_ownership/fix-candidates.csv", detail)
 
 
@@ -162,6 +167,17 @@ def _owner_map() -> audit_lib.Check:
     return _check("197-W1-ownermap", "Plan/197... § 2 W1.2 and Appendix B", "probe", status, "git ls-files '*.cs'; parse four lifecycle owner surfaces", "build/plan-audit/lifecycle_ownership/owner-map.json", f"owners={len(payload) - len(missing)}/4; missing={missing or 'none'}")
 
 
+def _trx_passed(path: Path) -> int:
+    """Count passed test results in a TRX file."""
+    if not path.is_file():
+        return 0
+    try:
+        root = ET.fromstring(path.read_text(encoding="utf-8", errors="replace"))
+    except ET.ParseError:
+        return 0
+    return sum(1 for result in root.iter() if result.tag.endswith("UnitTestResult") and result.attrib.get("outcome") == "Passed")
+
+
 def _tests_check() -> audit_lib.Check:
     """Run Manager boundary tests and audit characterization coverage style."""
     restore = _run(["dotnet", "restore", "Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj", "-p:IncludeManagerProductionBoundary=true"], "197-manager-restore", 300.0)
@@ -170,30 +186,48 @@ def _tests_check() -> audit_lib.Check:
     command = ["dotnet", "test", "--no-restore", "Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj", "-p:IncludeManagerProductionBoundary=true", "--filter", "FullyQualifiedName~FoxgloveManagerTeardownTests", "--logger", "trx;LogFileName=lifecycle-ownership.trx", "--results-directory", "build/plan-audit/lifecycle_ownership/TestResults"]
     result = _run(command, "197-W1-tests", 600.0)
     text = (audit_lib.ROOT / TEST_REL).read_text(encoding="utf-8", errors="replace")
+    result_file = audit_lib.ROOT / "build/plan-audit/lifecycle_ownership/TestResults/lifecycle-ownership.trx"
+    passed = _trx_passed(result_file)
     source_text = "TestSources.Text" in text or "ExtractMethod" in text
     required = {"StopServer", "DisableTeardown", "DestroyTeardown", "StartupFailure", "EarlyCleanup"}
     present = {name for name in required if name.lower() in text.lower()}
     missing = sorted(required - present)
-    okay = result["exit_code"] == 0 and not source_text and not missing
-    detail = f"test_exit={result['exit_code']}; source_text_checks={source_text}; missing_paths={missing}; pr717_test={TEST_REL}"
+    okay = result["exit_code"] == 0 and passed > 0 and not source_text and not missing
+    detail = f"test_exit={result['exit_code']}; passed_tests={passed}; source_text_checks={source_text}; missing_paths={missing}; pr717_test={TEST_REL}"
     return _check("197-W1-tests", "Plan/197... § 2 W1.3", "auto", "PASS" if okay else "FAIL", "dotnet restore ... -p:IncludeManagerProductionBoundary=true; dotnet test --no-restore ... --filter FullyQualifiedName~FoxgloveManagerTeardownTests", result["log"], detail)
 
 
 def _mutation_checks() -> list[audit_lib.Check]:
-    """Ensure order and cleanup mutations make the characterization test fail."""
+    """Ensure order and cleanup mutations make passing baseline tests fail."""
     path = audit_lib.ROOT / TEARDOWN_REL
-    commands = [
+    baseline_command = [
+        "dotnet", "test", "--no-restore", "Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj",
+        "-p:IncludeManagerProductionBoundary=true", "--filter", "FullyQualifiedName~FoxgloveManagerTeardownTests",
+        "--logger", "trx;LogFileName=baseline-mutation.trx", "--results-directory",
+        "build/plan-audit/lifecycle_ownership/TestResults/baseline-mutation",
+    ]
+    baseline = _run(baseline_command, "197-W1-mutation-baseline", 600.0)
+    baseline_passed = _trx_passed(audit_lib.ROOT / "build/plan-audit/lifecycle_ownership/TestResults/baseline-mutation/baseline-mutation.trx")
+    checks: list[audit_lib.Check] = []
+    for identifier, old, new in (
         ("197-W1-mutation-order", "stopRuntime,\n                resetSensorClock,", "resetSensorClock,\n                stopRuntime,"),
         ("197-W1-mutation-cleanup", "clearClientEvents,\n                resetChannelIds,", "() => { },\n                resetChannelIds,"),
-    ]
-    checks: list[audit_lib.Check] = []
-    for identifier, old, new in commands:
+    ):
         try:
             with audit_lib.mutate(path, old, new):
-                result = _run(["dotnet", "test", "--no-restore", "Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj", "-p:IncludeManagerProductionBoundary=true", "--filter", "FullyQualifiedName~FoxgloveManagerTeardownTests"], identifier, 600.0)
-            okay = result["exit_code"] != 0
+                result = _run(
+                    [
+                        "dotnet", "test", "--no-restore", "Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj",
+                        "-p:IncludeManagerProductionBoundary=true", "--filter", "FullyQualifiedName~FoxgloveManagerTeardownTests",
+                        "--logger", f"trx;LogFileName={identifier}.trx", "--results-directory",
+                        f"build/plan-audit/lifecycle_ownership/TestResults/{identifier}",
+                    ],
+                    identifier,
+                    600.0,
+                )
+            okay = baseline["exit_code"] == 0 and baseline_passed > 0 and result["exit_code"] != 0
             status = "PASS" if okay else "FAIL"
-            detail = f"mutated_exit={result['exit_code']}; expected_nonzero={okay}"
+            detail = f"baseline_exit={baseline['exit_code']}; baseline_passed={baseline_passed}; mutated_exit={result['exit_code']}"
             evidence = result["log"]
         except Exception as exc:
             status = "FAIL"
@@ -205,9 +239,12 @@ def _mutation_checks() -> list[audit_lib.Check]:
 
 def _stop_check() -> audit_lib.Check:
     """Record that W2 and W3 remain stopped until the corrected gate is reviewed."""
-    text = PLAN.read_text(encoding="utf-8")
-    stopped = "W2/W3 are not started" in text and "W1 remains pending" in text
-    return _check("197-W2-W3", "Plan/197... § Decision gate", "history", "FAIL" if stopped else "PASS", "read Plan/197... decision gate", "build/plan-audit/lifecycle_ownership/plan.log", "W2/W3 are correctly not started, but the decision gate is pending rather than accepted")
+    text = PLAN.read_text(encoding="utf-8") if PLAN.is_file() else ""
+    pending = "W1 remains pending" in text or not text
+    stopped = ("W1 stops the phase" in text or "stop the phase after W1" in text) and not pending
+    status = "PASS" if stopped else "FAIL"
+    detail = "decision gate stops after W1" if stopped else "W2/W3 are not started, but the decision gate is pending or the plan is unavailable"
+    return _check("197-W2-W3", "Plan/197... § Decision gate", "history", status, "read Plan/197... decision gate", "build/plan-audit/lifecycle_ownership/plan.log", detail)
 
 
 def _manual_notes(checks: list[audit_lib.Check]) -> None:
