@@ -319,7 +319,7 @@ namespace Unity.FoxgloveSDK.Tests
             Ci("--phase163-29", "Phase 163-29: validation for R2FU runtime package governance", Phase163_29Validation.Validate, includeInDefault: false, evidence: ValidationEvidence.Behavior),
             Ci("--phase163-30", "Phase 163-30: validation for Humble runtime import and FastRTPS package path hardening", Phase163_30Validation.Validate, includeInDefault: false, evidence: ValidationEvidence.Behavior),
             Ci("--phase163-31", "Phase 163-31: validation for Jazzy runtime refresh and package path hardening", Phase163_31Validation.Validate, includeInDefault: false, evidence: ValidationEvidence.Behavior),
-            Ci("--phase163-32", "Phase 163-32: validation for Lyrical runtime selection and Zenoh package hardening", Phase163_32Validation.Validate, includeInDefault: false, evidence: ValidationEvidence.Behavior),
+            Ci("--phase163-32", "Phase 163-32: validation for Lyrical runtime selection and Zenoh package hardening", Phase163_32Validation.Validate, includeInDefault: false, evidence: ValidationEvidence.Structural),
             Ci("--phase163-33", "Phase 163-33: validation for R2FU sample and RViz acceptance hardening", Phase163_33Validation.Validate, includeInDefault: false, evidence: ValidationEvidence.Behavior),
             Ci("--phase163-35", "Phase 163-35: validation for demo sensor and manual smoke review boundaries", Phase163_35Validation.Validate, includeInDefault: false, evidence: ValidationEvidence.Behavior),
             Ci("--phase163-36", "Phase 163-36: phase163-36 Unity demo scene and project-settings review closure", Phase163_36Validation.Validate, includeInDefault: false, evidence: ValidationEvidence.Behavior),

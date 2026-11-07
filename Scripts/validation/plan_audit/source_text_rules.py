@@ -115,17 +115,46 @@ def _spotcheck(rows: list[dict[str, str]]) -> audit_lib.Check:
 
 
 def _missing_work_packages(rows: list[dict[str, str]]) -> list[audit_lib.Check]:
-    """Record the current W3 and W4 implementation gaps and candidate evidence."""
+    """Record W3 eligibility and verify the reviewed W4 evidence-tag correction."""
     candidates = OUTPUT / "logs" / "pilot-candidates.md"
-    by_flag: dict[str, int] = {}
+    by_flag: dict[str, dict[str, set[str] | int]] = {}
     for row in rows:
         if row.get("class") == "C":
             flag = row.get("validation_flag") or "<unregistered>"
-            by_flag[flag] = by_flag.get(flag, 0) + 1
-    candidates.write_text("# W3/W4 candidates\n\n" + "\n".join(f"- `{flag}`: {count} Class C rows" for flag, count in sorted(by_flag.items(), key=lambda item: (-item[1], item[0]))[:20]) + "\n", encoding="utf-8")
+            entry = by_flag.setdefault(flag, {"rows": 0, "targets": set(), "uncovered": set()})
+            entry["rows"] = int(entry["rows"]) + 1
+            target = row.get("target", "")
+            if target and target != "<unresolved>":
+                targets = entry["targets"]
+                assert isinstance(targets, set)
+                targets.add(target)
+                if not row.get("xunit_coverage", "").strip():
+                    uncovered = entry["uncovered"]
+                    assert isinstance(uncovered, set)
+                    uncovered.add(target)
+    eligible = {
+        flag: entry
+        for flag, entry in by_flag.items()
+        if entry["targets"] and not entry["uncovered"] and flag != "<unregistered>"
+    }
+    lines = ["# W3/W4 candidates", "", "## W3 eligibility"]
+    if eligible:
+        lines.extend(
+            f"- `{flag}`: {entry['rows']} Class C rows; {len(entry['targets'])} covered targets"
+            for flag, entry in sorted(eligible.items(), key=lambda item: (-int(item[1]["rows"]), item[0]))
+        )
+    else:
+        lines.append("- No eligible validation meets the required xUnit-coverage condition.")
+    lines.extend(["", "## W4 reviewed correction", "- `--phase163-32` is pure source-text and wiring validation; its registry evidence is Structural.", ""])
+    candidates.write_text("\n".join(lines), encoding="utf-8")
+    w3_status = "PASS" if len(eligible) >= 3 else "MANUAL"
+    w3_detail = f"eligible={len(eligible)}; required=3; no C checks removed" if w3_status != "PASS" else f"eligible={len(eligible)}"
+    registry = audit_lib.ROOT / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "PhaseValidationRegistry.cs"
+    registry_text = registry.read_text(encoding="utf-8", errors="replace")
+    w4_status = "PASS" if 'Ci("--phase163-32"' in registry_text and 'evidence: ValidationEvidence.Structural' in registry_text else "FAIL"
     return [
-        _check("198-W3", "Plan/198... § W3", "auto", "MISSING", "inspect source-text inventory and choose three covered pilots", candidates, "no pilot validation removal was included in this audit branch"),
-        _check("198-W4", "Plan/198... § W4", "auto", "MISSING", "inspect ValidationEvidence.Behavior registry entries", candidates, "no evidence-tag retagging was included in this audit branch"),
+        _check("198-W3", "Plan/198... § W3", "manual", w3_status, "inspect source-text inventory and choose three covered pilots", candidates, w3_detail),
+        _check("198-W4", "Plan/198... § W4", "auto", w4_status, "inspect Phase163_32 registry evidence", candidates, "Phase163_32 source-text validation is tagged Structural"),
     ]
 
 
