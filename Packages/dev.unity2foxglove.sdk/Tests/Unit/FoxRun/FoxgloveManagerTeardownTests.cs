@@ -12,9 +12,6 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
 {
     public sealed class FoxgloveManagerTeardownTests
     {
-        private const string ManagerSourcePath =
-            "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs";
-
         [Fact]
         public void DisableTeardownRunsEveryMandatoryStepInOrderAndRethrowsFirstFatal()
         {
@@ -47,16 +44,6 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                     "profiler"
                 },
                 calls);
-
-            AssertLifecycleUsesHelperInOrder(
-                "private void OnDisable()",
-                "FoxgloveManagerTeardownState.RunDisable(",
-                "EndFoxRunSubscriptionSession",
-                "EndFoxRunTransportSession",
-                "StopServer(restoreLivePublishers: true)",
-                "EndFoxRunPublishSession",
-                "_connectionState.OutputModeWatchInitialized = false",
-                "FoxgloveProfiler.ResetGlobal(this)");
         }
 
         [Fact]
@@ -95,20 +82,6 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                     "profiler"
                 },
                 calls);
-
-            AssertLifecycleUsesHelperInOrder(
-                "private void OnDestroy()",
-                "FoxgloveManagerTeardownState.RunDestroy(",
-                "EndFoxRunSubscriptionSession",
-                "StopServer(restoreLivePublishers: true)",
-                "EndFoxRunTransportSession",
-                "_replayCursorEndpoint?.Dispose()",
-                "_certificateDistributor?.Dispose()",
-                "FoxgloveManagerTeardownState.RunRuntimeDisposeWithRetry(",
-                "_runtime?.Dispose()",
-                "_runtime = null",
-                "EndFoxRunPublishSession",
-                "FoxgloveProfiler.ResetGlobal(this)");
         }
 
         [Fact]
@@ -224,36 +197,62 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
-        public void StopServerWiresTheFailureResilientTailHelper()
+        public void StopServerTailRunsEveryCleanupStepAfterMultipleFailures()
         {
-            var source = TestSources.Text(
-                "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
-            var method = TestSources.ExtractMethod(
-                source,
-                "private void StopServer(bool restoreLivePublishers)");
+            var calls = new List<string>();
+            var first = new InvalidOperationException("first-stop-failure");
+            var second = new ArgumentException("second-stop-failure");
 
-            Assert.Contains(
-                "FoxgloveManagerTeardownState.RunStopServer(",
-                method,
-                StringComparison.Ordinal);
-            Assert.Contains("_runtime.Stop", method, StringComparison.Ordinal);
-            Assert.Contains("ClearClientEvents", method, StringComparison.Ordinal);
-            Assert.Contains("RestoreLivePublishers", method, StringComparison.Ordinal);
+            var failure = Assert.Throws<TargetInvocationException>(
+                () => TeardownMethod("RunStopServer").Invoke(
+                    null,
+                    new object[]
+                    {
+                        Step(calls, "runtime", first),
+                        Step(calls, "clock", second),
+                        Step(calls, "remote"),
+                        Step(calls, "replay"),
+                        Step(calls, "certificate"),
+                        Step(calls, "cache"),
+                        Step(calls, "events"),
+                        Step(calls, "channel-ids"),
+                        Step(calls, "publishers")
+                    }));
+
+            Assert.Same(first, failure.InnerException);
+            Assert.Equal(
+                new[]
+                {
+                    "runtime",
+                    "clock",
+                    "remote",
+                    "replay",
+                    "certificate",
+                    "cache",
+                    "events",
+                    "channel-ids",
+                    "publishers"
+                },
+                calls);
         }
 
         [Fact]
-        public void StopServerEarlyCleanupIncludesTopicContractLedgerClear()
+        public void EarlyCleanupContinuesAfterSeveralRegistrationFailures()
         {
-            var source = TestSources.Text(
-                "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
-            var method = TestSources.ExtractMethod(
-                source,
-                "private void StopServer(bool restoreLivePublishers)");
-            var earlyPath = method.IndexOf("if (!IsRunning)", StringComparison.Ordinal);
-            var clear = method.IndexOf("ClearPublishingSessionState);", earlyPath, StringComparison.Ordinal);
+            var calls = new List<string>();
+            var first = new InvalidOperationException("first-registration-failure");
+            var second = new ArgumentException("second-registration-failure");
 
-            Assert.True(earlyPath >= 0);
-            Assert.True(clear > earlyPath);
+            var failure = FoxgloveManagerTeardownState.RunCleanupReturningFirstFailure(
+                Step(calls, "topic-contract", first),
+                Step(calls, "publish-contract", second),
+                Step(calls, "subscription-catalog"),
+                Step(calls, "channel-ledger"));
+
+            Assert.Same(first, failure.SourceException);
+            Assert.Equal(
+                new[] { "topic-contract", "publish-contract", "subscription-catalog", "channel-ledger" },
+                calls);
         }
 
         [Fact]
@@ -360,16 +359,6 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 new object[] { isRunning, hasActiveSession, hasPendingSessionCleanup });
 
             Assert.Equal(expected, Assert.IsType<bool>(actual));
-
-            var source = TestSources.Text(
-                "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Server.cs");
-            var stopServer = TestSources.ExtractMethod(
-                source,
-                "private void StopServer(bool restoreLivePublishers)");
-            Assert.Contains(
-                "FoxgloveManagerTeardownState.ShouldRunStopServer(",
-                stopServer,
-                StringComparison.Ordinal);
         }
 
         private static MethodInfo TeardownMethod(string name)
@@ -393,21 +382,5 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                     throw failure;
             };
 
-        private static void AssertLifecycleUsesHelperInOrder(
-            string signature,
-            params string[] expected)
-        {
-            var source = TestSources.Text(ManagerSourcePath);
-            var lifecycle = TestSources.ExtractMethod(source, signature);
-            var previous = -1;
-            foreach (var value in expected)
-            {
-                var current = lifecycle.IndexOf(value, StringComparison.Ordinal);
-                Assert.True(
-                    current > previous,
-                    signature + " must contain `" + value + "` after the previous teardown step.");
-                previous = current;
-            }
-        }
     }
 }

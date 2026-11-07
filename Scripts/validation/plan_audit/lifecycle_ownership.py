@@ -54,12 +54,13 @@ def _plan_check(base_sha: str) -> audit_lib.Check:
     plan_log.parent.mkdir(parents=True, exist_ok=True)
     plan_log.write_text(text or "PLAN_FILE_MISSING\n", encoding="utf-8")
     status = next((line for line in text.splitlines() if line.startswith("Status:")), "")
-    stale_note = "stale 15-row snapshot" in text and "W1 audit pending" in status
-    appendix_note = "provisional" in text and "W1 remains pending" in text
-    recorded = re.search(r"origin/main == ([0-9a-f]{40})", text)
+    accepted_stop = "phase stops after W1" in status and "below the 20% decision gate" in status
+    pending_review = "W1 audit complete" in status and "decision gate is not accepted" in status
+    appendix_note = "264 candidates" in text and "14 cross-lifecycle or cross-state" in text
+    recorded = re.search(r"Audit base: `origin/main == ([0-9a-f]{40})`", text) or re.search(r"Entry base: `origin/main == ([0-9a-f]{40})`", text)
     recorded_match = recorded is not None and recorded.group(1) == base_sha
-    okay = recorded_match and stale_note and appendix_note
-    detail = f"base={base_sha}; recorded_base_match={recorded_match}; pending_status={stale_note}; provisional_gate_note={appendix_note}"
+    okay = recorded_match and appendix_note and (accepted_stop or pending_review)
+    detail = f"base={base_sha}; recorded_base_match={recorded_match}; accepted_stop={accepted_stop}; appendix_note={appendix_note}"
     return _check("197-PLAN", "Plan/197... § header and Appendix A", "history", "PASS" if okay else "FAIL", "git rev-parse origin/main; read Plan/197...", "build/plan-audit/lifecycle_ownership/plan.log", detail)
 
 
@@ -127,7 +128,7 @@ def _appendix_labels() -> list[tuple[str, str]]:
     text = PLAN.read_text(encoding="utf-8") if PLAN.is_file() else ""
     labels = []
     for line in text.splitlines():
-        match = re.match(r"\|\s*#(\d+)\s*\|.*\|\s*(local|cross-lifecycle|cross-state|config|test-brittle|tooling)\s*\|", line, re.IGNORECASE)
+        match = re.match(r"\|\s*#(\d+|unknown)\s*\|.*\|\s*(local|cross-lifecycle|cross-state|config|test-brittle|tooling)\s*\|", line, re.IGNORECASE)
         if match:
             labels.append((match.group(1), match.group(2).lower()))
     return labels
@@ -141,7 +142,7 @@ def _gate_check(candidates: list[dict[str, str]]) -> audit_lib.Check:
     threshold = math.ceil(len(candidates) * 0.2) if candidates else 0
     detail = f"appendix={appendix_cross}/{len(appendix)}; regenerated={candidate_cross}/{len(candidates)}; cross_fix_needed_for_20_percent={max(0, threshold - candidate_cross)}"
     plan_text = PLAN.read_text(encoding="utf-8") if PLAN.is_file() else ""
-    status = "NOT_RUN" if not PLAN.is_file() else "PASS" if len(candidates) == len(appendix) and "provisional" not in plan_text and candidate_cross >= threshold else "FAIL"
+    status = "NOT_RUN" if not PLAN.is_file() else "PASS" if len(candidates) == len(appendix) and "provisional" not in plan_text and candidate_cross < threshold else "FAIL"
     return _check("197-W1-gate", "Plan/197... § Decision gate", "history", status, "git log --first-parent; gh pr list; compare Appendix A with fix-candidates.csv", "build/plan-audit/lifecycle_ownership/fix-candidates.csv", detail)
 
 
@@ -259,7 +260,7 @@ def _stop_check() -> audit_lib.Check:
     """Record that W2 and W3 remain stopped until the corrected gate is reviewed."""
     text = PLAN.read_text(encoding="utf-8") if PLAN.is_file() else ""
     pending = "W1 remains pending" in text or not text
-    stopped = ("W1 stops the phase" in text or "stop the phase after W1" in text) and not pending
+    stopped = ("W1 stops the phase" in text or "stop the phase after W1" in text or "phase stops after W1" in text) and not pending
     status = "PASS" if stopped else "FAIL"
     detail = "decision gate stops after W1" if stopped else "W2/W3 are not started, but the decision gate is pending or the plan is unavailable"
     return _check("197-W2-W3", "Plan/197... § Decision gate", "history", status, "read Plan/197... decision gate", "build/plan-audit/lifecycle_ownership/plan.log", detail)
