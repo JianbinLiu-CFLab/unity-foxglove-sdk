@@ -75,6 +75,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             _isStopping = true;
             _cleanupPending = true;
             CleanupNative();
+            Application.quitting -= OnApplicationQuitting;
         }
 
         private void Update()
