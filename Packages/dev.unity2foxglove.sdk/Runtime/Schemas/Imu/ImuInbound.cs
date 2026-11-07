@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Numerics;
 using System.Threading;
+using System.Text;
 
 namespace Unity.FoxgloveSDK.Schemas.Imu
 {
@@ -39,6 +40,8 @@ namespace Unity.FoxgloveSDK.Schemas.Imu
 
     public static class ImuInboundMapper
     {
+        public const int MaxFrameIdUtf8Bytes = 256;
+
         public static bool TryMap(
             ImuInboundMessage message,
             out ImuNativeFrame frame,
@@ -46,6 +49,11 @@ namespace Unity.FoxgloveSDK.Schemas.Imu
         {
             frame = null;
             error = string.Empty;
+            if (Encoding.UTF8.GetByteCount(message.FrameId) > MaxFrameIdUtf8Bytes)
+            {
+                error = "IMU frame id exceeds the supported byte limit.";
+                return false;
+            }
             try
             {
                 frame = new ImuNativeFrame(
@@ -69,8 +77,11 @@ namespace Unity.FoxgloveSDK.Schemas.Imu
 
     public sealed class ImuNativeFrameSlot : IDisposable
     {
+        public const int DefaultMaxQueuedFrameIdBytes = 64 * 1024;
+
         private readonly object _sync = new object();
         private readonly Queue<ImuNativeFrame> _frames;
+        private long _queuedFrameIdBytes;
         private bool _disposed;
         private long _received;
         private long _delivered;
@@ -78,15 +89,21 @@ namespace Unity.FoxgloveSDK.Schemas.Imu
         private long _rejected;
         private string _lastError = string.Empty;
 
-        public ImuNativeFrameSlot(int capacity = 256)
+        public ImuNativeFrameSlot(
+            int capacity = 256,
+            int maxQueuedFrameIdBytes = DefaultMaxQueuedFrameIdBytes)
         {
             if (capacity <= 0)
                 throw new ArgumentOutOfRangeException(nameof(capacity));
+            if (maxQueuedFrameIdBytes <= 0)
+                throw new ArgumentOutOfRangeException(nameof(maxQueuedFrameIdBytes));
             _frames = new Queue<ImuNativeFrame>(capacity);
             Capacity = capacity;
+            MaxQueuedFrameIdBytes = maxQueuedFrameIdBytes;
         }
 
         public int Capacity { get; }
+        public int MaxQueuedFrameIdBytes { get; }
 
         public int Count
         {
@@ -130,12 +147,25 @@ namespace Unity.FoxgloveSDK.Schemas.Imu
                 }
 
                 _received++;
-                if (_frames.Count >= Capacity)
+                var frameIdBytes = Encoding.UTF8.GetByteCount(frame.FrameId);
+                if (frameIdBytes > ImuInboundMapper.MaxFrameIdUtf8Bytes
+                    || frameIdBytes > MaxQueuedFrameIdBytes)
                 {
-                    _frames.Dequeue();
+                    _rejected++;
+                    _lastError = "IMU frame id exceeds the queue byte limit.";
+                    return false;
+                }
+
+                while (_frames.Count >= Capacity
+                       || _queuedFrameIdBytes + (long)frameIdBytes > MaxQueuedFrameIdBytes)
+                {
+                    var evicted = _frames.Dequeue();
+                    _queuedFrameIdBytes -= Encoding.UTF8.GetByteCount(evicted.FrameId);
                     _dropped++;
                 }
+
                 _frames.Enqueue(frame);
+                _queuedFrameIdBytes += frameIdBytes;
                 return true;
             }
         }
@@ -150,6 +180,7 @@ namespace Unity.FoxgloveSDK.Schemas.Imu
                     return false;
                 }
                 frame = _frames.Dequeue();
+                _queuedFrameIdBytes -= Encoding.UTF8.GetByteCount(frame.FrameId);
                 _delivered++;
                 return true;
             }
@@ -163,6 +194,7 @@ namespace Unity.FoxgloveSDK.Schemas.Imu
                     return;
                 _disposed = true;
                 _frames.Clear();
+                _queuedFrameIdBytes = 0;
             }
         }
     }

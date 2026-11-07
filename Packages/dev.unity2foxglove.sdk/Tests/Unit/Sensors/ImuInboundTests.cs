@@ -75,6 +75,18 @@ namespace Unity.FoxgloveSDK.Tests.Unit.Sensors
         }
 
         [Fact]
+        public void SlotBoundsQueuedFrameIdBytes()
+        {
+            using var slot = new ImuNativeFrameSlot(2, 4);
+            Assert.True(slot.Publish(CreateFrame(1, "abcd")));
+            Assert.True(slot.Publish(CreateFrame(2, "efgh")));
+            Assert.Equal(1, slot.Count);
+            Assert.True(slot.TryTake(out var frame));
+            Assert.Equal((ulong)2, frame.UnixNs);
+            Assert.Equal(1, slot.Stats.Dropped);
+        }
+
+        [Fact]
         public void SlotRetainsFifoFramesUntilCapacityAndReportsOverflow()
         {
             using var slot = new ImuNativeFrameSlot(2);
@@ -137,9 +149,12 @@ namespace Unity.FoxgloveSDK.Tests.Unit.Sensors
         }
 
         private static ImuNativeFrame CreateFrame(ulong timestamp)
+            => CreateFrame(timestamp, "imu_link");
+
+        private static ImuNativeFrame CreateFrame(ulong timestamp, string frameId)
             => new ImuNativeFrame(
                 timestamp,
-                "imu_link",
+                frameId,
                 Vector3.Zero,
                 Vector3.Zero,
                 Quaternion.Identity,
