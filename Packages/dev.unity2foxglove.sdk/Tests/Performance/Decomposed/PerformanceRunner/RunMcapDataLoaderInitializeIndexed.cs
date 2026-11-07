@@ -293,7 +293,7 @@ namespace Unity.FoxgloveSDK.Performance
             return result;
         }
 
-        private static PerformanceScenarioResult RunPublishProtoFanout(
+        internal static PerformanceScenarioResult RunPublishProtoFanout(
             int warmup,
             int topics,
             int clients,

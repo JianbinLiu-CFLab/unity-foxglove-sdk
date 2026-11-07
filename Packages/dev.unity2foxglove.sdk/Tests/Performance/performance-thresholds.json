@@ -1,15 +1,15 @@
 {
   "enabled": true,
   "transportScope": "FakePerformanceTransport serialization/dispatch path only; excludes ManagedWsBackend sockets and TLS",
-  "calibratedOn": "GitHub Actions ubuntu-latest and local quick-mode baselines; review thresholds when runner class or workload changes.",
+  "calibratedOn": "Phase199 quick baseline: 1.5x observed LargePayloadFanout allocation/GC envelope",
   "defaults": {
     "maxElapsedMs": 120000,
     "minMessagesPerSecond": 1.0,
-    "maxAllocatedBytesPerMessage": 67108864.0,
-    "maxAllocatedBytesTotal": 1099511627776.0,
-    "maxGen0Collections": 1000,
-    "maxGen1Collections": 100,
-    "maxGen2Collections": 10
+    "maxAllocatedBytesPerMessage": 8388608,
+    "maxAllocatedBytesTotal": 268435456,
+    "maxGen0Collections": 100,
+    "maxGen1Collections": 20,
+    "maxGen2Collections": 5
   },
   "scenarios": {
     "CameraBackpressurePolicyMicro": {
@@ -31,8 +31,8 @@
     "LargePayloadFanout": {
       "maxElapsedMs": 120000,
       "minMessagesPerSecond": 1.0,
-      "maxAllocatedBytesPerMessage": 67108864.0,
-      "maxAllocatedBytesTotal": 1099511627776.0,
+      "maxAllocatedBytesPerMessage": 4194304,
+      "maxAllocatedBytesTotal": 17179869184,
       "maxGen0Collections": 2000,
       "maxGen1Collections": 2000,
       "maxGen2Collections": 2000
@@ -43,11 +43,11 @@
       "defaults": {
         "maxElapsedMs": 600000,
         "minMessagesPerSecond": 1.0,
-        "maxAllocatedBytesPerMessage": 67108864.0,
-        "maxAllocatedBytesTotal": 1099511627776.0,
-        "maxGen0Collections": 10000,
-        "maxGen1Collections": 1000,
-        "maxGen2Collections": 50
+        "maxAllocatedBytesPerMessage": 8388608,
+        "maxAllocatedBytesTotal": 268435456,
+        "maxGen0Collections": 100,
+        "maxGen1Collections": 20,
+        "maxGen2Collections": 5
       },
       "scenarios": {
         "CameraBackpressurePolicyMicro": {
@@ -65,6 +65,28 @@
           "maxAllocatedBytesPerMessage": 67108864.0,
           "maxAllocatedBytesTotal": 67108864.0,
           "maxGen2Collections": 0
+        },
+        "LargePayloadFanout": {
+          "maxElapsedMs": 120000,
+          "minMessagesPerSecond": 1.0,
+          "maxAllocatedBytesPerMessage": 4194304,
+          "maxAllocatedBytesTotal": 17179869184,
+          "maxGen0Collections": 2000,
+          "maxGen1Collections": 2000,
+          "maxGen2Collections": 2000
+        }
+      }
+    },
+    "quick": {
+      "scenarios": {
+        "LargePayloadFanout": {
+          "maxElapsedMs": 120000,
+          "minMessagesPerSecond": 1.0,
+          "maxAllocatedBytesPerMessage": 4194304,
+          "maxAllocatedBytesTotal": 17179869184,
+          "maxGen0Collections": 2000,
+          "maxGen1Collections": 2000,
+          "maxGen2Collections": 2000
         }
       }
     }

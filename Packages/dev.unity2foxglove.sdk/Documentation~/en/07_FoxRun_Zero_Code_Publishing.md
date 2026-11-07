@@ -113,6 +113,16 @@ A declaration override cannot exceed the admission ceiling. Accepted input is
 bounded latest-wins: if Unity cannot apply every value, the newest owned value
 replaces the older pending value.
 
+### Performance Evidence
+
+The repository performance baseline exercises the public admission path at a
+bounded 1000 Hz ceiling. Large-payload evidence uses 1 MB payloads across one
+and four WebSocket clients plus an uncompressed MCAP sink. The benchmark keeps
+allocation and generation-collection ceilings finite so a regression fails the
+gate instead of being hidden by an unlimited throughput-only run. A production
+scene should still use explicit backpressure and admission controls for large
+payloads rather than treating the benchmark as a delivery guarantee.
+
 ## 5. Subscribe Data
 
 Subscribe Data is an external control surface and is disabled by default.

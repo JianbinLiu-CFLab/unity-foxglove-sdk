@@ -35,7 +35,7 @@ namespace Unity.FoxgloveSDK.Performance
                 : overrideElapsed(actualElapsedMilliseconds);
         }
 
-        private static PerformanceScenarioResult TimedScenario(string name, int warmupCount, int msgCount,
+        internal static PerformanceScenarioResult TimedScenario(string name, int warmupCount, int msgCount,
             Action warmup, Action<int> measured, PerformanceThresholdConfig thresholds)
         {
             // Warmup
@@ -93,7 +93,7 @@ namespace Unity.FoxgloveSDK.Performance
             };
         }
 
-        private static void ApplyThresholds(PerformanceScenarioResult result, PerformanceThresholdConfig thresholds)
+        internal static void ApplyThresholds(PerformanceScenarioResult result, PerformanceThresholdConfig thresholds)
         {
             var threshold = ResolveThreshold(result.name, thresholds);
             if (threshold == null)

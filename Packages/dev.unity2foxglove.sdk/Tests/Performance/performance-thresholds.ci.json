@@ -1,25 +1,25 @@
 {
   "enabled": true,
   "transportScope": "CI performance harness with report-only throughput",
-  "calibratedOn": "Phase199 initial CI allocation gate",
+  "calibratedOn": "Phase199 quick baseline: 1.5x observed LargePayloadFanout allocation/GC envelope",
   "defaults": {
     "maxElapsedMs": 600000,
     "minMessagesPerSecond": 0,
-    "maxAllocatedBytesPerMessage": 67108864,
-    "maxAllocatedBytesTotal": 1099511627776,
-    "maxGen0Collections": 10000,
-    "maxGen1Collections": 1000,
-    "maxGen2Collections": 50
+    "maxAllocatedBytesPerMessage": 8388608,
+    "maxAllocatedBytesTotal": 268435456,
+    "maxGen0Collections": 100,
+    "maxGen1Collections": 20,
+    "maxGen2Collections": 5
   },
   "scenarios": {
     "LargePayloadFanout": {
       "maxElapsedMs": 600000,
       "minMessagesPerSecond": 0,
-      "maxAllocatedBytesPerMessage": 67108864,
-      "maxAllocatedBytesTotal": 1099511627776,
-      "maxGen0Collections": 10000,
-      "maxGen1Collections": 2500,
-      "maxGen2Collections": 2500
+      "maxAllocatedBytesPerMessage": 4194304,
+      "maxAllocatedBytesTotal": 17179869184,
+      "maxGen0Collections": 2000,
+      "maxGen1Collections": 2000,
+      "maxGen2Collections": 2000
     }
   },
   "modes": {
@@ -27,22 +27,44 @@
       "defaults": {
         "maxElapsedMs": 600000,
         "minMessagesPerSecond": 0,
-        "maxAllocatedBytesPerMessage": 67108864,
-        "maxAllocatedBytesTotal": 1099511627776,
-        "maxGen0Collections": 10000,
-        "maxGen1Collections": 1000,
-        "maxGen2Collections": 50
+        "maxAllocatedBytesPerMessage": 8388608,
+        "maxAllocatedBytesTotal": 268435456,
+        "maxGen0Collections": 100,
+        "maxGen1Collections": 20,
+        "maxGen2Collections": 5
+      },
+      "scenarios": {
+        "LargePayloadFanout": {
+          "maxElapsedMs": 600000,
+          "minMessagesPerSecond": 0,
+          "maxAllocatedBytesPerMessage": 4194304,
+          "maxAllocatedBytesTotal": 17179869184,
+          "maxGen0Collections": 2000,
+          "maxGen1Collections": 2000,
+          "maxGen2Collections": 2000
+        }
       }
     },
     "full": {
       "defaults": {
         "maxElapsedMs": 600000,
         "minMessagesPerSecond": 0,
-        "maxAllocatedBytesPerMessage": 67108864,
-        "maxAllocatedBytesTotal": 1099511627776,
-        "maxGen0Collections": 10000,
-        "maxGen1Collections": 1000,
-        "maxGen2Collections": 50
+        "maxAllocatedBytesPerMessage": 8388608,
+        "maxAllocatedBytesTotal": 268435456,
+        "maxGen0Collections": 100,
+        "maxGen1Collections": 20,
+        "maxGen2Collections": 5
+      },
+      "scenarios": {
+        "LargePayloadFanout": {
+          "maxElapsedMs": 600000,
+          "minMessagesPerSecond": 0,
+          "maxAllocatedBytesPerMessage": 4194304,
+          "maxAllocatedBytesTotal": 17179869184,
+          "maxGen0Collections": 2000,
+          "maxGen1Collections": 2000,
+          "maxGen2Collections": 2000
+        }
       }
     }
   }

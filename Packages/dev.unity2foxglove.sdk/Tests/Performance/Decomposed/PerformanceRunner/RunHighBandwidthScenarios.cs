@@ -16,9 +16,9 @@ using Unity.FoxgloveSDK.Transport;
 
 namespace Unity.FoxgloveSDK.Performance
 {
-    public static partial class PerformanceRunner
+    internal static class HighBandwidthScenarioRunner
     {
-        private static PerformanceScenarioResult RunFoxRunStreamIngest(
+        internal static PerformanceScenarioResult RunFoxRunStreamIngest(
             int warmup,
             int messages,
             PerformanceThresholdConfig thresholds)
@@ -33,21 +33,20 @@ namespace Unity.FoxgloveSDK.Performance
                 unboundedRun,
                 "Default and Unbounded producer-thread admission/drain variants; "
                     + $"default={defaultRun.Notes}; unbounded={unboundedRun.Notes}");
-            ApplyThresholds(result, thresholds);
+            PerformanceRunner.ApplyThresholds(result, thresholds);
             return result;
         }
 
-        private static PerformanceScenarioResult RunFoxRunPublishPayload(
+        internal static PerformanceScenarioResult RunFoxRunPublishPayload(
             int warmup,
             int topics,
-            int clients,
             int messages,
             PerformanceThresholdConfig thresholds)
         {
-            var jsonOne = RunPublishJsonFanout(warmup, topics, 1, messages, thresholds);
-            var jsonFour = RunPublishJsonFanout(warmup, topics, 4, messages, thresholds);
-            var protoOne = RunPublishProtoFanout(warmup, topics, 1, messages, thresholds);
-            var protoFour = RunPublishProtoFanout(warmup, topics, 4, messages, thresholds);
+            var jsonOne = PerformanceRunner.RunPublishJsonFanout(warmup, topics, 1, messages, thresholds);
+            var jsonFour = PerformanceRunner.RunPublishJsonFanout(warmup, topics, 4, messages, thresholds);
+            var protoOne = PerformanceRunner.RunPublishProtoFanout(warmup, topics, 1, messages, thresholds);
+            var protoFour = PerformanceRunner.RunPublishProtoFanout(warmup, topics, 4, messages, thresholds);
             var messagePackOne = RunMessagePackFanout(warmup, 1, messages, thresholds);
             var messagePackFour = RunMessagePackFanout(warmup, 4, messages, thresholds);
             var result = CombineScenarioResults(
@@ -61,19 +60,20 @@ namespace Unity.FoxgloveSDK.Performance
                 protoFour,
                 messagePackOne,
                 messagePackFour);
-            ApplyThresholds(result, thresholds);
+            PerformanceRunner.ApplyThresholds(result, thresholds);
             return result;
         }
 
-        private static PerformanceScenarioResult RunWsSendQueueLargeFrame(
+        internal static PerformanceScenarioResult RunWsSendQueueLargeFrame(
             PerformanceThresholdConfig thresholds)
         {
             var sizes = new[] { 64 * 1024, 1024 * 1024, 4 * 1024 * 1024 };
-            PrepareAllocMeasurement(out var gcBeforeTotal, out var gcBeforeThread,
+            PerformanceRunner.PrepareAllocMeasurement(out var gcBeforeTotal, out var gcBeforeThread,
                 out var gen0Before, out var gen1Before, out var gen2Before);
             var sw = Stopwatch.StartNew();
             var passed = true;
             var details = new List<string>();
+            var frameEvidence = new List<PerformanceFrameEvidence>();
             var operations = 0;
             foreach (var size in sizes)
             {
@@ -98,10 +98,18 @@ namespace Unity.FoxgloveSDK.Performance
                 operations++;
                 passed &= queue.TryDequeue(out var first) && first.Priority == FramePriority.Control;
                 operations++;
+                var controlDequeuedFirst = first.Priority == FramePriority.Control;
+                frameEvidence.Add(new PerformanceFrameEvidence
+                {
+                    sizeBytes = size,
+                    droppedDataFrames = queue.DroppedDataFramesSnapshot,
+                    queuedBytes = queue.QueuedBytes,
+                    controlDequeuedFirst = controlDequeuedFirst
+                });
                 details.Add($"{size}B:dropped={queue.DroppedDataFramesSnapshot};queued={queue.QueuedBytes}");
             }
             sw.Stop();
-            var metrics = CollectAllocMetricSample(
+            var metrics = PerformanceRunner.CollectAllocMetricSample(
                 gcBeforeTotal,
                 gcBeforeThread,
                 gen0Before,
@@ -123,13 +131,14 @@ namespace Unity.FoxgloveSDK.Performance
                 gen2Collections = metrics.Gen2Collections,
                 allocationNotes = metrics.AllocationNotes,
                 passed = passed,
+                frameEvidence = frameEvidence,
                 notes = string.Join("; ", details)
             };
-            ApplyThresholds(result, thresholds);
+            PerformanceRunner.ApplyThresholds(result, thresholds);
             return result;
         }
 
-        private static PerformanceScenarioResult RunLargePayloadFanout(
+        internal static PerformanceScenarioResult RunLargePayloadFanout(
             int warmup,
             int messages,
             PerformanceThresholdConfig thresholds)
@@ -144,7 +153,7 @@ namespace Unity.FoxgloveSDK.Performance
                 fourClients,
                 $"WebSocket one/four-client and MCAP none-compression sinks; mcap={mcap.notes}",
                 mcap);
-            ApplyThresholds(result, thresholds);
+            PerformanceRunner.ApplyThresholds(result, thresholds);
             return result;
         }
 
@@ -153,6 +162,8 @@ namespace Unity.FoxgloveSDK.Performance
             var stream = new FoxRunStream<int>(new FoxRunStreamOptions(
                 capacity, maxInputHz, maxBatch, FoxRunStreamOverflowPolicy.DropOldest));
             Action<int> dispose = _ => { };
+            PerformanceRunner.PrepareAllocMeasurement(out var gcBeforeTotal, out var gcBeforeThread,
+                out var gen0Before, out var gen1Before, out var gen2Before);
             var stop = new ManualResetEventSlim(false);
             Exception producerError = null;
             var producer = new Thread(() =>
@@ -186,6 +197,13 @@ namespace Unity.FoxgloveSDK.Performance
             var queued = stream.Count;
             stream.Dispose();
             stop.Dispose();
+            var metrics = PerformanceRunner.CollectAllocMetricSample(
+                gcBeforeTotal,
+                gcBeforeThread,
+                gen0Before,
+                gen1Before,
+                gen2Before,
+                checked((int)Math.Min(int.MaxValue, Math.Max(1L, stats.Admitted))));
             var elapsedSeconds = stopwatch.Elapsed.TotalSeconds;
             var ceiling = (long)Math.Ceiling(maxInputHz * elapsedSeconds) + 2;
             var accounting = stats.Received == stats.Admitted + stats.RateDropped
@@ -200,6 +218,7 @@ namespace Unity.FoxgloveSDK.Performance
                 ElapsedMs = stopwatch.ElapsedMilliseconds,
                 MessageCount = checked((int)Math.Min(int.MaxValue, stats.Admitted)),
                 Passed = passed,
+                Metrics = metrics,
                 Notes = $"admitted={stats.Admitted};received={stats.Received};rateDropped={stats.RateDropped};"
                     + $"droppedOldest={stats.DroppedOldest};drained={stats.Drained};ceiling={ceiling}"
             };
@@ -223,7 +242,7 @@ namespace Unity.FoxgloveSDK.Performance
                 transport.SimulateSubscribe(clientId, clientId, 1);
             }
             var payload = MakeMessagePackPayload();
-            var result = TimedScenario($"FoxRunPublishPayload.MessagePack.{clients}", warmup, messages, () =>
+            var result = PerformanceRunner.TimedScenario($"FoxRunPublishPayload.MessagePack.{clients}", warmup, messages, () =>
             {
                 for (var i = 0; i < warmup; i++)
                     session.Publish(1, payload);
@@ -259,7 +278,7 @@ namespace Unity.FoxgloveSDK.Performance
                 transport.SimulateSubscribe(clientId, clientId, 1);
             }
             var payload = new byte[1024 * 1024];
-            var result = TimedScenario($"LargePayloadFanout.WebSocket.{clients}", warmup, messages, () =>
+            var result = PerformanceRunner.TimedScenario($"LargePayloadFanout.WebSocket.{clients}", warmup, messages, () =>
             {
                 for (var i = 0; i < warmup; i++)
                     session.Publish(1, payload);
@@ -279,7 +298,7 @@ namespace Unity.FoxgloveSDK.Performance
         {
             var payload = new byte[1024 * 1024];
             long outputBytes = 0;
-            var result = TimedScenario("LargePayloadFanout.Mcap", messages, messages, () =>
+            var result = PerformanceRunner.TimedScenario("LargePayloadFanout.Mcap", messages, messages, () =>
             {
                 using var warmupStream = new MemoryStream();
                 using var warmupRecorder = new McapRecorder(warmupStream);
@@ -330,9 +349,11 @@ namespace Unity.FoxgloveSDK.Performance
             var passed = first.Passed && second.Passed;
             var allocatedTotal = 0L;
             var allocatedThread = 0L;
-            var gen0 = 0;
-            var gen1 = 0;
-            var gen2 = 0;
+            var gen0 = first.Metrics.Gen0Collections + second.Metrics.Gen0Collections;
+            var gen1 = first.Metrics.Gen1Collections + second.Metrics.Gen1Collections;
+            var gen2 = first.Metrics.Gen2Collections + second.Metrics.Gen2Collections;
+            allocatedTotal = checked(first.Metrics.AllocatedBytesTotal + second.Metrics.AllocatedBytesTotal);
+            allocatedThread = checked(first.Metrics.AllocatedBytesCurrentThread + second.Metrics.AllocatedBytesCurrentThread);
             foreach (var result in additional ?? Array.Empty<PerformanceScenarioResult>())
             {
                 elapsed += result.elapsedMs;
@@ -381,6 +402,7 @@ namespace Unity.FoxgloveSDK.Performance
             var gen0 = 0;
             var gen1 = 0;
             var gen2 = 0;
+            var outputBytes = 0L;
             var passed = true;
             foreach (var result in results)
             {
@@ -391,6 +413,7 @@ namespace Unity.FoxgloveSDK.Performance
                 gen0 += result.gen0Collections;
                 gen1 += result.gen1Collections;
                 gen2 += result.gen2Collections;
+                outputBytes = checked(outputBytes + result.outputBytes);
                 passed &= result.passed;
             }
 
@@ -407,6 +430,7 @@ namespace Unity.FoxgloveSDK.Performance
                 gen0Collections = gen0,
                 gen1Collections = gen1,
                 gen2Collections = gen2,
+                outputBytes = outputBytes,
                 passed = passed,
                 notes = notes
             };
@@ -417,6 +441,7 @@ namespace Unity.FoxgloveSDK.Performance
             public long ElapsedMs;
             public int MessageCount;
             public bool Passed;
+            public PerformanceRunner.AllocationMetricSample Metrics;
             public string Notes;
         }
     }

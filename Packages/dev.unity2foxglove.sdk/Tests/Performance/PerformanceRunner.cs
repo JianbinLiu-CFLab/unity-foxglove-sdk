@@ -306,17 +306,17 @@ namespace Unity.FoxgloveSDK.Performance
             results.Add(RunMcapRecordAttachmentSummary(activeThresholds));
             results.Add(RunCameraBackpressurePolicyMicro(activeThresholds));
             results.Add(RunTransportQueueMicro(activeThresholds));
-            results.Add(RunFoxRunStreamIngest(warmup, messages, activeThresholds));
-            results.Add(RunFoxRunPublishPayload(warmup, topics, clients, messages, activeThresholds));
-            results.Add(RunWsSendQueueLargeFrame(activeThresholds));
-            results.Add(RunLargePayloadFanout(warmup, messages, activeThresholds));
+            results.Add(HighBandwidthScenarioRunner.RunFoxRunStreamIngest(warmup, messages, activeThresholds));
+            results.Add(HighBandwidthScenarioRunner.RunFoxRunPublishPayload(warmup, topics, messages, activeThresholds));
+            results.Add(HighBandwidthScenarioRunner.RunWsSendQueueLargeFrame(activeThresholds));
+            results.Add(HighBandwidthScenarioRunner.RunLargePayloadFanout(warmup, messages, activeThresholds));
 
             return results;
         }
 
         // Helpers
 
-        private static void PrepareAllocMeasurement(out long gcBeforeTotal, out long gcBeforeThread,
+        internal static void PrepareAllocMeasurement(out long gcBeforeTotal, out long gcBeforeThread,
             out int gen0Before, out int gen1Before, out int gen2Before)
         {
             GC.Collect();
@@ -346,7 +346,7 @@ namespace Unity.FoxgloveSDK.Performance
             notes = null;
         }
 
-        private static AllocationMetricSample CollectAllocMetricSample(
+        internal static AllocationMetricSample CollectAllocMetricSample(
             long gcBeforeTotal,
             long gcBeforeThread,
             int gen0Before,
@@ -388,7 +388,7 @@ namespace Unity.FoxgloveSDK.Performance
             return Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(obj));
         }
 
-        private static PerformanceScenarioResult RunPublishJsonFanout(
+        internal static PerformanceScenarioResult RunPublishJsonFanout(
             int warmup,
             int topics,
             int clients,
