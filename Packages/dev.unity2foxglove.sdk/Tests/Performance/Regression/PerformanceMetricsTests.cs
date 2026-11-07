@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using Newtonsoft.Json;
 using Unity.FoxgloveSDK.Performance;
@@ -80,6 +81,102 @@ namespace Unity.FoxgloveSDK.Performance.Tests
             Assert.True(result.gen0Collections >= 0);
             Assert.True(result.gen1Collections >= 0);
             Assert.True(result.gen2Collections >= 0);
+        }
+
+        [Fact]
+        public void LargeFrameQueueScenarioCoversAllConfiguredFrameSizes()
+        {
+            var result = InvokeScenario(
+                "RunWsSendQueueLargeFrame",
+                new PerformanceThresholdConfig { enabled = false });
+
+            Assert.True(result.passed);
+            Assert.NotNull(result.frameEvidence);
+            Assert.Equal(new[] { 65536, 1048576, 4194304 }, result.frameEvidence.Select(item => item.sizeBytes));
+            Assert.All(result.frameEvidence, item =>
+            {
+                Assert.True(item.droppedDataFrames > 0);
+                Assert.True(item.queuedBytes <= item.sizeBytes * 2L);
+                Assert.True(item.controlDequeuedFirst);
+            });
+        }
+
+        [Fact]
+        public void MessagePackPublishUsesConfiguredTopicCount()
+        {
+            var runnerType = typeof(PerformanceRunner).Assembly
+                .GetType("Unity.FoxgloveSDK.Performance.HighBandwidthScenarioRunner");
+            var method = runnerType.GetMethod("RunMessagePackFanout", BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.NotNull(method);
+
+            var result = (PerformanceScenarioResult)method.Invoke(
+                null,
+                new object[]
+                {
+                    1,
+                    3,
+                    2,
+                    4,
+                    new PerformanceThresholdConfig { enabled = false }
+                });
+
+            Assert.Equal(12, result.messageCount);
+            Assert.Contains("topics=3", result.notes);
+            Assert.Contains("clients=2", result.notes);
+        }
+
+        [Fact]
+        public void LargePayloadThresholdsFailBelowObservedAllocation()
+        {
+            var thresholds = Thresholds(
+                "LargePayloadFanout",
+                new PerformanceScenarioThreshold
+                {
+                    maxAllocatedBytesPerMessage = 1,
+                    maxAllocatedBytesTotal = 1,
+                    maxGen2Collections = 0
+                });
+
+            var result = new PerformanceScenarioResult
+            {
+                name = "LargePayloadFanout",
+                messageCount = 4,
+                allocatedBytesPerMessage = 2,
+                allocatedBytesTotal = 8,
+                gen2Collections = 1,
+                passed = true
+            };
+            typeof(PerformanceRunner)
+                .GetMethod("ApplyThresholds", BindingFlags.NonPublic | BindingFlags.Static)
+                .Invoke(null, new object[] { result, thresholds });
+
+            Assert.False(result.passed);
+            Assert.Contains("allocatedBytesPerMessage", result.thresholdNotes);
+            Assert.Contains("allocatedBytesTotal", result.thresholdNotes);
+        }
+
+        [Fact]
+        public void StreamScenarioTransfersAllocationMetricsToAggregate()
+        {
+            try
+            {
+                PerformanceRunner.AllocationMetricsOverrideForTests = count =>
+                    new PerformanceRunner.AllocationMetricSample(count * 2L, count, 2.0, 1, 2, 3, "override");
+                var thresholds = Thresholds(
+                    "FoxRunStreamIngest",
+                    new PerformanceScenarioThreshold { maxAllocatedBytesTotal = 1, maxGen2Collections = 0 });
+                var runnerType = typeof(PerformanceRunner).Assembly.GetType("Unity.FoxgloveSDK.Performance.HighBandwidthScenarioRunner");
+                var method = runnerType.GetMethod("RunFoxRunStreamIngest", BindingFlags.NonPublic | BindingFlags.Static);
+                var result = (PerformanceScenarioResult)method.Invoke(null, new object[] { 500, 2000, thresholds });
+
+                Assert.True(result.allocatedBytesTotal > 0);
+                Assert.True(result.gen2Collections > 0);
+                Assert.False(result.passed);
+            }
+            finally
+            {
+                PerformanceRunner.AllocationMetricsOverrideForTests = null;
+            }
         }
 
         [Fact]
@@ -240,6 +337,9 @@ namespace Unity.FoxgloveSDK.Performance.Tests
             var method = typeof(PerformanceRunner).GetMethod(
                 methodName,
                 BindingFlags.Static | BindingFlags.NonPublic);
+            method ??= typeof(PerformanceRunner).Assembly
+                .GetType("Unity.FoxgloveSDK.Performance.HighBandwidthScenarioRunner")
+                ?.GetMethod(methodName, BindingFlags.Static | BindingFlags.NonPublic);
             Assert.NotNull(method);
             try
             {

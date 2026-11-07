@@ -16,6 +16,7 @@ from Scripts.validation.plan_audit import source_text_rules
 from Scripts.validation.plan_audit import unity_coverage
 from Scripts.validation.plan_audit import unity_acceptance
 from Scripts.validation.plan_audit import unity_lane
+from Scripts.validation.plan_audit import performance_evidence
 
 
 class PlanAuditLibraryTests(unittest.TestCase):

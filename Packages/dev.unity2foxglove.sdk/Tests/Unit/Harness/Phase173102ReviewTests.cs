@@ -3,6 +3,7 @@
 
 using System;
 using System.Text.RegularExpressions;
+using System.Text.Json;
 using Xunit;
 
 namespace Unity.FoxgloveSDK.UnitTests.Harness
@@ -92,8 +93,14 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             var json = TestSources.Text("Packages/dev.unity2foxglove.sdk/Tests/Performance/performance-thresholds.json");
             var runner = TestSources.Text("Packages/dev.unity2foxglove.sdk/Tests/Performance/PerformanceRunner.cs");
 
-            Assert.Contains("\"maxGen2Collections\": 10", json, StringComparison.Ordinal);
-            Assert.Contains("\"maxGen2Collections\": 50", json, StringComparison.Ordinal);
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+            Assert.Equal(10, root.GetProperty("defaults").GetProperty("maxGen2Collections").GetInt32());
+            Assert.Equal(10, root.GetProperty("modes").GetProperty("quick").GetProperty("defaults").GetProperty("maxGen2Collections").GetInt32());
+            Assert.Equal(50, root.GetProperty("modes").GetProperty("full").GetProperty("defaults").GetProperty("maxGen2Collections").GetInt32());
+            Assert.Equal(2000, root.GetProperty("scenarios").GetProperty("LargePayloadFanout").GetProperty("maxGen2Collections").GetInt32());
+            Assert.Equal(2000, root.GetProperty("modes").GetProperty("quick").GetProperty("scenarios").GetProperty("LargePayloadFanout").GetProperty("maxGen2Collections").GetInt32());
+            Assert.Equal(2000, root.GetProperty("modes").GetProperty("full").GetProperty("scenarios").GetProperty("LargePayloadFanout").GetProperty("maxGen2Collections").GetInt32());
             Assert.Contains("maxGen2Collections = isFull ? 50 : 10", runner, StringComparison.Ordinal);
             Assert.DoesNotContain("\"maxGen2Collections\": 1000", json, StringComparison.Ordinal);
         }

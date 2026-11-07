@@ -147,6 +147,19 @@ durable format. Foxglove WebSocket and MCAP reuse canonical message semantics,
 but neither is a required dependency of the other. RViz is an indirect ROS2
 consumer, not a Manager sink.
 
+### Performance Evidence and Backpressure
+
+Plan199's `LargePayloadFanout` benchmark records one and four fake WebSocket
+clients together with an uncompressed MCAP sink using 1 MB payloads. The
+current quick baseline allocates about 2.6 MB per message and triggers roughly
+1,300-1,400 gen2 collections over the measured run (about one collection every
+three messages). That result is evidence of copy
+and allocation pressure, not a zero-allocation claim. The benchmark therefore
+uses finite ceilings with a documented 1.5x allowance and keeps backpressure and
+admission control as explicit runtime responsibilities. The separate
+`FoxRunStreamIngest` run verifies the public 1000 Hz admission ceiling under a
+producer thread and drain loop.
+
 ### 3.1 Declaration and Model Resolution
 
 The declaration layer captures the compact user contract. The resolver expands it into a canonical model containing, as applicable:

@@ -56,6 +56,15 @@ namespace Unity.FoxgloveSDK.Performance
         public bool thresholdsEvaluated { get; set; }
         public string thresholdNotes { get; set; }
         public string notes { get; set; }
+        public System.Collections.Generic.List<PerformanceFrameEvidence> frameEvidence { get; set; }
         public bool passed { get; set; }
+    }
+
+    public sealed class PerformanceFrameEvidence
+    {
+        public int sizeBytes { get; set; }
+        public long droppedDataFrames { get; set; }
+        public long queuedBytes { get; set; }
+        public bool controlDequeuedFirst { get; set; }
     }
 }
