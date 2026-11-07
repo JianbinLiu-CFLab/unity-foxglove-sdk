@@ -144,7 +144,9 @@ namespace Unity2Foxglove.Ros2Bridge
                 {
                     read = stream.Read(bytes, offset, count - offset);
                 }
-                catch (IOException exception) when (deadline.ElapsedMilliseconds >= timeoutMs)
+                catch (IOException exception) when (
+                    deadline.ElapsedMilliseconds >= timeoutMs
+                    || IsSocketReadTimeout(exception))
                 {
                     throw new TimeoutException(
                         "ROS2 Bridge health probe exceeded its total deadline.",
@@ -155,6 +157,12 @@ namespace Unity2Foxglove.Ros2Bridge
                 offset += read;
             }
             return bytes;
+        }
+
+        private static bool IsSocketReadTimeout(IOException exception)
+        {
+            return exception.InnerException is SocketException socketException
+                   && socketException.SocketErrorCode == SocketError.TimedOut;
         }
 
         private static int RemainingMilliseconds(Stopwatch deadline, int timeoutMs)
