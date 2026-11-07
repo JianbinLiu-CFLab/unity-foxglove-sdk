@@ -24,12 +24,15 @@ class SourceTextInventoryTests(unittest.TestCase):
             source.parent.mkdir(parents=True)
             source.write_text(
                 'var source = ReadRequiredRepoText("Runtime/Foo.cs");\n'
-                'Assert.Contains("token", source);\n',
+                'Assert.Contains("token", source);\n'
+                'Assert.Contains("ordinary", exception.Message);\n',
                 encoding="utf-8",
             )
             rows = inventory(root)
             self.assertEqual(2, len(rows))
             self.assertEqual("C", rows[0]["class"])
+            self.assertEqual("Runtime/Foo.cs", rows[1]["target"])
+            self.assertEqual("", rows[1]["validation_flag"])
             output = root / "build" / "inventory"
             write_report(rows, output)
             self.assertTrue((output / "source_text_inventory.csv").is_file())
