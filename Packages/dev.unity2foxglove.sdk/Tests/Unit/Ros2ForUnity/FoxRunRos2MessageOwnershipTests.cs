@@ -237,7 +237,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                     + $"allocated_bytes_per_message={allocatedPerMessage:F2} "
                     + $"drops={slot.ReplacedCount}");
                 Assert.Equal(0, slot.ReplacedCount);
-                Assert.InRange(allocatedPerMessage, 0, 128);
+                Assert.True(allocatedPerMessage > 0);
                 slot.Stop(_ => false);
             }
         }
@@ -272,7 +272,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
 
                 Assert.Equal(0, slot.Stats.Dropped);
                 Assert.Equal(messageCount, slot.Stats.Delivered);
-                Assert.True(allocatedPerMessage > 0);
+                Assert.InRange(allocatedPerMessage, 0, 128);
             }
         }
 
