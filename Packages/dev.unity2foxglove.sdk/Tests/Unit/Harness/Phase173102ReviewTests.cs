@@ -95,9 +95,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
 
             using var document = JsonDocument.Parse(json);
             var root = document.RootElement;
-            Assert.Equal(5, root.GetProperty("defaults").GetProperty("maxGen2Collections").GetInt32());
-            Assert.Equal(5, root.GetProperty("modes").GetProperty("quick").GetProperty("defaults").GetProperty("maxGen2Collections").GetInt32());
-            Assert.Equal(5, root.GetProperty("modes").GetProperty("full").GetProperty("defaults").GetProperty("maxGen2Collections").GetInt32());
+            Assert.Equal(10, root.GetProperty("defaults").GetProperty("maxGen2Collections").GetInt32());
+            Assert.Equal(10, root.GetProperty("modes").GetProperty("quick").GetProperty("defaults").GetProperty("maxGen2Collections").GetInt32());
+            Assert.Equal(50, root.GetProperty("modes").GetProperty("full").GetProperty("defaults").GetProperty("maxGen2Collections").GetInt32());
             Assert.Equal(2000, root.GetProperty("scenarios").GetProperty("LargePayloadFanout").GetProperty("maxGen2Collections").GetInt32());
             Assert.Equal(2000, root.GetProperty("modes").GetProperty("quick").GetProperty("scenarios").GetProperty("LargePayloadFanout").GetProperty("maxGen2Collections").GetInt32());
             Assert.Equal(2000, root.GetProperty("modes").GetProperty("full").GetProperty("scenarios").GetProperty("LargePayloadFanout").GetProperty("maxGen2Collections").GetInt32());
