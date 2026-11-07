@@ -25,6 +25,30 @@ namespace Unity.FoxgloveSDK.Schemas.Imu
             Vector3 angularVelocity,
             Quaternion orientation,
             bool hasOrientation)
+            : this(
+                unixNs,
+                frameId,
+                linearAcceleration,
+                angularVelocity,
+                orientation,
+                hasOrientation,
+                true,
+                true)
+        {
+        }
+
+        /// <summary>
+        /// Create a schema-neutral IMU handoff frame with covariance availability flags.
+        /// </summary>
+        public ImuNativeFrame(
+            ulong unixNs,
+            string frameId,
+            Vector3 linearAcceleration,
+            Vector3 angularVelocity,
+            Quaternion orientation,
+            bool hasOrientation,
+            bool hasLinearAcceleration = true,
+            bool hasAngularVelocity = true)
         {
             ValidateFinite(linearAcceleration, nameof(linearAcceleration));
             ValidateFinite(angularVelocity, nameof(angularVelocity));
@@ -35,6 +59,8 @@ namespace Unity.FoxgloveSDK.Schemas.Imu
             AngularVelocity = angularVelocity;
             Orientation = orientation;
             HasOrientation = hasOrientation;
+            HasLinearAcceleration = hasLinearAcceleration;
+            HasAngularVelocity = hasAngularVelocity;
         }
 
         private static void ValidateFinite(Vector3 value, string parameterName)
@@ -69,5 +95,11 @@ namespace Unity.FoxgloveSDK.Schemas.Imu
 
         /// <summary>Whether orientation is valid and should be emitted.</summary>
         public bool HasOrientation { get; }
+
+        /// <summary>Whether linear acceleration covariance was provided.</summary>
+        public bool HasLinearAcceleration { get; }
+
+        /// <summary>Whether angular velocity covariance was provided.</summary>
+        public bool HasAngularVelocity { get; }
     }
 }
