@@ -16,6 +16,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
     [DefaultExecutionOrder(-430)]
     public sealed class Ros2ForUnityImuInboundBridge : MonoBehaviour
     {
+        private const int MaxFramesPerUpdate = 32;
+
         [SerializeField]
         private string _topic = "/imu/data";
 
@@ -254,7 +256,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         private void DrainAvailable()
         {
-            var budget = _slot == null ? 0 : Math.Min(_slot.Count, _slot.Capacity);
+            var budget = _slot == null
+                ? 0
+                : Math.Min(Math.Min(_slot.Count, _slot.Capacity), MaxFramesPerUpdate);
             while (budget-- > 0 && DrainOne())
             {
             }
