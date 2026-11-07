@@ -24,6 +24,28 @@ namespace Unity.FoxgloveSDK.Schemas.Imu
             Vector3 linearAcceleration,
             Vector3 angularVelocity,
             Quaternion orientation,
+            bool hasOrientation)
+            : this(
+                unixNs,
+                frameId,
+                linearAcceleration,
+                angularVelocity,
+                orientation,
+                hasOrientation,
+                true,
+                true)
+        {
+        }
+
+        /// <summary>
+        /// Create a schema-neutral IMU handoff frame with covariance availability flags.
+        /// </summary>
+        public ImuNativeFrame(
+            ulong unixNs,
+            string frameId,
+            Vector3 linearAcceleration,
+            Vector3 angularVelocity,
+            Quaternion orientation,
             bool hasOrientation,
             bool hasLinearAcceleration = true,
             bool hasAngularVelocity = true)

@@ -79,6 +79,21 @@ namespace Unity.FoxgloveSDK.Tests.Unit.Sensors
         }
 
         [Fact]
+        public void LegacyNativeFrameConstructorPreservesCovarianceDefaults()
+        {
+            var frame = new ImuNativeFrame(
+                42,
+                "imu_link",
+                Vector3.Zero,
+                Vector3.Zero,
+                Quaternion.Identity,
+                true);
+
+            Assert.True(frame.HasLinearAcceleration);
+            Assert.True(frame.HasAngularVelocity);
+        }
+
+        [Fact]
         public void RetiredSubscriptionGenerationCannotPublishToCurrentSlot()
         {
             var lifecycle = new ImuInboundLifecycleState();
