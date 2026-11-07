@@ -237,7 +237,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
-        public void PreTailCleanupContinuesAfterSeveralRegistrationFailures()
+        public void EarlyCleanupContinuesAfterSeveralRegistrationFailures()
         {
             var calls = new List<string>();
             var first = new InvalidOperationException("first-registration-failure");
