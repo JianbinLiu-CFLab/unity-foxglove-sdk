@@ -9,6 +9,8 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
+using System.Numerics;
+using Unity.FoxgloveSDK.Schemas.Imu;
 using Unity2Foxglove.Ros2ForUnity.Native;
 using Xunit;
 
@@ -238,6 +240,64 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 Assert.True(allocatedPerMessage > 0);
                 slot.Stop(_ => false);
             }
+        }
+
+        [Fact]
+        public void DedicatedImuManagedPathMeasurementCoversDecisionRates()
+        {
+            foreach (var hertz in new[] { 200, 500, 1000 })
+            {
+                using (var warmupSlot = new ImuNativeFrameSlot(256))
+                {
+                    for (var tick = 0; tick < 60; tick++)
+                        PublishAndDrain(warmupSlot, hertz, tick);
+                }
+
+                using var slot = new ImuNativeFrameSlot(256);
+
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+                GC.Collect();
+                var beforeBytes = GC.GetAllocatedBytesForCurrentThread();
+                for (var tick = 0; tick < 60; tick++)
+                    PublishAndDrain(slot, hertz, tick);
+
+                var allocatedBytes = GC.GetAllocatedBytesForCurrentThread() - beforeBytes;
+                var messageCount = hertz;
+                var allocatedPerMessage = allocatedBytes / (double)messageCount;
+                Console.WriteLine(
+                    $"IMU_MANAGED_PATH_MEASUREMENT hz={hertz} "
+                    + $"allocated_bytes_per_message={allocatedPerMessage:F2} "
+                    + $"drops={slot.Stats.Dropped} delivered={slot.Stats.Delivered}");
+
+                Assert.Equal(0, slot.Stats.Dropped);
+                Assert.Equal(messageCount, slot.Stats.Delivered);
+                Assert.True(allocatedPerMessage > 0);
+            }
+        }
+
+        private static void PublishAndDrain(
+            ImuNativeFrameSlot slot,
+            int hertz,
+            int tick)
+        {
+            var samplesThisTick = hertz / 60 + (tick < hertz % 60 ? 1 : 0);
+            for (var sample = 0; sample < samplesThisTick; sample++)
+            {
+                var message = new ImuInboundMessage(
+                    (ulong)(tick * 1_000_000_000L + sample),
+                    "imu_link",
+                    Vector3.Zero,
+                    Vector3.Zero,
+                    Quaternion.Identity,
+                    true);
+                Assert.True(ImuInboundMapper.TryMap(message, out var frame, out var error), error);
+                Assert.True(slot.Publish(frame));
+            }
+
+            var budget = slot.Count;
+            while (budget-- > 0)
+                Assert.True(slot.TryTake(out _));
         }
 
         private static void PublishAndApply(
