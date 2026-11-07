@@ -89,18 +89,6 @@ namespace Unity.FoxgloveSDK.Tests.Unit.Sensors
             Assert.True(lifecycle.IsCurrent(currentGeneration));
         }
 
-        [Fact]
-        public void CleanupFailureRemainsPendingUntilRetrySucceeds()
-        {
-            var lifecycle = new ImuInboundLifecycleState();
-
-            lifecycle.MarkCleanupResult(false);
-            Assert.True(lifecycle.CleanupPending);
-
-            lifecycle.MarkCleanupResult(true);
-            Assert.False(lifecycle.CleanupPending);
-        }
-
         private static ImuNativeFrame CreateFrame(ulong timestamp)
             => new ImuNativeFrame(
                 timestamp,

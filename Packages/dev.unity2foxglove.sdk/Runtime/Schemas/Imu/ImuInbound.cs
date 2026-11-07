@@ -88,6 +88,15 @@ namespace Unity.FoxgloveSDK.Schemas.Imu
 
         public int Capacity { get; }
 
+        public int Count
+        {
+            get
+            {
+                lock (_sync)
+                    return _frames.Count;
+            }
+        }
+
         public ImuNativeFrameSlotStats Stats
         {
             get
@@ -158,11 +167,9 @@ namespace Unity.FoxgloveSDK.Schemas.Imu
         }
     }
 
-    internal sealed class ImuInboundLifecycleState
+    public sealed class ImuInboundLifecycleState
     {
         private long _generation;
-
-        public bool CleanupPending { get; private set; }
 
         public long CurrentGeneration
             => Volatile.Read(ref _generation);
@@ -172,9 +179,6 @@ namespace Unity.FoxgloveSDK.Schemas.Imu
 
         public bool IsCurrent(long generation)
             => Volatile.Read(ref _generation) == generation;
-
-        public void MarkCleanupResult(bool completed)
-            => CleanupPending = !completed;
     }
 
     public readonly struct ImuNativeFrameSlotStats

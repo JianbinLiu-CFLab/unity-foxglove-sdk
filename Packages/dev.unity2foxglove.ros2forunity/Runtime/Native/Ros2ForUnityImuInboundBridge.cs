@@ -254,7 +254,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         private void DrainAvailable()
         {
-            while (DrainOne())
+            var budget = _slot == null ? 0 : Math.Min(_slot.Count, _slot.Capacity);
+            while (budget-- > 0 && DrainOne())
             {
             }
         }
@@ -284,7 +285,6 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         {
             if (_node == null)
             {
-                _lifecycle.MarkCleanupResult(_subscription == null);
                 _cleanupPending = _subscription != null;
                 return;
             }
@@ -295,7 +295,6 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 {
                     if (!_node.RemoveSubscription(_subscription))
                     {
-                        _lifecycle.MarkCleanupResult(false);
                         _cleanupPending = true;
                         return;
                     }
@@ -304,7 +303,6 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 catch (Exception exception)
                 {
                     RecordFailure("IMU subscription cleanup failed: " + exception.Message);
-                    _lifecycle.MarkCleanupResult(false);
                     _cleanupPending = true;
                     return;
                 }
@@ -312,7 +310,6 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
             if (_ros2Unity == null)
             {
-                _lifecycle.MarkCleanupResult(false);
                 _cleanupPending = true;
                 return;
             }
@@ -320,18 +317,15 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             {
                 if (!_ros2Unity.TryRemoveNode(_node))
                 {
-                    _lifecycle.MarkCleanupResult(false);
                     _cleanupPending = true;
                     return;
                 }
                 _node = null;
-                _lifecycle.MarkCleanupResult(true);
                 _cleanupPending = false;
             }
             catch (Exception exception)
             {
                 RecordFailure("IMU node cleanup failed: " + exception.Message);
-                _lifecycle.MarkCleanupResult(false);
                 _cleanupPending = true;
             }
         }
