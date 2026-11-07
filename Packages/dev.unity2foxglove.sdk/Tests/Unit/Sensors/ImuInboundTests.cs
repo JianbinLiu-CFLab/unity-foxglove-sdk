@@ -43,18 +43,62 @@ namespace Unity.FoxgloveSDK.Tests.Unit.Sensors
         }
 
         [Fact]
-        public void SlotDropsOlderFrameAndReportsDelivery()
+        public void SlotRetainsFifoFramesUntilCapacityAndReportsOverflow()
         {
-            using var slot = new ImuNativeFrameSlot();
+            using var slot = new ImuNativeFrameSlot(2);
             Assert.True(slot.Publish(CreateFrame(1)));
             Assert.True(slot.Publish(CreateFrame(2)));
+            Assert.True(slot.Publish(CreateFrame(3)));
             Assert.True(slot.TryTake(out var frame));
             Assert.Equal((ulong)2, frame.UnixNs);
+            Assert.True(slot.TryTake(out frame));
+            Assert.Equal((ulong)3, frame.UnixNs);
             Assert.False(slot.TryTake(out _));
             var stats = slot.Stats;
-            Assert.Equal(2, stats.Received);
+            Assert.Equal(3, stats.Received);
             Assert.Equal(1, stats.Dropped);
-            Assert.Equal(1, stats.Delivered);
+            Assert.Equal(2, stats.Delivered);
+        }
+
+        [Fact]
+        public void MapperPreservesCovarianceAvailabilityFlags()
+        {
+            var message = new ImuInboundMessage(
+                42,
+                "imu_link",
+                Vector3.Zero,
+                Vector3.Zero,
+                Quaternion.Identity,
+                true,
+                false,
+                false);
+
+            Assert.True(ImuInboundMapper.TryMap(message, out var frame, out _));
+            Assert.False(frame.HasLinearAcceleration);
+            Assert.False(frame.HasAngularVelocity);
+        }
+
+        [Fact]
+        public void RetiredSubscriptionGenerationCannotPublishToCurrentSlot()
+        {
+            var lifecycle = new ImuInboundLifecycleState();
+            var firstGeneration = lifecycle.BeginGeneration();
+            var currentGeneration = lifecycle.BeginGeneration();
+
+            Assert.False(lifecycle.IsCurrent(firstGeneration));
+            Assert.True(lifecycle.IsCurrent(currentGeneration));
+        }
+
+        [Fact]
+        public void CleanupFailureRemainsPendingUntilRetrySucceeds()
+        {
+            var lifecycle = new ImuInboundLifecycleState();
+
+            lifecycle.MarkCleanupResult(false);
+            Assert.True(lifecycle.CleanupPending);
+
+            lifecycle.MarkCleanupResult(true);
+            Assert.False(lifecycle.CleanupPending);
         }
 
         private static ImuNativeFrame CreateFrame(ulong timestamp)
