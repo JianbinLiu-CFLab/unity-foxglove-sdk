@@ -1,9 +1,11 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
+using System.Threading;
 
 namespace Unity.FoxgloveSDK.Schemas.Imu
 {
-    public sealed class ImuInboundMessage
+    public readonly struct ImuInboundMessage
     {
         public ImuInboundMessage(
             ulong unixNs,
@@ -11,7 +13,9 @@ namespace Unity.FoxgloveSDK.Schemas.Imu
             Vector3 linearAcceleration,
             Vector3 angularVelocity,
             Quaternion orientation,
-            bool hasOrientation)
+            bool hasOrientation,
+            bool hasLinearAcceleration = true,
+            bool hasAngularVelocity = true)
         {
             UnixNs = unixNs;
             FrameId = frameId ?? string.Empty;
@@ -19,6 +23,8 @@ namespace Unity.FoxgloveSDK.Schemas.Imu
             AngularVelocity = angularVelocity;
             Orientation = orientation;
             HasOrientation = hasOrientation;
+            HasLinearAcceleration = hasLinearAcceleration;
+            HasAngularVelocity = hasAngularVelocity;
         }
 
         public ulong UnixNs { get; }
@@ -27,6 +33,8 @@ namespace Unity.FoxgloveSDK.Schemas.Imu
         public Vector3 AngularVelocity { get; }
         public Quaternion Orientation { get; }
         public bool HasOrientation { get; }
+        public bool HasLinearAcceleration { get; }
+        public bool HasAngularVelocity { get; }
     }
 
     public static class ImuInboundMapper
@@ -38,12 +46,6 @@ namespace Unity.FoxgloveSDK.Schemas.Imu
         {
             frame = null;
             error = string.Empty;
-            if (message == null)
-            {
-                error = "message is null";
-                return false;
-            }
-
             try
             {
                 frame = new ImuNativeFrame(
@@ -52,7 +54,9 @@ namespace Unity.FoxgloveSDK.Schemas.Imu
                     message.LinearAcceleration,
                     message.AngularVelocity,
                     message.Orientation,
-                    message.HasOrientation);
+                    message.HasOrientation,
+                    message.HasLinearAcceleration,
+                    message.HasAngularVelocity);
                 return true;
             }
             catch (ArgumentException exception)
@@ -66,7 +70,7 @@ namespace Unity.FoxgloveSDK.Schemas.Imu
     public sealed class ImuNativeFrameSlot : IDisposable
     {
         private readonly object _sync = new object();
-        private ImuNativeFrame _latest;
+        private readonly Queue<ImuNativeFrame> _frames;
         private bool _disposed;
         private long _received;
         private long _delivered;
@@ -74,11 +78,15 @@ namespace Unity.FoxgloveSDK.Schemas.Imu
         private long _rejected;
         private string _lastError = string.Empty;
 
-        public ImuNativeFrameSlot(int capacity = 1)
+        public ImuNativeFrameSlot(int capacity = 256)
         {
-            if (capacity != 1)
-                throw new ArgumentOutOfRangeException(nameof(capacity), "Only a one-frame latest-wins slot is supported.");
+            if (capacity <= 0)
+                throw new ArgumentOutOfRangeException(nameof(capacity));
+            _frames = new Queue<ImuNativeFrame>(capacity);
+            Capacity = capacity;
         }
+
+        public int Capacity { get; }
 
         public ImuNativeFrameSlotStats Stats
         {
@@ -113,9 +121,12 @@ namespace Unity.FoxgloveSDK.Schemas.Imu
                 }
 
                 _received++;
-                if (_latest != null)
+                if (_frames.Count >= Capacity)
+                {
+                    _frames.Dequeue();
                     _dropped++;
-                _latest = frame;
+                }
+                _frames.Enqueue(frame);
                 return true;
             }
         }
@@ -124,10 +135,12 @@ namespace Unity.FoxgloveSDK.Schemas.Imu
         {
             lock (_sync)
             {
-                frame = _latest;
-                _latest = null;
-                if (frame == null)
+                if (_frames.Count == 0)
+                {
+                    frame = null;
                     return false;
+                }
+                frame = _frames.Dequeue();
                 _delivered++;
                 return true;
             }
@@ -140,9 +153,28 @@ namespace Unity.FoxgloveSDK.Schemas.Imu
                 if (_disposed)
                     return;
                 _disposed = true;
-                _latest = null;
+                _frames.Clear();
             }
         }
+    }
+
+    internal sealed class ImuInboundLifecycleState
+    {
+        private long _generation;
+
+        public bool CleanupPending { get; private set; }
+
+        public long CurrentGeneration
+            => Volatile.Read(ref _generation);
+
+        public long BeginGeneration()
+            => Interlocked.Increment(ref _generation);
+
+        public bool IsCurrent(long generation)
+            => Volatile.Read(ref _generation) == generation;
+
+        public void MarkCleanupResult(bool completed)
+            => CleanupPending = !completed;
     }
 
     public readonly struct ImuNativeFrameSlotStats

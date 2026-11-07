@@ -3,6 +3,7 @@
 
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
 using System;
+using System.Globalization;
 using NumericsQuaternion = System.Numerics.Quaternion;
 using NumericsVector3 = System.Numerics.Vector3;
 using ROS2;
@@ -22,6 +23,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private ROS2Node _node;
         private ISubscriptionBase _subscription;
         private ImuNativeFrameSlot _slot;
+        private readonly ImuInboundLifecycleState _lifecycle = new ImuInboundLifecycleState();
+        private bool _cleanupPending;
         private bool _isStopping;
         private bool _runtimeWasReady;
         private bool _warnedRuntime;
@@ -44,8 +47,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         private void OnEnable()
         {
+            _lifecycle.BeginGeneration();
             _isStopping = false;
             _runtimeWasReady = false;
+            CleanupNative();
+            _cleanupPending = _subscription != null || _node != null;
             _slot?.Dispose();
             _slot = new ImuNativeFrameSlot();
             Application.quitting += OnApplicationQuitting;
@@ -53,7 +59,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         private void OnDisable()
         {
+            _lifecycle.BeginGeneration();
             _isStopping = true;
+            _cleanupPending = true;
             CleanupNative();
             _slot?.Dispose();
             Application.quitting -= OnApplicationQuitting;
@@ -61,7 +69,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         private void OnDestroy()
         {
+            _lifecycle.BeginGeneration();
             _isStopping = true;
+            _cleanupPending = true;
             CleanupNative();
         }
 
@@ -70,18 +80,28 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             if (IsShuttingDown)
             {
                 CleanupNative();
-                DrainOne();
+                DrainAvailable();
                 return;
+            }
+
+            if (_cleanupPending)
+            {
+                CleanupNative();
+                if (_cleanupPending)
+                {
+                    DrainAvailable();
+                    return;
+                }
             }
 
             if (!EnsureRuntime())
             {
-                DrainOne();
+                DrainAvailable();
                 return;
             }
 
             EnsureSubscription();
-            DrainOne();
+            DrainAvailable();
         }
 
         private bool EnsureRuntime()
@@ -124,16 +144,26 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         private void EnsureSubscription()
         {
+            if (_cleanupPending)
+            {
+                CleanupNative();
+                if (_cleanupPending)
+                    return;
+            }
             if (_subscription != null)
                 return;
             if (_node != null)
+            {
                 CleanupNative();
+                if (_cleanupPending)
+                    return;
+            }
             if (_ros2Unity == null || IsShuttingDown)
                 return;
 
             try
             {
-                _node = _ros2Unity.CreateNode("u2f_imu_inbound");
+                _node = _ros2Unity.CreateNode(NodeName);
                 if (_node == null)
                     throw new InvalidOperationException("R2FU returned no IMU inbound node.");
 
@@ -144,9 +174,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
                 using (qosProfile)
                 {
+                    var generation = _lifecycle.CurrentGeneration;
+                    var slot = _slot;
                     _subscription = _node.CreateSubscription<sensor_msgs.msg.Imu>(
                         Topic,
-                        OnImu,
+                        message => OnImu(message, generation, slot),
                         qosProfile.NativeProfile);
                 }
 
@@ -161,11 +193,13 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             }
         }
 
-        private void OnImu(sensor_msgs.msg.Imu message)
+        private void OnImu(sensor_msgs.msg.Imu message, long generation, ImuNativeFrameSlot slot)
         {
+            if (!_lifecycle.IsCurrent(generation) || slot == null || !ReferenceEquals(slot, _slot))
+                return;
             if (message == null || message.Header == null || message.Header.Stamp == null)
             {
-                _slot.RecordRejected("IMU callback returned no header");
+                slot.RecordRejected("IMU callback returned no header");
                 return;
             }
 
@@ -179,14 +213,14 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             }
             catch (OverflowException)
             {
-                _slot.RecordRejected("IMU header timestamp exceeds the supported range");
+                slot.RecordRejected("IMU header timestamp exceeds the supported range");
                 return;
             }
 
             if (!TryReadVector(message.Linear_acceleration, out var linear)
                 || !TryReadVector(message.Angular_velocity, out var angular))
             {
-                _slot.RecordRejected("IMU callback returned no acceleration or angular velocity");
+                slot.RecordRejected("IMU callback returned no acceleration or angular velocity");
                 return;
             }
 
@@ -197,6 +231,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             var orientation = hasOrientation && TryReadQuaternion(message.Orientation, out var parsedOrientation)
                 ? parsedOrientation
                 : NumericsQuaternion.Identity;
+            var hasLinearAcceleration = HasCovariance(message.Linear_acceleration_covariance);
+            var hasAngularVelocity = HasCovariance(message.Angular_velocity_covariance);
 
             var neutral = new ImuInboundMessage(
                 unixNs,
@@ -204,24 +240,33 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 linear,
                 angular,
                 orientation,
-                hasOrientation);
+                hasOrientation,
+                hasLinearAcceleration,
+                hasAngularVelocity);
             if (!ImuInboundMapper.TryMap(neutral, out var frame, out var error))
             {
-                _slot.RecordRejected(error);
+                slot.RecordRejected(error);
                 return;
             }
 
-            _slot.Publish(frame);
+            slot.Publish(frame);
         }
 
-        private void DrainOne()
+        private void DrainAvailable()
+        {
+            while (DrainOne())
+            {
+            }
+        }
+
+        private bool DrainOne()
         {
             if (_slot == null || !_slot.TryTake(out var frame))
-                return;
+                return false;
 
             var handler = FrameReceived;
             if (handler == null)
-                return;
+                return true;
 
             try
             {
@@ -232,13 +277,15 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 _slot.RecordRejected("IMU frame handler failed: " + exception.Message);
                 RecordFailure("IMU frame handler failed: " + exception.Message);
             }
+            return true;
         }
 
         private void CleanupNative()
         {
             if (_node == null)
             {
-                _subscription = null;
+                _lifecycle.MarkCleanupResult(_subscription == null);
+                _cleanupPending = _subscription != null;
                 return;
             }
 
@@ -247,33 +294,53 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 try
                 {
                     if (!_node.RemoveSubscription(_subscription))
+                    {
+                        _lifecycle.MarkCleanupResult(false);
+                        _cleanupPending = true;
                         return;
+                    }
                     _subscription = null;
                 }
                 catch (Exception exception)
                 {
                     RecordFailure("IMU subscription cleanup failed: " + exception.Message);
+                    _lifecycle.MarkCleanupResult(false);
+                    _cleanupPending = true;
                     return;
                 }
             }
 
             if (_ros2Unity == null)
+            {
+                _lifecycle.MarkCleanupResult(false);
+                _cleanupPending = true;
                 return;
+            }
             try
             {
                 if (!_ros2Unity.TryRemoveNode(_node))
+                {
+                    _lifecycle.MarkCleanupResult(false);
+                    _cleanupPending = true;
                     return;
+                }
                 _node = null;
+                _lifecycle.MarkCleanupResult(true);
+                _cleanupPending = false;
             }
             catch (Exception exception)
             {
                 RecordFailure("IMU node cleanup failed: " + exception.Message);
+                _lifecycle.MarkCleanupResult(false);
+                _cleanupPending = true;
             }
         }
 
         private void OnApplicationQuitting()
         {
+            _lifecycle.BeginGeneration();
             _isStopping = true;
+            _cleanupPending = true;
             CleanupNative();
         }
 
@@ -303,6 +370,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             result = new NumericsQuaternion((float)value.X, (float)value.Y, (float)value.Z, (float)value.W);
             return true;
         }
+
+        private static bool HasCovariance(double[] covariance)
+            => covariance != null && covariance.Length > 0 && covariance[0] >= 0d;
+
+        private string NodeName
+            => "u2f_imu_inbound_" + unchecked((uint)GetInstanceID()).ToString(CultureInfo.InvariantCulture);
 
         private static string NormalizeTopic(string topic)
         {
