@@ -38,9 +38,9 @@ namespace Unity.FoxgloveSDK.Tests
                 "163-49B-1: Phase83 and Phase84 fail explicitly when source markers disappear");
 
             var phase86 = Read("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase86Validation.cs");
-            Check(phase86.Contains("PhaseValidationSourceHelpers.SourceMethod(source, \"private void Stop(\")", StringComparison.Ordinal)
-                  && phase86.Contains("Ordered(stopMethod, \"WaitForTask(_stderrTask\", \"process.Dispose()\")", StringComparison.Ordinal),
-                "163-49B-2: Phase86 sidecar lifecycle ordering is scoped to Stop");
+            Check(phase86.Contains("VerifyAssetRegistryPathGuard()", StringComparison.Ordinal)
+                  && phase86.Contains("FileSystemPathComparison", StringComparison.Ordinal),
+                "163-49B-2: Phase86 retains executable asset-registry path guard coverage");
 
             var phase91 = Read("Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase91Validation.cs");
             Check(phase91.Contains("PointCloudQoS.ComputePackedStride(frame)", StringComparison.Ordinal)
