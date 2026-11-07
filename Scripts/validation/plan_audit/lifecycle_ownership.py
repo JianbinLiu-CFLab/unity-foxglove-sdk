@@ -8,6 +8,7 @@ import json
 import math
 import xml.etree.ElementTree as ET
 import re
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -167,6 +168,15 @@ def _owner_map() -> audit_lib.Check:
     return _check("197-W1-ownermap", "Plan/197... § 2 W1.2 and Appendix B", "probe", status, "git ls-files '*.cs'; parse four lifecycle owner surfaces", "build/plan-audit/lifecycle_ownership/owner-map.json", f"owners={len(payload) - len(missing)}/4; missing={missing or 'none'}")
 
 
+def _fresh_results_dir(identifier: str) -> Path:
+    """Create an empty per-run TRX directory under the audit output."""
+    path = OUTPUT / "TestResults" / identifier
+    if path.exists():
+        shutil.rmtree(path)
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def _trx_passed(path: Path) -> int:
     """Count passed test results in a TRX file."""
     if not path.is_file():
@@ -183,10 +193,11 @@ def _tests_check() -> audit_lib.Check:
     restore = _run(["dotnet", "restore", "Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj", "-p:IncludeManagerProductionBoundary=true"], "197-manager-restore", 300.0)
     if restore["exit_code"] != 0:
         return _check("197-W1-tests", "Plan/197... § 2 W1.3", "auto", "NOT_RUN", "dotnet restore Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj -p:IncludeManagerProductionBoundary=true", restore["log"], "restore failed; Manager boundary test was not run")
-    command = ["dotnet", "test", "--no-restore", "Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj", "-p:IncludeManagerProductionBoundary=true", "--filter", "FullyQualifiedName~FoxgloveManagerTeardownTests", "--logger", "trx;LogFileName=lifecycle-ownership.trx", "--results-directory", "build/plan-audit/lifecycle_ownership/TestResults"]
+    result_dir = _fresh_results_dir("focused")
+    command = ["dotnet", "test", "--no-restore", "Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj", "-p:IncludeManagerProductionBoundary=true", "--filter", "FullyQualifiedName~FoxgloveManagerTeardownTests", "--logger", "trx;LogFileName=lifecycle-ownership.trx", "--results-directory", str(result_dir.relative_to(audit_lib.ROOT))]
     result = _run(command, "197-W1-tests", 600.0)
     text = (audit_lib.ROOT / TEST_REL).read_text(encoding="utf-8", errors="replace")
-    result_file = audit_lib.ROOT / "build/plan-audit/lifecycle_ownership/TestResults/lifecycle-ownership.trx"
+    result_file = result_dir / "lifecycle-ownership.trx"
     passed = _trx_passed(result_file)
     source_text = "TestSources.Text" in text or "ExtractMethod" in text
     required = {"StopServer", "DisableTeardown", "DestroyTeardown", "StartupFailure", "EarlyCleanup"}
@@ -200,27 +211,29 @@ def _tests_check() -> audit_lib.Check:
 def _mutation_checks() -> list[audit_lib.Check]:
     """Ensure order and cleanup mutations make passing baseline tests fail."""
     path = audit_lib.ROOT / TEARDOWN_REL
+    baseline_dir = _fresh_results_dir("baseline-mutation")
     baseline_command = [
         "dotnet", "test", "--no-restore", "Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj",
         "-p:IncludeManagerProductionBoundary=true", "--filter", "FullyQualifiedName~FoxgloveManagerTeardownTests",
         "--logger", "trx;LogFileName=baseline-mutation.trx", "--results-directory",
-        "build/plan-audit/lifecycle_ownership/TestResults/baseline-mutation",
+        str(baseline_dir.relative_to(audit_lib.ROOT)),
     ]
     baseline = _run(baseline_command, "197-W1-mutation-baseline", 600.0)
-    baseline_passed = _trx_passed(audit_lib.ROOT / "build/plan-audit/lifecycle_ownership/TestResults/baseline-mutation/baseline-mutation.trx")
+    baseline_passed = _trx_passed(baseline_dir / "baseline-mutation.trx")
     checks: list[audit_lib.Check] = []
     for identifier, old, new in (
         ("197-W1-mutation-order", "stopRuntime,\n                resetSensorClock,", "resetSensorClock,\n                stopRuntime,"),
         ("197-W1-mutation-cleanup", "clearClientEvents,\n                resetChannelIds,", "() => { },\n                resetChannelIds,"),
     ):
         try:
+            mutation_dir = _fresh_results_dir(identifier)
             with audit_lib.mutate(path, old, new):
                 result = _run(
                     [
                         "dotnet", "test", "--no-restore", "Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj",
                         "-p:IncludeManagerProductionBoundary=true", "--filter", "FullyQualifiedName~FoxgloveManagerTeardownTests",
                         "--logger", f"trx;LogFileName={identifier}.trx", "--results-directory",
-                        f"build/plan-audit/lifecycle_ownership/TestResults/{identifier}",
+                        str(mutation_dir.relative_to(audit_lib.ROOT)),
                     ],
                     identifier,
                     600.0,
