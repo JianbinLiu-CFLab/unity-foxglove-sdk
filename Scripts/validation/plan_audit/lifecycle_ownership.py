@@ -50,6 +50,9 @@ def _git_output(args: list[str], timeout: float = 180.0) -> str:
 def _plan_check(base_sha: str) -> audit_lib.Check:
     """Check that the plan records the corrected pending decision state."""
     text = PLAN.read_text(encoding="utf-8") if PLAN.is_file() else ""
+    plan_log = _log("197-PLAN")
+    plan_log.parent.mkdir(parents=True, exist_ok=True)
+    plan_log.write_text(text or "PLAN_FILE_MISSING\n", encoding="utf-8")
     status = next((line for line in text.splitlines() if line.startswith("Status:")), "")
     stale_note = "stale 15-row snapshot" in text and "W1 audit pending" in status
     appendix_note = "provisional" in text and "W1 remains pending" in text
@@ -108,6 +111,8 @@ def _suggest_label(title: str, subjects: str, paths: list[str]) -> tuple[str, st
     text = f"{title}\n{subjects}".lower()
     if any("manager" in path.lower() or "teardown" in path.lower() for path in paths) and any(token in text for token in ("lifecycle", "session", "stop", "ownership", "ledger")):
         return "cross-lifecycle", "manager or teardown ownership surface with lifecycle wording"
+    if any("manager" in path.lower() or "session" in path.lower() for path in paths) and any(token in text for token in ("state", "ledger", "generation", "catalog", "registry", "identity")):
+        return "cross-state", "shared state, ledger, generation, or registry wording on a lifecycle surface"
     if any(path.startswith((".github/", "Scripts/")) for path in paths) or "ci" in text or "validator" in text or "identity" in text:
         return "tooling", "workflow, validation, identity, or release surface"
     if any("Tests/" in path or "test" in path.lower() for path in paths) and not any(path.startswith("Packages/dev.unity2foxglove.sdk/Runtime") for path in paths):
@@ -136,7 +141,7 @@ def _gate_check(candidates: list[dict[str, str]]) -> audit_lib.Check:
     threshold = math.ceil(len(candidates) * 0.2) if candidates else 0
     detail = f"appendix={appendix_cross}/{len(appendix)}; regenerated={candidate_cross}/{len(candidates)}; cross_fix_needed_for_20_percent={max(0, threshold - candidate_cross)}"
     plan_text = PLAN.read_text(encoding="utf-8") if PLAN.is_file() else ""
-    status = "NOT_RUN" if not PLAN.is_file() else "FAIL" if len(candidates) != len(appendix) or "provisional" in plan_text else "PASS"
+    status = "NOT_RUN" if not PLAN.is_file() else "PASS" if len(candidates) == len(appendix) and "provisional" not in plan_text and candidate_cross >= threshold else "FAIL"
     return _check("197-W1-gate", "Plan/197... § Decision gate", "history", status, "git log --first-parent; gh pr list; compare Appendix A with fix-candidates.csv", "build/plan-audit/lifecycle_ownership/fix-candidates.csv", detail)
 
 
