@@ -122,6 +122,12 @@ namespace Unity.FoxgloveSDK.Components
 
             FoxgloveManagerTeardownState.RunStartupCleanup(
                 ReportStartupCleanupFailure,
+                CreateStartupCleanupSteps());
+        }
+
+        internal Action[] CreateStartupCleanupSteps()
+            => new Action[]
+            {
                 CleanupPendingRecordingSidecar,
                 StopRemoteMcapFileServer,
                 StopReplayCursorEndpoint,
@@ -132,21 +138,15 @@ namespace Unity.FoxgloveSDK.Components
 
                 () => DetachTransportForwarders(_runtime?.CleanupSession),
                 () => DetachRuntimeForwarders(_runtime?.CleanupSession),
-
                 () => _runtime?.Stop(),
-
                 () => _runtime?.DisableReplay(),
-
                 () => _runtime?.DisableRecording(),
-
                 ClearActiveComponentPublisherSession,
-
                 ClearPublishingSessionState,
 
                 RestoreLivePublishers,
-
-                FlushClientEventRetirementDrops);
-        }
+                FlushClientEventRetirementDrops
+            };
 
         private static void ReportStartupCleanupFailure(Exception exception, string description)
         {

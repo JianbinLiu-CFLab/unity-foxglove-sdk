@@ -163,6 +163,16 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        public void StartupFailureCleanupWiringContainsEveryProductionStep()
+        {
+            var manager = new FoxgloveManager();
+            var steps = manager.CreateStartupCleanupSteps();
+
+            Assert.Equal(16, steps.Length);
+            Assert.All(steps, step => Assert.NotNull(step));
+        }
+
+        [Fact]
         public void PreTailCleanupRunsEveryStepAndReturnsTheFirstFailure()
         {
             var calls = new List<string>();
