@@ -410,10 +410,10 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
             if (Ros2ForUnityImuNativeMessageGuard.IsSupportedLayout)
             {
-                if (!Ros2ForUnityImuNativeMessageGuard.TryReadFrameIdBytes(
+                if (!Ros2ForUnityImuNativeMessageGuard.TryAdmit(
                         Handle,
-                        out var frameIdBytes)
-                    || frameIdBytes > MaxFrameIdBytes)
+                        MaxFrameIdBytes,
+                        out var frameIdBytes))
                 {
                     NativeFrameIdBytes = frameIdBytes;
                     FrameIdRejected = true;
@@ -440,11 +440,18 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             => IntPtr.Size == 8;
 
         internal static bool TryAdmit(IntPtr imuHandle, int maxFrameIdBytes)
+            => TryAdmit(imuHandle, maxFrameIdBytes, out _);
+
+        internal static bool TryAdmit(
+            IntPtr imuHandle,
+            int maxFrameIdBytes,
+            out ulong frameIdBytes)
         {
+            frameIdBytes = 0;
             if (!IsSupportedLayout)
                 return true;
             return maxFrameIdBytes >= 0
-                   && TryReadFrameIdBytes(imuHandle, out var frameIdBytes)
+                   && TryReadFrameIdBytes(imuHandle, out frameIdBytes)
                    && frameIdBytes <= (ulong)maxFrameIdBytes;
         }
 
