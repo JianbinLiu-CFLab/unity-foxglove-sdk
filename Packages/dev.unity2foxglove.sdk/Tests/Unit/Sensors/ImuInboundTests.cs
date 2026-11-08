@@ -95,15 +95,65 @@ namespace Unity.FoxgloveSDK.Tests.Unit.Sensors
         public void NativeImuFrameIdGuardRejectsOversizedNativeHeaderField()
         {
             var nativeMessage = Marshal.AllocHGlobal(32);
+            var frameIdData = Marshal.AllocHGlobal(1);
             try
             {
+                Marshal.WriteIntPtr(nativeMessage, 8, frameIdData);
                 Marshal.WriteInt64(nativeMessage, 16, 257);
+                Marshal.WriteInt64(nativeMessage, 24, 257);
                 Assert.False(Ros2ForUnityImuNativeMessageGuard.TryAdmit(nativeMessage, 256));
                 Marshal.WriteInt64(nativeMessage, 16, 256);
+                Marshal.WriteInt64(nativeMessage, 24, 256);
                 Assert.True(Ros2ForUnityImuNativeMessageGuard.TryAdmit(nativeMessage, 256));
             }
             finally
             {
+                Marshal.FreeHGlobal(frameIdData);
+                Marshal.FreeHGlobal(nativeMessage);
+            }
+        }
+
+        [Theory]
+        [InlineData(0, true)]
+        [InlineData(1, true)]
+        [InlineData(256, true)]
+        [InlineData(257, false)]
+        public void NativeImuFrameIdGuardEnforcesBoundarySizes(long frameIdBytes, bool expected)
+        {
+            var nativeMessage = Marshal.AllocHGlobal(32);
+            var frameIdData = frameIdBytes == 0 ? IntPtr.Zero : Marshal.AllocHGlobal(1);
+            try
+            {
+                Marshal.WriteIntPtr(nativeMessage, 8, frameIdData);
+                Marshal.WriteInt64(nativeMessage, 16, frameIdBytes);
+                Marshal.WriteInt64(nativeMessage, 24, frameIdBytes);
+                Assert.Equal(
+                    expected,
+                    Ros2ForUnityImuNativeMessageGuard.TryAdmit(nativeMessage, 256));
+            }
+            finally
+            {
+                if (frameIdData != IntPtr.Zero)
+                    Marshal.FreeHGlobal(frameIdData);
+                Marshal.FreeHGlobal(nativeMessage);
+            }
+        }
+
+        [Fact]
+        public void NativeImuFrameIdGuardRejectsMalformedNativeHeaderField()
+        {
+            var nativeMessage = Marshal.AllocHGlobal(32);
+            var frameIdData = Marshal.AllocHGlobal(1);
+            try
+            {
+                Marshal.WriteIntPtr(nativeMessage, 8, frameIdData);
+                Marshal.WriteInt64(nativeMessage, 16, 257);
+                Marshal.WriteInt64(nativeMessage, 24, 256);
+                Assert.False(Ros2ForUnityImuNativeMessageGuard.TryAdmit(nativeMessage, 256));
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(frameIdData);
                 Marshal.FreeHGlobal(nativeMessage);
             }
         }

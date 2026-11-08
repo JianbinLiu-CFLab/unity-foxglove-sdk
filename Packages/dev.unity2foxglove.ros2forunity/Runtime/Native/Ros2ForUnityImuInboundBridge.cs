@@ -4,9 +4,11 @@
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
 using System;
 using System.Globalization;
+using System.Runtime.InteropServices;
 using NumericsQuaternion = System.Numerics.Quaternion;
 using NumericsVector3 = System.Numerics.Vector3;
 using ROS2;
+using ROS2.Internal;
 using Unity.FoxgloveSDK.Schemas.Imu;
 using UnityEngine;
 
@@ -179,7 +181,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 {
                     var generation = _lifecycle.CurrentGeneration;
                     var slot = _slot;
-                    _subscription = _node.CreateSubscription<sensor_msgs.msg.Imu>(
+                    _subscription = _node.CreateSubscription<Ros2ForUnityGuardedImuMessage>(
                         Topic,
                         message => OnImu(message, generation, slot),
                         qosProfile.NativeProfile);
@@ -196,10 +198,15 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             }
         }
 
-        private void OnImu(sensor_msgs.msg.Imu message, long generation, ImuNativeFrameSlot slot)
+        private void OnImu(Ros2ForUnityGuardedImuMessage message, long generation, ImuNativeFrameSlot slot)
         {
             if (!_lifecycle.IsCurrent(generation) || slot == null || !ReferenceEquals(slot, _slot))
                 return;
+            if (message != null && message.FrameIdRejected)
+            {
+                slot.RecordRejected("IMU frame_id exceeds 256 bytes before managed copy");
+                return;
+            }
             if (message == null || message.Header == null || message.Header.Stamp == null)
             {
                 slot.RecordRejected("IMU callback returned no header");
@@ -380,6 +387,90 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         {
             var value = string.IsNullOrWhiteSpace(topic) ? "/imu/data" : topic.Trim();
             return value.StartsWith("/", StringComparison.Ordinal) ? value : "/" + value;
+        }
+    }
+
+    public sealed class Ros2ForUnityGuardedImuMessage : sensor_msgs.msg.Imu, MessageInternals
+    {
+        public const int MaxFrameIdBytes = ImuInboundMapper.MaxFrameIdUtf8Bytes;
+
+        public bool FrameIdRejected { get; private set; }
+
+        public ulong NativeFrameIdBytes { get; private set; }
+
+        public Ros2ForUnityGuardedImuMessage()
+            : base()
+        {
+        }
+
+        void MessageInternals.ReadNativeMessage()
+        {
+            FrameIdRejected = false;
+            NativeFrameIdBytes = 0;
+
+            if (Ros2ForUnityImuNativeMessageGuard.IsSupportedLayout)
+            {
+                if (!Ros2ForUnityImuNativeMessageGuard.TryReadFrameIdBytes(
+                        Handle,
+                        out var frameIdBytes)
+                    || frameIdBytes > MaxFrameIdBytes)
+                {
+                    NativeFrameIdBytes = frameIdBytes;
+                    FrameIdRejected = true;
+                    return;
+                }
+
+                NativeFrameIdBytes = frameIdBytes;
+            }
+
+            base.ReadNativeMessage(Handle);
+        }
+
+        void MessageInternals.WriteNativeMessage()
+            => base.WriteNativeMessage(Handle);
+    }
+
+    internal static class Ros2ForUnityImuNativeMessageGuard
+    {
+        private const int FrameIdDataOffset = 8;
+        private const int FrameIdSizeOffset = 16;
+        private const int FrameIdCapacityOffset = 24;
+
+        internal static bool IsSupportedLayout
+            => IntPtr.Size == 8;
+
+        internal static bool TryAdmit(IntPtr imuHandle, int maxFrameIdBytes)
+        {
+            if (!IsSupportedLayout)
+                return true;
+            return maxFrameIdBytes >= 0
+                   && TryReadFrameIdBytes(imuHandle, out var frameIdBytes)
+                   && frameIdBytes <= (ulong)maxFrameIdBytes;
+        }
+
+        internal static bool TryReadFrameIdBytes(IntPtr imuHandle, out ulong frameIdBytes)
+        {
+            frameIdBytes = 0;
+            if (!IsSupportedLayout || imuHandle == IntPtr.Zero)
+                return false;
+
+            try
+            {
+                var data = Marshal.ReadIntPtr(imuHandle, FrameIdDataOffset);
+                var size = Marshal.ReadInt64(imuHandle, FrameIdSizeOffset);
+                var capacity = Marshal.ReadInt64(imuHandle, FrameIdCapacityOffset);
+                if (size < 0 || capacity < 0 || size > capacity)
+                    return false;
+                if (size > 0 && data == IntPtr.Zero)
+                    return false;
+
+                frameIdBytes = (ulong)size;
+                return true;
+            }
+            catch (ArgumentException)
+            {
+                return false;
+            }
         }
     }
 }
