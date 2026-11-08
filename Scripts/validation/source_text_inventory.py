@@ -6,18 +6,10 @@ import importlib.util
 import re
 import subprocess, tarfile, tempfile
 from pathlib import Path
-PATH_LITERAL_PATTERN = re.compile(
-    r'"([^"\r\n]+(?:\.cs|\.py|\.md|\.json|\.yml|\.yaml|\.csproj|\.props|\.targets|\.asmdef|\.meta|\.txt|\.xml|\.cpp|\.h|\.dll|\.so))"'
-)
+PATH_LITERAL_PATTERN = re.compile(r'"([^"\r\n]+(?:\.cs|\.py|\.md|\.json|\.yml|\.yaml|\.csproj|\.props|\.targets|\.asmdef|\.meta|\.txt|\.xml|\.cpp|\.h|\.dll|\.so))"')
 PATH_LIKE_LITERAL_PATTERN = re.compile(r'"([^"\r\n]*[/\\][^"\r\n]*)"')
-READER_CALL_PATTERN = re.compile(
-    r"\b(?P<reader>ReadRepoText|ReadRequiredRepoText|ReadText|ReadRuntimeSource|ReadPointCloudPublisherSources|ReadCameraPublisherSources|ReadProductPublisherText|ReadRepoDirectoryText|Text|"
-    r"PhaseValidationSourceHelpers\s*\.\s*Read[A-Za-z_]\w*(?:Sources?|SourcePath|Text)|TestSources\s*\.\s*(?:Text|Runtime|ExtractMethod|Slice|SourceGeneratorSources)|RuntimeSource)\s*\("
-)
-VARIABLE_READER_PATTERN = re.compile(
-    r"(?:var|string)\s+(?P<name>[A-Za-z_]\w*)\s*=\s*(?P<reader>ReadRepoText|ReadRequiredRepoText|PhaseValidationSourceHelpers\.ReadRequiredRepoText|TestSources\.Text)\s*\(\s*(?P<argument>[^)]*?)\)",
-    re.DOTALL,
-)
+READER_CALL_PATTERN = re.compile(r"\b(?P<reader>ReadRepoText|ReadRequiredRepoText|ReadText|ReadRuntimeSource|ReadPointCloudPublisherSources|ReadCameraPublisherSources|ReadProductPublisherText|ReadRepoDirectoryText|Text|PhaseValidationSourceHelpers\s*\.\s*Read[A-Za-z_]\w*(?:Sources?|SourcePath|Text)|TestSources\s*\.\s*(?:Text|Runtime|ExtractMethod|Slice|SourceGeneratorSources)|RuntimeSource)\s*\(")
+VARIABLE_READER_PATTERN = re.compile(r"(?:var|string)\s+(?P<name>[A-Za-z_]\w*)\s*=\s*(?P<reader>ReadRepoText|ReadRequiredRepoText|PhaseValidationSourceHelpers\.ReadRequiredRepoText|TestSources\.Text)\s*\(\s*(?P<argument>[^)]*?)\)", re.DOTALL)
 ARRAY_PATTERN = re.compile(r"(?:var|string\[\])\s+(?P<name>[A-Za-z_]\w*)\s*=\s*new\[\]\s*\{(?P<body>[^}]*)\}", re.DOTALL)
 CONSTANT_PATH_PATTERN = re.compile(r"(?:const\s+string|private\s+const\s+string)\s+(?P<name>[A-Za-z_]\w*)\s*=\s*\"(?P<path>[^\"]+)\"\s*;?")
 RECEIVER_PATTERN = re.compile(
@@ -468,11 +460,23 @@ def _resolve_assertion_target(
     if targets:
         return ";".join(dict.fromkeys(targets))
     reader_targets: list[str] = []
+    reader_seen = False
     for reader in _call_spans(call_text.splitlines(), READER_CALL_PATTERN):
-        target = _extract_argument_path(_split_first_argument(str(reader["argument"])), paths)
+        reader_seen = True; target = _extract_argument_path(_split_first_argument(str(reader["argument"])), paths)
         if target:
             reader_targets.extend(target.split(";"))
-    return ";".join(dict.fromkeys(reader_targets)) or None
+    return ";".join(dict.fromkeys(reader_targets)) or ("<unresolved>" if reader_seen else None)
+def _receiver_expression_start(masked: str, start: int) -> int:
+    """Return the start of one receiver expression, excluding sibling operands."""
+    cursor = start - 1; depth = 0
+    while cursor >= 0:
+        char = masked[cursor]
+        if char == ")": depth += 1
+        elif char == "(" and depth: depth -= 1
+        elif char == "(": return cursor + 1
+        elif depth == 0 and (char in ";{}," or masked[cursor:cursor + 2] in ("&&", "||")): return cursor + 1
+        cursor -= 1
+    return 0
 def _resolve_derived_target(
     lines: list[str],
     call: dict[str, object],
@@ -485,7 +489,7 @@ def _resolve_derived_target(
     text = "\n".join(lines)
     start = int(call["start"])
     masked = _strip_csharp_comments_and_strings(text)
-    statement_start = max(masked.rfind(";", 0, start), masked.rfind("{", 0, start), masked.rfind("}", 0, start)) + 1
+    statement_start = _receiver_expression_start(masked, start)
     expression = text[statement_start:start]
     code = _strip_csharp_comments_and_strings(expression)
     targets: list[str] = []
@@ -911,12 +915,8 @@ def _verify_base_inventory(root: Path, rows: list[dict[str, object]], revision: 
     print(f"SOURCE_TEXT_INVENTORY_BASE_OK base_rows={len(base_rows)} head_rows={len(rows)} missing={len(missing)} base_unresolved={base_unresolved} head_unresolved={head_unresolved} base_unknown={base_unknown} head_unknown={head_unknown} metadata_changed={len(metadata_changed)}")
     if missing or status_missing or metadata_changed or head_unresolved > base_unresolved or head_unknown > base_unknown:
         if missing:
-            print(
-                "SOURCE_TEXT_INVENTORY_BASE_MISSING sample="
-                f"{[(row['file'], row['line'], row['label']) for row in missing[:5]]}"
-            )
-        if metadata_changed:
-            print(f"SOURCE_TEXT_INVENTORY_METADATA_CHANGED sample={metadata_changed[:5]}")
+            print(f"SOURCE_TEXT_INVENTORY_BASE_MISSING sample={[(row['file'], row['line'], row['label']) for row in missing[:5]]}")
+        if metadata_changed: print(f"SOURCE_TEXT_INVENTORY_METADATA_CHANGED sample={metadata_changed[:5]}")
         if status_missing:
             print(f"SOURCE_TEXT_INVENTORY_STATUS_MISSING sample={[(row['file'], row['line']) for row in status_missing[:5]]}")
         return 1

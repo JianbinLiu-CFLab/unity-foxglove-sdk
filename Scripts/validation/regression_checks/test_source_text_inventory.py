@@ -209,6 +209,7 @@ class SourceTextInventoryTests(unittest.TestCase):
                 "        var directory = TestSources.Text(\n"
                 '            "Packages/fixture/Runtime/DirectoryTarget");\n'
                 '        Assert.Contains("directory", directory);\n'
+                '        Assert.Contains("inline", TestSources.Text(ResolvePath()));\n'
                 "    }\n"
                 "}\n",
                 encoding="utf-8",
@@ -227,6 +228,7 @@ class SourceTextInventoryTests(unittest.TestCase):
             self.assertEqual("<unresolved>", by_line[11]["target"])
             self.assertEqual("UNKNOWN", by_line[14]["class"])
             self.assertEqual("<directory>", by_line[14]["target"])
+            self.assertTrue(any(row["class"] == "UNRESOLVED" and "inline" in str(row["token"]) for row in rows))
 
     def test_scope_and_multiline_receiver_resolution_are_fail_closed(self):
         """Keep local symbols scoped, preserve combined targets, and inspect multiline literals."""
