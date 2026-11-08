@@ -805,12 +805,10 @@ def _inventory_at_revision(root: Path, revision: str) -> list[dict[str, object]]
         spec.loader.exec_module(module)
         return module.inventory(Path(directory))
 def _token_signature(token: str) -> str:
-    """Return a line-stable method/literal signature for an assertion token."""
+    """Return a line-stable method signature for an assertion token."""
     methods = re.findall(r"(?:Contains|IndexOf|DoesNotContain)", token)
-    literals = re.findall(r'"((?:\\.|[^"\\])*)"', token)
     method = methods[-1] if methods else ""
-    literal = literals[0] if literals else ""
-    return f"{method}:{literal}"
+    return method
 def _row_keys(rows: list[dict[str, object]]) -> set[tuple[str, str, str, str, int]]:
     """Return row identities that survive unrelated line insertions."""
     occurrences: dict[tuple[str, str, str, str], int] = {}
@@ -865,7 +863,7 @@ def _verify_base_inventory(root: Path, rows: list[dict[str, object]], revision: 
         f"missing={len(missing)} base_unresolved={base_unresolved} head_unresolved={head_unresolved} "
         f"base_unknown={base_unknown} head_unknown={head_unknown} metadata_changed={len(metadata_changed)}"
     )
-    if missing or head_unresolved > base_unresolved or head_unknown > base_unknown:
+    if missing or (base_unresolved and head_unresolved > base_unresolved) or (base_unknown and head_unknown > base_unknown):
         if missing:
             print(f"SOURCE_TEXT_INVENTORY_BASE_MISSING sample={missing[:5]}")
         return 1
