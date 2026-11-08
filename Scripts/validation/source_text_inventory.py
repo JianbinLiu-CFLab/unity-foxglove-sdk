@@ -213,6 +213,11 @@ def _call_context(lines: list[str], call: dict[str, object]) -> str:
     masked = _strip_csharp_comments_and_strings(text)
     statement_start = max(masked.rfind(";", 0, start), masked.rfind("{", 0, start), masked.rfind("}", 0, start), masked.rfind("&&", 0, start) + 1, masked.rfind("||", 0, start) + 1) + 1
     return text[statement_start:end]
+def _reachability_signature(lines: list[str], call: dict[str, object]) -> str:
+    """Return the nearest enclosing control-flow guard for an assertion call."""
+    text = "\n".join(lines); start = int(call["start"]); masked = _strip_csharp_comments_and_strings(text)
+    guards = list(re.finditer(r"\b(?:if|while|foreach|switch)\s*\([^{}]*\)\s*\{", masked[:start]))
+    return re.sub(r"\s+", " ", guards[-1].group(0)) if guards else ""
 def _source_targets(lines: list[str], include_variables: bool = True) -> dict[str, str]:
     """Build a local symbol-to-source-path map from reader calls and path arrays."""
     paths: dict[str, str] = {}
@@ -806,6 +811,7 @@ def scan_file(path: Path, root: Path, xunit_index: dict[str, list[str]], shared_
                 "xunit_coverage": _xunit_coverage(target, root, xunit_index),
                 "token": token_text,
                 "comment_only": _target_comment_only(target, token_text, root, comment_cache),
+                "reachability": _reachability_signature(lines, call),
             }
         )
     return rows
@@ -865,7 +871,7 @@ def _targets_overlap(base: dict[str, object], head: dict[str, object]) -> bool:
     head_targets = {value for value in str(head["target"]).split(";") if value and value != "<unresolved>"}
     return bool(base_targets and base_targets & head_targets)
 def _match_base_rows(
-    base_rows: list[dict[str, object]], head_rows: list[dict[str, object]]
+    base_rows: list[dict[str, object]], head_rows: list[dict[str, object]], strict: bool = False
 ) -> tuple[list[tuple[dict[str, object], dict[str, object]]], list[dict[str, object]]]:
     """Match base rows to head rows without relying on physical line numbers."""
     available = set(range(len(head_rows)))
@@ -889,26 +895,21 @@ def _match_base_rows(
                 matches.append((base, head_rows[candidate]))
         pending = next_pending
     missing = pending
-    base_counts = Counter(_row_prefix(row) for row in base_rows)
-    head_counts = Counter(_row_prefix(row) for row in head_rows)
-    return matches, [row for row in missing if str(row["target"]) != "<unresolved>" and head_counts[_row_prefix(row)] < base_counts[_row_prefix(row)] and not re.search(r"\b(?:warning|logLines)\b", str(row["token"]))]
+    base_counts, head_counts = Counter(_row_prefix(row) for row in base_rows), Counter(_row_prefix(row) for row in head_rows)
+    return matches, missing if strict else [row for row in missing if str(row["target"]) != "<unresolved>" and head_counts[_row_prefix(row)] < base_counts[_row_prefix(row)] and not re.search(r"\b(?:warning|logLines)\b", str(row["token"]))]
 def _verify_base_inventory(root: Path, rows: list[dict[str, object]], revision: str) -> int:
     """Reject silent row loss or new unresolved targets relative to a trusted base."""
     base_rows = _inventory_at_revision(root, revision)
     base_status_rows = _inventory_at_revision(root, revision, use_current_parser=True)
     _, missing = _match_base_rows(base_rows, rows)
-    status_matches, _ = _match_base_rows(base_status_rows, rows)
-    metadata_changed = [_row_prefix(base) for base, head in status_matches if (tuple(str(base[field]) for field in ("target", "class", "comment_only", "xunit_coverage")) + (str(_token_signatures(str(base["token"]))),)) != (tuple(str(head[field]) for field in ("target", "class", "comment_only", "xunit_coverage")) + (str(_token_signatures(str(head["token"]))),))]
+    status_matches, status_missing = _match_base_rows(base_status_rows, rows, strict=True)
+    metadata_changed = [_row_prefix(base) for base, head in status_matches if (tuple(str(base[field]) for field in ("target", "class", "comment_only", "xunit_coverage", "reachability")) + (str(_token_signatures(str(base["token"]))),)) != (tuple(str(head[field]) for field in ("target", "class", "comment_only", "xunit_coverage", "reachability")) + (str(_token_signatures(str(head["token"]))),))]
     base_unresolved = sum(row["class"] == "UNRESOLVED" for row in base_status_rows)
     head_unresolved = sum(row["class"] == "UNRESOLVED" for row in rows)
     base_unknown = sum(row["class"] == "UNKNOWN" for row in base_status_rows)
     head_unknown = sum(row["class"] == "UNKNOWN" for row in rows)
-    print(
-        f"SOURCE_TEXT_INVENTORY_BASE_OK base_rows={len(base_rows)} head_rows={len(rows)} "
-        f"missing={len(missing)} base_unresolved={base_unresolved} head_unresolved={head_unresolved} "
-        f"base_unknown={base_unknown} head_unknown={head_unknown} metadata_changed={len(metadata_changed)}"
-    )
-    if missing or metadata_changed or head_unresolved > base_unresolved or head_unknown > base_unknown:
+    print(f"SOURCE_TEXT_INVENTORY_BASE_OK base_rows={len(base_rows)} head_rows={len(rows)} missing={len(missing)} base_unresolved={base_unresolved} head_unresolved={head_unresolved} base_unknown={base_unknown} head_unknown={head_unknown} metadata_changed={len(metadata_changed)}")
+    if missing or status_missing or metadata_changed or head_unresolved > base_unresolved or head_unknown > base_unknown:
         if missing:
             print(
                 "SOURCE_TEXT_INVENTORY_BASE_MISSING sample="
@@ -916,6 +917,8 @@ def _verify_base_inventory(root: Path, rows: list[dict[str, object]], revision: 
             )
         if metadata_changed:
             print(f"SOURCE_TEXT_INVENTORY_METADATA_CHANGED sample={metadata_changed[:5]}")
+        if status_missing:
+            print(f"SOURCE_TEXT_INVENTORY_STATUS_MISSING sample={[(row['file'], row['line']) for row in status_missing[:5]]}")
         return 1
     return 0
 def _validation_flag(root: Path, source_file: str) -> str:
@@ -937,7 +940,7 @@ def write_report(rows: list[dict[str, object]], output: Path) -> None:
     output.mkdir(parents=True, exist_ok=True)
     csv_path = output / "source_text_inventory.csv"
     with csv_path.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=("file", "line", "label", "validation_flag", "class", "target", "xunit_coverage", "token", "comment_only"))
+        writer = csv.DictWriter(handle, fieldnames=("file", "line", "label", "validation_flag", "class", "target", "xunit_coverage", "token", "comment_only", "reachability"))
         writer.writeheader()
         writer.writerows(rows)
     counts = {label: sum(row["class"] == label for row in rows) for label in ("A", "B", "C", "UNKNOWN", "UNRESOLVED")}
