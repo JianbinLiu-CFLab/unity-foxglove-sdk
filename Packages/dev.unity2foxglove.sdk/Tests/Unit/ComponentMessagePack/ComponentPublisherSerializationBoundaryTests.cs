@@ -81,6 +81,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.ComponentMessagePack
             Assert.Contains("requestedTopic", contracts);
             Assert.Contains("ClearPublishingSessionState();", server);
             Assert.Contains("FoxgloveManagerTeardownState.RunStartupCleanup(", server);
+            Assert.Contains("CreateStartupCleanupSteps()", server);
             Assert.Contains("ClearPublishingSessionState)", server);
             Assert.Contains("\"clear publishing session state after failed startup\"", server);
             Assert.Contains("if (!_foxRunRawRecordingChannelCache.TryGet(descriptor, out channelId))", rawRecording);
