@@ -273,5 +273,42 @@ class SourceTextInventoryTests(unittest.TestCase):
             self.assertTrue(comment["comment_only"])
             self.assertFalse(any("field" in str(row["token"]) for row in rows))
 
+    def test_derived_receivers_and_pseudo_readers_are_handled(self):
+        """Keep source-derived receiver assertions and ignore reader text in comments or strings."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runtime = root / "Packages" / "fixture" / "Tests" / "Runtime"
+            runtime.mkdir(parents=True)
+            for name in ("A.cs", "B.cs", "C.cs"):
+                product = root / "Packages" / "fixture" / "Runtime" / name
+                product.parent.mkdir(parents=True, exist_ok=True)
+                product.write_text(f"public sealed class {product.stem} {{}}\n", encoding="utf-8")
+            (runtime / "DerivedValidation.cs").write_text(
+                "public static class DerivedValidation {\n"
+                "    public static void Validate() {\n"
+                '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/A.cs");\n'
+                '        Check(source.Substring(0, 1).Contains("A"), "substring");\n'
+                '        Check(ExtractMethodBody(source, "Method").Contains("A"), "helper");\n'
+                '        Check(ReadRequiredRepoText("Packages/fixture/Runtime/B.cs").Contains("B"), "inline");\n'
+                '        var text = "TestSources.Text(\\"Packages/fixture/Runtime/C.cs\\")";\n'
+                '        Assert.Contains("text", text);\n'
+                "        // var fake = TestSources.Text(\"Packages/fixture/Runtime/C.cs\");\n"
+                "    }\n"
+                "}\n",
+                encoding="utf-8",
+            )
+            registry = root / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "PhaseValidationRegistry.cs"
+            registry.parent.mkdir(parents=True, exist_ok=True)
+            registry.write_text(
+                'Ci("--phase-derived", "fixture", DerivedValidation.Validate, evidence: ValidationEvidence.Behavior),\n',
+                encoding="utf-8",
+            )
+            rows = inventory(root)
+            self.assertEqual(3, len(rows))
+            targets = [row["target"] for row in rows]
+            self.assertEqual("Packages/fixture/Runtime/A.cs", targets[0])
+            self.assertEqual("Packages/fixture/Runtime/A.cs", targets[1])
+            self.assertEqual("Packages/fixture/Runtime/B.cs", targets[2])
+
 if __name__ == "__main__":
     unittest.main()

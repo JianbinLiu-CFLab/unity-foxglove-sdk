@@ -5,6 +5,9 @@ from __future__ import annotations
 import argparse
 import csv
 import re
+import subprocess
+import tarfile
+import tempfile
 from pathlib import Path
 
 
@@ -26,6 +29,7 @@ RECEIVER_PATTERN = re.compile(
     r"(?P<receiver>[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\.(?:Contains|IndexOf|DoesNotContain)\s*\("
 )
 ASSERTION_CALL_PATTERN = re.compile(r"\bAssert\.(?:Contains|DoesNotContain)\s*\(")
+DERIVED_METHOD_PATTERN = re.compile(r"\.(?:Contains|IndexOf|DoesNotContain)\s*\(")
 PHASE_LABEL_PATTERN = re.compile(r"\"(?P<label>\d+[A-Za-z]?[-A-Za-z0-9]*-[A-Za-z0-9]+:[^\"]+)\"")
 
 
@@ -159,10 +163,11 @@ def _line_for_offset(starts: list[int], offset: int) -> int:
 def _call_spans(lines: list[str], pattern: re.Pattern[str]) -> list[dict[str, object]]:
     """Return balanced call spans for a regular-expression call pattern."""
     text = "\n".join(lines)
+    searchable = _strip_csharp_comments_and_strings(text)
     starts = _line_starts(text)
     calls: list[dict[str, object]] = []
-    for match in pattern.finditer(text):
-        open_index = text.find("(", match.start(), match.end())
+    for match in pattern.finditer(searchable):
+        open_index = searchable.find("(", match.start(), match.end())
         close_index = _balanced_call_end(text, open_index)
         if close_index is None:
             continue
@@ -457,6 +462,42 @@ def _resolve_assertion_target(
         if target:
             reader_targets.extend(target.split(";"))
     return ";".join(dict.fromkeys(reader_targets)) or None
+
+
+def _resolve_derived_target(
+    lines: list[str],
+    call: dict[str, object],
+    paths: dict[str, str],
+    symbols: list[tuple[int, tuple[int, ...], str, str]],
+    scopes: list[tuple[int, ...]],
+) -> str | None:
+    """Resolve source origins for receiver expressions that contain method calls."""
+    line = int(call["start_line"])
+    text = "\n".join(lines)
+    start = int(call["start"])
+    statement_start = max(text.rfind(";", 0, start), text.rfind("{", 0, start), text.rfind("}", 0, start)) + 1
+    expression = text[statement_start:start]
+    code = _strip_csharp_comments_and_strings(expression)
+    targets: list[str] = []
+    unresolved = False
+    names = {name for _, _, name, _ in symbols if name != "__last_reader__"}
+    for name in names:
+        if not re.search(rf"\b{re.escape(name)}\b", code):
+            continue
+        target = _lookup_symbol(symbols, name, line, scopes[line])
+        if target:
+            targets.extend(target.split(";"))
+        else:
+            unresolved = True
+    for reader in _call_spans(expression.splitlines(), READER_CALL_PATTERN):
+        target = _extract_argument_path(_split_first_argument(str(reader["argument"])), paths)
+        if target:
+            targets.extend(target.split(";"))
+        else:
+            unresolved = True
+    if targets:
+        return ";".join(dict.fromkeys(targets))
+    return "<unresolved>" if unresolved else None
 
 
 def resolve_target(lines: list[str], index: int, paths: dict[str, str], symbols: list[tuple[int, tuple[int, ...], str, str]] | None = None, scopes: list[tuple[int, ...]] | None = None) -> str:
@@ -806,6 +847,7 @@ def scan_file(path: Path, root: Path, xunit_index: dict[str, list[str]], shared_
         paths[name] = target
     assertion_calls = _call_spans(lines, ASSERTION_CALL_PATTERN)
     receiver_calls = _call_spans(lines, RECEIVER_PATTERN)
+    derived_calls = _call_spans(lines, DERIVED_METHOD_PATTERN)
     rows: list[dict[str, object]] = []
     for index, line in enumerate(lines):
         code_line = _strip_csharp_comments_and_strings(line)
@@ -813,7 +855,8 @@ def scan_file(path: Path, root: Path, xunit_index: dict[str, list[str]], shared_
         if receiver and receiver.group("receiver") == "Assert":
             receiver = None
         assertion = next((call for call in assertion_calls if int(call["start_line"]) == index), None)
-        if not receiver and assertion is None:
+        derived = next((call for call in derived_calls if int(call["start_line"]) == index), None)
+        if not receiver and assertion is None and derived is None:
             continue
         if receiver:
             receiver_name = receiver.group("receiver").split(".", 1)[0]
@@ -831,11 +874,16 @@ def scan_file(path: Path, root: Path, xunit_index: dict[str, list[str]], shared_
                 None,
             )
             token_text = str(receiver_call["text"]).strip() if receiver_call else line.strip()
-        else:
+        elif assertion is not None:
             target = _resolve_assertion_target(assertion, paths, local_symbols, scopes)
             if target is None:
                 continue
             token_text = str(assertion["text"]).strip()
+        else:
+            target = _resolve_derived_target(lines, derived, paths, local_symbols, scopes)
+            if target is None:
+                continue
+            token_text = str(derived["text"]).strip()
         target_parts = []
         for part in target.split(";"):
             candidate = (root / part).resolve() if part and part != "<unresolved>" else None
@@ -871,6 +919,51 @@ def inventory(root: Path) -> list[dict[str, object]]:
     for path in files:
         rows.extend(scan_file(path, root, xunit_index, scopes.get(path), comment_cache))
     return rows
+
+
+def _inventory_at_revision(root: Path, revision: str) -> list[dict[str, object]]:
+    """Materialize a Git revision under build/ and scan it with the current inventory rules."""
+    build_root = root / "build" / "review"
+    build_root.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="source-text-inventory-base-", dir=build_root) as directory:
+        process = subprocess.Popen(
+            ["git", "archive", revision],
+            cwd=root,
+            stdout=subprocess.PIPE,
+        )
+        assert process.stdout is not None
+        with tarfile.open(fileobj=process.stdout, mode="r|") as archive:
+            archive.extractall(directory)
+        if process.wait() != 0:
+            raise RuntimeError(f"git archive failed for {revision}")
+        return inventory(Path(directory))
+
+
+def _row_key(row: dict[str, object]) -> tuple[str, int, str]:
+    """Return a stable identity for a source-text inventory row."""
+    return (str(row["file"]), int(row["line"]), str(row["token"]))
+
+
+def _verify_base_inventory(root: Path, rows: list[dict[str, object]], revision: str) -> int:
+    """Reject silent row loss or new unresolved targets relative to a trusted base."""
+    base_rows = _inventory_at_revision(root, revision)
+    base_keys = {_row_key(row) for row in base_rows}
+    head_keys = {_row_key(row) for row in rows}
+    missing = sorted(base_keys - head_keys)
+    base_unresolved = sum(row["class"] == "UNRESOLVED" for row in base_rows)
+    head_unresolved = sum(row["class"] == "UNRESOLVED" for row in rows)
+    base_unknown = sum(row["class"] == "UNKNOWN" for row in base_rows)
+    head_unknown = sum(row["class"] == "UNKNOWN" for row in rows)
+    print(
+        f"SOURCE_TEXT_INVENTORY_BASE_OK base_rows={len(base_rows)} head_rows={len(rows)} "
+        f"missing={len(missing)} base_unresolved={base_unresolved} head_unresolved={head_unresolved} "
+        f"base_unknown={base_unknown} head_unknown={head_unknown}"
+    )
+    if missing or head_unresolved > base_unresolved or head_unknown > base_unknown:
+        if missing:
+            print(f"SOURCE_TEXT_INVENTORY_BASE_MISSING sample={missing[:5]}")
+        return 1
+    return 0
 
 
 def _validation_flag(root: Path, source_file: str) -> str:
@@ -939,14 +1032,18 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument("--output", type=Path, default=Path("build/review/source-text-inventory"))
+    parser.add_argument("--base-ref")
     args = parser.parse_args()
-    rows = inventory(args.root.resolve())
+    root = args.root.resolve()
+    rows = inventory(root)
     write_report(rows, args.output)
     print(
         f"SOURCE_TEXT_INVENTORY_OK rows={len(rows)} "
         f"unknown={sum(row['class'] == 'UNKNOWN' for row in rows)} "
         f"unresolved={sum(row['class'] == 'UNRESOLVED' for row in rows)}"
     )
+    if args.base_ref:
+        return _verify_base_inventory(root, rows, args.base_ref)
     return 0
 
 
