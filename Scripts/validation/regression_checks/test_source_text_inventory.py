@@ -137,6 +137,88 @@ class SourceTextInventoryTests(unittest.TestCase):
             self.assertEqual("Packages/fixture/Runtime/Comment.cs", by_line[12]["target"])
             self.assertTrue(by_line[12]["comment_only"])
 
+    def test_source_assertion_forms_are_filtered_and_classified(self):
+        """Include source assertions while excluding ordinary string operations."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runtime = root / "Packages" / "fixture" / "Tests" / "Runtime"
+            runtime.mkdir(parents=True)
+            product = root / "Packages" / "fixture" / "Runtime" / "Sensors" / "LidarModelRegistry.cs"
+            product.parent.mkdir(parents=True)
+            product.write_text("public sealed class LidarModelRegistry {}\n", encoding="utf-8")
+            (runtime / "FormsValidation.cs").write_text(
+                "public static class FormsValidation {\n"
+                "    public static void Validate() {\n"
+                '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Sensors/LidarModelRegistry.cs");\n'
+                '        var message = "ordinary";\n'
+                '        Check(source.Contains("LidarModelRegistry"), "positive");\n'
+                '        Assert.DoesNotContain("obsolete", source);\n'
+                '        Check(!source.Contains("forbidden"), "negative");\n'
+                '        Check(source.IndexOf("LidarModelRegistry") >= 0, "source index");\n'
+                '        Assert.Contains("ordinary", message);\n'
+                '        Check(message.IndexOf("ordinary") >= 0, "ordinary index");\n'
+                "    }\n"
+                "}\n",
+                encoding="utf-8",
+            )
+            registry = root / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "PhaseValidationRegistry.cs"
+            registry.parent.mkdir(parents=True, exist_ok=True)
+            registry.write_text(
+                'Ci("--phase-forms", "fixture", FormsValidation.Validate, evidence: ValidationEvidence.Behavior),\n',
+                encoding="utf-8",
+            )
+            rows = inventory(root)
+            self.assertEqual(4, len(rows))
+            self.assertEqual({"C", "A"}, {row["class"] for row in rows})
+            self.assertTrue(all(row["target"].endswith("LidarModelRegistry.cs") for row in rows))
+            self.assertTrue(any(row["class"] == "A" and "DoesNotContain" in row["token"] for row in rows))
+            self.assertTrue(any(row["class"] == "A" and "!source.Contains" in row["token"] for row in rows))
+            self.assertTrue(any("source.IndexOf" in row["token"] for row in rows))
+
+    def test_multiline_loaders_and_unresolved_targets_are_explicit(self):
+        """Resolve complete multiline reader calls and mark unresolved paths explicitly."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runtime = root / "Packages" / "fixture" / "Tests" / "Runtime"
+            runtime.mkdir(parents=True)
+            for name in ("First.cs", "Second.cs"):
+                product = root / "Packages" / "fixture" / "Runtime" / name
+                product.parent.mkdir(parents=True, exist_ok=True)
+                product.write_text(f"public sealed class {product.stem} {{}}\n", encoding="utf-8")
+            (root / "Packages" / "fixture" / "Runtime" / "DirectoryTarget").mkdir(parents=True)
+            (runtime / "MultilineValidation.cs").write_text(
+                "public static class MultilineValidation {\n"
+                "    public static void Validate() {\n"
+                "        var first = TestSources.Text(\n"
+                '            "Packages/fixture/Runtime/First.cs");\n'
+                "        var second = TestSources.Text(\n"
+                '            "Packages/fixture/Runtime/Second.cs");\n'
+                '        Assert.Contains("First", first);\n'
+                '        Assert.Contains("Second", second);\n'
+                "        var unresolved = TestSources.Text(\n"
+                "            ResolvePath());\n"
+                '        Assert.Contains("unknown", unresolved);\n'
+                "        var directory = TestSources.Text(\n"
+                '            "Packages/fixture/Runtime/DirectoryTarget");\n'
+                '        Assert.Contains("directory", directory);\n'
+                "    }\n"
+                "}\n",
+                encoding="utf-8",
+            )
+            registry = root / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "PhaseValidationRegistry.cs"
+            registry.parent.mkdir(parents=True, exist_ok=True)
+            registry.write_text(
+                'Ci("--phase-multiline", "fixture", MultilineValidation.Validate, evidence: ValidationEvidence.Behavior),\n',
+                encoding="utf-8",
+            )
+            rows = inventory(root)
+            by_line = {row["line"]: row for row in rows if row["file"].endswith("MultilineValidation.cs")}
+            self.assertEqual("Packages/fixture/Runtime/First.cs", by_line[7]["target"])
+            self.assertEqual("Packages/fixture/Runtime/Second.cs", by_line[8]["target"])
+            self.assertEqual("UNRESOLVED", by_line[11]["class"])
+            self.assertEqual("<unresolved>", by_line[11]["target"])
+            self.assertEqual("UNKNOWN", by_line[14]["class"])
+            self.assertEqual("<directory>", by_line[14]["target"])
 
 if __name__ == "__main__":
     unittest.main()
