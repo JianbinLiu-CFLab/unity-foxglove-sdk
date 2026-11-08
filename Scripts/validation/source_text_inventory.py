@@ -556,8 +556,8 @@ def _shared_scope_paths(files: list[Path]) -> dict[Path, dict[str, str]]:
                             if target and target != "<unresolved>":
                                 parameter_targets.setdefault(parameter, set()).update(target.split(";"))
         for name, targets in parameter_targets.items():
-            if name not in shared and targets:
-                shared[name] = ";".join(sorted(targets))
+            if name not in shared:
+                shared[name] = next(iter(targets)) if len(targets) == 1 else "<unresolved>"
         for path in group:
             result[path] = shared
     return result

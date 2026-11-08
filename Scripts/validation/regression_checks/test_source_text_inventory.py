@@ -391,5 +391,38 @@ class SourceTextInventoryTests(unittest.TestCase):
             self.assertEqual(1, len(rows))
             self.assertFalse(rows[0]["comment_only"])
 
+    def test_ambiguous_parameter_targets_fail_closed(self):
+        """Do not merge different reader paths under one helper parameter name."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runtime = root / "Packages" / "fixture" / "Tests" / "Runtime"
+            runtime.mkdir(parents=True)
+            for name in ("A.cs", "B.cs"):
+                product = root / "Packages" / "fixture" / "Runtime" / name
+                product.parent.mkdir(parents=True, exist_ok=True)
+                product.write_text(f"public sealed class {product.stem} {{}}\n", encoding="utf-8")
+            (runtime / "ParameterValidation.cs").write_text(
+                "public static class ParameterValidation {\n"
+                '    private static void CheckSource(string source) { Check(source.Contains("marker")); }\n'
+                '    public static void Validate() {\n'
+                '        var first = ReadRequiredRepoText("Packages/fixture/Runtime/A.cs");\n'
+                '        var second = ReadRequiredRepoText("Packages/fixture/Runtime/B.cs");\n'
+                "        CheckSource(first);\n"
+                "        CheckSource(second);\n"
+                "    }\n"
+                "}\n",
+                encoding="utf-8",
+            )
+            registry = root / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "PhaseValidationRegistry.cs"
+            registry.parent.mkdir(parents=True, exist_ok=True)
+            registry.write_text(
+                'Ci("--phase-parameter-scope", "fixture", ParameterValidation.Validate, evidence: ValidationEvidence.Behavior),\n',
+                encoding="utf-8",
+            )
+            rows = inventory(root)
+            parameter_rows = [row for row in rows if "marker" in str(row["token"])]
+            self.assertEqual(1, len(parameter_rows))
+            self.assertEqual("UNRESOLVED", parameter_rows[0]["class"])
+
 if __name__ == "__main__":
     unittest.main()
