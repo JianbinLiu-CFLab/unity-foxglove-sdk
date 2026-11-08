@@ -172,7 +172,7 @@ class SourceTextInventoryTests(unittest.TestCase):
             self.assertEqual({"C", "A"}, {row["class"] for row in rows})
             self.assertTrue(all(row["target"].endswith("LidarModelRegistry.cs") for row in rows))
             self.assertTrue(any(row["class"] == "A" and "DoesNotContain" in row["token"] for row in rows))
-            self.assertTrue(any(row["class"] == "A" and "!source.Contains" in row["token"] for row in rows))
+            self.assertTrue(any(row["class"] == "A" and "forbidden" in row["token"] for row in rows))
             self.assertTrue(any("source.IndexOf" in row["token"] for row in rows))
 
     def test_multiline_loaders_and_unresolved_targets_are_explicit(self):
@@ -219,6 +219,59 @@ class SourceTextInventoryTests(unittest.TestCase):
             self.assertEqual("<unresolved>", by_line[11]["target"])
             self.assertEqual("UNKNOWN", by_line[14]["class"])
             self.assertEqual("<directory>", by_line[14]["target"])
+
+    def test_scope_and_multiline_receiver_resolution_are_fail_closed(self):
+        """Keep local symbols scoped, preserve combined targets, and inspect multiline literals."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runtime = root / "Packages" / "fixture" / "Tests" / "Runtime"
+            runtime.mkdir(parents=True)
+            for name in ("First.cs", "Second.cs", "Comment.cs"):
+                product = root / "Packages" / "fixture" / "Runtime" / name
+                product.parent.mkdir(parents=True, exist_ok=True)
+                content = "// comment marker\n" if name == "Comment.cs" else ""
+                product.write_text(content + f"public sealed class {product.stem} {{}}\n", encoding="utf-8")
+            (runtime / "ScopeValidation.cs").write_text(
+                "public static class ScopeValidation {\n"
+                "    private string source;\n"
+                "    public static void ValidateFirst() {\n"
+                '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/First.cs");\n'
+                '        Check(source.Contains("First"), "first");\n'
+                "    }\n"
+                "    public static void ValidateCombined() {\n"
+                '        var first = ReadRequiredRepoText("Packages/fixture/Runtime/First.cs");\n'
+                '        var second = ReadRequiredRepoText("Packages/fixture/Runtime/Second.cs");\n'
+                "        var combined = first + second;\n"
+                '        Check(combined.Contains("combined"), "combined");\n'
+                "    }\n"
+                "    public static void ValidateComment() {\n"
+                '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Comment.cs");\n'
+                "        Check(source.Contains(\n"
+                '            "comment marker"), "comment");\n'
+                "    }\n"
+                "    public static void ValidateField() {\n"
+                '        Check(source.Contains("field"), "field");\n'
+                "    }\n"
+                "}\n",
+                encoding="utf-8",
+            )
+            registry = root / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "PhaseValidationRegistry.cs"
+            registry.parent.mkdir(parents=True, exist_ok=True)
+            registry.write_text(
+                'Ci("--phase-scope-fail-closed", "fixture", ScopeValidation.ValidateFirst, evidence: ValidationEvidence.Behavior),\n',
+                encoding="utf-8",
+            )
+            rows = inventory(root)
+            first = next(row for row in rows if "First" in str(row["token"]))
+            combined = next(row for row in rows if "combined" in str(row["token"]))
+            comment = next(row for row in rows if "comment marker" in str(row["token"]))
+            self.assertEqual("Packages/fixture/Runtime/First.cs", first["target"])
+            self.assertEqual(
+                "Packages/fixture/Runtime/First.cs;Packages/fixture/Runtime/Second.cs",
+                combined["target"],
+            )
+            self.assertTrue(comment["comment_only"])
+            self.assertFalse(any("field" in str(row["token"]) for row in rows))
 
 if __name__ == "__main__":
     unittest.main()

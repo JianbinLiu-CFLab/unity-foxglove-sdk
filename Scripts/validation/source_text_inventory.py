@@ -173,6 +173,7 @@ def _call_spans(lines: list[str], pattern: re.Pattern[str]) -> list[dict[str, ob
                 "start_line": _line_for_offset(starts, match.start()),
                 "end_line": _line_for_offset(starts, close_index),
                 "name": match.groupdict().get("reader", match.group(0)),
+                "receiver": match.groupdict().get("receiver"),
                 "argument": text[open_index + 1 : close_index],
                 "text": text[match.start() : close_index + 1],
             }
@@ -446,17 +447,16 @@ def _resolve_assertion_target(
         if not re.search(rf"\b{re.escape(name)}\b", code):
             continue
         target = _lookup_symbol(symbols, name, line, scope)
-        if target is None:
-            target = paths.get(name)
         if target:
             targets.extend(target.split(";"))
     if targets:
         return ";".join(dict.fromkeys(targets))
+    reader_targets: list[str] = []
     for reader in _call_spans(call_text.splitlines(), READER_CALL_PATTERN):
         target = _extract_argument_path(_split_first_argument(str(reader["argument"])), paths)
         if target:
-            return target
-    return None
+            reader_targets.extend(target.split(";"))
+    return ";".join(dict.fromkeys(reader_targets)) or None
 
 
 def resolve_target(lines: list[str], index: int, paths: dict[str, str], symbols: list[tuple[int, tuple[int, ...], str, str]] | None = None, scopes: list[tuple[int, ...]] | None = None) -> str:
@@ -475,7 +475,7 @@ def resolve_target(lines: list[str], index: int, paths: dict[str, str], symbols:
             if target:
                 return target
     receiver = RECEIVER_PATTERN.search(_strip_csharp_comments_and_strings(lines[index]))
-    if receiver:
+    if receiver and symbols is None:
         name = receiver.group("receiver").split(".", 1)[0]
         if name in paths:
             return paths[name]
@@ -805,6 +805,7 @@ def scan_file(path: Path, root: Path, xunit_index: dict[str, list[str]], shared_
     for _, _, name, target in local_symbols:
         paths[name] = target
     assertion_calls = _call_spans(lines, ASSERTION_CALL_PATTERN)
+    receiver_calls = _call_spans(lines, RECEIVER_PATTERN)
     rows: list[dict[str, object]] = []
     for index, line in enumerate(lines):
         code_line = _strip_csharp_comments_and_strings(line)
@@ -818,11 +819,18 @@ def scan_file(path: Path, root: Path, xunit_index: dict[str, list[str]], shared_
             receiver_name = receiver.group("receiver").split(".", 1)[0]
             receiver_target = _lookup_symbol(local_symbols, receiver_name, index, scopes[index])
             if receiver_target is None:
-                receiver_target = paths.get(receiver_name)
-            if receiver_target is None:
                 continue
             target = receiver_target
-            token_text = line.strip()
+            receiver_call = next(
+                (
+                    call
+                    for call in receiver_calls
+                    if int(call["start_line"]) == index
+                    and call.get("receiver") != "Assert"
+                ),
+                None,
+            )
+            token_text = str(receiver_call["text"]).strip() if receiver_call else line.strip()
         else:
             target = _resolve_assertion_target(assertion, paths, local_symbols, scopes)
             if target is None:
@@ -846,7 +854,7 @@ def scan_file(path: Path, root: Path, xunit_index: dict[str, list[str]], shared_
                 "class": classify(target, line),
                 "target": target,
                 "xunit_coverage": _xunit_coverage(target, root, xunit_index),
-                "token": line.strip(),
+                "token": token_text,
                 "comment_only": _target_comment_only(target, token_text, root, comment_cache) or comment_only_flags[index],
             }
         )
