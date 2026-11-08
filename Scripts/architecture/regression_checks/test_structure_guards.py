@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -119,14 +120,76 @@ class StructureGuardTests(unittest.TestCase):
         """Reject new phase prefixes, allow a frozen prefix, and ignore DLLs."""
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            paths = ["Scripts/phase197_tool.py", "Scripts/x/Phase197Thing/A.cs", "Scripts/phase185/neutral.py", "Scripts/phase197.dll"]
-            for path in paths[:3]:
+            paths = [
+                "Scripts/phase1_tool.py",
+                "Scripts/PHASE7_tool.py",
+                "Scripts/_phase9_tool_.py",
+                "Scripts/x/Phase197Thing/A.cs",
+                "Packages/pkg/Tests/Runtime/Phase1Validation.cs",
+                "Packages/pkg/Tests/Runtime/Phase9Validation.cs",
+                "Scripts/phase185/neutral.py",
+                "Scripts/phase197.dll",
+            ]
+            for path in paths[:-1]:
                 write_lines(root / path, 1)
             baseline = {"files": {}, "partial_types": {}, "phase_paths": ["Scripts/phase185"]}
             errors = self.guards.violations(root, paths, baseline)
-            self.assertIn("G3 phase_path=Scripts/phase197_tool.py", errors)
+            self.assertIn("G3 phase_path=Scripts/phase1_tool.py", errors)
+            self.assertIn("G3 phase_path=Scripts/PHASE7_tool.py", errors)
+            self.assertTrue(any("G3 phase_path=Scripts/_phase9_tool_" in error for error in errors))
             self.assertIn("G3 phase_path=Scripts/x/Phase197Thing", errors)
+            self.assertIn("G3 phase_path=Packages/pkg/Tests/Runtime/Phase1Validation.cs", errors)
+            self.assertIn("G3 phase_path=Packages/pkg/Tests/Runtime/Phase9Validation.cs", errors)
             self.assertNotIn("Scripts/phase185", "\n".join(errors))
+
+    def test_baseline_integrity_rejects_new_entries_and_raised_ceilings(self) -> None:
+        """Reject a head baseline that widens any trusted base exception."""
+        base = {"files": {"old.cs": 1005}, "partial_types": {"pkg|Demo|Thing": 2005}, "phase_paths": ["Scripts/phase185"]}
+        head = {"files": {"old.cs": 1006, "new.cs": 1001}, "partial_types": {"pkg|Demo|Thing": 2005, "pkg|Demo|New": 2001}, "phase_paths": ["Scripts/phase185", "Scripts/phase197"]}
+        errors = self.guards.baseline_integrity_violations(head, base)
+        self.assertIn("BASELINE files raised=old.cs base=1005 head=1006", errors)
+        self.assertIn("BASELINE files added=new.cs limit=1001", errors)
+        self.assertIn("BASELINE partial_types added=pkg|Demo|New limit=2001", errors)
+        self.assertIn("BASELINE phase_paths added=Scripts/phase197", errors)
+
+    def test_stale_baseline_entries_are_rejected(self) -> None:
+        """Require baseline entries to match existing above-limit measurements."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "Source.cs"
+            write_lines(source, 1001)
+            baseline = {"files": {"Source.cs": 1002, "missing.cs": 1001}, "partial_types": {}, "phase_paths": []}
+            errors = self.guards.stale_baseline_violations(root, ["Source.cs"], baseline)
+            self.assertIn("BASELINE stale_file=Source.cs ceiling=1002 measured=1001", errors)
+            self.assertIn("BASELINE stale_file=missing.cs reason=missing", errors)
+
+    def test_baseline_revision_loader_distinguishes_missing_path_and_revision(self) -> None:
+        """Treat a missing baseline path as absent but surface an invalid revision."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            run = lambda *args: subprocess.run(["git", "-C", str(root), *args], check=True, capture_output=True, text=True)
+            run("init")
+            run("config", "user.email", "tests@example.invalid")
+            run("config", "user.name", "Structure Guard Tests")
+            (root / "README.md").write_text("fixture\n", encoding="utf-8")
+            run("add", "-A")
+            run("commit", "-m", "initial")
+            missing_revision = run("rev-parse", "HEAD").stdout.strip()
+            baseline_path = root / "Scripts" / "architecture" / "structure_guard_baseline.json"
+            baseline_path.parent.mkdir(parents=True)
+            baseline_path.write_text(json.dumps({"files": {}, "partial_types": {}, "phase_paths": []}), encoding="utf-8")
+            run("add", "-A")
+            run("commit", "-m", "baseline")
+            present_revision = run("rev-parse", "HEAD").stdout.strip()
+            original_path = self.guards.BASELINE_PATH
+            self.guards.BASELINE_PATH = baseline_path
+            try:
+                self.assertEqual({"files": {}, "partial_types": {}, "phase_paths": []}, self.guards.load_baseline_at_revision(root, present_revision))
+                self.assertIsNone(self.guards.load_baseline_at_revision(root, missing_revision))
+                with self.assertRaises(RuntimeError):
+                    self.guards.load_baseline_at_revision(root, "not-a-revision")
+            finally:
+                self.guards.BASELINE_PATH = original_path
 
     def test_write_baseline_only_lowers_and_removes(self) -> None:
         """Lower an existing ceiling, remove a fixed entry, and never add a new one."""

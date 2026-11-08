@@ -20,7 +20,7 @@ PARTIAL_PATTERN = re.compile(
     r"\bpartial\s+(?:(?:class|struct|interface)|record(?:\s+(?:class|struct))?)\s+([A-Za-z_]\w*)"
 )
 NAMESPACE_PATTERN = re.compile(r"\bnamespace\s+([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)")
-PHASE_PATTERN = re.compile(r"(?:[Pp]hase\d{2,3}|_phase\d{2,3}_)")
+PHASE_PATTERN = re.compile(r"(?i)phase\d+")
 
 
 def _relative_path(path: str | Path) -> str:
@@ -125,6 +125,19 @@ def tracked_paths(root: Path) -> list[str]:
     return [line for line in completed.stdout.splitlines() if line]
 
 
+def tracked_paths_at_revision(root: Path, revision: str) -> list[str]:
+    """Return paths reported by git ls-tree for a trusted revision."""
+    completed = subprocess.run(
+        ["git", "-C", str(root), "ls-tree", "-r", "--name-only", revision],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if completed.returncode != 0:
+        raise RuntimeError(completed.stderr.strip() or "git ls-tree failed")
+    return [line for line in completed.stdout.splitlines() if line]
+
+
 def measured_tree(root: Path, paths: Iterable[str]) -> dict[str, object]:
     """Measure current source ceilings and phase prefixes from tracked paths."""
     source_paths = _source_paths(root, paths)
@@ -156,6 +169,102 @@ def _normalise_baseline(value: object) -> dict[str, object]:
 def load_baseline(path: Path = BASELINE_PATH) -> dict[str, object]:
     """Load and validate a structure-guard baseline JSON file."""
     return _normalise_baseline(json.loads(path.read_text(encoding="utf-8")))
+
+
+def load_baseline_at_revision(root: Path, revision: str) -> dict[str, object] | None:
+    """Load the baseline file from a git revision, if that revision has one."""
+    relative = _relative_path(BASELINE_PATH.relative_to(root))
+    verified = subprocess.run(
+        ["git", "-C", str(root), "rev-parse", "--verify", f"{revision}^{{commit}}"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if verified.returncode != 0:
+        raise RuntimeError(verified.stderr.strip() or "git revision verification failed")
+    listed = subprocess.run(
+        ["git", "-C", str(root), "ls-tree", "-r", "--name-only", revision, "--", relative],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if listed.returncode != 0:
+        raise RuntimeError(listed.stderr.strip() or "git baseline path lookup failed")
+    if not listed.stdout.splitlines():
+        return None
+    completed = subprocess.run(
+        ["git", "-C", str(root), "show", f"{revision}:{relative}"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if completed.returncode != 0:
+        raise RuntimeError(completed.stderr.strip() or "git baseline load failed")
+    return _normalise_baseline(json.loads(completed.stdout))
+
+
+def baseline_integrity_violations(
+    baseline: dict[str, object],
+    base_baseline: dict[str, object] | None,
+    base_phase_paths: set[str] | None = None,
+) -> list[str]:
+    """Reject baseline additions and ceiling growth relative to the trusted base."""
+    if base_baseline is None:
+        return []
+
+    errors: list[str] = []
+    for section in ("files", "partial_types"):
+        current = baseline[section]
+        base = base_baseline[section]
+        for key, limit in sorted(current.items()):
+            if key not in base:
+                errors.append(f"BASELINE {section} added={key} limit={limit}")
+            elif int(limit) > int(base[key]):
+                errors.append(
+                    f"BASELINE {section} raised={key} base={base[key]} head={limit}"
+                )
+
+    added_phase_paths = set(baseline["phase_paths"]) - set(base_baseline["phase_paths"])
+    if base_phase_paths is not None:
+        added_phase_paths -= base_phase_paths
+    added_phase_paths = sorted(added_phase_paths)
+    errors.extend(f"BASELINE phase_paths added={path}" for path in added_phase_paths)
+    return errors
+
+
+def stale_baseline_violations(
+    root: Path,
+    paths: Iterable[str],
+    baseline: dict[str, object],
+) -> list[str]:
+    """Reject baseline entries that no longer match the measured tree."""
+    source_paths = _source_paths(root, paths)
+    counts = {path: line_count(root / path) for path in source_paths}
+    partials = _partial_totals(root, source_paths)
+    phase_paths = _phase_prefixes(source_paths)
+    errors: list[str] = []
+
+    for path, ceiling in sorted(baseline["files"].items()):
+        count = counts.get(path)
+        if count is None:
+            errors.append(f"BASELINE stale_file={path} reason=missing")
+        elif count <= FILE_LIMIT:
+            errors.append(f"BASELINE stale_file={path} reason=below-limit lines={count}")
+        elif int(ceiling) > count:
+            errors.append(f"BASELINE stale_file={path} ceiling={ceiling} measured={count}")
+
+    for key, ceiling in sorted(baseline["partial_types"].items()):
+        count = partials.get(key)
+        if count is None:
+            errors.append(f"BASELINE stale_partial_type={key} reason=missing")
+        elif count <= PARTIAL_LIMIT:
+            errors.append(f"BASELINE stale_partial_type={key} reason=below-limit lines={count}")
+        elif int(ceiling) > count:
+            errors.append(f"BASELINE stale_partial_type={key} ceiling={ceiling} measured={count}")
+
+    for path in sorted(set(baseline["phase_paths"]) - phase_paths):
+        errors.append(f"BASELINE stale_phase_path={path}")
+    return errors
 
 
 def violations(root: Path, paths: Iterable[str], baseline: dict[str, object]) -> list[str]:
@@ -212,13 +321,28 @@ def main(argv: list[str] | None = None) -> int:
     """Run the structure guards or update their baseline."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--write-baseline", action="store_true")
+    parser.add_argument("--base-ref", default=None)
     args = parser.parse_args(argv)
     paths = tracked_paths(REPOSITORY_ROOT)
     if args.write_baseline:
         write_baseline(REPOSITORY_ROOT, paths)
         print("STRUCTURE_GUARDS_BASELINE_WRITTEN")
         return 0
-    errors = violations(REPOSITORY_ROOT, paths, load_baseline())
+    baseline = load_baseline()
+    base_baseline = load_baseline_at_revision(REPOSITORY_ROOT, args.base_ref) if args.base_ref else None
+    base_phase_paths = None
+    if args.base_ref:
+        base_paths = tracked_paths_at_revision(REPOSITORY_ROOT, args.base_ref)
+        base_phase_paths = _phase_prefixes(_source_paths(REPOSITORY_ROOT, base_paths))
+    errors = stale_baseline_violations(REPOSITORY_ROOT, paths, baseline)
+    errors.extend(
+        baseline_integrity_violations(
+            baseline,
+            base_baseline,
+            base_phase_paths,
+        )
+    )
+    errors.extend(violations(REPOSITORY_ROOT, paths, baseline))
     if errors:
         print("\n".join(errors))
         return 1
