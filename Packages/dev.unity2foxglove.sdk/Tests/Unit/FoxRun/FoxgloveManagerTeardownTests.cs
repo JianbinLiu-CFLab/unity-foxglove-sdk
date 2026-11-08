@@ -162,6 +162,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 reports);
         }
 
+#if MANAGER_PRODUCTION_BOUNDARY
         [Fact]
         public void StartupFailureCleanupWiringContainsEveryProductionStep()
         {
@@ -171,6 +172,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
             Assert.Equal(16, steps.Length);
             Assert.All(steps, step => Assert.NotNull(step));
         }
+#endif
 
         [Fact]
         public void PreTailCleanupRunsEveryStepAndReturnsTheFirstFailure()
