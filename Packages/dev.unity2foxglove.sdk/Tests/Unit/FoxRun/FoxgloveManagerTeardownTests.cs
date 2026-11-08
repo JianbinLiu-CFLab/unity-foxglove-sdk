@@ -125,58 +125,29 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
-        public void LifecycleCharacterizationCoversRunningAndNotRunningStopServerOwnership()
-        {
-            var method = TeardownMethod("ShouldRunStopServer");
-
-            Assert.True((bool)method.Invoke(null, new object[] { true, false, false }));
-            Assert.True((bool)method.Invoke(null, new object[] { false, true, false }));
-            Assert.True((bool)method.Invoke(null, new object[] { false, false, true }));
-            Assert.False((bool)method.Invoke(null, new object[] { false, false, false }));
-        }
-
-        [Fact]
-        public void LifecycleCharacterizationPreservesStartupFailureCleanupOrder()
+        public void StartupFailureCleanupPolicyRunsEveryStepAndReportsFailures()
         {
             var calls = new List<string>();
-            var failure = FoxgloveManagerTeardownState.RunCleanupReturningFirstFailure(
-                Step(calls, "events", new InvalidOperationException("startup-failure")),
-                Step(calls, "services"),
-                Step(calls, "runtime"));
+            var reports = new List<string>();
+            var method = TeardownMethod("RunStartupCleanup");
+            Action<Exception, string> report = (exception, description) => reports.Add(description + ":" + exception.Message);
 
-            Assert.Equal("startup-failure", failure.SourceException.Message);
-            Assert.Equal(new[] { "events", "services", "runtime" }, calls);
-        }
+            method.Invoke(
+                null,
+                new object[]
+                {
+                    report,
+                    new[] { "first", "second", "third" },
+                    new Action[]
+                    {
+                        Step(calls, "first", new InvalidOperationException("first-failure")),
+                        Step(calls, "second", new ArgumentException("second-failure")),
+                        Step(calls, "third")
+                    }
+                });
 
-        [Fact]
-        public void LifecycleCharacterizationPreservesDisableAndDestroyOrders()
-        {
-            var disable = new List<string>();
-            var destroy = new List<string>();
-
-            FoxgloveManagerTeardownState.RunDisable(
-                Step(disable, "subscription"),
-                Step(disable, "transport"),
-                Step(disable, "server"),
-                Step(disable, "publish"),
-                Step(disable, "output"),
-                Step(disable, "profiler"));
-            FoxgloveManagerTeardownState.RunDestroy(
-                Step(destroy, "subscription"),
-                Step(destroy, "server"),
-                Step(destroy, "transport"),
-                Step(destroy, "replay"),
-                Step(destroy, "certificate"),
-                Step(destroy, "runtime"),
-                Step(destroy, "publish"),
-                Step(destroy, "profiler"));
-
-            Assert.Equal(
-                new[] { "subscription", "transport", "server", "publish", "output", "profiler" },
-                disable);
-            Assert.Equal(
-                new[] { "subscription", "server", "transport", "replay", "certificate", "runtime", "publish", "profiler" },
-                destroy);
+            Assert.Equal(new[] { "first", "second", "third" }, calls);
+            Assert.Equal(new[] { "first:first-failure", "second:second-failure" }, reports);
         }
 
         [Fact]

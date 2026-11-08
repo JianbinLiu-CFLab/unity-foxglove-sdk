@@ -155,6 +155,34 @@ namespace Unity.FoxgloveSDK.Components
             return firstFailure;
         }
 
+        internal static void RunStartupCleanup(
+            Action<Exception, string> reportFailure,
+            string[] descriptions,
+            params Action[] steps)
+        {
+            for (var index = 0; index < steps.Length; index++)
+            {
+                try
+                {
+                    steps[index]?.Invoke();
+                }
+                catch (Exception exception)
+                {
+                    try
+                    {
+                        reportFailure?.Invoke(
+                            exception,
+                            descriptions != null && index < descriptions.Length
+                                ? descriptions[index]
+                                : string.Empty);
+                    }
+                    catch
+                    {
+                    }
+                }
+            }
+        }
+
         private static void ReportFailure(Action<Exception> reportFailure, Exception exception)
         {
             try

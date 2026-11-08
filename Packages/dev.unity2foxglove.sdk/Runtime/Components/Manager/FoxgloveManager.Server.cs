@@ -119,38 +119,48 @@ namespace Unity.FoxgloveSDK.Components
         private void CleanupStartupAfterFailure()
         {
             RetireClientEventIngress();
-            TryCleanupStartupStep(CleanupPendingRecordingSidecar, "cleanup pending recording sidecar");
-            TryCleanupStartupStep(StopRemoteMcapFileServer, "stop remote MCAP file server");
-            TryCleanupStartupStep(StopReplayCursorEndpoint, "stop replay cursor endpoint");
-            TryCleanupStartupStep(StopCertificateDistributor, "stop certificate distributor");
-            TryCleanupStartupStep(UnregisterFoxRunSubscriptionCatalogService, "unregister FoxRun subscription catalog service");
-            TryCleanupStartupStep(UnregisterComponentPublishContractsService, "unregister Component publish contracts service");
-            TryCleanupStartupStep(UnregisterTopicContractService, "unregister topic contract service");
-            TryCleanupStartupStep(
+            FoxgloveManagerTeardownState.RunStartupCleanup(
+                ReportStartupCleanupFailure,
+                new[]
+                {
+                    "cleanup pending recording sidecar",
+                    "stop remote MCAP file server",
+                    "stop replay cursor endpoint",
+                    "stop certificate distributor",
+                    "unregister FoxRun subscription catalog service",
+                    "unregister Component publish contracts service",
+                    "unregister topic contract service",
+                    "detach transport forwarders after failed startup",
+                    "detach runtime forwarders after failed startup",
+                    "stop runtime after failed startup",
+                    "disable replay after failed startup",
+                    "disable recording after failed startup",
+                    "clear Component publisher session after failed startup",
+                    "clear publishing session state after failed startup",
+                    "restore live publishers after failed startup",
+                    "flush retired client-event diagnostics after failed startup"
+                },
+                CleanupPendingRecordingSidecar,
+                StopRemoteMcapFileServer,
+                StopReplayCursorEndpoint,
+                StopCertificateDistributor,
+                UnregisterFoxRunSubscriptionCatalogService,
+                UnregisterComponentPublishContractsService,
+                UnregisterTopicContractService,
                 () => DetachTransportForwarders(_runtime?.CleanupSession),
-                "detach transport forwarders after failed startup");
-            TryCleanupStartupStep(
                 () => DetachRuntimeForwarders(_runtime?.CleanupSession),
-                "detach runtime forwarders after failed startup");
-            TryCleanupStartupStep(() => _runtime?.Stop(), "stop runtime after failed startup");
-            TryCleanupStartupStep(() => _runtime?.DisableReplay(), "disable replay after failed startup");
-            TryCleanupStartupStep(() => _runtime?.DisableRecording(), "disable recording after failed startup");
-            TryCleanupStartupStep(ClearActiveComponentPublisherSession, "clear Component publisher session after failed startup");
-            TryCleanupStartupStep(ClearPublishingSessionState, "clear publishing session state after failed startup");
-            TryCleanupStartupStep(RestoreLivePublishers, "restore live publishers after failed startup");
-            TryCleanupStartupStep(FlushClientEventRetirementDrops, "flush retired client-event diagnostics after failed startup");
+                () => _runtime?.Stop(),
+                () => _runtime?.DisableReplay(),
+                () => _runtime?.DisableRecording(),
+                ClearActiveComponentPublisherSession,
+                ClearPublishingSessionState,
+                RestoreLivePublishers,
+                FlushClientEventRetirementDrops);
         }
 
-        private static void TryCleanupStartupStep(System.Action cleanup, string description)
+        private static void ReportStartupCleanupFailure(Exception exception, string description)
         {
-            try
-            {
-                cleanup?.Invoke();
-            }
-            catch (System.Exception ex)
-            {
-                Debug.LogWarning("[Foxglove] Failed to " + description + ": " + ex.Message);
-            }
+            Debug.LogWarning("[Foxglove] Failed to " + description + ": " + exception.Message);
         }
 
         /// <summary>
