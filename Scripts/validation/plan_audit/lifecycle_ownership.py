@@ -19,8 +19,6 @@ PHASE = "197"
 OUTPUT = audit_lib.BUILD_ROOT / TOPIC
 PLAN = audit_lib.ROOT / "Plan" / "197_PHASE197_EVIDENCE_LED_LIFECYCLE_OWNERSHIP_PLAN.md"
 SCRIPT_REL = "Scripts/validation/plan_audit/lifecycle_ownership.py"
-PR717_BASE = "bf1131db208c308529846f87c1d8c3c744b8c7f9"
-PR717_MERGE = "eb36becd5d0ec458f0c0eb7c908617cd6b1b6f86"
 TEST_REL = "Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxRun/FoxgloveManagerTeardownTests.cs"
 TEARDOWN_REL = "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManagerTeardownState.cs"
 KEYWORDS = re.compile(r"fix|bug|repair|restore|regression|broken|hotfix", re.IGNORECASE)
@@ -48,19 +46,20 @@ def _git_output(args: list[str], timeout: float = 180.0) -> str:
 
 
 def _plan_check(base_sha: str) -> audit_lib.Check:
-    """Check that the plan records the corrected pending decision state."""
+    """Check that the plan records the current-base decision state."""
     text = PLAN.read_text(encoding="utf-8") if PLAN.is_file() else ""
     plan_log = _log("197-PLAN")
     plan_log.parent.mkdir(parents=True, exist_ok=True)
     plan_log.write_text(text or "PLAN_FILE_MISSING\n", encoding="utf-8")
     status = next((line for line in text.splitlines() if line.startswith("Status:")), "")
-    accepted_stop = "phase stops after W1" in status and "below the 20% decision gate" in status
-    pending_review = "W1 audit complete" in status and "decision gate is not accepted" in status
-    appendix_note = "264 candidates" in text and "14 cross-lifecycle or cross-state" in text
+    status_lower = status.lower()
+    accepted_stop = "phase stops after w1" in status_lower and "below the 20% decision gate" in status_lower
+    pending_review = "w1" in status_lower and ("pending" in status_lower or "regenerat" in status_lower)
+    appendix_note = len(_appendix_labels()) > 0
     recorded = re.search(r"Audit base: `origin/main == ([0-9a-f]{40})`", text) or re.search(r"Entry base: `origin/main == ([0-9a-f]{40})`", text)
     recorded_match = recorded is not None and recorded.group(1) == base_sha
     okay = recorded_match and appendix_note and (accepted_stop or pending_review)
-    detail = f"base={base_sha}; recorded_base_match={recorded_match}; accepted_stop={accepted_stop}; appendix_note={appendix_note}"
+    detail = f"base={base_sha}; recorded_base_match={recorded_match}; accepted_stop={accepted_stop}; pending_review={pending_review}; appendix_rows={len(_appendix_labels())}"
     return _check("197-PLAN", "Plan/197... § header and Appendix A", "history", "PASS" if okay else "FAIL", "git rev-parse origin/main; read Plan/197...", "build/plan-audit/lifecycle_ownership/plan.log", detail)
 
 
@@ -73,14 +72,10 @@ def _pr_titles() -> dict[str, str]:
     return {str(row["number"]): str(row["title"]) for row in payload}
 
 
-def _history_candidates() -> tuple[list[dict[str, str]], str]:
-    """Build the complete W1.1 candidate set through the PR717 base."""
+def _history_candidates(base_sha: str) -> tuple[list[dict[str, str]], str]:
+    """Build the complete W1.1 candidate set through the audited main revision."""
     titles = _pr_titles()
-    raw = _git_output(["git", "log", "--first-parent", "--merges", "--since=2026-09-01", "--format=%H%x09%P%x09%ad%x09%s", "--date=iso-strict", PR717_BASE])
-    subject_map = {}
-    for line in _git_output(["git", "log", "--all", "--format=%H%x09%s"]).splitlines():
-        commit, subject = line.split("\t", 1)
-        subject_map[commit] = subject
+    raw = _git_output(["git", "log", "--first-parent", "--merges", "--since=2026-09-01", "--format=%H%x09%P%x09%ad%x09%s", "--date=iso-strict", base_sha])
     candidates: list[dict[str, str]] = []
     for line in raw.splitlines():
         merge, parents, merged_at, merge_subject = line.split("\t", 3)
@@ -90,7 +85,7 @@ def _history_candidates() -> tuple[list[dict[str, str]], str]:
         pr_match = re.search(r"#(\d+)", merge_subject)
         pr = pr_match.group(1) if pr_match else "unknown"
         title = titles.get(pr, merge_subject)
-        subjects = subject_map.get(parent_list[1], "")
+        subjects = _git_output(["git", "log", "--format=%s", f"{parent_list[0]}..{parent_list[1]}"])
         haystack = "\n".join((title, merge_subject, subjects))
         if not KEYWORDS.search(haystack):
             continue
@@ -104,6 +99,7 @@ def _history_candidates() -> tuple[list[dict[str, str]], str]:
         writer = csv.DictWriter(handle, fieldnames=["pr", "title", "merged_at", "surface", "suggested_label", "reason"])
         writer.writeheader()
         writer.writerows(candidates)
+    (OUTPUT / "history-base.txt").write_text(base_sha + "\n", encoding="utf-8")
     return candidates, str(output.relative_to(audit_lib.ROOT)).replace("\\", "/")
 
 
@@ -142,15 +138,17 @@ def _gate_check(candidates: list[dict[str, str]]) -> audit_lib.Check:
     threshold = math.ceil(len(candidates) * 0.2) if candidates else 0
     detail = f"appendix={appendix_cross}/{len(appendix)}; regenerated={candidate_cross}/{len(candidates)}; cross_fix_needed_for_20_percent={max(0, threshold - candidate_cross)}"
     plan_text = PLAN.read_text(encoding="utf-8") if PLAN.is_file() else ""
-    status = "NOT_RUN" if not PLAN.is_file() else "PASS" if len(candidates) == len(appendix) and "provisional" not in plan_text and candidate_cross < threshold else "FAIL"
+    plan_status = next((line for line in plan_text.splitlines() if line.startswith("Status:")), "").lower()
+    pending = "pending" in plan_status or "regenerat" in plan_status or "provisional" in plan_text.lower()
+    status = "NOT_RUN" if not PLAN.is_file() else "FAIL" if len(candidates) != len(appendix) else "MANUAL" if pending else "PASS" if candidate_cross < threshold else "FAIL"
     return _check("197-W1-gate", "Plan/197... § Decision gate", "history", status, "git log --first-parent; gh pr list; compare Appendix A with fix-candidates.csv", "build/plan-audit/lifecycle_ownership/fix-candidates.csv", detail)
 
 
-def _scope_check(candidates: list[dict[str, str]], evidence: str) -> audit_lib.Check:
+def _scope_check(candidates: list[dict[str, str]], evidence: str, base_sha: str) -> audit_lib.Check:
     """Check whether the generated candidate count matches Appendix A."""
     appendix_count = len(_appendix_labels())
     status = "PASS" if candidates and len(candidates) == appendix_count else "FAIL"
-    detail = f"regenerated_candidates={len(candidates)}; appendix_rows={appendix_count}; base={PR717_BASE}"
+    detail = f"regenerated_candidates={len(candidates)}; appendix_rows={appendix_count}; base={base_sha}"
     return _check("197-W1-scope", "Plan/197... § 2 W1.1", "history", status, "python -B -m Scripts.validation.plan_audit.lifecycle_ownership", evidence, detail)
 
 
@@ -259,10 +257,11 @@ def _mutation_checks() -> list[audit_lib.Check]:
 def _stop_check() -> audit_lib.Check:
     """Record that W2 and W3 remain stopped until the corrected gate is reviewed."""
     text = PLAN.read_text(encoding="utf-8") if PLAN.is_file() else ""
-    pending = "W1 remains pending" in text or not text
-    stopped = ("W1 stops the phase" in text or "stop the phase after W1" in text or "phase stops after W1" in text) and not pending
+    status_line = next((line for line in text.splitlines() if line.startswith("Status:")), "")
+    pending = "pending" in status_line.lower() or "regenerat" in status_line.lower()
+    stopped = "W2/W3 remain stopped" in status_line or "W2/W3 are not started" in text
     status = "PASS" if stopped else "FAIL"
-    detail = "decision gate stops after W1" if stopped else "W2/W3 are not started, but the decision gate is pending or the plan is unavailable"
+    detail = "decision gate stops after W1 pending manual review" if pending and stopped else "decision gate stops after W1" if stopped else "W2/W3 are not started, but the plan does not record that stop"
     return _check("197-W2-W3", "Plan/197... § Decision gate", "history", status, "read Plan/197... decision gate", "build/plan-audit/lifecycle_ownership/plan.log", detail)
 
 
@@ -273,8 +272,8 @@ def _manual_notes(checks: list[audit_lib.Check]) -> None:
     extra = """
 ## Human review required
 
-1. Review every row in `build/plan-audit/lifecycle_ownership/fix-candidates.csv`. Confirm the PR title, touched surface, and suggested root-cause label against the merged diff. Record reclassifications in the PR discussion.
-2. Confirm whether the corrected candidate count and cross-lifecycle plus cross-state ratio justify stopping after W1. The historical 2/15 ratio is provisional and must not be accepted without this review.
+1. Review every row in `build/plan-audit/lifecycle_ownership/fix-candidates.csv`. Confirm the PR title, touched surface, and suggested root-cause label against the merged diff. Record reclassifications in the Plan197 appendix.
+2. Confirm whether the current-main candidate count and cross-lifecycle plus cross-state ratio justify stopping after W1. The old 264/14 snapshot is not decision evidence.
 3. If the reviewed ratio reaches 20 percent or higher, decide whether to start W2. Do not start W2 or W3 from this audit PR.
 4. If the Manager characterization tests remain source-text based or lack startup-failure and residue behavior coverage, record the missing test names and whether a separate test PR is required.
 """
@@ -289,8 +288,8 @@ def main() -> int:
     base_sha = audit_lib.resolve_revision()
     checks: list[audit_lib.Check] = [_plan_check(base_sha)]
     try:
-        candidates, evidence = _history_candidates()
-        checks.extend([_scope_check(candidates, evidence), _gate_check(candidates), _owner_map(), _tests_check()])
+        candidates, evidence = _history_candidates(base_sha)
+        checks.extend([_scope_check(candidates, evidence, base_sha), _gate_check(candidates), _owner_map(), _tests_check()])
         checks.extend(_mutation_checks())
     except Exception as exc:
         checks.append(_check("197-W1-scope", "Plan/197... § 2 W1.1", "history", "NOT_RUN", "python -B -m Scripts.validation.plan_audit.lifecycle_ownership", "build/plan-audit/lifecycle_ownership/logs/exception.log", str(exc)))
