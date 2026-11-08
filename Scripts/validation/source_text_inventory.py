@@ -384,8 +384,15 @@ def _scoped_source_symbols(lines: list[str], shared_paths: dict[str, str]) -> li
             reference_target = lookup(reference, line, scope)
             if reference_target:
                 targets.extend(reference_target.split(";"))
-        if targets:
-            target = ";".join(dict.fromkeys(targets))
+        unresolved_reader = False
+        for reader in _call_spans(expression.splitlines(), READER_CALL_PATTERN):
+            reader_target = _extract_argument_path(_split_first_argument(str(reader["argument"])), local_paths)
+            if reader_target:
+                targets.extend(reader_target.split(";"))
+            else:
+                unresolved_reader = True
+        if targets or unresolved_reader:
+            target = ";".join(dict.fromkeys(targets)) or "<unresolved>"
             definitions.append((line, scope, name, target))
             indexed.setdefault(name, []).append((line, scope, target))
     symbols.extend(definitions)
@@ -466,63 +473,6 @@ def _resolve_derived_target(
     if targets:
         return ";".join(dict.fromkeys(targets))
     return "<unresolved>" if unresolved else None
-def _comment_only_flags(lines: list[str]) -> list[bool]:
-    """Classify every line in one pass without rescanning prior lines."""
-    flags: list[bool] = []
-    block_comment = False
-    string_mode = ""
-    for line in lines:
-        code = False
-        line_comment = False
-        cursor = 0
-        while cursor < len(line):
-            char = line[cursor]
-            next_char = line[cursor + 1] if cursor + 1 < len(line) else ""
-            if block_comment:
-                end = line.find("*/", cursor)
-                if end < 0:
-                    cursor = len(line)
-                    continue
-                block_comment = False
-                cursor = end + 2
-                continue
-            if string_mode:
-                if string_mode == 'verbatim' and char == '"':
-                    if next_char == '"':
-                        cursor += 2
-                        continue
-                    string_mode = ""
-                elif string_mode in {'normal', 'char'} and char == "\\":
-                    cursor += 2
-                    continue
-                elif (string_mode == 'normal' and char == '"') or (string_mode == 'char' and char == "'"):
-                    string_mode = ""
-                cursor += 1
-                continue
-            if char == '@' and next_char == '"':
-                string_mode = 'verbatim'
-                cursor += 2
-                continue
-            if char == '"':
-                string_mode = 'normal'
-                cursor += 1
-                continue
-            if char == "'":
-                string_mode = 'char'
-                cursor += 1
-                continue
-            if char == '/' and next_char == '/':
-                line_comment = True
-                break
-            if char == '/' and next_char == '*':
-                block_comment = True
-                cursor += 2
-                continue
-            if not char.isspace():
-                code = True
-            cursor += 1
-        flags.append(not code and (line_comment or block_comment))
-    return flags
 def _shared_scope_paths(files: list[Path]) -> dict[Path, dict[str, str]]:
     """Build shared const and reader symbols for partial validation classes."""
     groups: dict[str, list[Path]] = {}
@@ -762,7 +712,6 @@ def _xunit_coverage(target: str, root: Path, xunit_index: dict[str, list[str]]) 
 def scan_file(path: Path, root: Path, xunit_index: dict[str, list[str]], shared_paths: dict[str, str] | None = None, comment_cache: dict[str, tuple[str, str]] | None = None) -> list[dict[str, object]]:
     """Collect source-text assertions from one validation file."""
     lines = path.read_text(encoding="utf-8").splitlines()
-    comment_only_flags = _comment_only_flags(lines)
     paths = dict(shared_paths or {})
     local_symbols = _scoped_source_symbols(lines, paths)
     scopes = _brace_paths(lines)
@@ -819,7 +768,7 @@ def scan_file(path: Path, root: Path, xunit_index: dict[str, list[str]], shared_
                 "target": target,
                 "xunit_coverage": _xunit_coverage(target, root, xunit_index),
                 "token": token_text,
-                "comment_only": _target_comment_only(target, token_text, root, comment_cache) or comment_only_flags[index],
+                "comment_only": _target_comment_only(target, token_text, root, comment_cache),
             }
         )
     return rows
