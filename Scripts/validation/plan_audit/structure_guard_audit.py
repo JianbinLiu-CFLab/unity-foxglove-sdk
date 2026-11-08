@@ -190,24 +190,65 @@ def _baseline_slack(base_sha: str) -> audit_lib.Check:
     """Verify baseline additions, growth, and stale entries are rejected."""
     tree = _temporary_tree(base_sha, "baseline-slack")
     guard = _load_guard_module()
-    before = (tree / BASELINE_REL).read_bytes()
-    before_data = guard.load_baseline(tree / BASELINE_REL)
+    baseline_path = tree / BASELINE_REL
+    before_data = guard.load_baseline(baseline_path)
     paths = guard.tracked_paths(tree)
     base_phase_paths = guard._phase_prefixes(guard._source_paths(tree, paths))
-    write_result = _run(
+    base_cli_data = json.loads(json.dumps(before_data))
+    base_cli_data["files"]["Scripts/architecture/stale_baseline.py"] = 1001
+    baseline_path.write_text(json.dumps(base_cli_data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    _tracked_add(tree)
+    base_write_result = _run(
         ["python", "-B", "-m", "Scripts.architecture.structure_guards", "--write-baseline"],
-        "196-BASELINE-slack",
+        "196-BASELINE-slack-base-cli",
         tree,
     )
-    after = (tree / BASELINE_REL).read_bytes()
-    after_data = guard.load_baseline(tree / BASELINE_REL)
+    base_after_data = guard.load_baseline(baseline_path)
+    base_guard_result = _run(
+        ["python", "-B", "-m", "Scripts.architecture.structure_guards"],
+        "196-BASELINE-slack-base-guard",
+        tree,
+    )
+    base_cli_ok = (
+        base_write_result["exit_code"] == 0
+        and "STRUCTURE_GUARDS_BASELINE_WRITTEN" in str(base_write_result["output"])
+        and "Scripts/architecture/stale_baseline.py" not in base_after_data["files"]
+        and base_guard_result["exit_code"] == 0
+        and "STRUCTURE_GUARDS_OK" in str(base_guard_result["output"])
+    )
+    head_tree = _temporary_tree("HEAD", "baseline-slack-head")
+    head_guard = _load_guard_module(head_tree)
+    head_baseline_path = head_tree / BASELINE_REL
+    head_before_data = head_guard.load_baseline(head_baseline_path)
+    head_cli_data = json.loads(json.dumps(head_before_data))
+    head_cli_data["files"]["Scripts/architecture/stale_baseline.py"] = 1001
+    head_baseline_path.write_text(json.dumps(head_cli_data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    _tracked_add(head_tree)
+    head_write_result = _run(
+        ["python", "-B", "-m", "Scripts.architecture.structure_guards", "--write-baseline"],
+        "196-BASELINE-slack-head-cli",
+        head_tree,
+    )
+    head_after_data = head_guard.load_baseline(head_baseline_path)
+    head_guard_result = _run(
+        ["python", "-B", "-m", "Scripts.architecture.structure_guards"],
+        "196-BASELINE-slack-head-guard",
+        head_tree,
+    )
+    head_cli_ok = (
+        head_write_result["exit_code"] == 0
+        and "STRUCTURE_GUARDS_BASELINE_WRITTEN" in str(head_write_result["output"])
+        and "Scripts/architecture/stale_baseline.py" not in head_after_data["files"]
+        and head_guard_result["exit_code"] == 0
+        and "STRUCTURE_GUARDS_OK" in str(head_guard_result["output"])
+    )
     added = (
-        set(after_data["files"]) - set(before_data["files"])
-        | set(after_data["partial_types"]) - set(before_data["partial_types"])
-        | set(after_data["phase_paths"]) - set(before_data["phase_paths"])
+        set(base_after_data["files"]) - set(before_data["files"])
+        | set(base_after_data["partial_types"]) - set(before_data["partial_types"])
+        | set(base_after_data["phase_paths"]) - set(before_data["phase_paths"])
     )
     raised = any(
-        after_data[section].get(key, 0) > value
+        base_after_data[section].get(key, 0) > value
         for section in ("files", "partial_types")
         for key, value in before_data[section].items()
     )
@@ -219,7 +260,8 @@ def _baseline_slack(base_sha: str) -> audit_lib.Check:
     integrity = guard.baseline_integrity_violations(widened, before_data, base_phase_paths)
     stale = guard.stale_baseline_violations(tree, paths, widened)
     valid = (
-        write_result["exit_code"] == 0
+        base_cli_ok
+        and head_cli_ok
         and not added
         and not raised
         and any("raised=" in error for error in integrity)
@@ -228,11 +270,17 @@ def _baseline_slack(base_sha: str) -> audit_lib.Check:
         and any("stale_file=" in error for error in stale)
     )
     status = "PASS" if valid else "FAIL"
-    detail = f"write_exit={write_result['exit_code']}; added={sorted(added)}; raised={raised}; changed={before != after}; integrity_errors={integrity}; stale_errors={stale}"
+    detail = (
+        f"base_cli_ok={base_cli_ok}; head_cli_ok={head_cli_ok}; "
+        f"base_write_output={str(base_write_result['output']).strip()}; "
+        f"head_write_output={str(head_write_result['output']).strip()}; "
+        f"added={sorted(added)}; raised={raised}; "
+        f"integrity_errors={integrity}; stale_errors={stale}"
+    )
     log = _log_name("196-BASELINE-slack")
     log.parent.mkdir(parents=True, exist_ok=True)
     log.write_text(detail + "\n", encoding="utf-8")
-    return _check("196-BASELINE-slack", "Plan/196... § 2 baseline update policy", "probe", status, "structure_guards --write-baseline; baseline_integrity_violations + stale_baseline_violations", str(log), detail)
+    return _check("196-BASELINE-slack", "Plan/196... § 2 baseline update policy", "probe", status, "base and head structure_guards --write-baseline plus baseline_integrity_violations + stale_baseline_violations", str(log), detail)
 
 
 def _test_mutations() -> list[audit_lib.Check]:
