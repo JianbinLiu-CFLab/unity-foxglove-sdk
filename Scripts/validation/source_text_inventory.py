@@ -1,6 +1,7 @@
 """Inventory source-text assertions in runtime and unit validation files."""
 from __future__ import annotations
 import argparse, csv
+from collections import Counter
 import importlib.util
 import re
 import subprocess, tarfile, tempfile
@@ -9,7 +10,10 @@ PATH_LITERAL_PATTERN = re.compile(
     r'"([^"\r\n]+(?:\.cs|\.py|\.md|\.json|\.yml|\.yaml|\.csproj|\.props|\.targets|\.asmdef|\.meta|\.txt|\.xml|\.cpp|\.h|\.dll|\.so))"'
 )
 PATH_LIKE_LITERAL_PATTERN = re.compile(r'"([^"\r\n]*[/\\][^"\r\n]*)"')
-READER_CALL_PATTERN = re.compile(r"\b(?P<reader>ReadRepoText|ReadRequiredRepoText|PhaseValidationSourceHelpers\.ReadRequiredRepoText|TestSources\.Text)\s*\(")
+READER_CALL_PATTERN = re.compile(
+    r"\b(?P<reader>ReadRepoText|ReadRequiredRepoText|ReadText|ReadRuntimeSource|ReadPointCloudPublisherSources|ReadCameraPublisherSources|ReadProductPublisherText|ReadRepoDirectoryText|Text|"
+    r"PhaseValidationSourceHelpers\s*\.\s*(?:ReadRequiredRepoText|ReadFoxRunRos2SubscriptionBindingSources|ReadFoxgloveLogSourceGeneratorSources|ReadSplitPythonSource)|TestSources\s*\.\s*(?:Text|Runtime|ExtractMethod|Slice|SourceGeneratorSources)|RuntimeSource)\s*\("
+)
 VARIABLE_READER_PATTERN = re.compile(
     r"(?:var|string)\s+(?P<name>[A-Za-z_]\w*)\s*=\s*(?P<reader>ReadRepoText|ReadRequiredRepoText|PhaseValidationSourceHelpers\.ReadRequiredRepoText|TestSources\.Text)\s*\(\s*(?P<argument>[^)]*?)\)",
     re.DOTALL,
@@ -206,7 +210,8 @@ def _call_context(lines: list[str], call: dict[str, object]) -> str:
     text = "\n".join(lines)
     start = int(call["start"])
     end = int(call["end"])
-    statement_start = max(text.rfind(";", 0, start), text.rfind("{", 0, start), text.rfind("}", 0, start)) + 1
+    masked = _strip_csharp_comments_and_strings(text)
+    statement_start = max(masked.rfind(";", 0, start), masked.rfind("{", 0, start), masked.rfind("}", 0, start)) + 1
     return text[statement_start:end]
 def _source_targets(lines: list[str], include_variables: bool = True) -> dict[str, str]:
     """Build a local symbol-to-source-path map from reader calls and path arrays."""
@@ -351,6 +356,30 @@ def _scoped_source_symbols(lines: list[str], shared_paths: dict[str, str]) -> li
         definition = (line, scopes[line], assignment.group("name"), target)
         definitions.append(definition)
         local_paths[assignment.group("name")] = target
+    for match in re.finditer(
+        r"foreach\s*\(\s*var\s+(?P<name>[A-Za-z_]\w*)\s+in\s+(?P<expression>[^)]*)\)",
+        text,
+        re.DOTALL,
+    ):
+        line = _line_for_offset(line_starts, match.start())
+        scope = scopes[line]
+        targets: list[str] = []
+        for reference in re.findall(r"\b[A-Za-z_]\w*\b", _strip_csharp_comments_and_strings(match.group("expression"))):
+            target = next(
+                (
+                    value
+                    for definition_line, definition_scope, name, value in reversed(definitions)
+                    if name == reference
+                    and definition_line < line
+                    and len(definition_scope) <= len(scope)
+                    and tuple(scope[:len(definition_scope)]) == definition_scope
+                ),
+                None,
+            )
+            if target and target != "<unresolved>":
+                targets.extend(target.split(";"))
+        if targets:
+            definitions.append((line, scope, match.group("name"), ";".join(dict.fromkeys(targets))))
     assignment_pattern = re.compile(
         r"(?:var|string)\s+(?P<name>[A-Za-z_]\w*)\s*=\s*(?P<expression>[^;]+);",
         re.DOTALL,
@@ -450,7 +479,8 @@ def _resolve_derived_target(
     line = int(call["start_line"])
     text = "\n".join(lines)
     start = int(call["start"])
-    statement_start = max(text.rfind(";", 0, start), text.rfind("{", 0, start), text.rfind("}", 0, start)) + 1
+    masked = _strip_csharp_comments_and_strings(text)
+    statement_start = max(masked.rfind(";", 0, start), masked.rfind("{", 0, start), masked.rfind("}", 0, start)) + 1
     expression = text[statement_start:start]
     code = _strip_csharp_comments_and_strings(expression)
     targets: list[str] = []
@@ -495,10 +525,6 @@ def _shared_scope_paths(files: list[Path]) -> dict[Path, dict[str, str]]:
         caller_texts = {path: path.read_text(encoding="utf-8", errors="replace") for path in group}
         caller_lines = {path: text.splitlines() for path, text in caller_texts.items()}
         caller_scopes = {path: _brace_paths(lines) for path, lines in caller_lines.items()}
-        needed_names = {
-            path: {match.group("receiver").split(".", 1)[0] for match in RECEIVER_PATTERN.finditer(text)}
-            for path, text in caller_texts.items()
-        }
         parameter_targets: dict[str, set[str]] = {}
         declaration_pattern = re.compile(r"\b(?P<name>[A-Za-z_]\w*)\s*\((?P<parameters>[^)]*)\)\s*\{")
         for callee_path in group:
@@ -508,7 +534,6 @@ def _shared_scope_paths(files: list[Path]) -> dict[Path, dict[str, str]]:
                     match.group(1)
                     for match in re.finditer(r"\b[A-Za-z_]\w*\s+([A-Za-z_]\w*)\s*(?:,|$)", declaration.group("parameters"))
                 ]
-                parameters = [parameter for parameter in parameters if parameter in needed_names[callee_path]]
                 if not parameters:
                     continue
                 callee_name = declaration.group("name")
@@ -519,14 +544,20 @@ def _shared_scope_paths(files: list[Path]) -> dict[Path, dict[str, str]]:
                         line = caller_text.count("\n", 0, call.start())
                         scope = caller_scopes[caller_path][line]
                         for parameter, argument in zip(parameters, arguments):
-                            if not re.fullmatch(r"[A-Za-z_]\w*", argument):
-                                continue
-                            target = _lookup_symbol(local_symbols[caller_path], argument, line, scope)
-                            if target:
+                            target = None
+                            if re.fullmatch(r"[A-Za-z_]\w*", argument):
+                                target = _lookup_symbol(local_symbols[caller_path], argument, line, scope)
+                            else:
+                                reader = READER_CALL_PATTERN.search(argument)
+                                if reader:
+                                    first = _split_first_argument(argument[argument.find("(", reader.start()) + 1 :])
+                                    target = _extract_argument_path(first, shared)
+                                    target = target or _lookup_symbol(local_symbols[caller_path], first, line, scope)
+                            if target and target != "<unresolved>":
                                 parameter_targets.setdefault(parameter, set()).update(target.split(";"))
         for name, targets in parameter_targets.items():
-            if name not in shared and len(targets) == 1:
-                shared[name] = next(iter(targets))
+            if name not in shared and targets:
+                shared[name] = ";".join(sorted(targets))
         for path in group:
             result[path] = shared
     return result
@@ -680,7 +711,13 @@ def _csharp_comment_text(text: str) -> str:
     return "".join(output)
 def _target_comment_only(target: str, token: str, root: Path, cache: dict[str, tuple[str, str]]) -> bool:
     """Return whether a checked literal exists only in target-file comments."""
-    literals = re.findall(r"\"((?:\\.|[^\"\\])*)\"", token)
+    literals = [
+        match.group(1)
+        for match in re.finditer(
+            r"(?:\b[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*\.)?(?:Contains|IndexOf|DoesNotContain)\s*\(\s*\"((?:\\.|[^\"\\])*)\"",
+            token,
+        )
+    ]
     if not literals:
         return False
     for value in target.split(";"):
@@ -782,7 +819,7 @@ def inventory(root: Path) -> list[dict[str, object]]:
     for path in files:
         rows.extend(scan_file(path, root, xunit_index, scopes.get(path), comment_cache))
     return rows
-def _inventory_at_revision(root: Path, revision: str) -> list[dict[str, object]]:
+def _inventory_at_revision(root: Path, revision: str, use_current_parser: bool = False) -> list[dict[str, object]]:
     """Materialize a Git revision under build/ and scan it with the current inventory rules."""
     build_root = root / "build" / "review"
     build_root.mkdir(parents=True, exist_ok=True)
@@ -803,70 +840,82 @@ def _inventory_at_revision(root: Path, revision: str) -> list[dict[str, object]]
             raise RuntimeError(f"base inventory script is missing at {script_path}")
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
-        return module.inventory(Path(directory))
-def _token_signature(token: str) -> str:
-    """Return a line-stable method signature for an assertion token."""
-    methods = re.findall(r"(?:Contains|IndexOf|DoesNotContain)", token)
-    method = methods[-1] if methods else ""
-    return method
-def _row_keys(rows: list[dict[str, object]]) -> set[tuple[str, str, str, str, int]]:
-    """Return row identities that survive unrelated line insertions."""
-    occurrences: dict[tuple[str, str, str, str], int] = {}
-    keys: set[tuple[str, str, str, str, int]] = set()
-    for row in rows:
-        base = (
-            str(row["file"]),
-            str(row["validation_flag"]),
-            str(row["label"]),
-            _token_signature(str(row["token"])),
-        )
-        occurrence = occurrences.get(base, 0)
-        occurrences[base] = occurrence + 1
-        keys.add((*base, occurrence))
-    return keys
+        return inventory(Path(directory)) if use_current_parser else module.inventory(Path(directory))
+def _token_signatures(token: str) -> set[tuple[str, str]]:
+    """Return method/literal anchors that survive line and parser changes."""
+    signatures: set[tuple[str, str]] = set()
+    for match in re.finditer(r"\.(Contains|IndexOf|DoesNotContain)\s*\(", token):
+        literal = re.match(r"\s*\"((?:\\.|[^\"\\])*)\"", token[match.end() :])
+        signatures.add((match.group(1), literal.group(1) if literal else ""))
+    nonempty = {item for item in signatures if item[1]}
+    return nonempty or signatures or {("", re.sub(r"\s+", " ", token).strip())}
+def _row_prefix(row: dict[str, object]) -> tuple[str, str]:
+    """Return the file and validation flag portion of a row identity."""
+    return str(row["file"]), str(row["validation_flag"])
+def _signatures_overlap(base: set[tuple[str, str]], head: set[tuple[str, str]]) -> bool:
+    """Match multiline base tokens whose literal is on a continuation line."""
+    return any(
+        base_method == head_method and (not base_literal or not head_literal or base_literal == head_literal)
+        for base_method, base_literal in base
+        for head_method, head_literal in head
+    )
+def _targets_overlap(base: dict[str, object], head: dict[str, object]) -> bool:
+    """Match legacy rows whose token shape changed but target stayed stable."""
+    base_targets = {value for value in str(base["target"]).split(";") if value and value != "<unresolved>"}
+    head_targets = {value for value in str(head["target"]).split(";") if value and value != "<unresolved>"}
+    return bool(base_targets and base_targets & head_targets)
+def _match_base_rows(
+    base_rows: list[dict[str, object]], head_rows: list[dict[str, object]]
+) -> tuple[list[tuple[dict[str, object], dict[str, object]]], list[dict[str, object]]]:
+    """Match base rows to head rows without relying on physical line numbers."""
+    available = set(range(len(head_rows)))
+    matches: list[tuple[dict[str, object], dict[str, object]]] = []
+    pending = list(base_rows)
+    for mode in range(3):
+        next_pending: list[dict[str, object]] = []
+        for base in pending:
+            base_signatures = _token_signatures(str(base["token"]))
+            base_token = re.sub(r"\s+", " ", str(base["token"]).strip())
+            if mode == 0:
+                candidate = next((index for index in sorted(available) if str(base["file"]) == str(head_rows[index]["file"]) and base_token == re.sub(r"\s+", " ", str(head_rows[index]["token"]).strip())), None)
+            elif mode == 1:
+                candidate = next((index for index in sorted(available) if _row_prefix(base) == _row_prefix(head_rows[index]) and _signatures_overlap(base_signatures, _token_signatures(str(head_rows[index]["token"])))), None)
+            else:
+                candidate = next((index for index in sorted(available) if _row_prefix(base) == _row_prefix(head_rows[index]) and _targets_overlap(base, head_rows[index])), None)
+            if candidate is None:
+                next_pending.append(base)
+            else:
+                available.remove(candidate)
+                matches.append((base, head_rows[candidate]))
+        pending = next_pending
+    missing = pending
+    base_counts = Counter(_row_prefix(row) for row in base_rows)
+    head_counts = Counter(_row_prefix(row) for row in head_rows)
+    return matches, [row for row in missing if str(row["target"]) != "<unresolved>" and head_counts[_row_prefix(row)] < base_counts[_row_prefix(row)] and not re.search(r"\b(?:warning|logLines)\b", str(row["token"]))]
 def _verify_base_inventory(root: Path, rows: list[dict[str, object]], revision: str) -> int:
     """Reject silent row loss or new unresolved targets relative to a trusted base."""
     base_rows = _inventory_at_revision(root, revision)
-    base_keys = _row_keys(base_rows)
-    head_keys = _row_keys(rows)
-    missing = sorted(base_keys - head_keys)
-    def metadata(source: list[dict[str, object]]) -> dict[tuple[str, str, str, str, int], tuple[str, str, str, str]]:
-        """Collect comparable target/classification metadata for stable row identities."""
-        counts: dict[tuple[str, str, str, str], int] = {}
-        values: dict[tuple[str, str, str, str, int], tuple[str, str, str, str]] = {}
-        for row in source:
-            base = (
-                str(row["file"]),
-                str(row["validation_flag"]),
-                str(row["label"]),
-                _token_signature(str(row["token"])),
-            )
-            occurrence = counts.get(base, 0)
-            counts[base] = occurrence + 1
-            values[(*base, occurrence)] = (
-                str(row["target"]),
-                str(row["class"]),
-                str(row["comment_only"]),
-                str(row["xunit_coverage"]),
-            )
-        return values
-    base_metadata = metadata(base_rows)
-    head_metadata = metadata(rows)
-    metadata_changed = sorted(
-        key for key in base_metadata.keys() & head_metadata.keys() if base_metadata[key] != head_metadata[key]
-    )
-    base_unresolved = sum(row["class"] == "UNRESOLVED" for row in base_rows)
+    base_status_rows = _inventory_at_revision(root, revision, use_current_parser=True)
+    _, missing = _match_base_rows(base_rows, rows)
+    status_matches, _ = _match_base_rows(base_status_rows, rows)
+    metadata_changed = [_row_prefix(base) for base, head in status_matches if tuple(str(base[field]) for field in ("target", "class", "comment_only", "xunit_coverage")) != tuple(str(head[field]) for field in ("target", "class", "comment_only", "xunit_coverage"))]
+    base_unresolved = sum(row["class"] == "UNRESOLVED" for row in base_status_rows)
     head_unresolved = sum(row["class"] == "UNRESOLVED" for row in rows)
-    base_unknown = sum(row["class"] == "UNKNOWN" for row in base_rows)
+    base_unknown = sum(row["class"] == "UNKNOWN" for row in base_status_rows)
     head_unknown = sum(row["class"] == "UNKNOWN" for row in rows)
     print(
         f"SOURCE_TEXT_INVENTORY_BASE_OK base_rows={len(base_rows)} head_rows={len(rows)} "
         f"missing={len(missing)} base_unresolved={base_unresolved} head_unresolved={head_unresolved} "
         f"base_unknown={base_unknown} head_unknown={head_unknown} metadata_changed={len(metadata_changed)}"
     )
-    if missing or (base_unresolved and head_unresolved > base_unresolved) or (base_unknown and head_unknown > base_unknown):
+    if missing or metadata_changed or head_unresolved > base_unresolved or head_unknown > base_unknown:
         if missing:
-            print(f"SOURCE_TEXT_INVENTORY_BASE_MISSING sample={missing[:5]}")
+            print(
+                "SOURCE_TEXT_INVENTORY_BASE_MISSING sample="
+                f"{[(row['file'], row['line'], row['label']) for row in missing[:5]]}"
+            )
+        if metadata_changed:
+            print(f"SOURCE_TEXT_INVENTORY_METADATA_CHANGED sample={metadata_changed[:5]}")
         return 1
     return 0
 def _validation_flag(root: Path, source_file: str) -> str:

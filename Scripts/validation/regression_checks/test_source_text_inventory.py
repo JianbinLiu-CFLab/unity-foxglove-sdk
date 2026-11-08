@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from Scripts.validation.source_text_inventory import _build_xunit_index, classify, inventory, write_report
+from Scripts.validation.source_text_inventory import _build_xunit_index, _match_base_rows, classify, inventory, write_report
 
 
 class SourceTextInventoryTests(unittest.TestCase):
@@ -16,6 +16,14 @@ class SourceTextInventoryTests(unittest.TestCase):
         self.assertEqual("C", classify("Runtime/Core/Foo.cs", 'source.Contains("model.Types.Count != 1")'))
         self.assertEqual("B", classify(".github/workflows/check.yml", "source.Contains(\"run_ci\")"))
         self.assertEqual("C", classify("Runtime/Core/Foo.cs", "source.Contains(\"privateField\")"))
+
+    def test_base_matching_ignores_line_shifts_and_legacy_token_shape(self):
+        """Match unchanged rows after line insertion and parser token expansion."""
+        base = [{"file": "Validation.cs", "validation_flag": "--phase", "label": "", "target": "Runtime/Foo.cs", "token": 'source.Contains("needle", StringComparison.Ordinal)'}]
+        head = [{"file": "Validation.cs", "validation_flag": "--phase", "label": "", "target": "Runtime/Foo.cs", "token": 'Assert.Contains("needle", source, StringComparison.Ordinal)'}]
+        matches, missing = _match_base_rows(base, head)
+        self.assertEqual(1, len(matches))
+        self.assertFalse(missing)
 
     def test_inventory_writes_csv_and_summary(self):
         """Scan a fixture package and write deterministic reports."""
@@ -294,6 +302,7 @@ class SourceTextInventoryTests(unittest.TestCase):
                 '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/A.cs");\n'
                 '        Check(source.Substring(0, 1).Contains("A"), "substring");\n'
                 '        Check(ExtractMethodBody(source, "Method").Contains("A"), "helper");\n'
+                '        Check(Slice(source, "start", "}").Contains("A"), "slice");\n'
                 '        Check(ReadRequiredRepoText("Packages/fixture/Runtime/B.cs").Contains("B"), "inline");\n'
                 '        var text = "TestSources.Text(\\"Packages/fixture/Runtime/C.cs\\")";\n'
                 '        Assert.Contains("text", text);\n'
@@ -309,11 +318,12 @@ class SourceTextInventoryTests(unittest.TestCase):
                 encoding="utf-8",
             )
             rows = inventory(root)
-            self.assertEqual(3, len(rows))
+            self.assertEqual(4, len(rows))
             targets = [row["target"] for row in rows]
             self.assertEqual("Packages/fixture/Runtime/A.cs", targets[0])
             self.assertEqual("Packages/fixture/Runtime/A.cs", targets[1])
-            self.assertEqual("Packages/fixture/Runtime/B.cs", targets[2])
+            self.assertEqual("Packages/fixture/Runtime/A.cs", targets[2])
+            self.assertEqual("Packages/fixture/Runtime/B.cs", targets[3])
 
     def test_multiple_source_calls_on_one_line_are_all_reported(self):
         """Emit each source-backed call even when ordinary calls share its expression."""
@@ -348,6 +358,38 @@ class SourceTextInventoryTests(unittest.TestCase):
             self.assertTrue(any('Contains("two")' in token for token in tokens))
             self.assertTrue(any('Contains("three")' in token for token in tokens))
             self.assertTrue(any('Contains("four")' in token for token in tokens))
+
+    def test_comment_only_ignores_assertion_message_literals(self):
+        """Only literals passed to the source assertion are checked against target comments."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runtime = root / "Packages" / "fixture" / "Tests" / "Runtime"
+            runtime.mkdir(parents=True)
+            product = root / "Packages" / "fixture" / "Runtime" / "Product.cs"
+            product.parent.mkdir(parents=True)
+            product.write_text(
+                'public sealed class Product { public const string Real = "real"; }\n'
+                '// assertion message only\n',
+                encoding="utf-8",
+            )
+            (runtime / "CommentLiteralValidation.cs").write_text(
+                "public static class CommentLiteralValidation {\n"
+                "    public static void Validate() {\n"
+                '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                '        Check(source.Contains("real"), "assertion message only");\n'
+                "    }\n"
+                "}\n",
+                encoding="utf-8",
+            )
+            registry = root / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "PhaseValidationRegistry.cs"
+            registry.parent.mkdir(parents=True, exist_ok=True)
+            registry.write_text(
+                'Ci("--phase-comment-literal", "fixture", CommentLiteralValidation.Validate, evidence: ValidationEvidence.Behavior),\n',
+                encoding="utf-8",
+            )
+            rows = inventory(root)
+            self.assertEqual(1, len(rows))
+            self.assertFalse(rows[0]["comment_only"])
 
 if __name__ == "__main__":
     unittest.main()
