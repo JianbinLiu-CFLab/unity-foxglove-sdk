@@ -266,6 +266,10 @@ jobs:
           SOURCE_DECOMPOSITION_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: python3 -B Scripts/release/run_ci.py --only packages
 
+      - name: Run live source-text inventory
+        if: always()
+        run: python3 -B Scripts/validation/source_text_inventory.py --root . --output build/review/source-text-inventory
+
   linux-identity-gate:
     name: "Linux: source-decomposition identity gate"
     runs-on: ubuntu-latest

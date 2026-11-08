@@ -8,12 +8,13 @@ import re
 from pathlib import Path
 
 
-TOKEN_PATTERN = re.compile(r"\.Contains\(|\.IndexOf\(")
+TOKEN_PATTERN = re.compile(r"\.(?:Contains|IndexOf|DoesNotContain)\s*\(|\bAssert\.(?:Contains|DoesNotContain)\s*\(")
 PATH_LITERAL_PATTERN = re.compile(
     r'"([^"\r\n]+(?:\.cs|\.py|\.md|\.json|\.yml|\.yaml|\.csproj|\.props|\.targets|\.asmdef|\.meta|\.txt|\.xml|\.cpp|\.h|\.dll|\.so))"'
 )
-READER_PATTERN = re.compile(
-    r"(?:ReadRepoText|ReadRequiredRepoText|PhaseValidationSourceHelpers\.ReadRequiredRepoText|TestSources\.Text)\s*\(\s*(?P<argument>[^)]*)\)"
+PATH_LIKE_LITERAL_PATTERN = re.compile(r'"([^"\r\n]*[/\\][^"\r\n]*)"')
+READER_CALL_PATTERN = re.compile(
+    r"\b(?P<reader>ReadRepoText|ReadRequiredRepoText|PhaseValidationSourceHelpers\.ReadRequiredRepoText|TestSources\.Text)\s*\("
 )
 VARIABLE_READER_PATTERN = re.compile(
     r"(?:var|string)\s+(?P<name>[A-Za-z_]\w*)\s*=\s*(?P<reader>ReadRepoText|ReadRequiredRepoText|PhaseValidationSourceHelpers\.ReadRequiredRepoText|TestSources\.Text)\s*\(\s*(?P<argument>[^)]*?)\)",
@@ -21,17 +22,26 @@ VARIABLE_READER_PATTERN = re.compile(
 )
 ARRAY_PATTERN = re.compile(r"(?:var|string\[\])\s+(?P<name>[A-Za-z_]\w*)\s*=\s*new\[\]\s*\{(?P<body>[^}]*)\}", re.DOTALL)
 CONSTANT_PATH_PATTERN = re.compile(r"(?:const\s+string|private\s+const\s+string)\s+(?P<name>[A-Za-z_]\w*)\s*=\s*\"(?P<path>[^\"]+)\"\s*;?")
-RECEIVER_PATTERN = re.compile(r"(?P<receiver>[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\.(?:Contains|IndexOf)\s*\(")
+RECEIVER_PATTERN = re.compile(
+    r"(?P<receiver>[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\.(?:Contains|IndexOf|DoesNotContain)\s*\("
+)
+ASSERTION_CALL_PATTERN = re.compile(r"\bAssert\.(?:Contains|DoesNotContain)\s*\(")
 PHASE_LABEL_PATTERN = re.compile(r"\"(?P<label>\d+[A-Za-z]?[-A-Za-z0-9]*-[A-Za-z0-9]+:[^\"]+)\"")
 
 
 def classify(target: str, line: str) -> str:
     """Classify one source-text assertion as boundary, wiring, or implementation."""
-    if re.search(r"(?<![=!])!\s*[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*\s*\.\s*(?:Contains|IndexOf)\s*\(", line):
+    if not target or "<unresolved>" in target:
+        return "UNRESOLVED"
+    if "<directory>" in target:
+        return "UNKNOWN"
+    if re.search(r"!\s*(?:[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*\s*\.\s*(?:Contains|IndexOf|DoesNotContain)|Assert\.Contains)\s*\(", line):
+        return "A"
+    if re.search(r"\bAssert\.DoesNotContain\s*\(", line):
         return "A"
     if target.startswith(".github/") or target.startswith("Scripts/release/run_ci"):
         return "B"
-    if target.endswith(".md") or target.endswith("package.json") or "Registry" in target:
+    if target.endswith(".md") or target.endswith("package.json") or target.endswith("/Tests/Runtime/PhaseValidationRegistry.cs"):
         return "B"
     return "C"
 
@@ -59,7 +69,157 @@ def _extract_argument_path(argument: str, paths: dict[str, str]) -> str | None:
     literal = PATH_LITERAL_PATTERN.search(argument)
     if literal and argument == literal.group(0):
         return _normalise_path(literal.group(1))
+    path_like = PATH_LIKE_LITERAL_PATTERN.fullmatch(argument)
+    if path_like:
+        return _normalise_path(path_like.group(1))
     return None
+
+
+def _balanced_call_end(text: str, open_index: int) -> int | None:
+    """Return the closing parenthesis for a call while respecting C# literals."""
+    depth = 0
+    mode = ""
+    index = open_index
+    while index < len(text):
+        char = text[index]
+        next_char = text[index + 1] if index + 1 < len(text) else ""
+        if mode == "line_comment":
+            if char == "\n":
+                mode = ""
+            index += 1
+            continue
+        if mode == "block_comment":
+            if char == "*" and next_char == "/":
+                mode = ""
+                index += 2
+            else:
+                index += 1
+            continue
+        if mode == "verbatim":
+            if char == '"':
+                if next_char == '"':
+                    index += 2
+                    continue
+                mode = ""
+            index += 1
+            continue
+        if mode in {"string", "char"}:
+            if char == "\\":
+                index += 2
+                continue
+            if (mode == "string" and char == '"') or (mode == "char" and char == "'"):
+                mode = ""
+            index += 1
+            continue
+        if char == "/" and next_char == "/":
+            mode = "line_comment"
+            index += 2
+            continue
+        if char == "/" and next_char == "*":
+            mode = "block_comment"
+            index += 2
+            continue
+        if char == "@" and next_char == '"':
+            mode = "verbatim"
+            index += 2
+            continue
+        if char == '"':
+            mode = "string"
+            index += 1
+            continue
+        if char == "'":
+            mode = "char"
+            index += 1
+            continue
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+            if depth == 0:
+                return index
+        index += 1
+    return None
+
+
+def _line_starts(text: str) -> list[int]:
+    """Return character offsets for each line in a source buffer."""
+    return [0] + [index + 1 for index, char in enumerate(text) if char == "\n"]
+
+
+def _line_for_offset(starts: list[int], offset: int) -> int:
+    """Map a character offset to a zero-based line number."""
+    line = 0
+    for index, start in enumerate(starts):
+        if start > offset:
+            break
+        line = index
+    return line
+
+
+def _call_spans(lines: list[str], pattern: re.Pattern[str]) -> list[dict[str, object]]:
+    """Return balanced call spans for a regular-expression call pattern."""
+    text = "\n".join(lines)
+    starts = _line_starts(text)
+    calls: list[dict[str, object]] = []
+    for match in pattern.finditer(text):
+        open_index = text.find("(", match.start(), match.end())
+        close_index = _balanced_call_end(text, open_index)
+        if close_index is None:
+            continue
+        calls.append(
+            {
+                "start": match.start(),
+                "end": close_index + 1,
+                "start_line": _line_for_offset(starts, match.start()),
+                "end_line": _line_for_offset(starts, close_index),
+                "name": match.groupdict().get("reader", match.group(0)),
+                "argument": text[open_index + 1 : close_index],
+                "text": text[match.start() : close_index + 1],
+            }
+        )
+    return calls
+
+
+def _split_first_argument(argument: str) -> str:
+    """Return the first top-level argument from a C# call."""
+    depth = 0
+    mode = ""
+    index = 0
+    while index < len(argument):
+        char = argument[index]
+        next_char = argument[index + 1] if index + 1 < len(argument) else ""
+        if mode == "verbatim":
+            if char == '"':
+                if next_char == '"':
+                    index += 2
+                    continue
+                mode = ""
+            index += 1
+            continue
+        if mode in {"string", "char"}:
+            if char == "\\":
+                index += 2
+                continue
+            if (mode == "string" and char == '"') or (mode == "char" and char == "'"):
+                mode = ""
+            index += 1
+            continue
+        if char == "@" and next_char == '"':
+            mode = "verbatim"
+            index += 2
+            continue
+        if char == '"':
+            mode = "string"
+        elif char == "'":
+            mode = "char"
+        elif char in "([{":
+            depth += 1
+        elif char in ")]}" and depth:
+            depth -= 1
+        elif char == "," and depth == 0:
+            return argument[:index].strip()
+        index += 1
+    return argument.strip()
 
 
 def _source_targets(lines: list[str], include_variables: bool = True) -> dict[str, str]:
@@ -194,23 +354,21 @@ def _scoped_source_symbols(lines: list[str], shared_paths: dict[str, str]) -> li
     scopes = _brace_paths(lines)
     symbols: list[tuple[int, tuple[int, ...], str, str]] = [(-1, (), name, target) for name, target in shared_paths.items()]
     text = "\n".join(lines)
-    line_starts = [0]
-    for index, char in enumerate(text):
-        if char == "\n":
-            line_starts.append(index + 1)
-
-    def line_for(offset: int) -> int:
-        """Map a character offset to its zero-based source line."""
-        return max(0, next((i for i, start in enumerate(line_starts[1:], 1) if start > offset), len(line_starts)) - 1)
-
+    line_starts = _line_starts(text)
     local_paths = dict(shared_paths)
     definitions: list[tuple[int, tuple[int, ...], str, str]] = []
-    for match in VARIABLE_READER_PATTERN.finditer(text):
-        line = line_for(match.start())
-        target = _extract_argument_path(match.group("argument"), local_paths) or "<unresolved>"
-        definition = (line, scopes[line], match.group("name"), target)
+    for call in _call_spans(lines, READER_CALL_PATTERN):
+        start = int(call["start"])
+        line = int(call["start_line"])
+        prefix = text[max(0, start - 256) : start]
+        assignment = re.search(r"(?:var|string)\s+(?P<name>[A-Za-z_]\w*)\s*=\s*$", prefix)
+        if not assignment:
+            continue
+        argument = _split_first_argument(str(call["argument"]))
+        target = _extract_argument_path(argument, local_paths) or "<unresolved>"
+        definition = (line, scopes[line], assignment.group("name"), target)
         definitions.append(definition)
-        local_paths[match.group("name")] = target
+        local_paths[assignment.group("name")] = target
     assignment_pattern = re.compile(
         r"(?:var|string)\s+(?P<name>[A-Za-z_]\w*)\s*=\s*(?P<expression>[^;]+);",
         re.DOTALL,
@@ -218,7 +376,7 @@ def _scoped_source_symbols(lines: list[str], shared_paths: dict[str, str]) -> li
     assignment_expressions: dict[tuple[int, str], str] = {}
     direct_keys: set[tuple[int, str]] = set()
     for match in assignment_pattern.finditer(text):
-        line = line_for(match.start())
+        line = _line_for_offset(line_starts, match.start())
         assignment_expressions[(line, match.group("name"))] = match.group("expression")
         if any(existing_line == line and existing_name == match.group("name") for existing_line, _, existing_name, _ in definitions):
             direct_keys.add((line, match.group("name")))
@@ -270,45 +428,57 @@ def _lookup_symbol(symbols: list[tuple[int, tuple[int, ...], str, str]], name: s
     return target
 
 
+def _resolve_assertion_target(
+    call: dict[str, object],
+    paths: dict[str, str],
+    symbols: list[tuple[int, tuple[int, ...], str, str]],
+    scopes: list[tuple[int, ...]],
+) -> str | None:
+    """Resolve a source-text variable used as an assertion argument."""
+    line = int(call["start_line"])
+    scope = scopes[line]
+    call_text = str(call["text"])
+    code = _strip_csharp_comments_and_strings(call_text)
+    names = {name for _, _, name, _ in symbols if name != "__last_reader__"}
+    names.update(name for name in paths if name != "__last_reader__")
+    targets: list[str] = []
+    for name in names:
+        if not re.search(rf"\b{re.escape(name)}\b", code):
+            continue
+        target = _lookup_symbol(symbols, name, line, scope)
+        if target is None:
+            target = paths.get(name)
+        if target:
+            targets.extend(target.split(";"))
+    if targets:
+        return ";".join(dict.fromkeys(targets))
+    for reader in _call_spans(call_text.splitlines(), READER_CALL_PATTERN):
+        target = _extract_argument_path(_split_first_argument(str(reader["argument"])), paths)
+        if target:
+            return target
+    return None
+
+
 def resolve_target(lines: list[str], index: int, paths: dict[str, str], symbols: list[tuple[int, tuple[int, ...], str, str]] | None = None, scopes: list[tuple[int, ...]] | None = None) -> str:
     """Resolve the receiver or reader on an assertion line to a repository path."""
-    direct = _extract_argument_path(lines[index], paths)
-    if direct:
-        return direct
     if symbols is not None and scopes is not None:
-        receiver = RECEIVER_PATTERN.search(lines[index])
+        receiver = RECEIVER_PATTERN.search(_strip_csharp_comments_and_strings(lines[index]))
         if receiver:
             name = receiver.group("receiver").split(".", 1)[0]
             target = _lookup_symbol(symbols, name, index, scopes[index])
             if target:
                 return target
-        nearby = "\n".join(lines[max(0, index - 12) : index + 1])
-        reader_matches = list(READER_PATTERN.finditer(nearby))
-        if reader_matches:
-            reader = reader_matches[-1]
-            if ";" not in nearby[reader.end() :]:
-                direct = _extract_argument_path(reader.group("argument"), paths)
-                if direct:
-                    return direct
-        referenced: list[str] = []
-        for _, _, name, _ in symbols:
-            if name != "__last_reader__" and re.search(rf"\b{re.escape(name)}\b", lines[index]):
-                target = _lookup_symbol(symbols, name, index, scopes[index])
-                if target:
-                    referenced.extend(target.split(";"))
-        if referenced:
-            return ";".join(dict.fromkeys(referenced))
-    receiver = RECEIVER_PATTERN.search(lines[index])
+        for call in _call_spans(lines, ASSERTION_CALL_PATTERN):
+            if int(call["start_line"]) != index:
+                continue
+            target = _resolve_assertion_target(call, paths, symbols, scopes)
+            if target:
+                return target
+    receiver = RECEIVER_PATTERN.search(_strip_csharp_comments_and_strings(lines[index]))
     if receiver:
         name = receiver.group("receiver").split(".", 1)[0]
         if name in paths:
             return paths[name]
-    referenced = []
-    for name, target in paths.items():
-        if name != "__last_reader__" and re.search(rf"\b{re.escape(name)}\b", lines[index]):
-            referenced.extend(target.split(";"))
-    if referenced:
-        return ";".join(dict.fromkeys(referenced))
     return "<unresolved>"
 
 
@@ -591,7 +761,7 @@ def _csharp_comment_text(text: str) -> str:
 
 def _target_comment_only(target: str, token: str, root: Path, cache: dict[str, tuple[str, str]]) -> bool:
     """Return whether a checked literal exists only in target-file comments."""
-    literals = re.findall(r"\.(?:Contains|IndexOf)\s*\(\s*\"((?:\\.|[^\"\\])*)\"", token)
+    literals = re.findall(r"\"((?:\\.|[^\"\\])*)\"", token)
     if not literals:
         return False
     for value in target.split(";"):
@@ -634,11 +804,30 @@ def scan_file(path: Path, root: Path, xunit_index: dict[str, list[str]], shared_
     comment_cache = comment_cache if comment_cache is not None else {}
     for _, _, name, target in local_symbols:
         paths[name] = target
+    assertion_calls = _call_spans(lines, ASSERTION_CALL_PATTERN)
     rows: list[dict[str, object]] = []
     for index, line in enumerate(lines):
-        if not TOKEN_PATTERN.search(line):
+        code_line = _strip_csharp_comments_and_strings(line)
+        receiver = RECEIVER_PATTERN.search(code_line)
+        if receiver and receiver.group("receiver") == "Assert":
+            receiver = None
+        assertion = next((call for call in assertion_calls if int(call["start_line"]) == index), None)
+        if not receiver and assertion is None:
             continue
-        target = resolve_target(lines, index, paths, local_symbols, scopes)
+        if receiver:
+            receiver_name = receiver.group("receiver").split(".", 1)[0]
+            receiver_target = _lookup_symbol(local_symbols, receiver_name, index, scopes[index])
+            if receiver_target is None:
+                receiver_target = paths.get(receiver_name)
+            if receiver_target is None:
+                continue
+            target = receiver_target
+            token_text = line.strip()
+        else:
+            target = _resolve_assertion_target(assertion, paths, local_symbols, scopes)
+            if target is None:
+                continue
+            token_text = str(assertion["text"]).strip()
         target_parts = []
         for part in target.split(";"):
             candidate = (root / part).resolve() if part and part != "<unresolved>" else None
@@ -647,16 +836,7 @@ def scan_file(path: Path, root: Path, xunit_index: dict[str, list[str]], shared_
             elif part:
                 target_parts.append(part)
         target = ";".join(dict.fromkeys(target_parts)) or "<unresolved>"
-        receiver = RECEIVER_PATTERN.search(line)
-        receiver_name = receiver.group("receiver").split(".", 1)[0] if receiver else ""
-        referenced_source = next((name for name in paths if name != "__last_reader__" and re.search(rf"\b{re.escape(name)}\b", line)), "")
-        source_line = receiver_name in paths or bool(referenced_source) or target != "<unresolved>"
-        if not source_line:
-            continue
         label_match = PHASE_LABEL_PATTERN.search("".join(lines[max(0, index - 5) : index + 1]))
-        token_text = line.strip()
-        if not re.search(r"\.(?:Contains|IndexOf)\s*\(\s*\"", token_text):
-            token_text = "\n".join(lines[index : min(len(lines), index + 8)])
         rows.append(
             {
                 "file": path.relative_to(root).as_posix(),
@@ -709,7 +889,7 @@ def write_report(rows: list[dict[str, object]], output: Path) -> None:
         writer = csv.DictWriter(handle, fieldnames=("file", "line", "label", "validation_flag", "class", "target", "xunit_coverage", "token", "comment_only"))
         writer.writeheader()
         writer.writerows(rows)
-    counts = {label: sum(row["class"] == label for row in rows) for label in ("A", "B", "C")}
+    counts = {label: sum(row["class"] == label for row in rows) for label in ("A", "B", "C", "UNKNOWN", "UNRESOLVED")}
     comments = sum(bool(row["comment_only"]) for row in rows)
     by_flag: dict[str, dict[str, int]] = {}
     for row in rows:
@@ -736,10 +916,11 @@ def write_report(rows: list[dict[str, object]], output: Path) -> None:
         f"- Class A boundary: {counts['A']}\n"
         f"- Class B wiring: {counts['B']}\n"
         f"- Class C implementation: {counts['C']}\n"
+        f"- Unknown targets: {counts['UNKNOWN']}\n"
+        f"- Unresolved targets: {counts['UNRESOLVED']}\n"
         f"- Comment-only tokens: {comments}\n"
         f"- File targets: {file_targets} / {len(rows)}\n"
         f"- Directory targets: {directory_targets}\n"
-        f"- Unresolved targets: {unresolved_targets}\n"
         + ranking,
         encoding="utf-8",
     )
@@ -753,7 +934,11 @@ def main() -> int:
     args = parser.parse_args()
     rows = inventory(args.root.resolve())
     write_report(rows, args.output)
-    print(f"SOURCE_TEXT_INVENTORY_OK rows={len(rows)}")
+    print(
+        f"SOURCE_TEXT_INVENTORY_OK rows={len(rows)} "
+        f"unknown={sum(row['class'] == 'UNKNOWN' for row in rows)} "
+        f"unresolved={sum(row['class'] == 'UNRESOLVED' for row in rows)}"
+    )
     return 0
 
 
