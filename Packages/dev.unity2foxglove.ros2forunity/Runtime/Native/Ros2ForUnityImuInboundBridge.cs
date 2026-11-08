@@ -123,6 +123,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 {
                     if (_runtimeWasReady)
                     {
+                        Ros2ForUnityImuInboundRecovery.ResetForRuntimeLoss(_lifecycle, ref _slot);
                         Ros2ForUnityNativeBridgeRecovery.ResetAfterRuntimeLoss(
                             ref _runtimeWasReady,
                             CleanupNative);
@@ -134,6 +135,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             {
                 if (_runtimeWasReady)
                 {
+                    Ros2ForUnityImuInboundRecovery.ResetForRuntimeLoss(_lifecycle, ref _slot);
                     Ros2ForUnityNativeBridgeRecovery.ResetAfterRuntimeLoss(
                         ref _runtimeWasReady,
                         CleanupNative);
@@ -215,15 +217,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
             var stamp = message.Header.Stamp;
             ulong unixNs;
-            try
+            if (!Ros2ForUnityImuInboundSemantics.TryCreateUnixNanoseconds(
+                    stamp.Sec,
+                    stamp.Nanosec,
+                    out unixNs))
             {
-                unixNs = stamp.Sec < 0
-                    ? 0UL
-                    : checked((ulong)stamp.Sec * 1_000_000_000UL + stamp.Nanosec);
-            }
-            catch (OverflowException)
-            {
-                slot.RecordRejected("IMU header timestamp exceeds the supported range");
+                slot.RecordRejected("IMU header timestamp is outside the supported range");
                 return;
             }
 
@@ -235,14 +234,15 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             }
 
             var hasOrientation = message.Orientation != null
-                                 && (message.Orientation_covariance == null
-                                     || message.Orientation_covariance.Length == 0
-                                     || message.Orientation_covariance[0] >= 0d);
+                                 && Ros2ForUnityImuInboundSemantics.HasCovariance(
+                                     message.Orientation_covariance);
             var orientation = hasOrientation && TryReadQuaternion(message.Orientation, out var parsedOrientation)
                 ? parsedOrientation
                 : NumericsQuaternion.Identity;
-            var hasLinearAcceleration = HasCovariance(message.Linear_acceleration_covariance);
-            var hasAngularVelocity = HasCovariance(message.Angular_velocity_covariance);
+            var hasLinearAcceleration = Ros2ForUnityImuInboundSemantics.HasCovariance(
+                message.Linear_acceleration_covariance);
+            var hasAngularVelocity = Ros2ForUnityImuInboundSemantics.HasCovariance(
+                message.Angular_velocity_covariance);
 
             var neutral = new ImuInboundMessage(
                 unixNs,
@@ -377,9 +377,6 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             return true;
         }
 
-        private static bool HasCovariance(double[] covariance)
-            => covariance != null && covariance.Length > 0 && covariance[0] >= 0d;
-
         private string NodeName
             => "u2f_imu_inbound_" + unchecked((uint)GetInstanceID()).ToString(CultureInfo.InvariantCulture);
 
@@ -387,6 +384,58 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         {
             var value = string.IsNullOrWhiteSpace(topic) ? "/imu/data" : topic.Trim();
             return value.StartsWith("/", StringComparison.Ordinal) ? value : "/" + value;
+        }
+    }
+
+    internal static class Ros2ForUnityImuInboundRecovery
+    {
+        internal static void ResetForRuntimeLoss(
+            ImuInboundLifecycleState lifecycle,
+            ref ImuNativeFrameSlot slot)
+        {
+            lifecycle.BeginGeneration();
+            slot?.Dispose();
+            slot = new ImuNativeFrameSlot();
+        }
+    }
+
+    internal static class Ros2ForUnityImuInboundSemantics
+    {
+        internal static bool HasCovariance(double[] covariance)
+        {
+            if (covariance == null || covariance.Length == 0 || covariance[0] < 0d)
+                return false;
+
+            for (var index = 0; index < covariance.Length; index++)
+            {
+                if (covariance[index] != 0d)
+                    return true;
+            }
+
+            return false;
+        }
+
+        internal static bool TryCreateUnixNanoseconds(
+            int seconds,
+            uint nanoseconds,
+            out ulong unixNanoseconds)
+        {
+            unixNanoseconds = 0;
+            if (nanoseconds >= 1_000_000_000U)
+                return false;
+            if (seconds < 0)
+                return true;
+
+            try
+            {
+                unixNanoseconds = checked(
+                    (ulong)seconds * 1_000_000_000UL + nanoseconds);
+                return true;
+            }
+            catch (OverflowException)
+            {
+                return false;
+            }
         }
     }
 

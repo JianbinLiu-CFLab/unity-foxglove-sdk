@@ -157,6 +157,52 @@ namespace Unity.FoxgloveSDK.Tests.Unit.Sensors
                 Marshal.FreeHGlobal(nativeMessage);
             }
         }
+
+        [Fact]
+        public void RuntimeLossRotatesSlotAndInvalidatesRetiredCallbacks()
+        {
+            var lifecycle = new ImuInboundLifecycleState();
+            var oldSlot = new ImuNativeFrameSlot();
+            var generation = lifecycle.BeginGeneration();
+            Assert.True(oldSlot.Publish(CreateFrame(1)));
+
+            var currentSlot = oldSlot;
+            Ros2ForUnityImuInboundRecovery.ResetForRuntimeLoss(lifecycle, ref currentSlot);
+
+            Assert.False(lifecycle.IsCurrent(generation));
+            Assert.False(oldSlot.Publish(CreateFrame(2)));
+            Assert.NotSame(oldSlot, currentSlot);
+            Assert.True(currentSlot.Publish(CreateFrame(3)));
+        }
+
+        [Theory]
+        [InlineData(false, 0)]
+        [InlineData(false, -1)]
+        [InlineData(true, 1)]
+        public void ImuCovarianceAvailabilityTreatsZeroAndNegativeMarkersAsUnknown(
+            bool expected,
+            double firstValue)
+        {
+            var covariance = new double[9];
+            covariance[0] = firstValue;
+            Assert.Equal(expected, Ros2ForUnityImuInboundSemantics.HasCovariance(covariance));
+        }
+
+        [Fact]
+        public void ImuTimestampRejectsOutOfRangeNanoseconds()
+        {
+            Assert.False(
+                Ros2ForUnityImuInboundSemantics.TryCreateUnixNanoseconds(
+                    1,
+                    1_000_000_000,
+                    out _));
+            Assert.True(
+                Ros2ForUnityImuInboundSemantics.TryCreateUnixNanoseconds(
+                    1,
+                    999_999_999,
+                    out var unixNs));
+            Assert.Equal(1_999_999_999UL, unixNs);
+        }
 #endif
 
         [Fact]
