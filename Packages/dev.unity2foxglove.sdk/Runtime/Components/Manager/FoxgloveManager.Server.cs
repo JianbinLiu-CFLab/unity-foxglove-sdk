@@ -119,27 +119,9 @@ namespace Unity.FoxgloveSDK.Components
         private void CleanupStartupAfterFailure()
         {
             RetireClientEventIngress();
+
             FoxgloveManagerTeardownState.RunStartupCleanup(
                 ReportStartupCleanupFailure,
-                new[]
-                {
-                    "cleanup pending recording sidecar",
-                    "stop remote MCAP file server",
-                    "stop replay cursor endpoint",
-                    "stop certificate distributor",
-                    "unregister FoxRun subscription catalog service",
-                    "unregister Component publish contracts service",
-                    "unregister topic contract service",
-                    "detach transport forwarders after failed startup",
-                    "detach runtime forwarders after failed startup",
-                    "stop runtime after failed startup",
-                    "disable replay after failed startup",
-                    "disable recording after failed startup",
-                    "clear Component publisher session after failed startup",
-                    "clear publishing session state after failed startup",
-                    "restore live publishers after failed startup",
-                    "flush retired client-event diagnostics after failed startup"
-                },
                 CleanupPendingRecordingSidecar,
                 StopRemoteMcapFileServer,
                 StopReplayCursorEndpoint,
@@ -147,14 +129,22 @@ namespace Unity.FoxgloveSDK.Components
                 UnregisterFoxRunSubscriptionCatalogService,
                 UnregisterComponentPublishContractsService,
                 UnregisterTopicContractService,
+
                 () => DetachTransportForwarders(_runtime?.CleanupSession),
                 () => DetachRuntimeForwarders(_runtime?.CleanupSession),
+
                 () => _runtime?.Stop(),
+
                 () => _runtime?.DisableReplay(),
+
                 () => _runtime?.DisableRecording(),
+
                 ClearActiveComponentPublisherSession,
+
                 ClearPublishingSessionState,
+
                 RestoreLivePublishers,
+
                 FlushClientEventRetirementDrops);
         }
 

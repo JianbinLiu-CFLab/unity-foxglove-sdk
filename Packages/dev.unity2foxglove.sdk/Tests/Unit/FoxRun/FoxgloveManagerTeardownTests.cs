@@ -137,17 +137,29 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 new object[]
                 {
                     report,
-                    new[] { "first", "second", "third" },
                     new Action[]
                     {
-                        Step(calls, "first", new InvalidOperationException("first-failure")),
-                        Step(calls, "second", new ArgumentException("second-failure")),
-                        Step(calls, "third")
+                        Step(calls, "cleanup pending recording sidecar", new InvalidOperationException("first-failure")),
+                        Step(calls, "stop remote MCAP file server", new ArgumentException("second-failure")),
+                        Step(calls, "stop replay cursor endpoint")
                     }
                 });
 
-            Assert.Equal(new[] { "first", "second", "third" }, calls);
-            Assert.Equal(new[] { "first:first-failure", "second:second-failure" }, reports);
+            Assert.Equal(
+                new[]
+                {
+                    "cleanup pending recording sidecar",
+                    "stop remote MCAP file server",
+                    "stop replay cursor endpoint"
+                },
+                calls);
+            Assert.Equal(
+                new[]
+                {
+                    "cleanup pending recording sidecar:first-failure",
+                    "stop remote MCAP file server:second-failure"
+                },
+                reports);
         }
 
         [Fact]

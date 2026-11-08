@@ -155,9 +155,28 @@ namespace Unity.FoxgloveSDK.Components
             return firstFailure;
         }
 
+        private static readonly string[] StartupCleanupDescriptions =
+        {
+            "cleanup pending recording sidecar",
+            "stop remote MCAP file server",
+            "stop replay cursor endpoint",
+            "stop certificate distributor",
+            "unregister FoxRun subscription catalog service",
+            "unregister Component publish contracts service",
+            "unregister topic contract service",
+            "detach transport forwarders after failed startup",
+            "detach runtime forwarders after failed startup",
+            "stop runtime after failed startup",
+            "disable replay after failed startup",
+            "disable recording after failed startup",
+            "clear Component publisher session after failed startup",
+            "clear publishing session state after failed startup",
+            "restore live publishers after failed startup",
+            "flush retired client-event diagnostics after failed startup"
+        };
+
         internal static void RunStartupCleanup(
             Action<Exception, string> reportFailure,
-            string[] descriptions,
             params Action[] steps)
         {
             for (var index = 0; index < steps.Length; index++)
@@ -172,8 +191,8 @@ namespace Unity.FoxgloveSDK.Components
                     {
                         reportFailure?.Invoke(
                             exception,
-                            descriptions != null && index < descriptions.Length
-                                ? descriptions[index]
+                            index < StartupCleanupDescriptions.Length
+                                ? StartupCleanupDescriptions[index]
                                 : string.Empty);
                     }
                     catch
