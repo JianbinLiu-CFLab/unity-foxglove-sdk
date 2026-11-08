@@ -57,6 +57,7 @@ def _extract_argument_path(argument: str, paths: dict[str, str]) -> str | None:
     path_like = PATH_LIKE_LITERAL_PATTERN.fullmatch(argument)
     if path_like:
         return _normalise_path(path_like.group(1))
+    if "," in argument: return _extract_argument_path(argument.split(",", 1)[1], paths)
     return None
 def _balanced_call_end(text: str, open_index: int) -> int | None:
     """Return the closing parenthesis for a call while respecting C# literals."""
@@ -917,8 +918,7 @@ def _verify_base_inventory(root: Path, rows: list[dict[str, object]], revision: 
         if missing:
             print(f"SOURCE_TEXT_INVENTORY_BASE_MISSING sample={[(row['file'], row['line'], row['label']) for row in missing[:5]]}")
         if metadata_changed: print(f"SOURCE_TEXT_INVENTORY_METADATA_CHANGED sample={metadata_changed[:5]}")
-        if status_missing:
-            print(f"SOURCE_TEXT_INVENTORY_STATUS_MISSING sample={[(row['file'], row['line']) for row in status_missing[:5]]}")
+        if status_missing: print(f"SOURCE_TEXT_INVENTORY_STATUS_MISSING sample={[(row['file'], row['line']) for row in status_missing[:5]]}")
         return 1
     return 0
 def _validation_flag(root: Path, source_file: str) -> str:
