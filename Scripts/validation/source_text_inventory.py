@@ -12,7 +12,7 @@ PATH_LITERAL_PATTERN = re.compile(
 PATH_LIKE_LITERAL_PATTERN = re.compile(r'"([^"\r\n]*[/\\][^"\r\n]*)"')
 READER_CALL_PATTERN = re.compile(
     r"\b(?P<reader>ReadRepoText|ReadRequiredRepoText|ReadText|ReadRuntimeSource|ReadPointCloudPublisherSources|ReadCameraPublisherSources|ReadProductPublisherText|ReadRepoDirectoryText|Text|"
-    r"PhaseValidationSourceHelpers\s*\.\s*(?:ReadRequiredRepoText|ReadFoxRunRos2SubscriptionBindingSources|ReadFoxgloveLogSourceGeneratorSources|ReadSplitPythonSource)|TestSources\s*\.\s*(?:Text|Runtime|ExtractMethod|Slice|SourceGeneratorSources)|RuntimeSource)\s*\("
+    r"PhaseValidationSourceHelpers\s*\.\s*Read[A-Za-z_]\w*(?:Sources?|SourcePath|Text)|TestSources\s*\.\s*(?:Text|Runtime|ExtractMethod|Slice|SourceGeneratorSources)|RuntimeSource)\s*\("
 )
 VARIABLE_READER_PATTERN = re.compile(
     r"(?:var|string)\s+(?P<name>[A-Za-z_]\w*)\s*=\s*(?P<reader>ReadRepoText|ReadRequiredRepoText|PhaseValidationSourceHelpers\.ReadRequiredRepoText|TestSources\.Text)\s*\(\s*(?P<argument>[^)]*?)\)",
@@ -725,18 +725,18 @@ def _target_comment_only(target: str, token: str, root: Path, cache: dict[str, t
     ]
     if not literals:
         return False
+    files: list[str] = []
     for value in target.split(";"):
         path = root / value
         if not path.is_file():
             continue
-        key = path.as_posix()
+        key = path.as_posix(); files.append(key)
         if key not in cache:
             text = path.read_text(encoding="utf-8", errors="replace")
             cache[key] = (_csharp_comment_text(text), _strip_csharp_comments_and_strings(text))
-        comments, code = cache[key]
-        for literal in literals:
-            if literal in comments and literal not in code:
-                return True
+    for literal in literals:
+        if files and all(literal in cache[key][0] and literal not in cache[key][1] for key in files):
+            return True
     return False
 def _xunit_coverage(target: str, root: Path, xunit_index: dict[str, list[str]]) -> str:
     """Return indexed unit-test files whose text references the target type name."""
