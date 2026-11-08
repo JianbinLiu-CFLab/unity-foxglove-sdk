@@ -54,7 +54,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             if (!frame.HasOrientation)
                 message.Orientation_covariance[0] = -1d;
             CopyInto(angularVelocityCovariance, message.Angular_velocity_covariance);
+            if (!frame.HasAngularVelocity)
+                message.Angular_velocity_covariance[0] = -1d;
             CopyInto(linearAccelerationCovariance, message.Linear_acceleration_covariance);
+            if (!frame.HasLinearAcceleration)
+                message.Linear_acceleration_covariance[0] = -1d;
 
             return message;
         }
