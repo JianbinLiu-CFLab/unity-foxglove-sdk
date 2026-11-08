@@ -137,11 +137,17 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
                 new object[]
                 {
                     report,
-                    new Action[]
+                    new FoxgloveManagerTeardownState.StartupCleanupStep[]
                     {
-                        Step(calls, "cleanup pending recording sidecar", new InvalidOperationException("first-failure")),
-                        Step(calls, "stop remote MCAP file server", new ArgumentException("second-failure")),
-                        Step(calls, "stop replay cursor endpoint")
+                        new FoxgloveManagerTeardownState.StartupCleanupStep(
+                            "cleanup pending recording sidecar",
+                            Step(calls, "cleanup pending recording sidecar", new InvalidOperationException("first-failure"))),
+                        new FoxgloveManagerTeardownState.StartupCleanupStep(
+                            "stop remote MCAP file server",
+                            Step(calls, "stop remote MCAP file server", new ArgumentException("second-failure"))),
+                        new FoxgloveManagerTeardownState.StartupCleanupStep(
+                            "stop replay cursor endpoint",
+                            Step(calls, "stop replay cursor endpoint"))
                     }
                 });
 
@@ -168,9 +174,32 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         {
             var manager = new FoxgloveManager();
             var steps = manager.CreateStartupCleanupSteps();
+            var descriptions = new[]
+            {
+                "cleanup pending recording sidecar",
+                "stop remote MCAP file server",
+                "stop replay cursor endpoint",
+                "stop certificate distributor",
+                "unregister FoxRun subscription catalog service",
+                "unregister Component publish contracts service",
+                "unregister topic contract service",
+                "detach transport forwarders after failed startup",
+                "detach runtime forwarders after failed startup",
+                "stop runtime after failed startup",
+                "disable replay after failed startup",
+                "disable recording after failed startup",
+                "clear Component publisher session after failed startup",
+                "clear publishing session state after failed startup",
+                "restore live publishers after failed startup",
+                "flush retired client-event diagnostics after failed startup"
+            };
 
-            Assert.Equal(16, steps.Length);
-            Assert.All(steps, step => Assert.NotNull(step));
+            Assert.Equal(descriptions.Length, steps.Length);
+            for (var index = 0; index < steps.Length; index++)
+            {
+                Assert.Equal(descriptions[index], steps[index].Description);
+                Assert.NotNull(steps[index].Action);
+            }
         }
 #endif
 

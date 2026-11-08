@@ -155,45 +155,33 @@ namespace Unity.FoxgloveSDK.Components
             return firstFailure;
         }
 
-        private static readonly string[] StartupCleanupDescriptions =
+        internal readonly struct StartupCleanupStep
         {
-            "cleanup pending recording sidecar",
-            "stop remote MCAP file server",
-            "stop replay cursor endpoint",
-            "stop certificate distributor",
-            "unregister FoxRun subscription catalog service",
-            "unregister Component publish contracts service",
-            "unregister topic contract service",
-            "detach transport forwarders after failed startup",
-            "detach runtime forwarders after failed startup",
-            "stop runtime after failed startup",
-            "disable replay after failed startup",
-            "disable recording after failed startup",
-            "clear Component publisher session after failed startup",
-            "clear publishing session state after failed startup",
-            "restore live publishers after failed startup",
-            "flush retired client-event diagnostics after failed startup"
-        };
+            internal StartupCleanupStep(string description, Action action)
+            {
+                Description = description;
+                Action = action;
+            }
+
+            internal string Description { get; }
+            internal Action Action { get; }
+        }
 
         internal static void RunStartupCleanup(
             Action<Exception, string> reportFailure,
-            params Action[] steps)
+            params StartupCleanupStep[] steps)
         {
-            for (var index = 0; index < steps.Length; index++)
+            foreach (var step in steps)
             {
                 try
                 {
-                    steps[index]?.Invoke();
+                    step.Action?.Invoke();
                 }
                 catch (Exception exception)
                 {
                     try
                     {
-                        reportFailure?.Invoke(
-                            exception,
-                            index < StartupCleanupDescriptions.Length
-                                ? StartupCleanupDescriptions[index]
-                                : string.Empty);
+                        reportFailure?.Invoke(exception, step.Description);
                     }
                     catch
                     {

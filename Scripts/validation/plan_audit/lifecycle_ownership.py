@@ -10,6 +10,7 @@ import xml.etree.ElementTree as ET
 import re
 import shutil
 import subprocess
+from collections import Counter
 from pathlib import Path
 
 from . import audit_lib
@@ -130,6 +131,11 @@ def _appendix_labels() -> list[tuple[str, str]]:
     return labels
 
 
+def _appendix_prs() -> list[str]:
+    """Return the Appendix A candidate identifiers in recorded order."""
+    return [pr for pr, _ in _appendix_labels()]
+
+
 def _gate_check(candidates: list[dict[str, str]]) -> audit_lib.Check:
     """Recompute the historical and regenerated decision-gate ratios."""
     appendix = _appendix_labels()
@@ -145,10 +151,28 @@ def _gate_check(candidates: list[dict[str, str]]) -> audit_lib.Check:
 
 
 def _scope_check(candidates: list[dict[str, str]], evidence: str, base_sha: str) -> audit_lib.Check:
-    """Check whether the generated candidate count matches Appendix A."""
-    appendix_count = len(_appendix_labels())
-    status = "PASS" if candidates and len(candidates) == appendix_count else "FAIL"
-    detail = f"regenerated_candidates={len(candidates)}; appendix_rows={appendix_count}; base={base_sha}"
+    """Check that the regenerated candidate identity multiset matches Appendix A."""
+    appendix_prs = _appendix_prs()
+    candidate_prs = [row["pr"] for row in candidates]
+    appendix_counts = Counter(appendix_prs)
+    candidate_counts = Counter(candidate_prs)
+    duplicate_appendix = sorted(pr for pr, count in appendix_counts.items() if pr != "unknown" and count > 1)
+    duplicate_candidates = sorted(pr for pr, count in candidate_counts.items() if pr != "unknown" and count > 1)
+    missing = sorted(set(appendix_prs) - set(candidate_prs))
+    extra = sorted(set(candidate_prs) - set(appendix_prs))
+    unknown_appendix = appendix_counts.get("unknown", 0)
+    unknown_candidates = candidate_counts.get("unknown", 0)
+    identity_match = appendix_counts == candidate_counts
+    unknown_explicit = unknown_appendix == unknown_candidates
+    okay = bool(candidates) and identity_match and not duplicate_appendix and not duplicate_candidates and unknown_explicit
+    detail = (
+        f"regenerated_candidates={len(candidates)}; appendix_rows={len(appendix_prs)}; base={base_sha}; "
+        f"identity_match={identity_match}; duplicate_appendix={duplicate_appendix}; "
+        f"duplicate_regenerated={duplicate_candidates}; missing={missing}; extra={extra}; "
+        f"unknown_appendix={unknown_appendix}; unknown_regenerated={unknown_candidates}; "
+        f"unknown_explicit={unknown_explicit}"
+    )
+    status = "PASS" if okay else "FAIL"
     return _check("197-W1-scope", "Plan/197... § 2 W1.1", "history", status, "python -B -m Scripts.validation.plan_audit.lifecycle_ownership", evidence, detail)
 
 

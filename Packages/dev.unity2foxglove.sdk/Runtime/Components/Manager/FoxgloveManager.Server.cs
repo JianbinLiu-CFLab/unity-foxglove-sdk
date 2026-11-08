@@ -125,27 +125,27 @@ namespace Unity.FoxgloveSDK.Components
                 CreateStartupCleanupSteps());
         }
 
-        internal Action[] CreateStartupCleanupSteps()
-            => new Action[]
+        internal FoxgloveManagerTeardownState.StartupCleanupStep[] CreateStartupCleanupSteps()
+            => new FoxgloveManagerTeardownState.StartupCleanupStep[]
             {
-                CleanupPendingRecordingSidecar,
-                StopRemoteMcapFileServer,
-                StopReplayCursorEndpoint,
-                StopCertificateDistributor,
-                UnregisterFoxRunSubscriptionCatalogService,
-                UnregisterComponentPublishContractsService,
-                UnregisterTopicContractService,
+                new FoxgloveManagerTeardownState.StartupCleanupStep("cleanup pending recording sidecar", CleanupPendingRecordingSidecar),
+                new FoxgloveManagerTeardownState.StartupCleanupStep("stop remote MCAP file server", StopRemoteMcapFileServer),
+                new FoxgloveManagerTeardownState.StartupCleanupStep("stop replay cursor endpoint", StopReplayCursorEndpoint),
+                new FoxgloveManagerTeardownState.StartupCleanupStep("stop certificate distributor", StopCertificateDistributor),
+                new FoxgloveManagerTeardownState.StartupCleanupStep("unregister FoxRun subscription catalog service", UnregisterFoxRunSubscriptionCatalogService),
+                new FoxgloveManagerTeardownState.StartupCleanupStep("unregister Component publish contracts service", UnregisterComponentPublishContractsService),
+                new FoxgloveManagerTeardownState.StartupCleanupStep("unregister topic contract service", UnregisterTopicContractService),
 
-                () => DetachTransportForwarders(_runtime?.CleanupSession),
-                () => DetachRuntimeForwarders(_runtime?.CleanupSession),
-                () => _runtime?.Stop(),
-                () => _runtime?.DisableReplay(),
-                () => _runtime?.DisableRecording(),
-                ClearActiveComponentPublisherSession,
-                ClearPublishingSessionState,
+                new FoxgloveManagerTeardownState.StartupCleanupStep("detach transport forwarders after failed startup", () => DetachTransportForwarders(_runtime?.CleanupSession)),
+                new FoxgloveManagerTeardownState.StartupCleanupStep("detach runtime forwarders after failed startup", () => DetachRuntimeForwarders(_runtime?.CleanupSession)),
+                new FoxgloveManagerTeardownState.StartupCleanupStep("stop runtime after failed startup", () => _runtime?.Stop()),
+                new FoxgloveManagerTeardownState.StartupCleanupStep("disable replay after failed startup", () => _runtime?.DisableReplay()),
+                new FoxgloveManagerTeardownState.StartupCleanupStep("disable recording after failed startup", () => _runtime?.DisableRecording()),
+                new FoxgloveManagerTeardownState.StartupCleanupStep("clear Component publisher session after failed startup", ClearActiveComponentPublisherSession),
+                new FoxgloveManagerTeardownState.StartupCleanupStep("clear publishing session state after failed startup", ClearPublishingSessionState),
 
-                RestoreLivePublishers,
-                FlushClientEventRetirementDrops
+                new FoxgloveManagerTeardownState.StartupCleanupStep("restore live publishers after failed startup", RestoreLivePublishers),
+                new FoxgloveManagerTeardownState.StartupCleanupStep("flush retired client-event diagnostics after failed startup", FlushClientEventRetirementDrops)
             };
 
         private static void ReportStartupCleanupFailure(Exception exception, string description)
