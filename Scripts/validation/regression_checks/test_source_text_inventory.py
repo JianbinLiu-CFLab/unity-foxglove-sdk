@@ -4,7 +4,14 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from Scripts.validation.source_text_inventory import _build_xunit_index, _match_base_rows, classify, inventory, write_report
+from Scripts.validation.source_text_inventory import (
+    _build_xunit_index,
+    _checked_expression_signature,
+    _match_base_rows,
+    classify,
+    inventory,
+    write_report,
+)
 
 
 class SourceTextInventoryTests(unittest.TestCase):
@@ -428,6 +435,55 @@ class SourceTextInventoryTests(unittest.TestCase):
             parameter_rows = [row for row in rows if "marker" in str(row["token"])]
             self.assertEqual(1, len(parameter_rows))
             self.assertEqual("UNRESOLVED", parameter_rows[0]["class"])
+
+    def test_assertion_expression_signature_tracks_checked_argument_changes(self):
+        """Treat a changed checked expression as a changed inventory row."""
+        original = _checked_expression_signature('Assert.Contains("Secure", source)')
+        weakened = _checked_expression_signature(
+            'Assert.Contains("Secure", "Secure" + source.GetHashCode().ToString())'
+        )
+        self.assertNotEqual(original, weakened)
+
+    def test_reachability_tracks_preprocessor_and_unbraced_branches(self):
+        """Expose preprocessor and unbraced control-flow changes in row metadata."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runtime = root / "Packages" / "fixture" / "Tests" / "Runtime"
+            runtime.mkdir(parents=True)
+            product = root / "Packages" / "fixture" / "Runtime" / "Product.cs"
+            product.parent.mkdir(parents=True)
+            product.write_text("public sealed class Product {}\n", encoding="utf-8")
+            validation = runtime / "ReachabilityValidation.cs"
+            validation.write_text(
+                "public static class ReachabilityValidation {\n"
+                '    public static void Validate() {\n'
+                '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                "#if false\n"
+                '        Check(source.Contains("preprocessor"));\n'
+                "#endif\n"
+                "        if (false)\n"
+                '            Check(source.Contains("unbraced"));\n'
+                '        Check(source.Contains("live"));\n'
+                "    }\n"
+                "}\n",
+                encoding="utf-8",
+            )
+            registry = root / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "PhaseValidationRegistry.cs"
+            registry.parent.mkdir(parents=True, exist_ok=True)
+            registry.write_text(
+                'Ci("--phase-reachability", "fixture", ReachabilityValidation.Validate, evidence: ValidationEvidence.Behavior),\n',
+                encoding="utf-8",
+            )
+            rows = inventory(root)
+            by_token = {str(row["token"]): row for row in rows}
+            self.assertIn('source.Contains("preprocessor")', by_token)
+            self.assertIn('source.Contains("unbraced")', by_token)
+            self.assertIn('source.Contains("live")', by_token)
+            preprocessor = by_token['source.Contains("preprocessor")']
+            unbraced = by_token['source.Contains("unbraced")']
+            live = by_token['source.Contains("live")']
+            self.assertNotEqual(preprocessor["reachability"], live["reachability"])
+            self.assertNotEqual(unbraced["reachability"], live["reachability"])
 
 if __name__ == "__main__":
     unittest.main()

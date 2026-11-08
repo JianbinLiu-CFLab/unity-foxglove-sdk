@@ -323,6 +323,18 @@ class _RunCiTestsPart1:
         self.assertNotIn("python3 Scripts/validation/source_decomposition/compare_identity_surfaces.py", joined)
         self.assertNotIn("--strict", joined)
 
+    def test_dotnet_workflow_runs_source_inventory_gate_from_trusted_revision(self) -> None:
+        """The source inventory ratchet must execute a checker archived from a trusted revision."""
+        workflow = DOTNET_WORKFLOW_PATH.read_text(encoding="utf-8")
+        start = active_workflow_line_index(workflow, "- name: Run live source-text inventory")
+        end = active_workflow_line_index(workflow, "- name: Upload live source-text inventory")
+        gate = "\n".join(workflow.splitlines()[start:end])
+        self.assertIn("SOURCE_TEXT_INVENTORY_TRUSTED_REVISION", gate)
+        self.assertIn("git archive", gate)
+        self.assertIn("trusted_checker", gate)
+        self.assertIn("--base-ref", gate)
+        self.assertIn("Scripts/validation/source_text_inventory.py", gate)
+
     def test_dotnet_workflow_cannot_waive_validator_initializer_changes(self) -> None:
         """The trusted-base identity result must fail the workflow without a parser waiver."""
         workflow = DOTNET_WORKFLOW_PATH.read_text(encoding="utf-8")

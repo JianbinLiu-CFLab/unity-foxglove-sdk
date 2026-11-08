@@ -134,10 +134,10 @@ def _line_for_offset(starts: list[int], offset: int) -> int:
             break
         line = index
     return line
-def _call_spans(lines: list[str], pattern: re.Pattern[str]) -> list[dict[str, object]]:
+def _call_spans(lines: list[str], pattern: re.Pattern[str], text: str | None = None, searchable: str | None = None) -> list[dict[str, object]]:
     """Return balanced call spans for a regular-expression call pattern."""
-    text = "\n".join(lines)
-    searchable = _strip_csharp_comments_and_strings(text)
+    text = text if text is not None else "\n".join(lines)
+    searchable = searchable if searchable is not None else _strip_csharp_comments_and_strings(text)
     starts = _line_starts(text)
     calls: list[dict[str, object]] = []
     for match in pattern.finditer(searchable):
@@ -169,23 +169,17 @@ def _split_first_argument(argument: str) -> str:
         if mode == "verbatim":
             if char == '"':
                 if next_char == '"':
-                    index += 2
-                    continue
+                    index += 2; continue
                 mode = ""
-            index += 1
-            continue
+            index += 1; continue
         if mode in {"string", "char"}:
             if char == "\\":
-                index += 2
-                continue
+                index += 2; continue
             if (mode == "string" and char == '"') or (mode == "char" and char == "'"):
                 mode = ""
-            index += 1
-            continue
+            index += 1; continue
         if char == "@" and next_char == '"':
-            mode = "verbatim"
-            index += 2
-            continue
+            mode = "verbatim"; index += 2; continue
         if char == '"':
             mode = "string"
         elif char == "'":
@@ -200,17 +194,43 @@ def _split_first_argument(argument: str) -> str:
     return argument.strip()
 def _call_context(lines: list[str], call: dict[str, object]) -> str:
     """Return the surrounding statement for polarity and source-origin checks."""
-    text = "\n".join(lines)
+    text = str(call.get("text_file") or "\n".join(lines))
     start = int(call["start"])
     end = int(call["end"])
-    masked = _strip_csharp_comments_and_strings(text)
+    masked = str(call.get("masked") or _strip_csharp_comments_and_strings(text))
     statement_start = max(masked.rfind(";", 0, start), masked.rfind("{", 0, start), masked.rfind("}", 0, start), masked.rfind("&&", 0, start) + 1, masked.rfind("||", 0, start) + 1) + 1
     return text[statement_start:end]
-def _reachability_signature(lines: list[str], call: dict[str, object]) -> str:
-    """Return the nearest enclosing control-flow guard for an assertion call."""
-    text = "\n".join(lines); start = int(call["start"]); masked = _strip_csharp_comments_and_strings(text)
-    guards = list(re.finditer(r"\b(?:if|while|foreach|switch)\s*\([^{}]*\)\s*\{", masked[:start]))
-    return re.sub(r"\s+", " ", guards[-1].group(0)) if guards else ""
+def _balanced_brace_end(text: str, open_index: int) -> int | None:
+    """Return the matching closing brace in masked source text."""
+    depth = 0
+    for index in range(open_index, len(text)):
+        depth += (text[index] == "{") - (text[index] == "}")
+        if depth == 0: return index
+    return None
+def _reachability_signatures(lines: list[str], calls: list[dict[str, object]], text: str, masked: str) -> dict[int, str]:
+    """Return preprocessor and enclosing control-flow state for calls in one file."""
+    states: list[str] = []; directives: list[str] = []
+    for line in lines:
+        directive = line.strip()
+        states.append("|".join(directives))
+        if directive.startswith("#if"): directives.append("if:" + re.sub(r"\s+", " ", directive[3:].strip()))
+        elif directive.startswith("#elif") and directives: directives[-1] = "elif:" + re.sub(r"\s+", " ", directive[5:].strip())
+        elif directive.startswith("#else") and directives: directives[-1] = "else"
+        elif directive.startswith("#endif") and directives: directives.pop()
+    intervals: list[tuple[int, int, str]] = []
+    for match in re.finditer(r"\b(?P<kind>if|else\s+if|while|foreach|for|switch|catch)\s*\(", masked):
+        open_index = masked.find("(", match.start(), match.end()); close_index = _balanced_call_end(masked, open_index)
+        if close_index is None: continue
+        cursor = close_index + 1
+        while cursor < len(masked) and masked[cursor].isspace(): cursor += 1
+        condition = re.sub(r"\s+", " ", text[open_index + 1 : close_index].strip())
+        end = _balanced_brace_end(masked, cursor) if cursor < len(masked) and masked[cursor] == "{" else masked.find(";", cursor)
+        if end is not None and end >= cursor: intervals.append((cursor, end, f"{match.group('kind')}({condition})"))
+    result: dict[int, str] = {}
+    for call in calls:
+        start = int(call["start"]); line = int(call["start_line"]); active = [value for begin, end, value in intervals if begin <= start <= end]
+        result[start] = "|".join(([states[line]] if line < len(states) and states[line] else []) + active)
+    return result
 def _source_targets(lines: list[str], include_variables: bool = True) -> dict[str, str]:
     """Build a local symbol-to-source-path map from reader calls and path arrays."""
     paths: dict[str, str] = {}
@@ -487,9 +507,9 @@ def _resolve_derived_target(
 ) -> str | None:
     """Resolve source origins for receiver expressions that contain method calls."""
     line = int(call["start_line"])
-    text = "\n".join(lines)
+    text = str(call.get("text_file") or "\n".join(lines))
     start = int(call["start"])
-    masked = _strip_csharp_comments_and_strings(text)
+    masked = str(call.get("masked") or _strip_csharp_comments_and_strings(text))
     statement_start = _receiver_expression_start(masked, start)
     expression = text[statement_start:start]
     code = _strip_csharp_comments_and_strings(expression)
@@ -597,65 +617,42 @@ def _strip_csharp_comments_and_strings(text: str) -> str:
         char = text[index]
         next_char = text[index + 1] if index + 1 < len(text) else ""
         if mode == "line":
-            if char == "\n":
-                output.append(char)
-                mode = ""
-            else:
-                output.append(" ")
-            index += 1
-            continue
+            output.append(char if char == "\n" else " "); mode = "" if char == "\n" else mode; index += 1; continue
         if mode == "block":
             if char == "*" and next_char == "/":
-                output.extend((" ", " "))
-                index += 2
-                mode = ""
+                output.extend((" ", " ")); index += 2; mode = ""
             else:
-                output.append("\n" if char == "\n" else " ")
-                index += 1
+                output.append("\n" if char == "\n" else " "); index += 1
             continue
         if mode in {"string", "verbatim", "char"}:
             if mode == "verbatim" and char == '"':
                 if next_char == '"':
-                    output.extend((" ", " "))
-                    index += 2
+                    output.extend((" ", " ")); index += 2
                     continue
                 mode = ""
             elif mode in {"string", "char"} and char == "\\":
-                output.extend((" ", " "))
-                index += 2
+                output.extend((" ", " ")); index += 2
                 continue
             elif (mode == "string" and char == '"') or (mode == "char" and char == "'"):
                 mode = ""
-            output.append("\n" if char == "\n" else " ")
-            index += 1
+            output.append("\n" if char == "\n" else " "); index += 1
             continue
         if char == "/" and next_char == "/":
-            output.extend((" ", " "))
-            index += 2
-            mode = "line"
+            output.extend((" ", " ")); index += 2; mode = "line"
             continue
         if char == "/" and next_char == "*":
-            output.extend((" ", " "))
-            index += 2
-            mode = "block"
+            output.extend((" ", " ")); index += 2; mode = "block"
             continue
         if char == '@' and next_char == '"':
-            output.extend((" ", " "))
-            index += 2
-            mode = "verbatim"
+            output.extend((" ", " ")); index += 2; mode = "verbatim"
             continue
         if char == '"':
-            output.append(" ")
-            index += 1
-            mode = "string"
+            output.append(" "); index += 1; mode = "string"
             continue
         if char == "'":
-            output.append(" ")
-            index += 1
-            mode = "char"
+            output.append(" "); index += 1; mode = "char"
             continue
-        output.append(char)
-        index += 1
+        output.append(char); index += 1
     return "".join(output)
 def _csharp_comment_text(text: str) -> str:
     """Return C# line and block comment text while ignoring strings and chars."""
@@ -667,17 +664,13 @@ def _csharp_comment_text(text: str) -> str:
         next_char = text[index + 1] if index + 1 < len(text) else ""
         if mode == "line":
             if char == "\n":
-                output.append(char)
-                mode = ""
+                output.append(char); mode = ""
             else:
                 output.append(char)
-            index += 1
-            continue
+            index += 1; continue
         if mode == "block":
             if char == "*" and next_char == "/":
-                output.extend(("*", "/"))
-                index += 2
-                mode = ""
+                output.extend(("*", "/")); index += 2; mode = ""
             else:
                 output.append(char)
                 index += 1
@@ -685,37 +678,27 @@ def _csharp_comment_text(text: str) -> str:
         if mode in {"string", "verbatim", "char"}:
             if mode == "verbatim" and char == '"':
                 if next_char == '"':
-                    index += 2
-                    continue
+                    index += 2; continue
                 mode = ""
             elif mode in {"string", "char"} and char == "\\":
-                index += 2
-                continue
+                index += 2; continue
             elif (mode == "string" and char == '"') or (mode == "char" and char == "'"):
                 mode = ""
-            index += 1
-            continue
+            index += 1; continue
         if char == "/" and next_char == "/":
-            output.extend(("/", "/"))
-            index += 2
-            mode = "line"
+            output.extend(("/", "/")); index += 2; mode = "line"
             continue
         if char == "/" and next_char == "*":
-            output.extend(("/", "*"))
-            index += 2
-            mode = "block"
+            output.extend(("/", "*")); index += 2; mode = "block"
             continue
         if char == "@" and next_char == '"':
-            index += 2
-            mode = "verbatim"
+            index += 2; mode = "verbatim"
             continue
         if char == '"':
-            index += 1
-            mode = "string"
+            index += 1; mode = "string"
             continue
         if char == "'":
-            index += 1
-            mode = "char"
+            index += 1; mode = "char"
             continue
         index += 1
     return "".join(output)
@@ -765,9 +748,13 @@ def scan_file(path: Path, root: Path, xunit_index: dict[str, list[str]], shared_
     comment_cache = comment_cache if comment_cache is not None else {}
     for _, _, name, target in local_symbols:
         paths[name] = target
-    assertion_calls = _call_spans(lines, ASSERTION_CALL_PATTERN)
-    receiver_calls = _call_spans(lines, RECEIVER_PATTERN)
-    derived_calls = _call_spans(lines, DERIVED_METHOD_PATTERN)
+    source_text = "\n".join(lines); masked_file = _strip_csharp_comments_and_strings(source_text)
+    assertion_calls = _call_spans(lines, ASSERTION_CALL_PATTERN, source_text, masked_file)
+    receiver_calls = _call_spans(lines, RECEIVER_PATTERN, source_text, masked_file)
+    derived_calls = _call_spans(lines, DERIVED_METHOD_PATTERN, source_text, masked_file)
+    for call in receiver_calls + derived_calls + assertion_calls:
+        call.update(text_file=source_text, masked=masked_file)
+    reachability = _reachability_signatures(lines, receiver_calls + derived_calls + assertion_calls, source_text, masked_file)
     receiver_ends = {int(call["end"]) for call in receiver_calls}
     candidates: list[tuple[int, dict[str, object], str]] = []
     for call in receiver_calls:
@@ -816,7 +803,8 @@ def scan_file(path: Path, root: Path, xunit_index: dict[str, list[str]], shared_
                 "xunit_coverage": _xunit_coverage(target, root, xunit_index),
                 "token": token_text,
                 "comment_only": _target_comment_only(target, token_text, root, comment_cache),
-                "reachability": _reachability_signature(lines, call),
+                "checked_expression": _checked_expression_signature(token_text),
+                "reachability": reachability.get(int(call["start"]), ""),
             }
         )
     return rows
@@ -860,6 +848,18 @@ def _token_signatures(token: str) -> set[tuple[str, str]]:
         signatures.add((match.group(1), literal.group(1) if literal else ""))
     nonempty = {item for item in signatures if item[1]}
     return nonempty or signatures or {("", re.sub(r"\s+", " ", token).strip())}
+def _checked_expression_signature(token: str) -> str:
+    """Return the normalized expression whose value is checked by an assertion."""
+    match = re.search(r"\bAssert\.(?:Contains|DoesNotContain)\s*\(", token)
+    if match:
+        open_index = token.find("(", match.start(), match.end()); close_index = _balanced_call_end(token, open_index)
+        if close_index is not None:
+            arguments = token[open_index + 1 : close_index]
+            first = _split_first_argument(arguments)
+            if first != arguments:
+                second = _split_first_argument(arguments[len(first) + 1 :])
+                return re.sub(r"\s+", " ", second.strip())
+    return re.sub(r"\s+", " ", token.strip())
 def _row_prefix(row: dict[str, object]) -> tuple[str, str]:
     """Return the file and validation flag portion of a row identity."""
     return str(row["file"]), str(row["validation_flag"])
@@ -908,7 +908,7 @@ def _verify_base_inventory(root: Path, rows: list[dict[str, object]], revision: 
     base_status_rows = _inventory_at_revision(root, revision, use_current_parser=True)
     _, missing = _match_base_rows(base_rows, rows)
     status_matches, status_missing = _match_base_rows(base_status_rows, rows, strict=True)
-    metadata_changed = [_row_prefix(base) for base, head in status_matches if (tuple(str(base[field]) for field in ("target", "class", "comment_only", "xunit_coverage", "reachability")) + (str(_token_signatures(str(base["token"]))),)) != (tuple(str(head[field]) for field in ("target", "class", "comment_only", "xunit_coverage", "reachability")) + (str(_token_signatures(str(head["token"]))),))]
+    metadata_changed = [_row_prefix(base) for base, head in status_matches if (tuple(str(base.get(field, "")) for field in ("target", "class", "comment_only", "xunit_coverage", "reachability", "checked_expression")) + (str(_token_signatures(str(base["token"]))),)) != (tuple(str(head.get(field, "")) for field in ("target", "class", "comment_only", "xunit_coverage", "reachability", "checked_expression")) + (str(_token_signatures(str(head["token"]))),))]
     base_unresolved = sum(row["class"] == "UNRESOLVED" for row in base_status_rows)
     head_unresolved = sum(row["class"] == "UNRESOLVED" for row in rows)
     base_unknown = sum(row["class"] == "UNKNOWN" for row in base_status_rows)
@@ -940,7 +940,7 @@ def write_report(rows: list[dict[str, object]], output: Path) -> None:
     output.mkdir(parents=True, exist_ok=True)
     csv_path = output / "source_text_inventory.csv"
     with csv_path.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=("file", "line", "label", "validation_flag", "class", "target", "xunit_coverage", "token", "comment_only", "reachability"))
+        writer = csv.DictWriter(handle, fieldnames=("file", "line", "label", "validation_flag", "class", "target", "xunit_coverage", "token", "checked_expression", "comment_only", "reachability"))
         writer.writeheader()
         writer.writerows(rows)
     counts = {label: sum(row["class"] == label for row in rows) for label in ("A", "B", "C", "UNKNOWN", "UNRESOLVED")}
