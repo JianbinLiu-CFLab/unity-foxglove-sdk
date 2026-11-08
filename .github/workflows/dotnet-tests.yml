@@ -202,7 +202,9 @@ jobs:
           python-version: "3.12"
 
       - name: Run structural source guards
-        run: python3 -B -m Scripts.architecture.structure_guards
+        env:
+          STRUCTURE_GUARD_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: python3 -B -m Scripts.architecture.structure_guards --base-ref "$STRUCTURE_GUARD_BASE_REF"
 
       - name: Install pinned Python test dependencies
         run: python3 -m pip install --disable-pip-version-check --no-input psutil==7.0.0 websockets==15.0.1 mcap==1.3.1

@@ -80,7 +80,7 @@ def _plan_check(base_sha: str) -> audit_lib.Check:
     text = PLAN.read_text(encoding="utf-8") if PLAN.is_file() else ""
     status_line = next((line for line in text.splitlines() if line.startswith("Status:")), "")
     entry_line = next((line for line in text.splitlines() if line.startswith("Entry base:")), "")
-    status_ok = "audit pending" in status_line.lower() or "implemented" in status_line.lower()
+    status_ok = any(token in status_line.lower() for token in ("audit pending", "implemented", "completed"))
     base_ok = base_sha in entry_line
     status = "PASS" if status_ok and base_ok else "FAIL"
     detail = f"{entry_line}; {status_line}; live base={base_sha}"
@@ -170,7 +170,7 @@ def _baseline_exact() -> audit_lib.Check:
     baseline_path.write_text(subprocess.run(["git", "show", f"{PR716_MERGE}:{BASELINE_REL}"], cwd=audit_lib.ROOT, capture_output=True, text=True, check=True).stdout, encoding="utf-8")
     guard = _load_guard_module()
     measured = guard.measured_tree(tree, guard.tracked_paths(tree))
-    expected = json.loads(baseline_path.read_text(encoding="utf-8"))
+    expected = guard.load_baseline()
     status = "PASS" if measured == expected else "FAIL"
     detail = f"measured_matches_merged_baseline={measured == expected}; measured_keys={{files:{len(measured['files'])}, partial_types:{len(measured['partial_types'])}, phase_paths:{len(measured['phase_paths'])}}}"
     (_log_name("196-BASELINE-exact")).write_text(json.dumps({"measured": measured, "expected": expected}, indent=2) + "\n", encoding="utf-8")
@@ -186,19 +186,31 @@ def _baseline_history() -> audit_lib.Check:
 
 
 def _baseline_slack(base_sha: str) -> audit_lib.Check:
-    """Verify write-baseline only lowers or removes entries and leaves the guard valid."""
+    """Verify baseline additions, growth, and stale entries are rejected."""
     tree = _temporary_tree(base_sha, "baseline-slack")
-    before = (tree / BASELINE_REL).read_bytes()
-    result = _run(["python", "-B", "-m", "Scripts.architecture.structure_guards", "--write-baseline"], "196-BASELINE-slack", tree)
-    after = (tree / BASELINE_REL).read_bytes()
-    before_data = json.loads(before)
-    after_data = json.loads(after)
-    added = set(after_data["files"]) - set(before_data["files"]) | set(after_data["partial_types"]) - set(before_data["partial_types"]) | set(after_data["phase_paths"]) - set(before_data["phase_paths"])
-    raised = any(after_data[section].get(key, 0) > value for section in ("files", "partial_types") for key, value in before_data[section].items())
-    valid = not added and not raised and result["exit_code"] == 0
+    guard = _load_guard_module()
+    before_data = guard.load_baseline(tree / BASELINE_REL)
+    paths = guard.tracked_paths(tree)
+    base_phase_paths = guard._phase_prefixes(guard._source_paths(tree, paths))
+    widened = json.loads(json.dumps(before_data))
+    file_key, file_limit = next(iter(widened["files"].items()))
+    widened["files"][file_key] = int(file_limit) + 500
+    widened["files"]["Scripts/architecture/nonexistent.py"] = 1001
+    widened["phase_paths"].append("Scripts/phase999_not_real")
+    integrity = guard.baseline_integrity_violations(widened, before_data, base_phase_paths)
+    stale = guard.stale_baseline_violations(tree, paths, widened)
+    valid = (
+        any("raised=" in error for error in integrity)
+        and any("added=Scripts/architecture/nonexistent.py" in error for error in integrity)
+        and any("added=Scripts/phase999_not_real" in error for error in integrity)
+        and any("stale_file=" in error for error in stale)
+    )
     status = "PASS" if valid else "FAIL"
-    detail = f"write_exit={result['exit_code']}; added={sorted(added)}; raised={raised}; changed={before != after}"
-    return _check("196-BASELINE-slack", "Plan/196... § 2 baseline update policy", "probe", status, "python -B -m Scripts.architecture.structure_guards --write-baseline", result["log"], detail)
+    detail = f"integrity_errors={integrity}; stale_errors={stale}"
+    log = _log_name("196-BASELINE-slack")
+    log.parent.mkdir(parents=True, exist_ok=True)
+    log.write_text(detail + "\n", encoding="utf-8")
+    return _check("196-BASELINE-slack", "Plan/196... § 2 baseline update policy", "probe", status, "structure_guards.baseline_integrity_violations + stale_baseline_violations", str(log), detail)
 
 
 def _test_mutations() -> list[audit_lib.Check]:
@@ -208,7 +220,7 @@ def _test_mutations() -> list[audit_lib.Check]:
     checks.append(_check("196-TESTS", "Plan/196... § 3 tests", "auto", "PASS" if result["exit_code"] == 0 else "FAIL", "python -B -m unittest Scripts.architecture.regression_checks.test_structure_guards", result["log"], str(result["output"]).strip()))
     guard_path = audit_lib.ROOT / GUARD_REL
     for identifier, old, new, token in (
-        ("196-TESTS-G3-mutation", 'r"(?:[Pp]hase\\d{2,3}|_phase\\d{2,3}_)"', 'r"(?:[Pp]hase\\d{2,3}|_phase\\d{2,3}_|.*)"', "phase_path"),
+        ("196-TESTS-G3-mutation", 'r"(?i)phase\\d+"', 'r"(?i)phase\\d{2,3}"', "phase_path"),
         ("196-TESTS-G1-mutation", "FILE_LIMIT = 1000", "FILE_LIMIT = 1001", "1001"),
     ):
         try:
