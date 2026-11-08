@@ -174,6 +174,24 @@ def load_baseline(path: Path = BASELINE_PATH) -> dict[str, object]:
 def load_baseline_at_revision(root: Path, revision: str) -> dict[str, object] | None:
     """Load the baseline file from a git revision, if that revision has one."""
     relative = _relative_path(BASELINE_PATH.relative_to(root))
+    verified = subprocess.run(
+        ["git", "-C", str(root), "rev-parse", "--verify", f"{revision}^{{commit}}"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if verified.returncode != 0:
+        raise RuntimeError(verified.stderr.strip() or "git revision verification failed")
+    listed = subprocess.run(
+        ["git", "-C", str(root), "ls-tree", "-r", "--name-only", revision, "--", relative],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if listed.returncode != 0:
+        raise RuntimeError(listed.stderr.strip() or "git baseline path lookup failed")
+    if not listed.stdout.splitlines():
+        return None
     completed = subprocess.run(
         ["git", "-C", str(root), "show", f"{revision}:{relative}"],
         check=False,
@@ -181,7 +199,7 @@ def load_baseline_at_revision(root: Path, revision: str) -> dict[str, object] | 
         text=True,
     )
     if completed.returncode != 0:
-        return None
+        raise RuntimeError(completed.stderr.strip() or "git baseline load failed")
     return _normalise_baseline(json.loads(completed.stdout))
 
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -161,6 +162,34 @@ class StructureGuardTests(unittest.TestCase):
             errors = self.guards.stale_baseline_violations(root, ["Source.cs"], baseline)
             self.assertIn("BASELINE stale_file=Source.cs ceiling=1002 measured=1001", errors)
             self.assertIn("BASELINE stale_file=missing.cs reason=missing", errors)
+
+    def test_baseline_revision_loader_distinguishes_missing_path_and_revision(self) -> None:
+        """Treat a missing baseline path as absent but surface an invalid revision."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            run = lambda *args: subprocess.run(["git", "-C", str(root), *args], check=True, capture_output=True, text=True)
+            run("init")
+            run("config", "user.email", "tests@example.invalid")
+            run("config", "user.name", "Structure Guard Tests")
+            (root / "README.md").write_text("fixture\n", encoding="utf-8")
+            run("add", "-A")
+            run("commit", "-m", "initial")
+            missing_revision = run("rev-parse", "HEAD").stdout.strip()
+            baseline_path = root / "Scripts" / "architecture" / "structure_guard_baseline.json"
+            baseline_path.parent.mkdir(parents=True)
+            baseline_path.write_text(json.dumps({"files": {}, "partial_types": {}, "phase_paths": []}), encoding="utf-8")
+            run("add", "-A")
+            run("commit", "-m", "baseline")
+            present_revision = run("rev-parse", "HEAD").stdout.strip()
+            original_path = self.guards.BASELINE_PATH
+            self.guards.BASELINE_PATH = baseline_path
+            try:
+                self.assertEqual({"files": {}, "partial_types": {}, "phase_paths": []}, self.guards.load_baseline_at_revision(root, present_revision))
+                self.assertIsNone(self.guards.load_baseline_at_revision(root, missing_revision))
+                with self.assertRaises(RuntimeError):
+                    self.guards.load_baseline_at_revision(root, "not-a-revision")
+            finally:
+                self.guards.BASELINE_PATH = original_path
 
     def test_write_baseline_only_lowers_and_removes(self) -> None:
         """Lower an existing ceiling, remove a fixed entry, and never add a new one."""
