@@ -168,6 +168,18 @@ controls and ROS2 security separately. This packaged-message sample supports
 existing compiled `.msg` types and native `Subscribe`; generated custom
 FoxRun DTO interfaces use the separate workflow below.
 
+### IMU inbound security boundary
+
+The native IMU inbound bridge rejects oversized `frame_id` values before the
+generated managed message copy and bounds the queued frame-ID bytes. The
+selected RMW/DDS implementation still allocates the native message during
+`rcl_take` before this managed boundary runs. Treat participants that can
+publish the configured IMU topic as trusted, or configure publisher
+authorization such as SROS2 together with a verified serialized-size limit for
+the selected RMW. Untrusted publishers are outside the SDK-only protection
+boundary; this package does not claim an unverified Fast DDS or Zenoh parameter
+as a native allocation limit.
+
 ## FoxRun Custom ROS2 Interfaces
 
 The `FoxRun Custom ROS2 Interface` sample supports a locked, generated custom
