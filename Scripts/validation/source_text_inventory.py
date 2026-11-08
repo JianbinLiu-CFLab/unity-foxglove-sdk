@@ -831,6 +831,7 @@ def _verify_base_inventory(root: Path, rows: list[dict[str, object]], revision: 
     head_keys = _row_keys(rows)
     missing = sorted(base_keys - head_keys)
     def metadata(source: list[dict[str, object]]) -> dict[tuple[str, str, str, str, int], tuple[str, str, str, str]]:
+        """Collect comparable target/classification metadata for stable row identities."""
         counts: dict[tuple[str, str, str, str], int] = {}
         values: dict[tuple[str, str, str, str, int], tuple[str, str, str, str]] = {}
         for row in source:
