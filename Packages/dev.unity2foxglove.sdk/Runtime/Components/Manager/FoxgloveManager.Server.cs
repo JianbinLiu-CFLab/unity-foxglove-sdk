@@ -119,38 +119,38 @@ namespace Unity.FoxgloveSDK.Components
         private void CleanupStartupAfterFailure()
         {
             RetireClientEventIngress();
-            TryCleanupStartupStep(CleanupPendingRecordingSidecar, "cleanup pending recording sidecar");
-            TryCleanupStartupStep(StopRemoteMcapFileServer, "stop remote MCAP file server");
-            TryCleanupStartupStep(StopReplayCursorEndpoint, "stop replay cursor endpoint");
-            TryCleanupStartupStep(StopCertificateDistributor, "stop certificate distributor");
-            TryCleanupStartupStep(UnregisterFoxRunSubscriptionCatalogService, "unregister FoxRun subscription catalog service");
-            TryCleanupStartupStep(UnregisterComponentPublishContractsService, "unregister Component publish contracts service");
-            TryCleanupStartupStep(UnregisterTopicContractService, "unregister topic contract service");
-            TryCleanupStartupStep(
-                () => DetachTransportForwarders(_runtime?.CleanupSession),
-                "detach transport forwarders after failed startup");
-            TryCleanupStartupStep(
-                () => DetachRuntimeForwarders(_runtime?.CleanupSession),
-                "detach runtime forwarders after failed startup");
-            TryCleanupStartupStep(() => _runtime?.Stop(), "stop runtime after failed startup");
-            TryCleanupStartupStep(() => _runtime?.DisableReplay(), "disable replay after failed startup");
-            TryCleanupStartupStep(() => _runtime?.DisableRecording(), "disable recording after failed startup");
-            TryCleanupStartupStep(ClearActiveComponentPublisherSession, "clear Component publisher session after failed startup");
-            TryCleanupStartupStep(ClearPublishingSessionState, "clear publishing session state after failed startup");
-            TryCleanupStartupStep(RestoreLivePublishers, "restore live publishers after failed startup");
-            TryCleanupStartupStep(FlushClientEventRetirementDrops, "flush retired client-event diagnostics after failed startup");
+
+            FoxgloveManagerTeardownState.RunStartupCleanup(
+                ReportStartupCleanupFailure,
+                CreateStartupCleanupSteps());
         }
 
-        private static void TryCleanupStartupStep(System.Action cleanup, string description)
+        internal FoxgloveManagerTeardownState.StartupCleanupStep[] CreateStartupCleanupSteps()
+            => new FoxgloveManagerTeardownState.StartupCleanupStep[]
+            {
+                new FoxgloveManagerTeardownState.StartupCleanupStep("cleanup pending recording sidecar", CleanupPendingRecordingSidecar),
+                new FoxgloveManagerTeardownState.StartupCleanupStep("stop remote MCAP file server", StopRemoteMcapFileServer),
+                new FoxgloveManagerTeardownState.StartupCleanupStep("stop replay cursor endpoint", StopReplayCursorEndpoint),
+                new FoxgloveManagerTeardownState.StartupCleanupStep("stop certificate distributor", StopCertificateDistributor),
+                new FoxgloveManagerTeardownState.StartupCleanupStep("unregister FoxRun subscription catalog service", UnregisterFoxRunSubscriptionCatalogService),
+                new FoxgloveManagerTeardownState.StartupCleanupStep("unregister Component publish contracts service", UnregisterComponentPublishContractsService),
+                new FoxgloveManagerTeardownState.StartupCleanupStep("unregister topic contract service", UnregisterTopicContractService),
+
+                new FoxgloveManagerTeardownState.StartupCleanupStep("detach transport forwarders after failed startup", () => DetachTransportForwarders(_runtime?.CleanupSession)),
+                new FoxgloveManagerTeardownState.StartupCleanupStep("detach runtime forwarders after failed startup", () => DetachRuntimeForwarders(_runtime?.CleanupSession)),
+                new FoxgloveManagerTeardownState.StartupCleanupStep("stop runtime after failed startup", () => _runtime?.Stop()),
+                new FoxgloveManagerTeardownState.StartupCleanupStep("disable replay after failed startup", () => _runtime?.DisableReplay()),
+                new FoxgloveManagerTeardownState.StartupCleanupStep("disable recording after failed startup", () => _runtime?.DisableRecording()),
+                new FoxgloveManagerTeardownState.StartupCleanupStep("clear Component publisher session after failed startup", ClearActiveComponentPublisherSession),
+                new FoxgloveManagerTeardownState.StartupCleanupStep("clear publishing session state after failed startup", ClearPublishingSessionState),
+
+                new FoxgloveManagerTeardownState.StartupCleanupStep("restore live publishers after failed startup", RestoreLivePublishers),
+                new FoxgloveManagerTeardownState.StartupCleanupStep("flush retired client-event diagnostics after failed startup", FlushClientEventRetirementDrops)
+            };
+
+        private static void ReportStartupCleanupFailure(Exception exception, string description)
         {
-            try
-            {
-                cleanup?.Invoke();
-            }
-            catch (System.Exception ex)
-            {
-                Debug.LogWarning("[Foxglove] Failed to " + description + ": " + ex.Message);
-            }
+            Debug.LogWarning("[Foxglove] Failed to " + description + ": " + exception.Message);
         }
 
         /// <summary>

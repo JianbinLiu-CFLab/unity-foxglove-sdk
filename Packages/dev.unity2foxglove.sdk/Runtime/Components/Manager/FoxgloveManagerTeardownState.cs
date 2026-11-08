@@ -155,6 +155,41 @@ namespace Unity.FoxgloveSDK.Components
             return firstFailure;
         }
 
+        internal readonly struct StartupCleanupStep
+        {
+            internal StartupCleanupStep(string description, Action action)
+            {
+                Description = description;
+                Action = action;
+            }
+
+            internal string Description { get; }
+            internal Action Action { get; }
+        }
+
+        internal static void RunStartupCleanup(
+            Action<Exception, string> reportFailure,
+            params StartupCleanupStep[] steps)
+        {
+            foreach (var step in steps)
+            {
+                try
+                {
+                    step.Action?.Invoke();
+                }
+                catch (Exception exception)
+                {
+                    try
+                    {
+                        reportFailure?.Invoke(exception, step.Description);
+                    }
+                    catch
+                    {
+                    }
+                }
+            }
+        }
+
         private static void ReportFailure(Action<Exception> reportFailure, Exception exception)
         {
             try

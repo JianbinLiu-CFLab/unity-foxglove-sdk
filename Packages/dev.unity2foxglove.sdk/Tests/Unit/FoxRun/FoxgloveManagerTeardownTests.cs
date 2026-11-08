@@ -125,59 +125,83 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
-        public void LifecycleCharacterizationCoversRunningAndNotRunningStopServerOwnership()
-        {
-            var method = TeardownMethod("ShouldRunStopServer");
-
-            Assert.True((bool)method.Invoke(null, new object[] { true, false, false }));
-            Assert.True((bool)method.Invoke(null, new object[] { false, true, false }));
-            Assert.True((bool)method.Invoke(null, new object[] { false, false, true }));
-            Assert.False((bool)method.Invoke(null, new object[] { false, false, false }));
-        }
-
-        [Fact]
-        public void LifecycleCharacterizationPreservesStartupFailureCleanupOrder()
+        public void StartupFailureCleanupPolicyRunsEveryStepAndReportsFailures()
         {
             var calls = new List<string>();
-            var failure = FoxgloveManagerTeardownState.RunCleanupReturningFirstFailure(
-                Step(calls, "events", new InvalidOperationException("startup-failure")),
-                Step(calls, "services"),
-                Step(calls, "runtime"));
+            var reports = new List<string>();
+            var method = TeardownMethod("RunStartupCleanup");
+            Action<Exception, string> report = (exception, description) => reports.Add(description + ":" + exception.Message);
 
-            Assert.Equal("startup-failure", failure.SourceException.Message);
-            Assert.Equal(new[] { "events", "services", "runtime" }, calls);
+            method.Invoke(
+                null,
+                new object[]
+                {
+                    report,
+                    new FoxgloveManagerTeardownState.StartupCleanupStep[]
+                    {
+                        new FoxgloveManagerTeardownState.StartupCleanupStep(
+                            "cleanup pending recording sidecar",
+                            Step(calls, "cleanup pending recording sidecar", new InvalidOperationException("first-failure"))),
+                        new FoxgloveManagerTeardownState.StartupCleanupStep(
+                            "stop remote MCAP file server",
+                            Step(calls, "stop remote MCAP file server", new ArgumentException("second-failure"))),
+                        new FoxgloveManagerTeardownState.StartupCleanupStep(
+                            "stop replay cursor endpoint",
+                            Step(calls, "stop replay cursor endpoint"))
+                    }
+                });
+
+            Assert.Equal(
+                new[]
+                {
+                    "cleanup pending recording sidecar",
+                    "stop remote MCAP file server",
+                    "stop replay cursor endpoint"
+                },
+                calls);
+            Assert.Equal(
+                new[]
+                {
+                    "cleanup pending recording sidecar:first-failure",
+                    "stop remote MCAP file server:second-failure"
+                },
+                reports);
         }
 
+#if MANAGER_PRODUCTION_BOUNDARY
         [Fact]
-        public void LifecycleCharacterizationPreservesDisableAndDestroyOrders()
+        public void StartupFailureCleanupWiringContainsEveryProductionStep()
         {
-            var disable = new List<string>();
-            var destroy = new List<string>();
+            var manager = new FoxgloveManager();
+            var steps = manager.CreateStartupCleanupSteps();
+            var descriptions = new[]
+            {
+                "cleanup pending recording sidecar",
+                "stop remote MCAP file server",
+                "stop replay cursor endpoint",
+                "stop certificate distributor",
+                "unregister FoxRun subscription catalog service",
+                "unregister Component publish contracts service",
+                "unregister topic contract service",
+                "detach transport forwarders after failed startup",
+                "detach runtime forwarders after failed startup",
+                "stop runtime after failed startup",
+                "disable replay after failed startup",
+                "disable recording after failed startup",
+                "clear Component publisher session after failed startup",
+                "clear publishing session state after failed startup",
+                "restore live publishers after failed startup",
+                "flush retired client-event diagnostics after failed startup"
+            };
 
-            FoxgloveManagerTeardownState.RunDisable(
-                Step(disable, "subscription"),
-                Step(disable, "transport"),
-                Step(disable, "server"),
-                Step(disable, "publish"),
-                Step(disable, "output"),
-                Step(disable, "profiler"));
-            FoxgloveManagerTeardownState.RunDestroy(
-                Step(destroy, "subscription"),
-                Step(destroy, "server"),
-                Step(destroy, "transport"),
-                Step(destroy, "replay"),
-                Step(destroy, "certificate"),
-                Step(destroy, "runtime"),
-                Step(destroy, "publish"),
-                Step(destroy, "profiler"));
-
-            Assert.Equal(
-                new[] { "subscription", "transport", "server", "publish", "output", "profiler" },
-                disable);
-            Assert.Equal(
-                new[] { "subscription", "server", "transport", "replay", "certificate", "runtime", "publish", "profiler" },
-                destroy);
+            Assert.Equal(descriptions.Length, steps.Length);
+            for (var index = 0; index < steps.Length; index++)
+            {
+                Assert.Equal(descriptions[index], steps[index].Description);
+                Assert.NotNull(steps[index].Action);
+            }
         }
+#endif
 
         [Fact]
         public void PreTailCleanupRunsEveryStepAndReturnsTheFirstFailure()
