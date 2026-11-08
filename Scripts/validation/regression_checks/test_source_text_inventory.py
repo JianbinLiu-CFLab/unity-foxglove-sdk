@@ -248,6 +248,8 @@ class SourceTextInventoryTests(unittest.TestCase):
                 '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Comment.cs");\n'
                 "        Check(source.Contains(\n"
                 '            "comment marker"), "comment");\n'
+                "        Check(!source.Contains(\n"
+                '            "comment marker"), "negative comment");\n'
                 "    }\n"
                 "    public static void ValidateField() {\n"
                 '        Check(source.Contains("field"), "field");\n'
@@ -271,7 +273,10 @@ class SourceTextInventoryTests(unittest.TestCase):
                 combined["target"],
             )
             self.assertTrue(comment["comment_only"])
-            self.assertFalse(any("field" in str(row["token"]) for row in rows))
+            self.assertTrue(any(row["class"] == "A" for row in rows if "comment marker" in str(row["token"])))
+            field_rows = [row for row in rows if "field" in str(row["token"])]
+            self.assertEqual(1, len(field_rows))
+            self.assertEqual("UNRESOLVED", field_rows[0]["class"])
 
     def test_derived_receivers_and_pseudo_readers_are_handled(self):
         """Keep source-derived receiver assertions and ignore reader text in comments or strings."""
@@ -309,6 +314,40 @@ class SourceTextInventoryTests(unittest.TestCase):
             self.assertEqual("Packages/fixture/Runtime/A.cs", targets[0])
             self.assertEqual("Packages/fixture/Runtime/A.cs", targets[1])
             self.assertEqual("Packages/fixture/Runtime/B.cs", targets[2])
+
+    def test_multiple_source_calls_on_one_line_are_all_reported(self):
+        """Emit each source-backed call even when ordinary calls share its expression."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runtime = root / "Packages" / "fixture" / "Tests" / "Runtime"
+            runtime.mkdir(parents=True)
+            product = root / "Packages" / "fixture" / "Runtime" / "Source.cs"
+            product.parent.mkdir(parents=True)
+            product.write_text("public sealed class Source {}\n", encoding="utf-8")
+            (runtime / "MultipleValidation.cs").write_text(
+                "public static class MultipleValidation {\n"
+                "    public static void Validate() {\n"
+                '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Source.cs");\n'
+                '        var ordinary = "ordinary";\n'
+                '        Check(ordinary.Contains("ordinary") && source.Contains("one") && source.Contains("two"));\n'
+                '        Check(source.Contains("three") || source.Contains("four"));\n'
+                "    }\n"
+                "}\n",
+                encoding="utf-8",
+            )
+            registry = root / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "PhaseValidationRegistry.cs"
+            registry.parent.mkdir(parents=True, exist_ok=True)
+            registry.write_text(
+                'Ci("--phase-multiple", "fixture", MultipleValidation.Validate, evidence: ValidationEvidence.Behavior),\n',
+                encoding="utf-8",
+            )
+            rows = inventory(root)
+            tokens = [str(row["token"]) for row in rows]
+            self.assertEqual(4, len(rows))
+            self.assertTrue(any('Contains("one")' in token for token in tokens))
+            self.assertTrue(any('Contains("two")' in token for token in tokens))
+            self.assertTrue(any('Contains("three")' in token for token in tokens))
+            self.assertTrue(any('Contains("four")' in token for token in tokens))
 
 if __name__ == "__main__":
     unittest.main()

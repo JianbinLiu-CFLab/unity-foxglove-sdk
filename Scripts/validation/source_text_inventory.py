@@ -1,24 +1,15 @@
 """Inventory source-text assertions in runtime and unit validation files."""
-
 from __future__ import annotations
-
-import argparse
-import csv
+import argparse, csv
+import importlib.util
 import re
-import subprocess
-import tarfile
-import tempfile
+import subprocess, tarfile, tempfile
 from pathlib import Path
-
-
-TOKEN_PATTERN = re.compile(r"\.(?:Contains|IndexOf|DoesNotContain)\s*\(|\bAssert\.(?:Contains|DoesNotContain)\s*\(")
 PATH_LITERAL_PATTERN = re.compile(
     r'"([^"\r\n]+(?:\.cs|\.py|\.md|\.json|\.yml|\.yaml|\.csproj|\.props|\.targets|\.asmdef|\.meta|\.txt|\.xml|\.cpp|\.h|\.dll|\.so))"'
 )
 PATH_LIKE_LITERAL_PATTERN = re.compile(r'"([^"\r\n]*[/\\][^"\r\n]*)"')
-READER_CALL_PATTERN = re.compile(
-    r"\b(?P<reader>ReadRepoText|ReadRequiredRepoText|PhaseValidationSourceHelpers\.ReadRequiredRepoText|TestSources\.Text)\s*\("
-)
+READER_CALL_PATTERN = re.compile(r"\b(?P<reader>ReadRepoText|ReadRequiredRepoText|PhaseValidationSourceHelpers\.ReadRequiredRepoText|TestSources\.Text)\s*\(")
 VARIABLE_READER_PATTERN = re.compile(
     r"(?:var|string)\s+(?P<name>[A-Za-z_]\w*)\s*=\s*(?P<reader>ReadRepoText|ReadRequiredRepoText|PhaseValidationSourceHelpers\.ReadRequiredRepoText|TestSources\.Text)\s*\(\s*(?P<argument>[^)]*?)\)",
     re.DOTALL,
@@ -31,8 +22,6 @@ RECEIVER_PATTERN = re.compile(
 ASSERTION_CALL_PATTERN = re.compile(r"\bAssert\.(?:Contains|DoesNotContain)\s*\(")
 DERIVED_METHOD_PATTERN = re.compile(r"\.(?:Contains|IndexOf|DoesNotContain)\s*\(")
 PHASE_LABEL_PATTERN = re.compile(r"\"(?P<label>\d+[A-Za-z]?[-A-Za-z0-9]*-[A-Za-z0-9]+:[^\"]+)\"")
-
-
 def classify(target: str, line: str) -> str:
     """Classify one source-text assertion as boundary, wiring, or implementation."""
     if not target or "<unresolved>" in target:
@@ -48,13 +37,9 @@ def classify(target: str, line: str) -> str:
     if target.endswith(".md") or target.endswith("package.json") or target.endswith("/Tests/Runtime/PhaseValidationRegistry.cs"):
         return "B"
     return "C"
-
-
 def _normalise_path(value: str) -> str:
     """Normalise a repository-relative path for stable reports."""
     return value.strip().strip('"').replace("\\", "/")
-
-
 def _extract_argument_path(argument: str, paths: dict[str, str]) -> str | None:
     """Resolve a reader argument to a repository path or a documented path set."""
     argument = argument.strip()
@@ -77,8 +62,6 @@ def _extract_argument_path(argument: str, paths: dict[str, str]) -> str | None:
     if path_like:
         return _normalise_path(path_like.group(1))
     return None
-
-
 def _balanced_call_end(text: str, open_index: int) -> int | None:
     """Return the closing parenthesis for a call while respecting C# literals."""
     depth = 0
@@ -143,13 +126,9 @@ def _balanced_call_end(text: str, open_index: int) -> int | None:
                 return index
         index += 1
     return None
-
-
 def _line_starts(text: str) -> list[int]:
     """Return character offsets for each line in a source buffer."""
     return [0] + [index + 1 for index, char in enumerate(text) if char == "\n"]
-
-
 def _line_for_offset(starts: list[int], offset: int) -> int:
     """Map a character offset to a zero-based line number."""
     line = 0
@@ -158,8 +137,6 @@ def _line_for_offset(starts: list[int], offset: int) -> int:
             break
         line = index
     return line
-
-
 def _call_spans(lines: list[str], pattern: re.Pattern[str]) -> list[dict[str, object]]:
     """Return balanced call spans for a regular-expression call pattern."""
     text = "\n".join(lines)
@@ -184,8 +161,6 @@ def _call_spans(lines: list[str], pattern: re.Pattern[str]) -> list[dict[str, ob
             }
         )
     return calls
-
-
 def _split_first_argument(argument: str) -> str:
     """Return the first top-level argument from a C# call."""
     depth = 0
@@ -226,8 +201,13 @@ def _split_first_argument(argument: str) -> str:
             return argument[:index].strip()
         index += 1
     return argument.strip()
-
-
+def _call_context(lines: list[str], call: dict[str, object]) -> str:
+    """Return the surrounding statement for polarity and source-origin checks."""
+    text = "\n".join(lines)
+    start = int(call["start"])
+    end = int(call["end"])
+    statement_start = max(text.rfind(";", 0, start), text.rfind("{", 0, start), text.rfind("}", 0, start)) + 1
+    return text[statement_start:end]
 def _source_targets(lines: list[str], include_variables: bool = True) -> dict[str, str]:
     """Build a local symbol-to-source-path map from reader calls and path arrays."""
     paths: dict[str, str] = {}
@@ -293,8 +273,6 @@ def _source_targets(lines: list[str], include_variables: bool = True) -> dict[st
         if not changed:
             break
     return paths
-
-
 def _brace_paths(lines: list[str]) -> list[tuple[int, ...]]:
     """Return a lexical brace scope for each source line."""
     scopes: list[tuple[int, ...]] = []
@@ -353,8 +331,6 @@ def _brace_paths(lines: list[str]) -> list[tuple[int, ...]]:
                 stack.pop()
             index += 1
     return scopes
-
-
 def _scoped_source_symbols(lines: list[str], shared_paths: dict[str, str]) -> list[tuple[int, tuple[int, ...], str, str]]:
     """Collect reader symbols with method and block scope boundaries."""
     scopes = _brace_paths(lines)
@@ -392,14 +368,12 @@ def _scoped_source_symbols(lines: list[str], shared_paths: dict[str, str]) -> li
     indexed: dict[str, list[tuple[int, tuple[int, ...], str]]] = {}
     for line, scope, name, target in definitions:
         indexed.setdefault(name, []).append((line, scope, target))
-
     def lookup(name: str, line: int, scope: tuple[int, ...]) -> str | None:
         """Resolve a symbol to the nearest definition in the active scope."""
         for definition_line, definition_scope, target in reversed(indexed.get(name, [])):
             if definition_line < line and len(definition_scope) <= len(scope) and tuple(scope[:len(definition_scope)]) == definition_scope:
                 return target
         return None
-
     for (line, name), expression in assignments:
         if (line, name) in direct_keys:
             continue
@@ -416,8 +390,6 @@ def _scoped_source_symbols(lines: list[str], shared_paths: dict[str, str]) -> li
             indexed.setdefault(name, []).append((line, scope, target))
     symbols.extend(definitions)
     return symbols
-
-
 def _lookup_symbol(symbols: list[tuple[int, tuple[int, ...], str, str]], name: str, line: int, scope: tuple[int, ...]) -> str | None:
     """Resolve the nearest symbol visible from a source line."""
     candidates = [
@@ -432,8 +404,6 @@ def _lookup_symbol(symbols: list[tuple[int, tuple[int, ...], str, str]], name: s
         return None
     _, _, target = max(candidates, key=lambda value: (len(value[1]), value[0]))
     return target
-
-
 def _resolve_assertion_target(
     call: dict[str, object],
     paths: dict[str, str],
@@ -462,8 +432,6 @@ def _resolve_assertion_target(
         if target:
             reader_targets.extend(target.split(";"))
     return ";".join(dict.fromkeys(reader_targets)) or None
-
-
 def _resolve_derived_target(
     lines: list[str],
     call: dict[str, object],
@@ -498,36 +466,6 @@ def _resolve_derived_target(
     if targets:
         return ";".join(dict.fromkeys(targets))
     return "<unresolved>" if unresolved else None
-
-
-def resolve_target(lines: list[str], index: int, paths: dict[str, str], symbols: list[tuple[int, tuple[int, ...], str, str]] | None = None, scopes: list[tuple[int, ...]] | None = None) -> str:
-    """Resolve the receiver or reader on an assertion line to a repository path."""
-    if symbols is not None and scopes is not None:
-        receiver = RECEIVER_PATTERN.search(_strip_csharp_comments_and_strings(lines[index]))
-        if receiver:
-            name = receiver.group("receiver").split(".", 1)[0]
-            target = _lookup_symbol(symbols, name, index, scopes[index])
-            if target:
-                return target
-        for call in _call_spans(lines, ASSERTION_CALL_PATTERN):
-            if int(call["start_line"]) != index:
-                continue
-            target = _resolve_assertion_target(call, paths, symbols, scopes)
-            if target:
-                return target
-    receiver = RECEIVER_PATTERN.search(_strip_csharp_comments_and_strings(lines[index]))
-    if receiver and symbols is None:
-        name = receiver.group("receiver").split(".", 1)[0]
-        if name in paths:
-            return paths[name]
-    return "<unresolved>"
-
-
-def _comment_only(lines: list[str], index: int) -> bool:
-    """Return whether a token line is inside a C# line or block comment."""
-    return _comment_only_flags(lines)[index]
-
-
 def _comment_only_flags(lines: list[str]) -> list[bool]:
     """Classify every line in one pass without rescanning prior lines."""
     flags: list[bool] = []
@@ -585,8 +523,6 @@ def _comment_only_flags(lines: list[str]) -> list[bool]:
             cursor += 1
         flags.append(not code and (line_comment or block_comment))
     return flags
-
-
 def _shared_scope_paths(files: list[Path]) -> dict[Path, dict[str, str]]:
     """Build shared const and reader symbols for partial validation classes."""
     groups: dict[str, list[Path]] = {}
@@ -644,8 +580,6 @@ def _shared_scope_paths(files: list[Path]) -> dict[Path, dict[str, str]]:
         for path in group:
             result[path] = shared
     return result
-
-
 def _build_xunit_index(root: Path) -> dict[str, list[str]]:
     """Index unit-test files by the type names they reference."""
     index: dict[str, list[str]] = {}
@@ -663,8 +597,6 @@ def _build_xunit_index(root: Path) -> dict[str, list[str]]:
         for stem in referenced:
             index.setdefault(stem, []).append(path.relative_to(root).as_posix())
     return index
-
-
 def _strip_csharp_comments_and_strings(text: str) -> str:
     """Remove C# comments and string literals before symbol matching."""
     output: list[str] = []
@@ -734,8 +666,6 @@ def _strip_csharp_comments_and_strings(text: str) -> str:
         output.append(char)
         index += 1
     return "".join(output)
-
-
 def _csharp_comment_text(text: str) -> str:
     """Return C# line and block comment text while ignoring strings and chars."""
     output: list[str] = []
@@ -798,8 +728,6 @@ def _csharp_comment_text(text: str) -> str:
             continue
         index += 1
     return "".join(output)
-
-
 def _target_comment_only(target: str, token: str, root: Path, cache: dict[str, tuple[str, str]]) -> bool:
     """Return whether a checked literal exists only in target-file comments."""
     literals = re.findall(r"\"((?:\\.|[^\"\\])*)\"", token)
@@ -818,8 +746,6 @@ def _target_comment_only(target: str, token: str, root: Path, cache: dict[str, t
             if literal in comments and literal not in code:
                 return True
     return False
-
-
 def _xunit_coverage(target: str, root: Path, xunit_index: dict[str, list[str]]) -> str:
     """Return indexed unit-test files whose text references the target type name."""
     targets = [value for value in target.split(";") if value]
@@ -833,8 +759,6 @@ def _xunit_coverage(target: str, root: Path, xunit_index: dict[str, list[str]]) 
         names.add(value)
     matches = sorted({match for name in names for match in xunit_index.get(name, [])})
     return ";".join(matches)
-
-
 def scan_file(path: Path, root: Path, xunit_index: dict[str, list[str]], shared_paths: dict[str, str] | None = None, comment_cache: dict[str, tuple[str, str]] | None = None) -> list[dict[str, object]]:
     """Collect source-text assertions from one validation file."""
     lines = path.read_text(encoding="utf-8").splitlines()
@@ -848,42 +772,34 @@ def scan_file(path: Path, root: Path, xunit_index: dict[str, list[str]], shared_
     assertion_calls = _call_spans(lines, ASSERTION_CALL_PATTERN)
     receiver_calls = _call_spans(lines, RECEIVER_PATTERN)
     derived_calls = _call_spans(lines, DERIVED_METHOD_PATTERN)
-    rows: list[dict[str, object]] = []
-    for index, line in enumerate(lines):
-        code_line = _strip_csharp_comments_and_strings(line)
-        receiver = RECEIVER_PATTERN.search(code_line)
-        if receiver and receiver.group("receiver") == "Assert":
-            receiver = None
-        assertion = next((call for call in assertion_calls if int(call["start_line"]) == index), None)
-        derived = next((call for call in derived_calls if int(call["start_line"]) == index), None)
-        if not receiver and assertion is None and derived is None:
+    receiver_ends = {int(call["end"]) for call in receiver_calls}
+    candidates: list[tuple[int, dict[str, object], str]] = []
+    for call in receiver_calls:
+        if call.get("receiver") == "Assert":
             continue
-        if receiver:
-            receiver_name = receiver.group("receiver").split(".", 1)[0]
-            receiver_target = _lookup_symbol(local_symbols, receiver_name, index, scopes[index])
-            if receiver_target is None:
-                continue
-            target = receiver_target
-            receiver_call = next(
-                (
-                    call
-                    for call in receiver_calls
-                    if int(call["start_line"]) == index
-                    and call.get("receiver") != "Assert"
-                ),
-                None,
-            )
-            token_text = str(receiver_call["text"]).strip() if receiver_call else line.strip()
-        elif assertion is not None:
-            target = _resolve_assertion_target(assertion, paths, local_symbols, scopes)
-            if target is None:
-                continue
-            token_text = str(assertion["text"]).strip()
-        else:
-            target = _resolve_derived_target(lines, derived, paths, local_symbols, scopes)
-            if target is None:
-                continue
-            token_text = str(derived["text"]).strip()
+        line = int(call["start_line"])
+        receiver_name = str(call["receiver"]).split(".", 1)[0]
+        target = _lookup_symbol(local_symbols, receiver_name, line, scopes[line])
+        if target is None and receiver_name in {name for _, _, name, _ in local_symbols}:
+            target = "<unresolved>"
+        if target is not None:
+            candidates.append((int(call["start"]), call, target))
+    for call in derived_calls:
+        if int(call["end"]) in receiver_ends:
+            continue
+        target = _resolve_derived_target(lines, call, paths, local_symbols, scopes)
+        if target is not None:
+            candidates.append((int(call["start"]), call, target))
+    for call in assertion_calls:
+        line = int(call["start_line"])
+        target = _resolve_assertion_target(call, paths, local_symbols, scopes)
+        if target is not None:
+            candidates.append((int(call["start"]), call, target))
+    rows: list[dict[str, object]] = []
+    for _, call, target in sorted(candidates, key=lambda item: item[0]):
+        index = int(call["start_line"])
+        token_text = str(call["text"]).strip()
+        classification_text = _call_context(lines, call)
         target_parts = []
         for part in target.split(";"):
             candidate = (root / part).resolve() if part and part != "<unresolved>" else None
@@ -899,7 +815,7 @@ def scan_file(path: Path, root: Path, xunit_index: dict[str, list[str]], shared_
                 "line": index + 1,
                 "label": label_match.group("label") if label_match else "",
                 "validation_flag": _validation_flag(root, path.relative_to(root).as_posix()),
-                "class": classify(target, line),
+                "class": classify(target, classification_text),
                 "target": target,
                 "xunit_coverage": _xunit_coverage(target, root, xunit_index),
                 "token": token_text,
@@ -907,8 +823,6 @@ def scan_file(path: Path, root: Path, xunit_index: dict[str, list[str]], shared_
             }
         )
     return rows
-
-
 def inventory(root: Path) -> list[dict[str, object]]:
     """Scan runtime and unit C# validation files under every package."""
     rows: list[dict[str, object]] = []
@@ -919,8 +833,6 @@ def inventory(root: Path) -> list[dict[str, object]]:
     for path in files:
         rows.extend(scan_file(path, root, xunit_index, scopes.get(path), comment_cache))
     return rows
-
-
 def _inventory_at_revision(root: Path, revision: str) -> list[dict[str, object]]:
     """Materialize a Git revision under build/ and scan it with the current inventory rules."""
     build_root = root / "build" / "review"
@@ -936,20 +848,65 @@ def _inventory_at_revision(root: Path, revision: str) -> list[dict[str, object]]
             archive.extractall(directory)
         if process.wait() != 0:
             raise RuntimeError(f"git archive failed for {revision}")
-        return inventory(Path(directory))
-
-
-def _row_key(row: dict[str, object]) -> tuple[str, int, str]:
-    """Return a stable identity for a source-text inventory row."""
-    return (str(row["file"]), int(row["line"]), str(row["token"]))
-
-
+        script_path = Path(directory) / "Scripts" / "validation" / "source_text_inventory.py"
+        spec = importlib.util.spec_from_file_location("source_text_inventory_base", script_path)
+        if spec is None or spec.loader is None:
+            raise RuntimeError(f"base inventory script is missing at {script_path}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module.inventory(Path(directory))
+def _token_signature(token: str) -> str:
+    """Return a line-stable method/literal signature for an assertion token."""
+    methods = re.findall(r"(?:Contains|IndexOf|DoesNotContain)", token)
+    literals = re.findall(r'"((?:\\.|[^"\\])*)"', token)
+    method = methods[-1] if methods else ""
+    literal = literals[0] if literals else ""
+    return f"{method}:{literal}"
+def _row_keys(rows: list[dict[str, object]]) -> set[tuple[str, str, str, str, int]]:
+    """Return row identities that survive unrelated line insertions."""
+    occurrences: dict[tuple[str, str, str, str], int] = {}
+    keys: set[tuple[str, str, str, str, int]] = set()
+    for row in rows:
+        base = (
+            str(row["file"]),
+            str(row["validation_flag"]),
+            str(row["label"]),
+            _token_signature(str(row["token"])),
+        )
+        occurrence = occurrences.get(base, 0)
+        occurrences[base] = occurrence + 1
+        keys.add((*base, occurrence))
+    return keys
 def _verify_base_inventory(root: Path, rows: list[dict[str, object]], revision: str) -> int:
     """Reject silent row loss or new unresolved targets relative to a trusted base."""
     base_rows = _inventory_at_revision(root, revision)
-    base_keys = {_row_key(row) for row in base_rows}
-    head_keys = {_row_key(row) for row in rows}
+    base_keys = _row_keys(base_rows)
+    head_keys = _row_keys(rows)
     missing = sorted(base_keys - head_keys)
+    def metadata(source: list[dict[str, object]]) -> dict[tuple[str, str, str, str, int], tuple[str, str, str, str]]:
+        counts: dict[tuple[str, str, str, str], int] = {}
+        values: dict[tuple[str, str, str, str, int], tuple[str, str, str, str]] = {}
+        for row in source:
+            base = (
+                str(row["file"]),
+                str(row["validation_flag"]),
+                str(row["label"]),
+                _token_signature(str(row["token"])),
+            )
+            occurrence = counts.get(base, 0)
+            counts[base] = occurrence + 1
+            values[(*base, occurrence)] = (
+                str(row["target"]),
+                str(row["class"]),
+                str(row["comment_only"]),
+                str(row["xunit_coverage"]),
+            )
+        return values
+    base_metadata = metadata(base_rows)
+    head_metadata = metadata(rows)
+    metadata_changed = sorted(
+        key for key in base_metadata.keys() & head_metadata.keys() if base_metadata[key] != head_metadata[key]
+    )
     base_unresolved = sum(row["class"] == "UNRESOLVED" for row in base_rows)
     head_unresolved = sum(row["class"] == "UNRESOLVED" for row in rows)
     base_unknown = sum(row["class"] == "UNKNOWN" for row in base_rows)
@@ -957,15 +914,13 @@ def _verify_base_inventory(root: Path, rows: list[dict[str, object]], revision: 
     print(
         f"SOURCE_TEXT_INVENTORY_BASE_OK base_rows={len(base_rows)} head_rows={len(rows)} "
         f"missing={len(missing)} base_unresolved={base_unresolved} head_unresolved={head_unresolved} "
-        f"base_unknown={base_unknown} head_unknown={head_unknown}"
+        f"base_unknown={base_unknown} head_unknown={head_unknown} metadata_changed={len(metadata_changed)}"
     )
     if missing or head_unresolved > base_unresolved or head_unknown > base_unknown:
         if missing:
             print(f"SOURCE_TEXT_INVENTORY_BASE_MISSING sample={missing[:5]}")
         return 1
     return 0
-
-
 def _validation_flag(root: Path, source_file: str) -> str:
     """Resolve a runtime validation file to its PhaseValidationRegistry flag."""
     stem = Path(source_file).stem
@@ -980,8 +935,6 @@ def _validation_flag(root: Path, source_file: str) -> str:
         if re.search(rf"\b{re.escape(stem)}\.Validate\w*\b", text[match.start() : end]):
             return match.group("flag")
     return ""
-
-
 def write_report(rows: list[dict[str, object]], output: Path) -> None:
     """Write CSV and Markdown summary files for the inventory."""
     output.mkdir(parents=True, exist_ok=True)
@@ -1025,8 +978,6 @@ def write_report(rows: list[dict[str, object]], output: Path) -> None:
         + ranking,
         encoding="utf-8",
     )
-
-
 def main() -> int:
     """Run the source-text inventory command."""
     parser = argparse.ArgumentParser()
@@ -1045,7 +996,5 @@ def main() -> int:
     if args.base_ref:
         return _verify_base_inventory(root, rows, args.base_ref)
     return 0
-
-
 if __name__ == "__main__":
     raise SystemExit(main())
