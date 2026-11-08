@@ -2,6 +2,10 @@ using System;
 using System.Numerics;
 using Unity.FoxgloveSDK.Schemas.Imu;
 using Xunit;
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+using System.Runtime.InteropServices;
+using Unity2Foxglove.Ros2ForUnity.Native;
+#endif
 
 namespace Unity.FoxgloveSDK.Tests.Unit.Sensors
 {
@@ -85,6 +89,25 @@ namespace Unity.FoxgloveSDK.Tests.Unit.Sensors
             Assert.Equal((ulong)2, frame.UnixNs);
             Assert.Equal(1, slot.Stats.Dropped);
         }
+
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+        [Fact]
+        public void NativeImuFrameIdGuardRejectsOversizedNativeHeaderField()
+        {
+            var nativeMessage = Marshal.AllocHGlobal(32);
+            try
+            {
+                Marshal.WriteInt64(nativeMessage, 16, 257);
+                Assert.False(Ros2ForUnityImuNativeMessageGuard.TryAdmit(nativeMessage, 256));
+                Marshal.WriteInt64(nativeMessage, 16, 256);
+                Assert.True(Ros2ForUnityImuNativeMessageGuard.TryAdmit(nativeMessage, 256));
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(nativeMessage);
+            }
+        }
+#endif
 
         [Fact]
         public void SlotRetainsFifoFramesUntilCapacityAndReportsOverflow()
