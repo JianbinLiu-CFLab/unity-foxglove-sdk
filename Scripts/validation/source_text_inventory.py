@@ -211,7 +211,7 @@ def _call_context(lines: list[str], call: dict[str, object]) -> str:
     start = int(call["start"])
     end = int(call["end"])
     masked = _strip_csharp_comments_and_strings(text)
-    statement_start = max(masked.rfind(";", 0, start), masked.rfind("{", 0, start), masked.rfind("}", 0, start)) + 1
+    statement_start = max(masked.rfind(";", 0, start), masked.rfind("{", 0, start), masked.rfind("}", 0, start), masked.rfind("&&", 0, start) + 1, masked.rfind("||", 0, start) + 1) + 1
     return text[statement_start:end]
 def _source_targets(lines: list[str], include_variables: bool = True) -> dict[str, str]:
     """Build a local symbol-to-source-path map from reader calls and path arrays."""

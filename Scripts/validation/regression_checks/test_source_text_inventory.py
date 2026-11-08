@@ -341,6 +341,7 @@ class SourceTextInventoryTests(unittest.TestCase):
                 '        var ordinary = "ordinary";\n'
                 '        Check(ordinary.Contains("ordinary") && source.Contains("one") && source.Contains("two"));\n'
                 '        Check(source.Contains("three") || source.Contains("four"));\n'
+                '        Check(!source.Contains("negative") && source.Contains("positive"));\n'
                 "    }\n"
                 "}\n",
                 encoding="utf-8",
@@ -353,11 +354,13 @@ class SourceTextInventoryTests(unittest.TestCase):
             )
             rows = inventory(root)
             tokens = [str(row["token"]) for row in rows]
-            self.assertEqual(4, len(rows))
+            self.assertEqual(6, len(rows))
             self.assertTrue(any('Contains("one")' in token for token in tokens))
             self.assertTrue(any('Contains("two")' in token for token in tokens))
             self.assertTrue(any('Contains("three")' in token for token in tokens))
             self.assertTrue(any('Contains("four")' in token for token in tokens))
+            self.assertEqual("A", next(row["class"] for row in rows if 'Contains("negative")' in row["token"]))
+            self.assertEqual("C", next(row["class"] for row in rows if 'Contains("positive")' in row["token"]))
 
     def test_comment_only_ignores_assertion_message_literals(self):
         """Only literals passed to the source assertion are checked against target comments."""
