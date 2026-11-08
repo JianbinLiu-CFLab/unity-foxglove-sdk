@@ -898,7 +898,7 @@ def _verify_base_inventory(root: Path, rows: list[dict[str, object]], revision: 
     base_status_rows = _inventory_at_revision(root, revision, use_current_parser=True)
     _, missing = _match_base_rows(base_rows, rows)
     status_matches, _ = _match_base_rows(base_status_rows, rows)
-    metadata_changed = [_row_prefix(base) for base, head in status_matches if tuple(str(base[field]) for field in ("target", "class", "comment_only", "xunit_coverage")) != tuple(str(head[field]) for field in ("target", "class", "comment_only", "xunit_coverage"))]
+    metadata_changed = [_row_prefix(base) for base, head in status_matches if (tuple(str(base[field]) for field in ("target", "class", "comment_only", "xunit_coverage")) + (str(_token_signatures(str(base["token"]))),)) != (tuple(str(head[field]) for field in ("target", "class", "comment_only", "xunit_coverage")) + (str(_token_signatures(str(head["token"]))),))]
     base_unresolved = sum(row["class"] == "UNRESOLVED" for row in base_status_rows)
     head_unresolved = sum(row["class"] == "UNRESOLVED" for row in rows)
     base_unknown = sum(row["class"] == "UNKNOWN" for row in base_status_rows)
