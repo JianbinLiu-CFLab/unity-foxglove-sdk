@@ -506,6 +506,7 @@ class PackageMetaContractTests:
         self.assertTrue(results[-1].ok)
 
     def test_sdk_meta_guid_uniqueness_allows_generated_test_build_sidecars(self) -> None:
+        """Generated test build folders remain valid optional package metadata."""
         with tempfile.TemporaryDirectory() as temp:
             package = Path(temp) / "dev.unity2foxglove.sdk"
             paths = (

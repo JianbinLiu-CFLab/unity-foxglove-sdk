@@ -70,6 +70,7 @@ class SourceTextInventoryGateTests(unittest.TestCase):
             self.assertIn("unacknowledged=1", output)
 
     def test_discarded_receiver_expression_requires_ack(self):
+        """Reject a source assertion changed from Check to a discarded expression."""
         with tempfile.TemporaryDirectory() as directory:
             root = self._git_fixture(directory)
             validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
@@ -85,6 +86,7 @@ class SourceTextInventoryGateTests(unittest.TestCase):
             self.assertIn('field": "assertion_context"', output)
 
     def test_expected_assertion_literal_requires_ack(self):
+        """Reject changing the expected literal while retaining the same source target."""
         with tempfile.TemporaryDirectory() as directory:
             root = self._git_fixture(directory)
             validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
@@ -110,6 +112,7 @@ class SourceTextInventoryGateTests(unittest.TestCase):
             self.assertIn('field": "assertion_literal"', output)
 
     def test_checker_row_loss_requires_ack_without_package_changes(self):
+        """Reject a checker-only change that hides every trusted inventory row."""
         with tempfile.TemporaryDirectory() as directory:
             root = self._git_fixture(directory)
             checker = root / "Scripts/validation/source_text_inventory.py"
