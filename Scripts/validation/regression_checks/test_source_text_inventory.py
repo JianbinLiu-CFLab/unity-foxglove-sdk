@@ -439,9 +439,11 @@ class SourceTextInventoryTests(unittest.TestCase):
     def test_assertion_expression_signature_tracks_checked_argument_changes(self):
         """Treat a changed checked expression as a changed inventory row."""
         original = _checked_expression_signature('Assert.Contains("Secure", source)')
+        spaced = _checked_expression_signature('Assert.Contains( "Secure", source)')
         weakened = _checked_expression_signature(
             'Assert.Contains("Secure", "Secure" + source.GetHashCode().ToString())'
         )
+        self.assertEqual(original, spaced)
         self.assertNotEqual(original, weakened)
 
     def test_reachability_tracks_preprocessor_and_unbraced_branches(self):

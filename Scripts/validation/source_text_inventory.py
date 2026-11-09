@@ -855,9 +855,9 @@ def _checked_expression_signature(token: str) -> str:
         open_index = token.find("(", match.start(), match.end()); close_index = _balanced_call_end(token, open_index)
         if close_index is not None:
             arguments = token[open_index + 1 : close_index]
-            first = _split_first_argument(arguments)
-            if first != arguments:
-                second = _split_first_argument(arguments[len(first) + 1 :])
+            first = _split_first_argument(arguments); first_offset = arguments.find(first); comma = arguments.find(",", first_offset + len(first)) if first_offset >= 0 else -1
+            if comma >= 0:
+                second = _split_first_argument(arguments[comma + 1 :])
                 return re.sub(r"\s+", " ", second.strip())
     return re.sub(r"\s+", " ", token.strip())
 def _row_prefix(row: dict[str, object]) -> tuple[str, str]:
