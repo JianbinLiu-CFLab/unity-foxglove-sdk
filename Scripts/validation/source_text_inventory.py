@@ -40,25 +40,25 @@ def _extract_argument_path(argument: str, paths: dict[str, str]) -> str | None:
     """Resolve a reader argument to a repository path or a documented path set."""
     argument = argument.strip()
     literal = PATH_LITERAL_PATTERN.fullmatch(argument)
-    if literal:
-        return _normalise_path(literal.group(1))
+    if literal: return _normalise_path(literal.group(1))
     if argument in paths:
         return paths[argument]
     suffix = re.fullmatch(r"(?P<name>[A-Za-z_]\w*)\s*\+\s*\"(?P<suffix>[^\"]*)\"", argument)
     if suffix and suffix.group("name") in paths:
         suffix_value = suffix.group("suffix").replace("\\", "/")
-        return ";".join(
-            value.rstrip("/") + "/" + suffix_value.lstrip("/")
-            for value in paths[suffix.group("name")].split(";")
-        )
+        return ";".join(value.rstrip("/") + "/" + suffix_value.lstrip("/") for value in paths[suffix.group("name")].split(";"))
     literal = PATH_LITERAL_PATTERN.search(argument)
     if literal and argument == literal.group(0):
         return _normalise_path(literal.group(1))
     path_like = PATH_LIKE_LITERAL_PATTERN.fullmatch(argument)
-    if path_like:
-        return _normalise_path(path_like.group(1))
+    if path_like: return _normalise_path(path_like.group(1))
     if "," in argument: return _extract_argument_path(argument.split(",", 1)[1], paths)
     return None
+def _reader_target(reader: dict[str, object], paths: dict[str, str]) -> str | None:
+    """Resolve a recognized reader while preserving directory-reader first arguments."""
+    argument = str(reader["argument"])
+    if "ReadRepoDirectoryText" in str(reader.get("name", "")): argument = _split_first_argument(argument)
+    return _extract_argument_path(argument, paths)
 def _balanced_call_end(text: str, open_index: int) -> int | None:
     """Return the closing parenthesis for a call while respecting C# literals."""
     depth = 0
@@ -410,7 +410,7 @@ def _scoped_source_symbols(lines: list[str], shared_paths: dict[str, str]) -> li
             continue
         line = _line_for_offset(line_starts, match.start())
         if (line, name) in direct_keys: continue
-        expression = match.group("expression"); target = next((value for value in (_extract_argument_path(_split_first_argument(str(reader["argument"])), local_paths) for reader in _call_spans(expression.splitlines(), READER_CALL_PATTERN)) if value), None)
+        expression = match.group("expression"); target = next((value for value in (_reader_target(reader, local_paths) for reader in _call_spans(expression.splitlines(), READER_CALL_PATTERN)) if value), None)
         definitions.append((line, scopes[line], name, target or "<unresolved>")); definitions.sort(key=lambda item: item[0])
     indexed: dict[str, list[tuple[int, tuple[int, ...], str]]] = {}
     for line, scope, name, target in definitions:
@@ -433,7 +433,7 @@ def _scoped_source_symbols(lines: list[str], shared_paths: dict[str, str]) -> li
                 targets.extend(reference_target.split(";"))
         unresolved_reader = False
         for reader in _call_spans(expression.splitlines(), READER_CALL_PATTERN):
-            reader_target = _extract_argument_path(_split_first_argument(str(reader["argument"])), local_paths)
+            reader_target = _reader_target(reader, local_paths)
             if reader_target:
                 targets.extend(reader_target.split(";"))
             else:
@@ -483,7 +483,7 @@ def _resolve_assertion_target(
     reader_targets: list[str] = []
     reader_seen = False
     for reader in _call_spans(call_text.splitlines(), READER_CALL_PATTERN):
-        reader_seen = True; target = _extract_argument_path(_split_first_argument(str(reader["argument"])), paths)
+        reader_seen = True; target = _reader_target(reader, paths)
         if target:
             reader_targets.extend(target.split(";"))
     return ";".join(dict.fromkeys(reader_targets)) or ("<unresolved>" if reader_seen else None)
@@ -525,7 +525,7 @@ def _resolve_derived_target(
         else:
             unresolved = True
     for reader in _call_spans(expression.splitlines(), READER_CALL_PATTERN):
-        target = _extract_argument_path(_split_first_argument(str(reader["argument"])), paths)
+        target = _reader_target(reader, paths)
         if target:
             targets.extend(target.split(";"))
         else:
@@ -583,7 +583,7 @@ def _shared_scope_paths(files: list[Path]) -> dict[Path, dict[str, str]]:
                     target = _lookup_symbol(local_symbols[caller_path], argument, line, scope) if re.fullmatch(r"[A-Za-z_]\w*", argument) else None
                     reader = READER_CALL_PATTERN.search(argument) if target is None else None
                     if reader:
-                        first = _split_first_argument(argument[argument.find("(", reader.start()) + 1 :]); target = _extract_argument_path(first, shared) or _lookup_symbol(local_symbols[caller_path], first, line, scope)
+                        reader_argument = argument[argument.find("(", reader.start()) + 1 :]; first = _split_first_argument(reader_argument); target = _extract_argument_path(reader_argument, shared) or _lookup_symbol(local_symbols[caller_path], first, line, scope)
                     if target and target != "<unresolved>": parameter_targets.setdefault(parameter, set()).update(target.split(";"))
         for name, targets in parameter_targets.items():
             if name not in shared: shared[name] = next(iter(targets)) if len(targets) == 1 else "<unresolved>"
@@ -905,8 +905,8 @@ def _verify_base_inventory(root: Path, rows: list[dict[str, object]], revision: 
     """Reject silent row loss or new unresolved targets relative to a trusted base."""
     base_rows = _inventory_at_revision(root, revision)
     base_status_rows = _inventory_at_revision(root, revision, use_current_parser=True)
-    _, missing = _match_base_rows(base_rows, rows)
     status_matches, status_missing = _match_base_rows(base_status_rows, rows, strict=True)
+    missing = status_missing
     metadata_changed = [_row_prefix(base) for base, head in status_matches if (tuple(str(base.get(field, "")) for field in ("target", "class", "comment_only", "xunit_coverage", "reachability", "checked_expression")) + (str(_token_signatures(str(base["token"]))),)) != (tuple(str(head.get(field, "")) for field in ("target", "class", "comment_only", "xunit_coverage", "reachability", "checked_expression")) + (str(_token_signatures(str(head["token"]))),))]
     base_unresolved = sum(row["class"] == "UNRESOLVED" for row in base_status_rows)
     head_unresolved = sum(row["class"] == "UNRESOLVED" for row in rows)
