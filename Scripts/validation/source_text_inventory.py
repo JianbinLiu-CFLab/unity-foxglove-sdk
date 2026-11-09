@@ -394,24 +394,24 @@ def _scoped_source_symbols(lines: list[str], shared_paths: dict[str, str]) -> li
                 ),
                 None,
             )
-            if target and target != "<unresolved>":
-                targets.extend(target.split(";"))
-        if targets:
-            definitions.append((line, scope, match.group("name"), ";".join(dict.fromkeys(targets))))
-    assignment_pattern = re.compile(
-        r"(?:var|string)\s+(?P<name>[A-Za-z_]\w*)\s*=\s*(?P<expression>[^;]+);",
-        re.DOTALL,
-    )
-    assignment_expressions: dict[tuple[int, str], str] = {}
-    direct_keys: set[tuple[int, str]] = set()
+            if target and target != "<unresolved>": targets.extend(target.split(";"))
+        if targets: definitions.append((line, scope, match.group("name"), ";".join(dict.fromkeys(targets))))
+    assignment_pattern = re.compile(r"(?:var|string)\s+(?P<name>[A-Za-z_]\w*)\s*=\s*(?P<expression>[^;]+);", re.DOTALL)
+    assignment_expressions: dict[tuple[int, str], str] = {}; direct_keys: set[tuple[int, str]] = set()
     for match in assignment_pattern.finditer(text):
         line = _line_for_offset(line_starts, match.start())
         assignment_expressions[(line, match.group("name"))] = match.group("expression")
-        if any(existing_line == line and existing_name == match.group("name") for existing_line, _, existing_name, _ in definitions):
-            direct_keys.add((line, match.group("name")))
-    for definition in definitions:
-        direct_keys.add((definition[0], definition[2]))
-    assignments = sorted(assignment_expressions.items(), key=lambda item: item[0][0])
+        if any(existing_line == line and existing_name == match.group("name") for existing_line, _, existing_name, _ in definitions): direct_keys.add((line, match.group("name")))
+    for definition in definitions: direct_keys.add((definition[0], definition[2]))
+    assignments = sorted(assignment_expressions.items(), key=lambda item: item[0][0]); known_names = {name for _, _, name, _ in definitions}
+    for match in re.finditer(r"(?<![=!<>])\b(?P<name>[A-Za-z_]\w*)\s*=\s*(?P<expression>[^;]+);", text, re.DOTALL):
+        name = match.group("name")
+        if name not in known_names:
+            continue
+        line = _line_for_offset(line_starts, match.start())
+        if (line, name) in direct_keys: continue
+        expression = match.group("expression"); target = next((value for value in (_extract_argument_path(_split_first_argument(str(reader["argument"])), local_paths) for reader in _call_spans(expression.splitlines(), READER_CALL_PATTERN)) if value), None)
+        definitions.append((line, scopes[line], name, target or "<unresolved>")); definitions.sort(key=lambda item: item[0])
     indexed: dict[str, list[tuple[int, tuple[int, ...], str]]] = {}
     for line, scope, name, target in definitions:
         indexed.setdefault(name, []).append((line, scope, target))

@@ -487,5 +487,35 @@ class SourceTextInventoryTests(unittest.TestCase):
             self.assertNotEqual(preprocessor["reachability"], live["reachability"])
             self.assertNotEqual(unbraced["reachability"], live["reachability"])
 
+    def test_source_reassignment_invalidates_original_reader_target(self):
+        """Do not retain a source-file target after its validation variable is overwritten."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runtime = root / "Packages" / "fixture" / "Tests" / "Runtime"
+            runtime.mkdir(parents=True)
+            product = root / "Packages" / "fixture" / "Runtime" / "Product.cs"
+            product.parent.mkdir(parents=True)
+            product.write_text("public sealed class Product {}\n", encoding="utf-8")
+            (runtime / "ReassignmentValidation.cs").write_text(
+                "public static class ReassignmentValidation {\n"
+                '    public static void Validate() {\n'
+                '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                '        source = "needle";\n'
+                '        Check(source.Contains("needle"));\n'
+                "    }\n"
+                "}\n",
+                encoding="utf-8",
+            )
+            registry = root / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "PhaseValidationRegistry.cs"
+            registry.parent.mkdir(parents=True, exist_ok=True)
+            registry.write_text(
+                'Ci("--phase-reassignment", "fixture", ReassignmentValidation.Validate, evidence: ValidationEvidence.Behavior),\n',
+                encoding="utf-8",
+            )
+            rows = inventory(root)
+            self.assertEqual(1, len(rows))
+            self.assertEqual("<unresolved>", rows[0]["target"])
+            self.assertEqual("UNRESOLVED", rows[0]["class"])
+
 if __name__ == "__main__":
     unittest.main()
