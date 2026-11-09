@@ -21,8 +21,9 @@ class SourceTextInventoryGateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = self._git_fixture(directory)
             validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            original = validation.read_text(encoding="utf-8")
             validation.write_text(
-                validation.read_text(encoding="utf-8").replace(
+                original.replace(
                     'ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs")',
                     "ReadRequiredRepoText(ResolvePath())",
                 ),
@@ -37,15 +38,42 @@ class SourceTextInventoryGateTests(unittest.TestCase):
             ]
             for change in changes:
                 change["reason"] = "The behavior test keeps the product path assertion executable."
+            validation.write_text(original, encoding="utf-8")
             (root / "Scripts/validation/source_text_inventory_acknowledgements.json").write_text(
                 json.dumps({"acknowledgements": changes}, indent=2) + "\n",
                 encoding="utf-8",
             )
+            subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+            subprocess.run(["git", "-C", str(root), "commit", "-q", "-m", "trusted-ack"], check=True)
+            validation.write_text(
+                original.replace(
+                    'ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs")',
+                    "ReadRequiredRepoText(ResolvePath())",
+                ),
+                encoding="utf-8",
+            )
             code, _ = self._run_fixture_gate(root)
             self.assertEqual(0, code)
-            changes[0]["head_sha256"] = "0" * 64
+            validation.write_text(original, encoding="utf-8")
+            validation.write_text(
+                original.replace(
+                    'ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs")',
+                    "ReadRequiredRepoText(ResolvePath())",
+                ),
+                encoding="utf-8",
+            )
             (root / "Scripts/validation/source_text_inventory_acknowledgements.json").write_text(
-                json.dumps({"acknowledgements": changes}, indent=2) + "\n",
+                json.dumps({"acknowledgements": [{**changes[0], "head_sha256": "0" * 64}]}, indent=2) + "\n",
+                encoding="utf-8",
+            )
+            validation.write_text(original, encoding="utf-8")
+            subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+            subprocess.run(["git", "-C", str(root), "commit", "-q", "-m", "invalid-trusted-ack"], check=True)
+            validation.write_text(
+                original.replace(
+                    'ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs")',
+                    "ReadRequiredRepoText(ResolvePath())",
+                ),
                 encoding="utf-8",
             )
             code, _ = self._run_fixture_gate(root)
@@ -68,6 +96,58 @@ class SourceTextInventoryGateTests(unittest.TestCase):
             code, output = self._run_fixture_gate(root)
             self.assertEqual(1, code)
             self.assertIn("unacknowledged=1", output)
+
+    def test_head_acknowledgement_is_not_trusted(self):
+        """Reject a weakening acknowledgement added only in the proposed head."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(directory)
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace(
+                    '        Check(source.Contains("Product"));\n', ""
+                ),
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code)
+            change = next(
+                json.loads(item.split(" ", 1)[1])
+                for item in output.splitlines()
+                if item.startswith("SOURCE_TEXT_INVENTORY_UNACKNOWLEDGED ")
+            )
+            change["reason"] = "This head-only acknowledgement must not be trusted."
+            (root / "Scripts/validation/source_text_inventory_acknowledgements.json").write_text(
+                json.dumps({"acknowledgements": [change]}, indent=2) + "\n",
+                encoding="utf-8",
+            )
+            code, _ = self._run_fixture_gate(root)
+            self.assertEqual(1, code)
+
+    def test_expression_bodied_helper_reachability_requires_ack(self):
+        """Reject removing a call to an expression-bodied source assertion helper."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(
+                directory,
+                validation_text=(
+                    "public static class FixtureValidation {\n"
+                    "    private static bool HasProduct() => "
+                    'ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs").Contains("Product");\n'
+                    "    public static void Validate() {\n"
+                    '        Check(HasProduct());\n'
+                    "    }\n"
+                    "}\n"
+                ),
+            )
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace(
+                    "        Check(HasProduct());\n", ""
+                ),
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code)
+            self.assertIn('field": "call_path"', output)
 
     def test_discarded_receiver_expression_requires_ack(self):
         """Reject a source assertion changed from Check to a discarded expression."""
@@ -219,7 +299,7 @@ class SourceTextInventoryGateTests(unittest.TestCase):
             crlf_rows = inventory(root)
             self.assertEqual(lf_rows, crlf_rows)
 
-    def _git_fixture(self, directory: str) -> Path:
+    def _git_fixture(self, directory: str, validation_text: str | None = None) -> Path:
         """Create a small Git fixture containing the current checker modules."""
         root = Path(directory)
         for source in (
@@ -237,12 +317,15 @@ class SourceTextInventoryGateTests(unittest.TestCase):
         product.write_text("public sealed class Product {}\n", encoding="utf-8")
         validation = runtime / "FixtureValidation.cs"
         validation.write_text(
-            "public static class FixtureValidation {\n"
-            "    public static void Validate() {\n"
-            '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
-            '        Check(source.Contains("Product"));\n'
-            "    }\n"
-            "}\n",
+            validation_text
+            or (
+                "public static class FixtureValidation {\n"
+                "    public static void Validate() {\n"
+                '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                '        Check(source.Contains("Product"));\n'
+                "    }\n"
+                "}\n"
+            ),
             encoding="utf-8",
         )
         registry = root / "Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs"
@@ -265,8 +348,9 @@ class SourceTextInventoryGateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = self._git_fixture(directory)
             validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            original = validation.read_text(encoding="utf-8")
             validation.write_text(
-                validation.read_text(encoding="utf-8").replace(
+                original.replace(
                     '        Check(source.Contains("Product"));\n', ""
                 ),
                 encoding="utf-8",
@@ -280,15 +364,29 @@ class SourceTextInventoryGateTests(unittest.TestCase):
             )
             change = json.loads(line.split(" ", 1)[1])
             change["reason"] = "A behavior test replaces the removed source assertion."
+            validation.write_text(original, encoding="utf-8")
             (root / "Scripts/validation/source_text_inventory_acknowledgements.json").write_text(
                 json.dumps({"acknowledgements": [change]}, indent=2) + "\n",
                 encoding="utf-8",
             )
+            subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+            subprocess.run(["git", "-C", str(root), "commit", "-q", "-m", "trusted-ack"], check=True)
+            validation.write_text(
+                original.replace('        Check(source.Contains("Product"));\n', ""),
+                encoding="utf-8",
+            )
             code, _ = self._run_fixture_gate(root)
             self.assertEqual(0, code)
+            validation.write_text(original, encoding="utf-8")
             change["reason"] = ""
             (root / "Scripts/validation/source_text_inventory_acknowledgements.json").write_text(
                 json.dumps({"acknowledgements": [change]}, indent=2) + "\n",
+                encoding="utf-8",
+            )
+            subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+            subprocess.run(["git", "-C", str(root), "commit", "-q", "-m", "invalid-trusted-ack"], check=True)
+            validation.write_text(
+                original.replace('        Check(source.Contains("Product"));\n', ""),
                 encoding="utf-8",
             )
             code, _ = self._run_fixture_gate(root)

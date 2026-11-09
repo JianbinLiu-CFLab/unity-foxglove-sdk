@@ -299,12 +299,25 @@ def _inventory_at_revision(
         return _load_module(script_path, "source_text_inventory_base").inventory(tree)
 
 
-def _load_acknowledgements(root: Path) -> tuple[list[dict[str, object]], list[str]]:
+def _load_acknowledgements(
+    root: Path, revision: str | None = None
+) -> tuple[list[dict[str, object]], list[str]]:
     """Read and validate exact base-to-head acknowledgement entries."""
-    path = root / ACKNOWLEDGEMENTS_PATH
-    if not path.is_file():
-        return [], []
-    data = json.loads(path.read_text(encoding="utf-8"))
+    if revision:
+        completed = subprocess.run(
+            ["git", "show", f"{revision}:{ACKNOWLEDGEMENTS_PATH.as_posix()}"],
+            cwd=root,
+            check=False,
+            capture_output=True,
+        )
+        if completed.returncode != 0:
+            return [], []
+        data = json.loads(completed.stdout.decode("utf-8"))
+    else:
+        path = root / ACKNOWLEDGEMENTS_PATH
+        if not path.is_file():
+            return [], []
+        data = json.loads(path.read_text(encoding="utf-8"))
     entries = data.get("acknowledgements", data) if isinstance(data, dict) else data
     if not isinstance(entries, list):
         return [], ["acknowledgements must be a list"]
@@ -528,7 +541,7 @@ def _verify_base_inventory(
         for row in rows
         if id(row) not in matched_head_ids
     )
-    acknowledgements, ack_errors = _load_acknowledgements(root)
+    acknowledgements, ack_errors = _load_acknowledgements(root, revision)
     ack_map = {_ack_key(entry): entry for entry in acknowledgements}
     acknowledged: list[dict[str, object]] = []
     unacknowledged: list[dict[str, object]] = []

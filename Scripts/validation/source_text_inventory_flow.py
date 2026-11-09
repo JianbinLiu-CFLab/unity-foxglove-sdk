@@ -67,7 +67,26 @@ def _method_infos(text: str, masked: str) -> list[MethodInfo]:
             continue
         signature = re.sub(r"\s+", " ", text[match.start() : body_start].strip())
         methods.append(MethodInfo(name, match.start(), body_start, body_end, signature))
-    return methods
+    expression_pattern = re.compile(
+        r"(?P<signature>(?:(?:public|private|protected|internal|static|async|sealed|virtual|override|partial|unsafe|new)\s+)*"
+        r"(?:(?:[A-Za-z_]\w*)\s+)?"
+        r"(?P<name>[A-Za-z_]\w*)\s*\([^;{}]*\))\s*=>\s*"
+        r"(?P<body>[^;{}]+);",
+        re.DOTALL,
+    )
+    for match in expression_pattern.finditer(masked):
+        name = match.group("name")
+        if name in CONTROL_KEYWORDS:
+            continue
+        body_start = match.start("body")
+        body_end = match.end("body")
+        signature = re.sub(
+            r"\s+",
+            " ",
+            text[match.start() : match.start("body")].removesuffix("=>").strip(),
+        )
+        methods.append(MethodInfo(name, match.start(), body_start, body_end, signature))
+    return sorted(methods, key=lambda method: method.start)
 
 
 def _method_for_offset(methods: list[MethodInfo], offset: int) -> MethodInfo | None:
