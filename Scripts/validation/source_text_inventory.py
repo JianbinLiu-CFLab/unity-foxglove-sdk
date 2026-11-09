@@ -36,18 +36,23 @@ def classify(target: str, line: str) -> str:
     return "C"
 def _normalise_path(value: str) -> str:
     """Normalise a repository-relative path for stable reports."""
-    return value.strip().strip('"').replace("\\", "/")
+    value = value.strip().strip('"').replace("\\", "/"); return "" if value.startswith("/") or re.match(r"^[A-Za-z]:", value) or ".." in value.split("/") else value
+def _repo_file(root: Path, value: str) -> Path | None:
+    """Return a bounded repository file, rejecting links and oversized inputs."""
+    if not value or value.startswith("<"): return None
+    candidate = (root / value).resolve()
+    try: candidate.relative_to(root.resolve())
+    except ValueError: return None
+    return candidate if candidate.is_file() and candidate.stat().st_size <= 8 * 1024 * 1024 else None
 def _extract_argument_path(argument: str, paths: dict[str, str]) -> str | None:
     """Resolve a reader argument to a repository path or a documented path set."""
     argument = argument.strip()
     literal = PATH_LITERAL_PATTERN.fullmatch(argument)
     if literal: return _normalise_path(literal.group(1))
-    if argument in paths:
-        return paths[argument]
+    if argument in paths: return paths[argument]
     suffix = re.fullmatch(r"(?P<name>[A-Za-z_]\w*)\s*\+\s*\"(?P<suffix>[^\"]*)\"", argument)
     if suffix and suffix.group("name") in paths:
-        suffix_value = suffix.group("suffix").replace("\\", "/")
-        return ";".join(value.rstrip("/") + "/" + suffix_value.lstrip("/") for value in paths[suffix.group("name")].split(";"))
+        suffix_value = suffix.group("suffix").replace("\\", "/"); return ";".join(value.rstrip("/") + "/" + suffix_value.lstrip("/") for value in paths[suffix.group("name")].split(";"))
     literal = PATH_LITERAL_PATTERN.search(argument)
     if literal and argument == literal.group(0):
         return _normalise_path(literal.group(1))
@@ -216,7 +221,7 @@ def _reachability_signatures(lines: list[str], calls: list[dict[str, object]], t
         condition = re.sub(r"\s+", " ", text[open_index + 1 : close_index].strip())
         end = _balanced_brace_end(masked, cursor) if cursor < len(masked) and masked[cursor] == "{" else masked.find(";", cursor)
         if end is not None and end >= cursor: intervals.append((cursor, end, f"{match.group('kind')}({condition})"))
-    exits = [(match.start(), match.end(), "exit:" + match.group("kind")) for match in re.finditer(r"\b(?P<kind>return|throw)\b[^;]*;", masked)]; result: dict[int, str] = {}
+    exits = [(match.start(), match.end(), "exit:" + match.group("kind")) for match in re.finditer(r"\b(?P<kind>return|throw|continue|break|goto)\b[^;]*;", masked)]; result: dict[int, str] = {}
     for call in calls:
         start = int(call["start"]); line = int(call["start_line"]); block_start = max(masked.rfind("{", 0, start), masked.rfind("}", 0, start)); active = [value for begin, end, value in intervals if begin <= start <= end]; active.extend(value for begin, end, value in exits if block_start < begin and end < start)
         result[start] = "|".join(([states[line]] if line < len(states) and states[line] else []) + active)
@@ -691,9 +696,8 @@ def _target_comment_only(target: str, token: str, root: Path, cache: dict[str, t
         return False
     files: list[str] = []
     for value in target.split(";"):
-        path = root / value
-        if not path.is_file():
-            continue
+        path = _repo_file(root, value)
+        if path is None: continue
         key = path.as_posix(); files.append(key)
         if key not in cache:
             text = path.read_text(encoding="utf-8", errors="replace")
@@ -708,10 +712,8 @@ def _xunit_coverage(target: str, root: Path, xunit_index: dict[str, list[str]]) 
     names: set[str] = set()
     for value in targets:
         names.add(Path(value).stem)
-        product = root / value
-        if product.is_file():
-            text = product.read_text(encoding="utf-8", errors="replace")
-            names.update(re.findall(r"\b(?:class|struct|record|interface|enum)\s+([A-Za-z_]\w*)", text))
+        product = _repo_file(root, value)
+        if product is not None: names.update(re.findall(r"\b(?:class|struct|record|interface|enum)\s+([A-Za-z_]\w*)", product.read_text(encoding="utf-8", errors="replace")))
         names.add(value)
     matches = sorted({match for name in names for match in xunit_index.get(name, [])})
     return ";".join(matches)
