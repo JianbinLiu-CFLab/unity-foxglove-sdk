@@ -221,6 +221,36 @@ class SourceTextInventoryGateTests(unittest.TestCase):
             self.assertEqual(1, result.returncode, result.stdout + result.stderr)
             self.assertIn('field": "parser_row_removed"', result.stdout)
 
+    def test_trusted_parser_isolated_from_head_split_helpers(self):
+        """Reject a split-helper change that hides every trusted inventory row."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(directory)
+            helper = root / "Scripts/validation/source_text_inventory_text.py"
+            helper.write_text(
+                helper.read_text(encoding="utf-8")
+                + "\n\ndef _call_spans(lines, pattern, text=None, searchable=None):\n"
+                + "    return []\n",
+                encoding="utf-8",
+            )
+            checker = root / "Scripts/validation/source_text_inventory.py"
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(checker),
+                    "--root",
+                    str(root),
+                    "--base-ref",
+                    "HEAD",
+                    "--output",
+                    str(root / "build" / "inventory"),
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+            self.assertIn('field": "parser_row_removed"', result.stdout)
+
     def test_assertion_polarity_change_requires_ack(self):
         """Reject inverting an assertion while retaining its source expression."""
         with tempfile.TemporaryDirectory() as directory:

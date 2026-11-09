@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import csv
 import hashlib
-import importlib.util
 import json
 import re
 import subprocess
@@ -250,17 +249,33 @@ def _checker_digest(root: Path, revision: str | None = None) -> str:
     return digest.hexdigest()
 
 
-def _load_module(script_path: Path, name: str):
-    """Load a checker module from an extracted revision."""
-    module_dir = str(script_path.parent)
-    if module_dir not in sys.path:
-        sys.path.insert(0, module_dir)
-    spec = importlib.util.spec_from_file_location(name, script_path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"inventory script is missing at {script_path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+def _inventory_in_isolated_process(tree: Path) -> list[dict[str, object]]:
+    """Scan an archived tree without importing head checker modules."""
+    runner = (
+        "import json, sys\n"
+        "from pathlib import Path\n"
+        "tree = Path(sys.argv[1])\n"
+        "sys.path.insert(0, str(tree))\n"
+        "from Scripts.validation.source_text_inventory import inventory\n"
+        "json.dump(inventory(tree), sys.stdout)\n"
+    )
+    completed = subprocess.run(
+        [sys.executable, "-I", "-c", runner, str(tree)],
+        cwd=tree,
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    if completed.returncode != 0:
+        raise RuntimeError(
+            "isolated base inventory failed: "
+            f"{completed.stderr.strip() or completed.stdout.strip()}"
+        )
+    rows = json.loads(completed.stdout)
+    if not isinstance(rows, list):
+        raise RuntimeError("isolated base inventory returned a non-list")
+    return rows
 
 
 def _archive_revision(root: Path, revision: str, destination: Path) -> None:
@@ -295,8 +310,7 @@ def _inventory_at_revision(
             if inventory_callback is None:
                 raise RuntimeError("current inventory callback is required")
             return inventory_callback(tree)
-        script_path = tree / "Scripts" / "validation" / "source_text_inventory.py"
-        return _load_module(script_path, "source_text_inventory_base").inventory(tree)
+        return _inventory_in_isolated_process(tree)
 
 
 def _load_acknowledgements(
