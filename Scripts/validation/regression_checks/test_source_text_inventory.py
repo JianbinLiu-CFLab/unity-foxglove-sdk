@@ -482,10 +482,37 @@ class SourceTextInventoryTests(unittest.TestCase):
             )
             rows = inventory(root)
             self.assertEqual(1, len(rows))
-            self.assertEqual("Ci|false", rows[0]["dispatch"])
+            self.assertEqual("Ci|false|Validate", rows[0]["dispatch"])
             source_text = validation.read_text(encoding="utf-8")
             self.assertEqual(_validation_harness_signature(source_text), rows[0]["harness_signature"])
             self.assertNotEqual(rows[0]["harness_signature"], _validation_harness_signature(source_text.replace("throw new System.Exception();", "return;")))
+
+            self.assertNotEqual(rows[0]["harness_signature"], _validation_harness_signature(source_text.replace("Check(source);", "return;")))
+
+    def test_same_line_source_reassignment_invalidates_reader_target(self):
+        """Invalidate a reader target when its declaration and overwrite share a line."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runtime = root / "Packages" / "fixture" / "Tests" / "Runtime"
+            runtime.mkdir(parents=True)
+            product = root / "Packages" / "fixture" / "Runtime" / "Product.cs"
+            product.parent.mkdir(parents=True)
+            product.write_text("public sealed class Product {}\n", encoding="utf-8")
+            (runtime / "SameLineValidation.cs").write_text(
+                "public static class SameLineValidation {\n"
+                '    public static void Validate() { var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs"); source = source + "needle"; Check(source.Contains("needle")); }\n'
+                "}\n",
+                encoding="utf-8",
+            )
+            registry = root / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "PhaseValidationRegistry.cs"
+            registry.parent.mkdir(parents=True, exist_ok=True)
+            registry.write_text(
+                'Ci("--phase-same-line", "fixture", SameLineValidation.Validate, evidence: ValidationEvidence.Behavior),\n',
+                encoding="utf-8",
+            )
+            rows = inventory(root)
+            self.assertEqual(1, len(rows))
+            self.assertEqual("<unresolved>", rows[0]["target"])
 
     def test_reachability_tracks_preprocessor_and_unbraced_branches(self):
         """Expose preprocessor and unbraced control-flow changes in row metadata."""
