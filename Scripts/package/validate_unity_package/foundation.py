@@ -77,6 +77,9 @@ SDK_OPTIONAL_MISSING_META_PATHS = frozenset(
         "Editor/SourceGenerators/build.meta",
         "Plugins/native.meta",
         "Tests/Editor.meta",
+        "Tests/McapConformance/build.meta",
+        "Tests/Performance/build.meta",
+        "Tests/Performance/Regression/build.meta",
         "Tests/Runtime/build.meta",
         "Tests/Unit/build.meta",
     }

@@ -329,7 +329,7 @@ class _RunCiTestsPart1:
         start = active_workflow_line_index(workflow, "- name: Run live source-text inventory")
         end = active_workflow_line_index(workflow, "- name: Upload live source-text inventory")
         gate = "\n".join(workflow.splitlines()[start:end])
-        self.assertIn("SOURCE_TEXT_INVENTORY_TRUSTED_REVISION", gate)
+        self.assertIn("SOURCE_TEXT_INVENTORY_BASE_SHA", gate)
         self.assertIn("git archive", gate)
         self.assertIn("trusted_checker", gate)
         self.assertIn("--base-ref", gate)
