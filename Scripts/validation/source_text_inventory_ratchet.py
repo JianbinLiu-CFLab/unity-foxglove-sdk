@@ -22,7 +22,7 @@ except ImportError:
 
 
 ACKNOWLEDGEMENTS_PATH = Path("Scripts/validation/source_text_inventory_acknowledgements.json")
-NEW_FIELDS = {"assertion_context", "call_path", "unresolved_reason"}
+NEW_FIELDS = {"assertion_context", "assertion_literal", "call_path", "unresolved_reason"}
 COMPARE_FIELDS = (
     "target",
     "class",
@@ -31,6 +31,7 @@ COMPARE_FIELDS = (
     "reachability",
     "checked_expression",
     "assertion_context",
+    "assertion_literal",
     "dispatch",
     "harness_signature",
     "call_path",
@@ -80,6 +81,20 @@ def _assertion_context(token: str, harness: str | None = None) -> str:
     if harness or re.match(r"\s*Assert\.(?:Contains|DoesNotContain)\s*\(", token):
         return "checked"
     return "bare"
+
+
+def _assertion_literal(token: str) -> str:
+    """Return the expected literal or expression from a source assertion."""
+    match = re.search(r"\.(?:Contains|IndexOf|DoesNotContain)\s*\(", token)
+    if match is None:
+        return ""
+    open_index = token.find("(", match.start(), match.end())
+    close_index = _balanced_call_end(token, open_index)
+    if close_index is None:
+        return ""
+    first = _split_first_argument(token[open_index + 1 : close_index]).strip()
+    literal = re.fullmatch(r'"((?:\\.|[^"\\])*)"', first)
+    return literal.group(1) if literal else re.sub(r"\s+", " ", first)
 
 
 def _row_prefix(row: dict[str, object]) -> tuple[str, str]:
@@ -561,6 +576,7 @@ def write_report(rows: list[dict[str, object]], output: Path) -> None:
         "token",
         "checked_expression",
         "assertion_context",
+        "assertion_literal",
         "harness_signature",
         "comment_only",
         "reachability",

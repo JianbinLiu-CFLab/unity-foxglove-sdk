@@ -201,6 +201,7 @@ def scan_file(
                 "assertion_context": _assertion_context(
                     token_text, str(containing_harness["text"]) if containing_harness else None
                 ),
+                "assertion_literal": _assertion_literal(token_text),
                 "harness_signature": harness_signature,
                 "reachability": reachability.get(int(call["start"]), ""),
                 "call_path": call_path,

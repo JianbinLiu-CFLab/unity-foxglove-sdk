@@ -84,6 +84,32 @@ class SourceTextInventoryGateTests(unittest.TestCase):
             self.assertEqual(1, code)
             self.assertIn('field": "assertion_context"', output)
 
+    def test_expected_assertion_literal_requires_ack(self):
+        """Reject changing the expected literal while retaining the same source target."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(directory)
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            validation.write_text(
+                validation.read_text(encoding="utf-8")
+                .replace(
+                    '        Check(source.Contains("Product"));\n',
+                    '        Assert.Contains("Product", source);\n',
+                ),
+                encoding="utf-8",
+            )
+            subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+            subprocess.run(["git", "-C", str(root), "commit", "-q", "-m", "assertion-base"], check=True)
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace(
+                    '        Assert.Contains("Product", source);\n',
+                    '        Assert.Contains("Other", source);\n',
+                ),
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code)
+            self.assertIn('field": "assertion_literal"', output)
+
     def test_arbitrary_helper_exit_condition_is_bound_to_inventory_row(self):
         """Detect changes to an arbitrary helper's exit condition."""
         with tempfile.TemporaryDirectory() as directory:
