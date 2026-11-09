@@ -466,6 +466,8 @@ class SourceTextInventoryTests(unittest.TestCase):
                 "        if (false)\n"
                 '            Check(source.Contains("unbraced"));\n'
                 '        Check(source.Contains("live"));\n'
+                "        if (true) return;\n"
+                '        Check(source.Contains("after-exit"));\n'
                 "    }\n"
                 "}\n",
                 encoding="utf-8",
@@ -480,12 +482,15 @@ class SourceTextInventoryTests(unittest.TestCase):
             by_token = {str(row["token"]): row for row in rows}
             self.assertIn('source.Contains("preprocessor")', by_token)
             self.assertIn('source.Contains("unbraced")', by_token)
+            self.assertIn('source.Contains("after-exit")', by_token)
             self.assertIn('source.Contains("live")', by_token)
             preprocessor = by_token['source.Contains("preprocessor")']
             unbraced = by_token['source.Contains("unbraced")']
+            after_exit = by_token['source.Contains("after-exit")']
             live = by_token['source.Contains("live")']
             self.assertNotEqual(preprocessor["reachability"], live["reachability"])
             self.assertNotEqual(unbraced["reachability"], live["reachability"])
+            self.assertNotEqual(after_exit["reachability"], live["reachability"])
 
     def test_source_reassignment_invalidates_original_reader_target(self):
         """Do not retain a source-file target after its validation variable is overwritten."""

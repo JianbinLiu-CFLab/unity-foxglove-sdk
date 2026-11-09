@@ -226,9 +226,9 @@ def _reachability_signatures(lines: list[str], calls: list[dict[str, object]], t
         condition = re.sub(r"\s+", " ", text[open_index + 1 : close_index].strip())
         end = _balanced_brace_end(masked, cursor) if cursor < len(masked) and masked[cursor] == "{" else masked.find(";", cursor)
         if end is not None and end >= cursor: intervals.append((cursor, end, f"{match.group('kind')}({condition})"))
-    result: dict[int, str] = {}
+    exits = [(match.start(), match.end(), "exit:" + match.group("kind")) for match in re.finditer(r"\b(?P<kind>return|throw)\b[^;]*;", masked)]; result: dict[int, str] = {}
     for call in calls:
-        start = int(call["start"]); line = int(call["start_line"]); active = [value for begin, end, value in intervals if begin <= start <= end]
+        start = int(call["start"]); line = int(call["start_line"]); block_start = max(masked.rfind("{", 0, start), masked.rfind("}", 0, start)); active = [value for begin, end, value in intervals if begin <= start <= end]; active.extend(value for begin, end, value in exits if block_start < begin and end < start)
         result[start] = "|".join(([states[line]] if line < len(states) and states[line] else []) + active)
     return result
 def _source_targets(lines: list[str], include_variables: bool = True) -> dict[str, str]:
