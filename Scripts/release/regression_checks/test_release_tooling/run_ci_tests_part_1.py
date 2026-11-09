@@ -333,7 +333,9 @@ class _RunCiTestsPart1:
         self.assertIn("git archive", gate)
         self.assertIn("trusted_checker", gate)
         self.assertIn("--base-ref", gate)
-        self.assertIn("Scripts/validation/source_text_inventory.py", gate)
+        self.assertIn(":(glob)Scripts/validation/source_text_inventory*.py", gate)
+        self.assertNotIn("16763361a8c6d009eb2bfb4e7dab7af9efb94ca7", gate)
+        self.assertNotIn("using reviewed bootstrap checker", gate)
 
     def test_dotnet_workflow_cannot_waive_validator_initializer_changes(self) -> None:
         """The trusted-base identity result must fail the workflow without a parser waiver."""

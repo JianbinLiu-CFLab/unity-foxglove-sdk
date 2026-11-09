@@ -10,10 +10,16 @@ PATH_LITERAL_PATTERN = re.compile(
 )
 PATH_LIKE_LITERAL_PATTERN = re.compile(r'"([^"\r\n]*[/\\][^"\r\n]*)"')
 READER_CALL_PATTERN = re.compile(
-    r"\b(?P<reader>ReadRepoText|ReadRequiredRepoText|ReadText|ReadRuntimeSource|ReadPointCloudPublisherSources|ReadCameraPublisherSources|ReadProductPublisherText|ReadRepoDirectoryText|Text|PhaseValidationSourceHelpers\s*\.\s*Read[A-Za-z_]\w*(?:Sources?|SourcePath|Text)|TestSources\s*\.\s*(?:Text|Runtime|ExtractMethod|Slice|SourceGeneratorSources)|RuntimeSource)\s*\("
+    r"\b(?P<reader>ReadRepoText|ReadRequiredRepoText|ReadText|ReadRuntimeSource|"
+    r"ReadPointCloudPublisherSources|ReadCameraPublisherSources|ReadProductPublisherText|"
+    r"ReadRepoDirectoryText|Text|PhaseValidationSourceHelpers\s*\.\s*Read[A-Za-z_]\w*"
+    r"(?:Sources?|SourcePath|Text)|TestSources\s*\.\s*(?:Text|Runtime|ExtractMethod|"
+    r"Slice|SourceGeneratorSources)|RuntimeSource)\s*\("
 )
 VARIABLE_READER_PATTERN = re.compile(
-    r"(?:var|string)\s+(?P<name>[A-Za-z_]\w*)\s*=\s*(?P<reader>ReadRepoText|ReadRequiredRepoText|PhaseValidationSourceHelpers\.ReadRequiredRepoText|TestSources\.Text)\s*\(\s*(?P<argument>[^)]*?)\)",
+    r"(?:var|string)\s+(?P<name>[A-Za-z_]\w*)\s*=\s*"
+    r"(?P<reader>ReadRepoText|ReadRequiredRepoText|PhaseValidationSourceHelpers\."
+    r"ReadRequiredRepoText|TestSources\.Text)\s*\(\s*(?P<argument>[^)]*?)\)",
     re.DOTALL,
 )
 ARRAY_PATTERN = re.compile(
@@ -36,6 +42,13 @@ ASSERTION_CALL_PATTERN = re.compile(r"\bAssert\.(?:Contains|DoesNotContain)\s*\(
 DERIVED_METHOD_PATTERN = re.compile(r"\.(?:Contains|IndexOf|DoesNotContain)\s*\(")
 HARNESS_CALL_PATTERN = re.compile(r"\b(?:Check|Assert\.(?:True|False))\s*\(")
 PHASE_LABEL_PATTERN = re.compile(r'"(?P<label>\d+[A-Za-z]?[-A-Za-z0-9]*-[A-Za-z0-9]+:[^"]+)"')
+
+_MASK_CACHE: dict[str, str] = {}
+_COMMENT_CACHE: dict[str, str] = {}
+_REPO_FILE_CACHE: dict[tuple[str, str], Path | None] = {}
+_BRACE_CACHE: dict[str, list[tuple[int, ...]]] = {}
+_LINE_START_CACHE: dict[str, list[int]] = {}
+_PRODUCT_TYPE_CACHE: dict[tuple[str, str], set[str]] = {}
 
 
 def classify(target: str, line: str) -> str:
@@ -74,16 +87,23 @@ def _normalise_path(value: str) -> str:
 
 def _repo_file(root: Path, value: str) -> Path | None:
     """Return a bounded repository file, rejecting links and oversized inputs."""
+    cache_key = (str(root.resolve()), value)
+    if cache_key in _REPO_FILE_CACHE:
+        return _REPO_FILE_CACHE[cache_key]
     if not value or value.startswith("<"):
+        _REPO_FILE_CACHE[cache_key] = None
         return None
     candidate = (root / value).resolve()
     try:
         candidate.relative_to(root.resolve())
     except ValueError:
+        _REPO_FILE_CACHE[cache_key] = None
         return None
-    return (
-        candidate if candidate.is_file() and candidate.stat().st_size <= 8 * 1024 * 1024 else None
+    result = (
+        candidate if candidate.is_file() and candidate.stat().st_size <= 4 * 1024 * 1024 else None
     )
+    _REPO_FILE_CACHE[cache_key] = result
+    return result
 
 
 def _extract_argument_path(argument: str, paths: dict[str, str]) -> str | None:
@@ -113,12 +133,61 @@ def _extract_argument_path(argument: str, paths: dict[str, str]) -> str | None:
 
 
 def _reader_target(reader: dict[str, object], paths: dict[str, str]) -> str | None:
-    """Resolve a recognized reader while preserving directory-reader first arguments."""
-    argument = str(reader["argument"])
-    name = str(reader.get("name", ""))
-    if "ReadRepoDirectoryText" in name or "ReadText" not in name:
-        argument = _split_first_argument(argument)
-    return _extract_argument_path(argument, paths)
+    """Resolve a recognized reader using its documented path argument position."""
+    arguments = _split_arguments(str(reader["argument"]))
+    name = re.sub(r"\s+", "", str(reader.get("name", "")))
+    path_index = 1 if name.endswith("ReadText") and len(arguments) > 1 else 0
+    if "ReadRepoDirectoryText" in name:
+        path_index = 0
+    if path_index >= len(arguments):
+        return None
+    return _extract_argument_path(arguments[path_index], paths)
+
+
+def _split_arguments(argument: str) -> list[str]:
+    """Split top-level C# call arguments while preserving nested expressions."""
+    parts: list[str] = []
+    depth = 0
+    mode = ""
+    start = 0
+    index = 0
+    while index < len(argument):
+        char = argument[index]
+        next_char = argument[index + 1] if index + 1 < len(argument) else ""
+        if mode == "verbatim":
+            if char == '"':
+                if next_char == '"':
+                    index += 2
+                    continue
+                mode = ""
+            index += 1
+            continue
+        if mode in {"string", "char"}:
+            if char == "\\":
+                index += 2
+                continue
+            if (mode == "string" and char == '"') or (mode == "char" and char == "'"):
+                mode = ""
+            index += 1
+            continue
+        if char == "@" and next_char == '"':
+            mode = "verbatim"
+            index += 2
+            continue
+        if char == '"':
+            mode = "string"
+        elif char == "'":
+            mode = "char"
+        elif char in "([{":
+            depth += 1
+        elif char in ")]}":
+            depth = max(0, depth - 1)
+        elif char == "," and depth == 0:
+            parts.append(argument[start:index].strip())
+            start = index + 1
+        index += 1
+    parts.append(argument[start:].strip())
+    return parts if any(parts) else []
 
 
 def _balanced_call_end(text: str, open_index: int) -> int | None:
@@ -189,7 +258,12 @@ def _balanced_call_end(text: str, open_index: int) -> int | None:
 
 def _line_starts(text: str) -> list[int]:
     """Return character offsets for each line in a source buffer."""
-    return [0] + [index + 1 for index, char in enumerate(text) if char == "\n"]
+    cached = _LINE_START_CACHE.get(text)
+    if cached is not None:
+        return cached
+    result = [0] + [index + 1 for index, char in enumerate(text) if char == "\n"]
+    _LINE_START_CACHE[text] = result
+    return result
 
 
 def _line_for_offset(starts: list[int], offset: int) -> int:
@@ -306,6 +380,10 @@ def _balanced_brace_end(text: str, open_index: int) -> int | None:
 
 def _brace_paths(lines: list[str]) -> list[tuple[int, ...]]:
     """Return a lexical brace scope for each source line."""
+    cache_key = "\n".join(lines)
+    cached = _BRACE_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
     scopes: list[tuple[int, ...]] = []
     stack: list[int] = []
     next_id = 0
@@ -361,11 +439,15 @@ def _brace_paths(lines: list[str]) -> list[tuple[int, ...]]:
             elif char == "}" and stack:
                 stack.pop()
             index += 1
+    _BRACE_CACHE[cache_key] = scopes
     return scopes
 
 
 def _strip_csharp_comments_and_strings(text: str) -> str:
     """Remove C# comments and string literals before symbol matching."""
+    cached = _MASK_CACHE.get(text)
+    if cached is not None:
+        return cached
     output: list[str] = []
     index = 0
     mode = ""
@@ -429,11 +511,16 @@ def _strip_csharp_comments_and_strings(text: str) -> str:
             continue
         output.append(char)
         index += 1
-    return "".join(output)
+    result = "".join(output)
+    _MASK_CACHE[text] = result
+    return result
 
 
 def _csharp_comment_text(text: str) -> str:
     """Return C# line and block comment text while ignoring strings and chars."""
+    cached = _COMMENT_CACHE.get(text)
+    if cached is not None:
+        return cached
     output: list[str] = []
     index = 0
     mode = ""
@@ -493,7 +580,9 @@ def _csharp_comment_text(text: str) -> str:
             mode = "char"
             continue
         index += 1
-    return "".join(output)
+    result = "".join(output)
+    _COMMENT_CACHE[text] = result
+    return result
 
 
 def _target_comment_only(
@@ -533,14 +622,22 @@ def _xunit_coverage(target: str, root: Path, xunit_index: dict[str, list[str]]) 
     names: set[str] = set()
     for value in targets:
         names.add(Path(value).stem)
-        product = _repo_file(root, value)
-        if product is not None:
-            names.update(
-                re.findall(
-                    r"\b(?:class|struct|record|interface|enum)\s+([A-Za-z_]\w*)",
-                    product.read_text(encoding="utf-8", errors="replace"),
+        cache_key = (str(root.resolve()), value)
+        product_names = _PRODUCT_TYPE_CACHE.get(cache_key)
+        if product_names is None:
+            product = _repo_file(root, value)
+            product_names = (
+                set(
+                    re.findall(
+                        r"\b(?:class|struct|record|interface|enum)\s+([A-Za-z_]\w*)",
+                        product.read_text(encoding="utf-8", errors="replace"),
+                    )
                 )
+                if product is not None
+                else set()
             )
+            _PRODUCT_TYPE_CACHE[cache_key] = product_names
+        names.update(product_names)
         names.add(value)
     matches = sorted({match for name in names for match in xunit_index.get(name, [])})
     return ";".join(matches)

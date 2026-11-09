@@ -5,6 +5,10 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+_SCOPED_SYMBOL_CACHE: dict[
+    tuple[str, tuple[tuple[str, str], ...]], list[tuple[int, tuple[int, ...], str, str]]
+] = {}
+
 try:
     from . import source_text_inventory_text as _text_module
     from .source_text_inventory_text import *
@@ -35,11 +39,17 @@ def _source_targets(lines: list[str], include_variables: bool = True) -> dict[st
         value = _normalise_path(match.group("path"))
         if "/" in value or "\\" in value:
             paths[match.group("name")] = value
+    for match in STATIC_READONLY_PATH_PATTERN.finditer(text):
+        value = _normalise_path(match.group("path"))
+        if "/" in value or "\\" in value:
+            paths[match.group("name")] = value
     if not include_variables:
         for _ in range(3):
             changed = False
             for match in re.finditer(
-                r"const\s+string\s+(?P<name>[A-Za-z_]\w*)\s*=\s*(?P<expression>[^;]+)", text
+                r"(?:(?:const\s+string)|(?:static\s+readonly\s+string)|(?:readonly\s+static\s+string))\s+"
+                r"(?P<name>[A-Za-z_]\w*)\s*=\s*(?P<expression>[^;]+)",
+                text,
             ):
                 expression = match.group("expression")
                 targets: list[str] = []
@@ -103,16 +113,21 @@ def _scoped_source_symbols(
     lines: list[str], shared_paths: dict[str, str]
 ) -> list[tuple[int, tuple[int, ...], str, str]]:
     """Collect reader symbols with method and block scope boundaries."""
+    text = "\n".join(lines)
+    cache_key = (text, tuple(sorted(shared_paths.items())))
+    cached = _SCOPED_SYMBOL_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
     scopes = _brace_paths(lines)
     symbols: list[tuple[int, tuple[int, ...], str, str]] = [
         (-1, (), name, target) for name, target in shared_paths.items()
     ]
-    text = "\n".join(lines)
+    masked_text = _strip_csharp_comments_and_strings(text)
     line_starts = _line_starts(text)
     local_paths = dict(shared_paths)
     definitions: list[tuple[int, tuple[int, ...], str, str]] = []
     reader_assignment_starts: set[tuple[int, str, int]] = set()
-    for call in _call_spans(lines, READER_CALL_PATTERN):
+    for call in _call_spans(lines, READER_CALL_PATTERN, text, masked_text):
         start = int(call["start"])
         line = int(call["start_line"])
         prefix = text[max(0, start - 256) : start]
@@ -180,7 +195,12 @@ def _scoped_source_symbols(
                 value
                 for value in (
                     _reader_target(reader, local_paths)
-                    for reader in _call_spans(expression.splitlines(), READER_CALL_PATTERN)
+                    for reader in _call_spans(
+                        expression.splitlines(),
+                        READER_CALL_PATTERN,
+                        expression,
+                        _strip_csharp_comments_and_strings(expression),
+                    )
                 )
                 if value
             ),
@@ -214,7 +234,12 @@ def _scoped_source_symbols(
             if reference_target:
                 targets.extend(reference_target.split(";"))
         unresolved_reader = False
-        for reader in _call_spans(expression.splitlines(), READER_CALL_PATTERN):
+        for reader in _call_spans(
+            expression.splitlines(),
+            READER_CALL_PATTERN,
+            expression,
+            _strip_csharp_comments_and_strings(expression),
+        ):
             reader_target = _reader_target(reader, local_paths)
             if reader_target:
                 targets.extend(reader_target.split(";"))
@@ -233,6 +258,7 @@ def _scoped_source_symbols(
         if (definition[0], definition[2]) not in invalidated or definition[3] == "<unresolved>"
     ]
     symbols.extend(definitions)
+    _SCOPED_SYMBOL_CACHE[cache_key] = symbols
     return symbols
 
 
