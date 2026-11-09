@@ -618,6 +618,30 @@ class SourceTextInventoryTests(unittest.TestCase):
             self.assertEqual("<unresolved>", rows[0]["target"])
             self.assertEqual("UNRESOLVED", rows[0]["class"])
 
+    def test_two_argument_read_text_uses_relative_path_argument(self):
+        """Resolve ReadText(repoRoot, relativePath) against its second argument."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runtime = root / "Packages" / "fixture" / "Tests" / "Runtime"
+            runtime.mkdir(parents=True)
+            product = root / "Packages" / "fixture" / "Runtime" / "Product.cs"
+            product.parent.mkdir(parents=True)
+            product.write_text("public sealed class Product {}\n", encoding="utf-8")
+            (runtime / "ReadTextValidation.cs").write_text(
+                "public static class ReadTextValidation {\n"
+                '    public static void Validate() { var source = ReadText("ignored-root", "Packages/fixture/Runtime/Product.cs"); Check(source.Contains("Product")); }\n'
+                "}\n",
+                encoding="utf-8",
+            )
+            registry = root / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "PhaseValidationRegistry.cs"
+            registry.parent.mkdir(parents=True, exist_ok=True)
+            registry.write_text(
+                'Ci("--phase-read-text", "fixture", ReadTextValidation.Validate, evidence: ValidationEvidence.Behavior),\n',
+                encoding="utf-8",
+            )
+            rows = inventory(root)
+            self.assertEqual("Packages/fixture/Runtime/Product.cs", rows[0]["target"])
+
     def test_source_reassignment_invalidates_original_reader_target(self):
         """Do not retain a source-file target after its validation variable is overwritten."""
         with tempfile.TemporaryDirectory() as directory:
