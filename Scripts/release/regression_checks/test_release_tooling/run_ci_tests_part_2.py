@@ -81,6 +81,7 @@ class _RunCiTestsPart2:
             "Scripts.validation.regression_checks.test_plan_audit_lib",
             "Scripts.validation.regression_checks.test_performance_evidence",
             "Scripts.validation.regression_checks.test_source_text_inventory",
+            "Scripts.validation.regression_checks.test_source_text_inventory_gate",
             "Scripts.architecture.regression_checks.test_structure_guards",
             "Scripts.release.regression_checks.test_regression_inventory",
             "Scripts.native.regression_checks.test_native_sources",

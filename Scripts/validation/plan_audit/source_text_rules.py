@@ -142,8 +142,16 @@ def _test_and_workflow_checks() -> list[audit_lib.Check]:
     """Run the inventory regression test and verify workflow registration."""
     checks: list[audit_lib.Check] = []
     test_log = OUTPUT / "logs" / "inventory-tests.log"
-    result = audit_lib.run(["python", "-B", "-m", "unittest", "Scripts.validation.regression_checks.test_source_text_inventory"], test_log, 300)
-    checks.append(_check("198-W2-tests", "Plan/198... § W2 tests", "probe", "PASS" if result["exit_code"] == 0 else "FAIL", "python -B -m unittest Scripts.validation.regression_checks.test_source_text_inventory", test_log, f"exit={result['exit_code']}"))
+    test_command = [
+        "python",
+        "-B",
+        "-m",
+        "unittest",
+        "Scripts.validation.regression_checks.test_source_text_inventory",
+        "Scripts.validation.regression_checks.test_source_text_inventory_gate",
+    ]
+    result = audit_lib.run(test_command, test_log, 300)
+    checks.append(_check("198-W2-tests", "Plan/198... § W2 tests", "probe", "PASS" if result["exit_code"] == 0 else "FAIL", "python -B -m unittest source inventory regression modules", test_log, f"exit={result['exit_code']}"))
     workflow_log = OUTPUT / "logs" / "workflow-registration.log"
     modules = (
         audit_lib.ROOT / "Scripts" / "release" / "regression_inventory.py",
