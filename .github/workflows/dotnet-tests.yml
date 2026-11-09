@@ -283,7 +283,7 @@ jobs:
           git archive "$trusted_revision" -- Scripts/validation/source_text_inventory.py | tar -x -C "$trusted_root"
           trusted_checker="$trusted_root/Scripts/validation/source_text_inventory.py"
           if ! python3 "$trusted_checker" --help 2>&1 | grep -q -- "--base-ref"; then
-            trusted_revision="4336751f96dd3fef761e9784530266d001a035ea"
+            trusted_revision="16763361a8c6d009eb2bfb4e7dab7af9efb94ca7"
             echo "SOURCE_TEXT_INVENTORY_TRUSTED_REVISION: using reviewed bootstrap checker $trusted_revision"
             git cat-file -e "$trusted_revision:Scripts/validation/source_text_inventory.py"
             rm -rf "$trusted_root/Scripts"
