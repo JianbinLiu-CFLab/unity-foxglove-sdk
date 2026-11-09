@@ -8,6 +8,7 @@ from Scripts.validation.source_text_inventory import (
     _build_xunit_index,
     _checked_expression_signature,
     _match_base_rows,
+    _validation_harness_signature,
     classify,
     inventory,
     write_report,
@@ -448,6 +449,43 @@ class SourceTextInventoryTests(unittest.TestCase):
         )
         self.assertEqual(original, spaced)
         self.assertNotEqual(original, weakened)
+
+    def test_custom_check_signature_includes_enclosing_harness_expression(self):
+        """Capture changes to a custom source assertion's full checked expression."""
+        token = 'source.Contains("needle")'
+        original = _checked_expression_signature(token, 'Check(source.Contains("needle"))')
+        weakened = _checked_expression_signature(token, 'Check(source.Contains("needle") || true)')
+        self.assertNotEqual(original, weakened)
+
+    def test_inventory_records_dispatch_and_harness_binding(self):
+        """Bind rows to registry dispatch metadata and local assertion harness code."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runtime = root / "Packages" / "fixture" / "Tests" / "Runtime"
+            runtime.mkdir(parents=True)
+            product = root / "Packages" / "fixture" / "Runtime" / "Product.cs"
+            product.parent.mkdir(parents=True)
+            product.write_text("public sealed class Product {}\n", encoding="utf-8")
+            validation = runtime / "DispatchValidation.cs"
+            validation.write_text(
+                "public static class DispatchValidation {\n"
+                '    private static void Check(string value) { if (!value.Contains("needle")) throw new System.Exception(); }\n'
+                '    public static void Validate() { var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs"); Check(source); }\n'
+                "}\n",
+                encoding="utf-8",
+            )
+            registry = root / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "PhaseValidationRegistry.cs"
+            registry.parent.mkdir(parents=True, exist_ok=True)
+            registry.write_text(
+                'Ci("--phase-dispatch", "fixture", DispatchValidation.Validate, includeInDefault: false, evidence: ValidationEvidence.Behavior),\n',
+                encoding="utf-8",
+            )
+            rows = inventory(root)
+            self.assertEqual(1, len(rows))
+            self.assertEqual("Ci|false", rows[0]["dispatch"])
+            source_text = validation.read_text(encoding="utf-8")
+            self.assertEqual(_validation_harness_signature(source_text), rows[0]["harness_signature"])
+            self.assertNotEqual(rows[0]["harness_signature"], _validation_harness_signature(source_text.replace("throw new System.Exception();", "return;")))
 
     def test_reachability_tracks_preprocessor_and_unbraced_branches(self):
         """Expose preprocessor and unbraced control-flow changes in row metadata."""

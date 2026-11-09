@@ -1,6 +1,6 @@
 """Inventory source-text assertions in runtime and unit validation files."""
 from __future__ import annotations
-import argparse, csv
+import argparse, csv, hashlib
 from collections import Counter
 import importlib.util
 import re
@@ -17,6 +17,7 @@ RECEIVER_PATTERN = re.compile(
 )
 ASSERTION_CALL_PATTERN = re.compile(r"\bAssert\.(?:Contains|DoesNotContain)\s*\(")
 DERIVED_METHOD_PATTERN = re.compile(r"\.(?:Contains|IndexOf|DoesNotContain)\s*\(")
+HARNESS_CALL_PATTERN = re.compile(r"\b(?:Check|Assert\.(?:True|False))\s*\(")
 PHASE_LABEL_PATTERN = re.compile(r"\"(?P<label>\d+[A-Za-z]?[-A-Za-z0-9]*-[A-Za-z0-9]+:[^\"]+)\"")
 def classify(target: str, line: str) -> str:
     """Classify one source-text assertion as boundary, wiring, or implementation."""
@@ -145,18 +146,7 @@ def _call_spans(lines: list[str], pattern: re.Pattern[str], text: str | None = N
         close_index = _balanced_call_end(text, open_index)
         if close_index is None:
             continue
-        calls.append(
-            {
-                "start": match.start(),
-                "end": close_index + 1,
-                "start_line": _line_for_offset(starts, match.start()),
-                "end_line": _line_for_offset(starts, close_index),
-                "name": match.groupdict().get("reader", match.group(0)),
-                "receiver": match.groupdict().get("receiver"),
-                "argument": text[open_index + 1 : close_index],
-                "text": text[match.start() : close_index + 1],
-            }
-        )
+        calls.append({"start": match.start(), "end": close_index + 1, "start_line": _line_for_offset(starts, match.start()), "end_line": _line_for_offset(starts, close_index), "name": match.groupdict().get("reader", match.group(0)), "receiver": match.groupdict().get("receiver"), "argument": text[open_index + 1 : close_index], "text": text[match.start() : close_index + 1]})
     return calls
 def _split_first_argument(argument: str) -> str:
     """Return the first top-level argument from a C# call."""
@@ -374,26 +364,13 @@ def _scoped_source_symbols(lines: list[str], shared_paths: dict[str, str]) -> li
         definition = (line, scopes[line], assignment.group("name"), target)
         definitions.append(definition)
         local_paths[assignment.group("name")] = target
-    for match in re.finditer(
-        r"foreach\s*\(\s*var\s+(?P<name>[A-Za-z_]\w*)\s+in\s+(?P<expression>[^)]*)\)",
-        text,
-        re.DOTALL,
-    ):
+    foreach_pattern = r"foreach\s*\(\s*var\s+(?P<name>[A-Za-z_]\w*)\s+in\s+(?P<expression>[^)]*)\)"
+    for match in re.finditer(foreach_pattern, text, re.DOTALL):
         line = _line_for_offset(line_starts, match.start())
         scope = scopes[line]
         targets: list[str] = []
         for reference in re.findall(r"\b[A-Za-z_]\w*\b", _strip_csharp_comments_and_strings(match.group("expression"))):
-            target = next(
-                (
-                    value
-                    for definition_line, definition_scope, name, value in reversed(definitions)
-                    if name == reference
-                    and definition_line < line
-                    and len(definition_scope) <= len(scope)
-                    and tuple(scope[:len(definition_scope)]) == definition_scope
-                ),
-                None,
-            )
+            target = next((value for definition_line, definition_scope, name, value in reversed(definitions) if name == reference and definition_line < line and len(definition_scope) <= len(scope) and tuple(scope[:len(definition_scope)]) == definition_scope), None)
             if target and target != "<unresolved>": targets.extend(target.split(";"))
         if targets: definitions.append((line, scope, match.group("name"), ";".join(dict.fromkeys(targets))))
     assignment_pattern = re.compile(r"(?:var|string)\s+(?P<name>[A-Za-z_]\w*)\s*=\s*(?P<expression>[^;]+);", re.DOTALL)
@@ -751,8 +728,11 @@ def scan_file(path: Path, root: Path, xunit_index: dict[str, list[str]], shared_
     assertion_calls = _call_spans(lines, ASSERTION_CALL_PATTERN, source_text, masked_file)
     receiver_calls = _call_spans(lines, RECEIVER_PATTERN, source_text, masked_file)
     derived_calls = _call_spans(lines, DERIVED_METHOD_PATTERN, source_text, masked_file)
+    harness_calls = _call_spans(lines, HARNESS_CALL_PATTERN, source_text, masked_file)
     for call in receiver_calls + derived_calls + assertion_calls:
         call.update(text_file=source_text, masked=masked_file)
+    validation_flag, dispatch = _validation_metadata(root, path.relative_to(root).as_posix())
+    harness_signature = _validation_harness_signature(source_text)
     reachability = _reachability_signatures(lines, receiver_calls + derived_calls + assertion_calls, source_text, masked_file)
     receiver_ends = {int(call["end"]) for call in receiver_calls}
     candidates: list[tuple[int, dict[str, object], str]] = []
@@ -791,18 +771,21 @@ def scan_file(path: Path, root: Path, xunit_index: dict[str, list[str]], shared_
                 target_parts.append(part)
         target = ";".join(dict.fromkeys(target_parts)) or "<unresolved>"
         label_match = PHASE_LABEL_PATTERN.search("".join(lines[max(0, index - 5) : index + 1]))
+        containing_harness = min((candidate for candidate in harness_calls if int(candidate["start"]) <= int(call["start"]) < int(candidate["end"])), key=lambda candidate: int(candidate["end"]) - int(candidate["start"]), default=None)
         rows.append(
             {
                 "file": path.relative_to(root).as_posix(),
                 "line": index + 1,
                 "label": label_match.group("label") if label_match else "",
-                "validation_flag": _validation_flag(root, path.relative_to(root).as_posix()),
+                "validation_flag": validation_flag,
+                "dispatch": dispatch,
                 "class": classify(target, classification_text),
                 "target": target,
                 "xunit_coverage": _xunit_coverage(target, root, xunit_index),
                 "token": token_text,
                 "comment_only": _target_comment_only(target, token_text, root, comment_cache),
-                "checked_expression": _checked_expression_signature(token_text),
+                "checked_expression": _checked_expression_signature(token_text, str(containing_harness["text"]) if containing_harness else None),
+                "harness_signature": harness_signature,
                 "reachability": reachability.get(int(call["start"]), ""),
             }
         )
@@ -847,8 +830,14 @@ def _token_signatures(token: str) -> set[tuple[str, str]]:
         signatures.add((match.group(1), literal.group(1) if literal else ""))
     nonempty = {item for item in signatures if item[1]}
     return nonempty or signatures or {("", re.sub(r"\s+", " ", token).strip())}
-def _checked_expression_signature(token: str) -> str:
+def _checked_expression_signature(token: str, harness: str | None = None) -> str:
     """Return the normalized expression whose value is checked by an assertion."""
+    if harness:
+        match = re.search(r"\bCheck\s*\(|\bAssert\.(?:True|False)\s*\(", harness)
+        if match:
+            open_index = harness.find("(", match.start(), match.end()); close_index = _balanced_call_end(harness, open_index)
+            if close_index is not None:
+                return re.sub(r"\s+", " ", _split_first_argument(harness[open_index + 1 : close_index]).strip())
     match = re.search(r"\bAssert\.(?:Contains|DoesNotContain)\s*\(", token)
     if match:
         open_index = token.find("(", match.start(), match.end()); close_index = _balanced_call_end(token, open_index)
@@ -859,6 +848,13 @@ def _checked_expression_signature(token: str) -> str:
                 second = _split_first_argument(arguments[comma + 1 :])
                 return re.sub(r"\s+", " ", second.strip())
     return re.sub(r"\s+", " ", token.strip())
+def _validation_harness_signature(text: str) -> str:
+    """Hash local assertion and source-reader helper implementations."""
+    masked = _strip_csharp_comments_and_strings(text); pattern = re.compile(r"\b(?:Check|Read[A-Za-z_]\w*|Source[A-Za-z_]\w*)\s*\([^;{}]*\)\s*\{"); pieces: list[str] = []
+    for match in pattern.finditer(masked):
+        brace = masked.find("{", match.start(), match.end()); end = _balanced_brace_end(masked, brace)
+        if end is not None: pieces.append(text[match.start() : end + 1])
+    return hashlib.sha256("\n".join(pieces).encode()).hexdigest() if pieces else ""
 def _row_prefix(row: dict[str, object]) -> tuple[str, str]:
     """Return the file and validation flag portion of a row identity."""
     return str(row["file"]), str(row["validation_flag"])
@@ -907,7 +903,8 @@ def _verify_base_inventory(root: Path, rows: list[dict[str, object]], revision: 
     base_status_rows = _inventory_at_revision(root, revision, use_current_parser=True)
     status_matches, status_missing = _match_base_rows(base_status_rows, rows, strict=True)
     missing = status_missing
-    metadata_changed = [_row_prefix(base) for base, head in status_matches if (tuple(str(base.get(field, "")) for field in ("target", "class", "comment_only", "xunit_coverage", "reachability", "checked_expression")) + (str(_token_signatures(str(base["token"]))),)) != (tuple(str(head.get(field, "")) for field in ("target", "class", "comment_only", "xunit_coverage", "reachability", "checked_expression")) + (str(_token_signatures(str(head["token"]))),))]
+    fields = ("target", "class", "comment_only", "xunit_coverage", "reachability", "checked_expression", "dispatch", "harness_signature")
+    metadata_changed = [_row_prefix(base) for base, head in status_matches if (tuple(str(base.get(field, "")) for field in fields) + (str(_token_signatures(str(base["token"]))),)) != (tuple(str(head.get(field, "")) for field in fields) + (str(_token_signatures(str(head["token"]))),))]
     base_unresolved = sum(row["class"] == "UNRESOLVED" for row in base_status_rows)
     head_unresolved = sum(row["class"] == "UNRESOLVED" for row in rows)
     base_unknown = sum(row["class"] == "UNKNOWN" for row in base_status_rows)
@@ -920,26 +917,27 @@ def _verify_base_inventory(root: Path, rows: list[dict[str, object]], revision: 
         if status_missing: print(f"SOURCE_TEXT_INVENTORY_STATUS_MISSING sample={[(row['file'], row['line']) for row in status_missing[:5]]}")
         return 1
     return 0
-def _validation_flag(root: Path, source_file: str) -> str:
-    """Resolve a runtime validation file to its PhaseValidationRegistry flag."""
+def _validation_metadata(root: Path, source_file: str) -> tuple[str, str]:
+    """Resolve a validation file to its registry flag and dispatch metadata."""
     stem = Path(source_file).stem
     registry = root / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "PhaseValidationRegistry.cs"
-    if not registry.is_file():
-        return ""
+    if not registry.is_file(): return "", ""
     text = registry.read_text(encoding="utf-8", errors="replace")
-    entry_start = re.compile(r"^\s*(?:Ci|Local|DefaultOnly)\(\"(?P<flag>--[A-Za-z0-9-]+)\"", re.MULTILINE)
+    entry_start = re.compile(r"^\s*(?P<kind>Ci|Local|DefaultOnly)\(\"(?P<flag>--[A-Za-z0-9-]+)\"", re.MULTILINE)
     matches = list(entry_start.finditer(text))
     for index, match in enumerate(matches):
         end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
-        if re.search(rf"\b{re.escape(stem)}\.Validate\w*\b", text[match.start() : end]):
-            return match.group("flag")
-    return ""
+        block = text[match.start() : end]
+        if re.search(rf"\b{re.escape(stem)}\.Validate\w*\b", block):
+            default = "false" if re.search(r"\bincludeInDefault\s*:\s*false\b", block) else "true"
+            return match.group("flag"), f"{match.group('kind')}|{default}"
+    return "", ""
 def write_report(rows: list[dict[str, object]], output: Path) -> None:
     """Write CSV and Markdown summary files for the inventory."""
     output.mkdir(parents=True, exist_ok=True)
     csv_path = output / "source_text_inventory.csv"
     with csv_path.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=("file", "line", "label", "validation_flag", "class", "target", "xunit_coverage", "token", "checked_expression", "comment_only", "reachability"))
+        writer = csv.DictWriter(handle, fieldnames=("file", "line", "label", "validation_flag", "dispatch", "class", "target", "xunit_coverage", "token", "checked_expression", "harness_signature", "comment_only", "reachability"))
         writer.writeheader()
         writer.writerows(rows)
     counts = {label: sum(row["class"] == label for row in rows) for label in ("A", "B", "C", "UNKNOWN", "UNRESOLVED")}
