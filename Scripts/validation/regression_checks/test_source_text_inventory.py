@@ -533,6 +533,64 @@ class SourceTextInventoryTests(unittest.TestCase):
             self.assertNotEqual(unbraced["reachability"], live["reachability"])
             self.assertNotEqual(after_exit["reachability"], live["reachability"])
 
+    def test_reachability_tracks_loop_and_jump_exits(self):
+        """Record loop and goto exits that can bypass a later source assertion."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runtime = root / "Packages" / "fixture" / "Tests" / "Runtime"
+            runtime.mkdir(parents=True)
+            product = root / "Packages" / "fixture" / "Runtime" / "Product.cs"
+            product.parent.mkdir(parents=True)
+            product.write_text("public sealed class Product {}\n", encoding="utf-8")
+            validation = runtime / "JumpValidation.cs"
+            validation.write_text(
+                "public static class JumpValidation {\n"
+                '    public static void Validate() {\n'
+                '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                '        while (source.Length > 0) { if (source.Length > 0) continue; Check(source.Contains("after-continue")); }\n'
+                '        while (source.Length > 0) { if (source.Length > 0) break; Check(source.Contains("after-break")); }\n'
+                '        if (source.Length > 0) goto afterGoto;\n'
+                '        Check(source.Contains("after-goto"));\n'
+                '        afterGoto: ;\n'
+                "    }\n"
+                "}\n",
+                encoding="utf-8",
+            )
+            registry = root / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "PhaseValidationRegistry.cs"
+            registry.parent.mkdir(parents=True, exist_ok=True)
+            registry.write_text(
+                'Ci("--phase-jumps", "fixture", JumpValidation.Validate, evidence: ValidationEvidence.Behavior),\n',
+                encoding="utf-8",
+            )
+            rows = {str(row["token"]): row for row in inventory(root)}
+            self.assertIn("exit:continue", rows['source.Contains("after-continue")']["reachability"])
+            self.assertIn("exit:break", rows['source.Contains("after-break")']["reachability"])
+            self.assertIn("exit:goto", rows['source.Contains("after-goto")']["reachability"])
+
+    def test_reader_paths_outside_repository_fail_closed(self):
+        """Do not read absolute reader paths during inventory scanning."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runtime = root / "Packages" / "fixture" / "Tests" / "Runtime"
+            runtime.mkdir(parents=True)
+            validation = runtime / "UnsafeReaderValidation.cs"
+            validation.write_text(
+                "public static class UnsafeReaderValidation {\n"
+                '    public static void Validate() { var source = ReadRequiredRepoText("/dev/zero"); Check(source.Contains("needle")); }\n'
+                "}\n",
+                encoding="utf-8",
+            )
+            registry = root / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "PhaseValidationRegistry.cs"
+            registry.parent.mkdir(parents=True, exist_ok=True)
+            registry.write_text(
+                'Ci("--phase-unsafe-reader", "fixture", UnsafeReaderValidation.Validate, evidence: ValidationEvidence.Behavior),\n',
+                encoding="utf-8",
+            )
+            rows = inventory(root)
+            self.assertEqual(1, len(rows))
+            self.assertEqual("<unresolved>", rows[0]["target"])
+            self.assertEqual("UNRESOLVED", rows[0]["class"])
+
     def test_source_reassignment_invalidates_original_reader_target(self):
         """Do not retain a source-file target after its validation variable is overwritten."""
         with tempfile.TemporaryDirectory() as directory:
