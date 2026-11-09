@@ -231,21 +231,6 @@ def _checker_digest(root: Path, revision: str | None = None) -> str:
     return digest.hexdigest()
 
 
-def _inventory_inputs_changed(root: Path, revision: str) -> bool:
-    """Return whether any non-meta package input changed since base."""
-    completed = subprocess.run(
-        ["git", "diff", "--name-only", revision, "--", "Packages"],
-        cwd=root,
-        check=True,
-        text=True,
-        stdout=subprocess.PIPE,
-    )
-    return any(
-        path.startswith("Packages/") and not path.endswith(".meta")
-        for path in completed.stdout.splitlines()
-    )
-
-
 def _load_module(script_path: Path, name: str):
     """Load a checker module from an extracted revision."""
     module_dir = str(script_path.parent)
@@ -493,16 +478,18 @@ def _verify_base_inventory(
     base_rows = _inventory_at_revision(root, revision, inventory_callback=inventory_callback)
     checker_changed = _checker_digest(root) != _checker_digest(root, revision)
     if checker_changed:
-        if _inventory_inputs_changed(root, revision):
-            base_status_rows = _inventory_at_revision(
-                root,
-                revision,
-                use_current_parser=True,
-                inventory_callback=inventory_callback,
-            )
-        else:
-            base_status_rows = rows
+        base_status_rows = _inventory_at_revision(
+            root,
+            revision,
+            use_current_parser=True,
+            inventory_callback=inventory_callback,
+        )
         parser_changes = _parser_resolution_changes(base_rows, base_status_rows)
+        _, parser_missing = _match_base_rows(base_rows, base_status_rows, strict=True)
+        parser_changes.extend(
+            _change(base, None, "parser_row_removed", base.get("token", ""), "")
+            for base in parser_missing
+        )
     else:
         base_status_rows = base_rows
         parser_changes = []

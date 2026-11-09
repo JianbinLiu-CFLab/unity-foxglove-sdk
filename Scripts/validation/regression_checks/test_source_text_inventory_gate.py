@@ -8,6 +8,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from Scripts.validation.source_text_inventory import inventory, main
 
@@ -109,6 +110,18 @@ class SourceTextInventoryGateTests(unittest.TestCase):
             code, output = self._run_fixture_gate(root)
             self.assertEqual(1, code)
             self.assertIn('field": "assertion_literal"', output)
+
+    def test_checker_row_loss_requires_ack_without_package_changes(self):
+        """Reject a checker-only change that hides every trusted inventory row."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(directory)
+            checker = root / "Scripts/validation/source_text_inventory.py"
+            with checker.open("a", encoding="utf-8") as handle:
+                handle.write("\n\ndef inventory(root):\n    return []\n")
+            with mock.patch("Scripts.validation.source_text_inventory.inventory", return_value=[]):
+                code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code)
+            self.assertIn('field": "parser_row_removed"', output)
 
     def test_arbitrary_helper_exit_condition_is_bound_to_inventory_row(self):
         """Detect changes to an arbitrary helper's exit condition."""
