@@ -62,8 +62,8 @@ def _extract_argument_path(argument: str, paths: dict[str, str]) -> str | None:
     return None
 def _reader_target(reader: dict[str, object], paths: dict[str, str]) -> str | None:
     """Resolve a recognized reader while preserving directory-reader first arguments."""
-    argument = str(reader["argument"])
-    if "ReadRepoDirectoryText" in str(reader.get("name", "")): argument = _split_first_argument(argument)
+    argument = str(reader["argument"]); name = str(reader.get("name", ""))
+    if "ReadRepoDirectoryText" in name or "ReadText" not in name: argument = _split_first_argument(argument)
     return _extract_argument_path(argument, paths)
 def _balanced_call_end(text: str, open_index: int) -> int | None:
     """Return the closing parenthesis for a call while respecting C# literals."""
@@ -357,18 +357,18 @@ def _scoped_source_symbols(lines: list[str], shared_paths: dict[str, str]) -> li
     line_starts = _line_starts(text)
     local_paths = dict(shared_paths)
     definitions: list[tuple[int, tuple[int, ...], str, str]] = []
+    reader_assignment_starts: set[tuple[int, str, int]] = set()
     for call in _call_spans(lines, READER_CALL_PATTERN):
         start = int(call["start"])
         line = int(call["start_line"])
         prefix = text[max(0, start - 256) : start]
         assignment = re.search(r"(?:var|string)\s+(?P<name>[A-Za-z_]\w*)\s*=\s*$", prefix)
-        if not assignment:
-            continue
-        argument = _split_first_argument(str(call["argument"]))
-        target = _extract_argument_path(argument, local_paths) or "<unresolved>"
+        if not assignment: continue
+        assignment_start = start - len(prefix) + assignment.start("name")
+        target = _reader_target(call, local_paths) or "<unresolved>"
         definition = (line, scopes[line], assignment.group("name"), target)
-        definitions.append(definition)
-        local_paths[assignment.group("name")] = target
+        definitions.append(definition); local_paths[assignment.group("name")] = target
+        reader_assignment_starts.add((line, assignment.group("name"), assignment_start))
     foreach_pattern = r"foreach\s*\(\s*var\s+(?P<name>[A-Za-z_]\w*)\s+in\s+(?P<expression>[^)]*)\)"
     for match in re.finditer(foreach_pattern, text, re.DOTALL):
         line = _line_for_offset(line_starts, match.start())
@@ -379,19 +379,18 @@ def _scoped_source_symbols(lines: list[str], shared_paths: dict[str, str]) -> li
             if target and target != "<unresolved>": targets.extend(target.split(";"))
         if targets: definitions.append((line, scope, match.group("name"), ";".join(dict.fromkeys(targets))))
     assignment_pattern = re.compile(r"(?:var|string)\s+(?P<name>[A-Za-z_]\w*)\s*=\s*(?P<expression>[^;]+);", re.DOTALL)
-    assignment_expressions: dict[tuple[int, str], str] = {}; direct_keys: set[tuple[int, str]] = set()
+    assignment_expressions: list[tuple[int, str, int, str]] = []; direct_keys: set[tuple[int, str, int]] = set()
     for match in assignment_pattern.finditer(text):
         line = _line_for_offset(line_starts, match.start())
-        assignment_expressions[(line, match.group("name"))] = match.group("expression")
-        if any(existing_line == line and existing_name == match.group("name") for existing_line, _, existing_name, _ in definitions): direct_keys.add((line, match.group("name")))
-    for definition in definitions: direct_keys.add((definition[0], definition[2]))
-    assignments = sorted(assignment_expressions.items(), key=lambda item: item[0][0]); known_names = {name for _, _, name, _ in definitions}
+        assignment_expressions.append((line, match.group("name"), match.start("name"), match.group("expression")))
+        if (line, match.group("name"), match.start("name")) in reader_assignment_starts: direct_keys.add((line, match.group("name"), match.start("name")))
+    assignments = sorted(assignment_expressions, key=lambda item: item[0]); known_names = {name for _, _, name, _ in definitions}
     for match in re.finditer(r"(?<![=!<>])\b(?P<name>[A-Za-z_]\w*)\s*=\s*(?P<expression>[^;]+);", text, re.DOTALL):
         name = match.group("name")
         if name not in known_names:
             continue
         line = _line_for_offset(line_starts, match.start())
-        if (line, name) in direct_keys: continue
+        if any(key[0] == line and key[1] == name and key[2] == match.start("name") for key in direct_keys): continue
         expression = match.group("expression"); target = next((value for value in (_reader_target(reader, local_paths) for reader in _call_spans(expression.splitlines(), READER_CALL_PATTERN)) if value), None)
         definitions.append((line, scopes[line], name, target or "<unresolved>")); definitions.sort(key=lambda item: item[0])
     indexed: dict[str, list[tuple[int, tuple[int, ...], str]]] = {}
@@ -403,8 +402,8 @@ def _scoped_source_symbols(lines: list[str], shared_paths: dict[str, str]) -> li
             if definition_line < line and len(definition_scope) <= len(scope) and tuple(scope[:len(definition_scope)]) == definition_scope:
                 return target
         return None
-    for (line, name), expression in assignments:
-        if (line, name) in direct_keys:
+    for line, name, assignment_start, expression in assignments:
+        if (line, name, assignment_start) in direct_keys:
             continue
         scope = scopes[line]
         references = re.findall(r"\b[A-Za-z_]\w*\b", expression)
@@ -424,6 +423,7 @@ def _scoped_source_symbols(lines: list[str], shared_paths: dict[str, str]) -> li
             target = ";".join(dict.fromkeys(targets)) or "<unresolved>"
             definitions.append((line, scope, name, target))
             indexed.setdefault(name, []).append((line, scope, target))
+    invalidated = {(line, name) for line, _, name, target in definitions if target == "<unresolved>"}; definitions = [definition for definition in definitions if (definition[0], definition[2]) not in invalidated or definition[3] == "<unresolved>"]
     symbols.extend(definitions)
     return symbols
 def _lookup_symbol(symbols: list[tuple[int, tuple[int, ...], str, str]], name: str, line: int, scope: tuple[int, ...]) -> str | None:
@@ -852,7 +852,7 @@ def _checked_expression_signature(token: str, harness: str | None = None) -> str
     return re.sub(r"\s+", " ", token.strip())
 def _validation_harness_signature(text: str) -> str:
     """Hash local assertion and source-reader helper implementations."""
-    masked = _strip_csharp_comments_and_strings(text); pattern = re.compile(r"\b(?:Check|Read[A-Za-z_]\w*|Source[A-Za-z_]\w*)\s*\([^;{}]*\)\s*\{"); pieces: list[str] = []
+    masked = _strip_csharp_comments_and_strings(text); pattern = re.compile(r"\b(?:Check|Read[A-Za-z_]\w*|Source[A-Za-z_]\w*|Validate(?:[A-Za-z_]\w*)?)\s*\([^;{}]*\)\s*\{"); pieces: list[str] = []
     for match in pattern.finditer(masked):
         brace = masked.find("{", match.start(), match.end()); end = _balanced_brace_end(masked, brace)
         if end is not None: pieces.append(text[match.start() : end + 1])
@@ -930,9 +930,10 @@ def _validation_metadata(root: Path, source_file: str) -> tuple[str, str]:
     for index, match in enumerate(matches):
         end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
         block = text[match.start() : end]
-        if re.search(rf"\b{re.escape(stem)}\.Validate\w*\b", block):
+        entrypoint = re.search(rf"\b{re.escape(stem)}\.(?P<entry>Validate\w*)\b", block)
+        if entrypoint:
             default = "false" if re.search(r"\bincludeInDefault\s*:\s*false\b", block) else "true"
-            return match.group("flag"), f"{match.group('kind')}|{default}"
+            return match.group("flag"), f"{match.group('kind')}|{default}|{entrypoint.group('entry')}"
     return "", ""
 def write_report(rows: list[dict[str, object]], output: Path) -> None:
     """Write CSV and Markdown summary files for the inventory."""
