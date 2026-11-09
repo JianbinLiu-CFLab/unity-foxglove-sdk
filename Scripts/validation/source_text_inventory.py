@@ -557,6 +557,7 @@ def _shared_scope_paths(files: list[Path]) -> dict[Path, dict[str, str]]:
         caller_scopes = {path: _brace_paths(lines) for path, lines in caller_lines.items()}
         parameter_targets: dict[str, set[str]] = {}
         declaration_pattern = re.compile(r"\b(?P<name>[A-Za-z_]\w*)\s*\((?P<parameters>[^)]*)\)\s*\{")
+        relevant: list[tuple[str, list[str]]] = []
         for callee_path in group:
             callee_text = caller_texts[callee_path]
             for declaration in declaration_pattern.finditer(callee_text):
@@ -564,30 +565,28 @@ def _shared_scope_paths(files: list[Path]) -> dict[Path, dict[str, str]]:
                     match.group(1)
                     for match in re.finditer(r"\b[A-Za-z_]\w*\s+([A-Za-z_]\w*)\s*(?:,|$)", declaration.group("parameters"))
                 ]
-                if not parameters:
-                    continue
-                callee_name = declaration.group("name")
-                for caller_path in group:
-                    caller_text = caller_texts[caller_path]
-                    for call in re.finditer(rf"\b{re.escape(callee_name)}\s*\((?P<arguments>[^)]*)\)", caller_text):
-                        arguments = [item.strip() for item in call.group("arguments").split(",")]
-                        line = caller_text.count("\n", 0, call.start())
-                        scope = caller_scopes[caller_path][line]
-                        for parameter, argument in zip(parameters, arguments):
-                            target = None
-                            if re.fullmatch(r"[A-Za-z_]\w*", argument):
-                                target = _lookup_symbol(local_symbols[caller_path], argument, line, scope)
-                            else:
-                                reader = READER_CALL_PATTERN.search(argument)
-                                if reader:
-                                    first = _split_first_argument(argument[argument.find("(", reader.start()) + 1 :])
-                                    target = _extract_argument_path(first, shared)
-                                    target = target or _lookup_symbol(local_symbols[caller_path], first, line, scope)
-                            if target and target != "<unresolved>":
-                                parameter_targets.setdefault(parameter, set()).update(target.split(";"))
+                if not parameters: continue
+                callee_masked = _strip_csharp_comments_and_strings(callee_text); body_start = callee_masked.find("{", declaration.end() - 1); body_end = _balanced_brace_end(callee_masked, body_start) if body_start >= 0 else None; body = callee_masked[body_start:body_end] if body_end is not None else ""
+                parameters = [parameter for parameter in parameters if re.search(rf"\b{re.escape(parameter)}\b", body) and re.search(r"\b(?:Contains|IndexOf|DoesNotContain)\s*\(", body)]
+                if not parameters: continue
+                relevant.append((declaration.group("name"), parameters))
+        call_index: dict[str, list[tuple[Path, re.Match[str]]]] = {}
+        relevant_names = {name for name, _ in relevant}
+        for caller_path in group:
+            caller_text = caller_texts[caller_path]
+            for call in re.finditer(r"\b(?P<name>[A-Za-z_]\w*)\s*\((?P<arguments>[^)]*)\)", caller_text):
+                if call.group("name") in relevant_names: call_index.setdefault(call.group("name"), []).append((caller_path, call))
+        for callee_name, parameters in relevant:
+            for caller_path, call in call_index.get(callee_name, ()):
+                caller_text = caller_texts[caller_path]; arguments = [item.strip() for item in call.group("arguments").split(",")]; line = caller_text.count("\n", 0, call.start()); scope = caller_scopes[caller_path][line]
+                for parameter, argument in zip(parameters, arguments):
+                    target = _lookup_symbol(local_symbols[caller_path], argument, line, scope) if re.fullmatch(r"[A-Za-z_]\w*", argument) else None
+                    reader = READER_CALL_PATTERN.search(argument) if target is None else None
+                    if reader:
+                        first = _split_first_argument(argument[argument.find("(", reader.start()) + 1 :]); target = _extract_argument_path(first, shared) or _lookup_symbol(local_symbols[caller_path], first, line, scope)
+                    if target and target != "<unresolved>": parameter_targets.setdefault(parameter, set()).update(target.split(";"))
         for name, targets in parameter_targets.items():
-            if name not in shared:
-                shared[name] = next(iter(targets)) if len(targets) == 1 else "<unresolved>"
+            if name not in shared: shared[name] = next(iter(targets)) if len(targets) == 1 else "<unresolved>"
         for path in group:
             result[path] = shared
     return result
