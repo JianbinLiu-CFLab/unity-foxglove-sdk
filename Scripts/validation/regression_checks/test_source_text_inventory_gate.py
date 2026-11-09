@@ -68,6 +68,22 @@ class SourceTextInventoryGateTests(unittest.TestCase):
             self.assertEqual(1, code)
             self.assertIn("unacknowledged=1", output)
 
+    def test_discarded_receiver_expression_requires_ack(self):
+        """Reject a source assertion changed from Check to a discarded expression."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(directory)
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace(
+                    '        Check(source.Contains("Product"));\n',
+                    '        source.Contains("Product");\n',
+                ),
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code)
+            self.assertIn('field": "assertion_context"', output)
+
     def test_arbitrary_helper_exit_condition_is_bound_to_inventory_row(self):
         """Detect changes to an arbitrary helper's exit condition."""
         with tempfile.TemporaryDirectory() as directory:

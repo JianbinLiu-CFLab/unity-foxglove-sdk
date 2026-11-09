@@ -22,7 +22,7 @@ except ImportError:
 
 
 ACKNOWLEDGEMENTS_PATH = Path("Scripts/validation/source_text_inventory_acknowledgements.json")
-NEW_FIELDS = {"call_path", "unresolved_reason"}
+NEW_FIELDS = {"assertion_context", "call_path", "unresolved_reason"}
 COMPARE_FIELDS = (
     "target",
     "class",
@@ -30,6 +30,7 @@ COMPARE_FIELDS = (
     "xunit_coverage",
     "reachability",
     "checked_expression",
+    "assertion_context",
     "dispatch",
     "harness_signature",
     "call_path",
@@ -72,6 +73,13 @@ def _checked_expression_signature(token: str, harness: str | None = None) -> str
                 second = _split_first_argument(arguments[comma + 1 :])
                 return re.sub(r"\s+", " ", second.strip())
     return re.sub(r"\s+", " ", token.strip())
+
+
+def _assertion_context(token: str, harness: str | None = None) -> str:
+    """Classify whether a source expression is wrapped in an executable check."""
+    if harness or re.match(r"\s*Assert\.(?:Contains|DoesNotContain)\s*\(", token):
+        return "checked"
+    return "bare"
 
 
 def _row_prefix(row: dict[str, object]) -> tuple[str, str]:
@@ -426,6 +434,12 @@ def _classify_change(
             else:
                 weakening.append(field)
             continue
+        if field == "assertion_context":
+            if before == "bare" and after == "checked":
+                strengthened.append(_change(base, head, field, before, after))
+            else:
+                weakening.append(field)
+            continue
         weakening.append(field)
     return strengthened, weakening
 
@@ -546,6 +560,7 @@ def write_report(rows: list[dict[str, object]], output: Path) -> None:
         "xunit_coverage",
         "token",
         "checked_expression",
+        "assertion_context",
         "harness_signature",
         "comment_only",
         "reachability",

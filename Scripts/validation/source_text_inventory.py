@@ -198,6 +198,9 @@ def scan_file(
                 "checked_expression": _checked_expression_signature(
                     token_text, str(containing_harness["text"]) if containing_harness else None
                 ),
+                "assertion_context": _assertion_context(
+                    token_text, str(containing_harness["text"]) if containing_harness else None
+                ),
                 "harness_signature": harness_signature,
                 "reachability": reachability.get(int(call["start"]), ""),
                 "call_path": call_path,
