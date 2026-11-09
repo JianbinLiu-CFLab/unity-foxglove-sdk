@@ -5,10 +5,10 @@ import io
 import json
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest import mock
 
 from Scripts.validation.source_text_inventory import inventory, main
 
@@ -70,7 +70,6 @@ class SourceTextInventoryGateTests(unittest.TestCase):
             self.assertIn("unacknowledged=1", output)
 
     def test_discarded_receiver_expression_requires_ack(self):
-        """Reject a source assertion changed from Check to a discarded expression."""
         with tempfile.TemporaryDirectory() as directory:
             root = self._git_fixture(directory)
             validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
@@ -86,7 +85,6 @@ class SourceTextInventoryGateTests(unittest.TestCase):
             self.assertIn('field": "assertion_context"', output)
 
     def test_expected_assertion_literal_requires_ack(self):
-        """Reject changing the expected literal while retaining the same source target."""
         with tempfile.TemporaryDirectory() as directory:
             root = self._git_fixture(directory)
             validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
@@ -112,16 +110,33 @@ class SourceTextInventoryGateTests(unittest.TestCase):
             self.assertIn('field": "assertion_literal"', output)
 
     def test_checker_row_loss_requires_ack_without_package_changes(self):
-        """Reject a checker-only change that hides every trusted inventory row."""
         with tempfile.TemporaryDirectory() as directory:
             root = self._git_fixture(directory)
             checker = root / "Scripts/validation/source_text_inventory.py"
-            with checker.open("a", encoding="utf-8") as handle:
-                handle.write("\n\ndef inventory(root):\n    return []\n")
-            with mock.patch("Scripts.validation.source_text_inventory.inventory", return_value=[]):
-                code, output = self._run_fixture_gate(root)
-            self.assertEqual(1, code)
-            self.assertIn('field": "parser_row_removed"', output)
+            checker.write_text(
+                checker.read_text(encoding="utf-8").replace(
+                    "\nif __name__ == \"__main__\":",
+                    "\n\ndef inventory(root):\n    return []\n\nif __name__ == \"__main__\":",
+                ),
+                encoding="utf-8",
+            )
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(checker),
+                    "--root",
+                    str(root),
+                    "--base-ref",
+                    "HEAD",
+                    "--output",
+                    str(root / "build" / "inventory"),
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+            self.assertIn('field": "parser_row_removed"', result.stdout)
 
     def test_arbitrary_helper_exit_condition_is_bound_to_inventory_row(self):
         """Detect changes to an arbitrary helper's exit condition."""

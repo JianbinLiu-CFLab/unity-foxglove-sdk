@@ -77,14 +77,12 @@ def _checked_expression_signature(token: str, harness: str | None = None) -> str
 
 
 def _assertion_context(token: str, harness: str | None = None) -> str:
-    """Classify whether a source expression is wrapped in an executable check."""
     if harness or re.match(r"\s*Assert\.(?:Contains|DoesNotContain)\s*\(", token):
         return "checked"
     return "bare"
 
 
 def _assertion_literal(token: str) -> str:
-    """Return the expected literal or expression from a source assertion."""
     match = re.search(r"\.(?:Contains|IndexOf|DoesNotContain)\s*\(", token)
     if match is None:
         return ""
