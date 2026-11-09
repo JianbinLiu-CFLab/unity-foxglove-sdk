@@ -141,6 +141,31 @@ class SourceTextInventoryGateTests(unittest.TestCase):
             self.assertEqual(1, result.returncode, result.stdout + result.stderr)
             self.assertIn('field": "parser_row_removed"', result.stdout)
 
+    def test_assertion_polarity_change_requires_ack(self):
+        """Reject inverting an assertion while retaining its source expression."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(directory)
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace(
+                    '        Check(source.Contains("Product"));\n',
+                    '        Assert.True(source.Contains("Product"));\n',
+                ),
+                encoding="utf-8",
+            )
+            subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+            subprocess.run(["git", "-C", str(root), "commit", "-q", "-m", "assertion-base"], check=True)
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace(
+                    "Assert.True(source.Contains(\"Product\"))",
+                    "Assert.False(source.Contains(\"Product\"))",
+                ),
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code)
+            self.assertIn('field": "assertion_polarity"', output)
+
     def test_arbitrary_helper_exit_condition_is_bound_to_inventory_row(self):
         """Detect changes to an arbitrary helper's exit condition."""
         with tempfile.TemporaryDirectory() as directory:

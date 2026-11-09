@@ -22,7 +22,13 @@ except ImportError:
 
 
 ACKNOWLEDGEMENTS_PATH = Path("Scripts/validation/source_text_inventory_acknowledgements.json")
-NEW_FIELDS = {"assertion_context", "assertion_literal", "call_path", "unresolved_reason"}
+NEW_FIELDS = {
+    "assertion_context",
+    "assertion_literal",
+    "assertion_polarity",
+    "call_path",
+    "unresolved_reason",
+}
 COMPARE_FIELDS = (
     "target",
     "class",
@@ -32,6 +38,7 @@ COMPARE_FIELDS = (
     "checked_expression",
     "assertion_context",
     "assertion_literal",
+    "assertion_polarity",
     "dispatch",
     "harness_signature",
     "call_path",
@@ -95,6 +102,18 @@ def _assertion_literal(token: str) -> str:
     first = _split_first_argument(token[open_index + 1 : close_index]).strip()
     literal = re.fullmatch(r'"((?:\\.|[^"\\])*)"', first)
     return literal.group(1) if literal else re.sub(r"\s+", " ", first)
+
+
+def _assertion_polarity(token: str, harness: str | None = None) -> str:
+    """Return the outer assertion operator for a source expression."""
+    if harness:
+        match = re.search(r"\b(?:Check|Assert\.(?:True|False))\s*\(", harness)
+        if match:
+            return re.sub(r"\s+", "", match.group(0)[:-1])
+    match = re.search(r"\bAssert\.(?:Contains|DoesNotContain)\s*\(", token)
+    if match:
+        return re.sub(r"\s+", "", match.group(0)[:-1])
+    return "bare"
 
 
 def _row_prefix(row: dict[str, object]) -> tuple[str, str]:
@@ -564,6 +583,7 @@ def write_report(rows: list[dict[str, object]], output: Path) -> None:
         "checked_expression",
         "assertion_context",
         "assertion_literal",
+        "assertion_polarity",
         "harness_signature",
         "comment_only",
         "reachability",
