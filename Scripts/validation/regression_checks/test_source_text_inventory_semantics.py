@@ -265,6 +265,61 @@ class SourceTextInventorySemanticTests(_FixtureSupport, unittest.TestCase):
                 output,
             )
 
+    def test_local_function_condition_change_requires_ack(self):
+        """Reject guarding a local source assertion function with a new condition."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(
+                directory,
+                validation_text=(
+                    "public static class FixtureValidation {\n"
+                    "    public static void Validate() {\n"
+                    "        void Local() {\n"
+                    '            var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                    '            Check(source.Contains("Product"));\n'
+                    "        }\n"
+                    "        Local();\n"
+                    "    }\n"
+                    "}\n"
+                ),
+            )
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace(
+                    "        Local();\n", "        if (source.Length < 0) Local();\n"
+                ),
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code)
+            self.assertIn('field": "call_path"', output)
+
+    def test_task_run_wait_change_requires_ack(self):
+        """Reject dropping task completion when a background lambda owns an assertion."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(
+                directory,
+                validation_text=(
+                    "public static class FixtureValidation {\n"
+                    "    public static void Validate() {\n"
+                    "        System.Threading.Tasks.Task.Run(() => {\n"
+                    '            var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                    '            Check(source.Contains("Product"));\n'
+                    "        }).Wait();\n"
+                    "    }\n"
+                    "}\n"
+                ),
+            )
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace(
+                    "        }).Wait();\n", "        });\n"
+                ),
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code)
+            self.assertIn('field": "harness_signature"', output)
+
     def test_catch_when_filter_change_requires_ack(self):
         """Reject changing a catch filter that controls whether an assertion failure is swallowed."""
         with tempfile.TemporaryDirectory() as directory:

@@ -360,17 +360,42 @@ def _resolve_call_target(
     return exact[0] if len(exact) == 1 else None
 
 
-def _method_call_graph(text: str, masked: str, methods: list[MethodInfo]) -> dict[str, set[str]]:
-    """Build direct same-file method calls using method identities."""
-    graph: dict[str, set[str]] = {method.identity: set() for method in methods}
+def _method_call_graph(
+    text: str, masked: str, methods: list[MethodInfo]
+) -> dict[str, dict[str, set[str]]]:
+    """Build same-file calls with their enclosing control-flow contexts."""
+    graph: dict[str, dict[str, set[str]]] = {
+        method.identity: {} for method in methods
+    }
     methods_by_name: dict[str, list[MethodInfo]] = {}
     for method in methods:
         methods_by_name.setdefault(method.name, []).append(method)
     return_types = _method_return_types(methods)
     field_types = _field_types(text, masked, methods)
+    call_sites_by_method: dict[str, list[tuple[str, int]]] = {}
+    all_call_sites: list[tuple[str, int]] = []
+    for method in methods:
+        call_sites = list(
+            _call_sites(text, masked, method, set(methods_by_name))
+        )
+        call_sites_by_method[method.identity] = call_sites
+        all_call_sites.extend(call_sites)
+    contexts = _reachability_signatures(
+        text.splitlines(),
+        [
+            {
+                "start": open_index,
+                "start_line": text.count("\n", 0, open_index),
+            }
+            for _, open_index in all_call_sites
+        ],
+        text,
+        masked,
+        methods,
+    )
     for method in methods:
         local_types: dict[str, str] | None = None
-        for name, open_index in _call_sites(text, masked, method, set(methods_by_name)):
+        for name, open_index in call_sites_by_method[method.identity]:
             candidates = methods_by_name.get(name, [])
             if len(candidates) == 1:
                 target = candidates[0]
@@ -394,7 +419,9 @@ def _method_call_graph(text: str, masked: str, methods: list[MethodInfo]) -> dic
             if len(candidates) > 1 and local_types is None:
                 local_types = _local_types(text, method, field_types, return_types)
             if target is not None:
-                graph[method.identity].add(target.identity)
+                graph[method.identity].setdefault(target.identity, set()).add(
+                    contexts.get(open_index, "")
+                )
     return graph
 
 
@@ -495,9 +522,13 @@ def _call_path_index(
         if current in paths:
             continue
         paths[current] = "->".join(path)
-        for callee in sorted(graph.get(current, ())):
+        for callee, contexts in sorted(graph.get(current, {}).items()):
             if callee not in paths:
-                queue.append((callee, path + [labels[callee]]))
+                edge = labels[callee]
+                context_values = sorted(value for value in contexts if value)
+                if context_values:
+                    edge += "[" + "|".join(context_values) + "]"
+                queue.append((callee, path + [edge]))
     return methods, paths
 
 
@@ -577,6 +608,14 @@ def _lambda_binding_signature(text: str, masked: str) -> str:
             return _balanced_brace_end(masked, cursor)
         return masked.find(";", cursor)
 
+    def statement_for(lambda_start: int, body_end: int) -> str:
+        """Return the normalized statement that binds one inline lambda."""
+        start = masked.rfind(";", 0, lambda_start) + 1
+        end = body_end if masked[body_end : body_end + 1] == ";" else masked.find(";", body_end + 1)
+        if end < 0:
+            return ""
+        return re.sub(r"\s+", " ", masked[start : end + 1]).strip()
+
     pattern = re.compile(
         r"\b(?P<name>[A-Za-z_]\w*)\s*=\s*"
         r"(?P<lambda>(?:\([^)]*\)|[A-Za-z_]\w*)\s*=>|delegate(?:\s*\([^)]*\))?\s*\{)"
@@ -614,7 +653,10 @@ def _lambda_binding_signature(text: str, masked: str) -> str:
         owner = owner_match.group(1) if owner_match else "UNKNOWN"
         context = context_for([match.start()]).get(match.start(), "")
         body = re.sub(r"\s+", " ", masked[match.start() : end + 1]).strip()
-        pieces.append(f"inline:{owner}:{body}:context:{context}")
+        statement = statement_for(match.start(), end)
+        pieces.append(
+            f"inline:{owner}:{statement}:{body}:context:{context}"
+        )
 
     delegate_pattern = re.compile(r"\bdelegate(?:\s*\([^)]*\))?\s*\{")
     for match in delegate_pattern.finditer(masked):
@@ -628,7 +670,10 @@ def _lambda_binding_signature(text: str, masked: str) -> str:
         owner = owner_match.group(1) if owner_match else "UNKNOWN"
         context = context_for([match.start()]).get(match.start(), "")
         body = re.sub(r"\s+", " ", masked[match.start() : end + 1]).strip()
-        pieces.append(f"delegate:{owner}:{body}:context:{context}")
+        statement = statement_for(match.start(), end)
+        pieces.append(
+            f"delegate:{owner}:{statement}:{body}:context:{context}"
+        )
     return hashlib.sha256("\n".join(pieces).encode()).hexdigest() if pieces else ""
 
 
