@@ -165,9 +165,13 @@ def _validation_harness_signature(
         if method.name.startswith("Validate"):
             continue
         body = masked[method.body_start : method.body_end]
-        if not re.search(
-            r"\b(?:Check|Contains|IndexOf|DoesNotContain|Assert\.(?:True|False|Contains|DoesNotContain)|Read[A-Za-z_]\w*|Source[A-Za-z_]\w*)\s*\(",
-            body,
+        if (
+            method.name != "Check"
+            and not method.name.startswith(("Assert", "Read", "Source"))
+            and not re.search(
+                r"\b(?:Check|Contains|IndexOf|DoesNotContain|Assert\.(?:True|False|Contains|DoesNotContain)|Read[A-Za-z_]\w*|Source[A-Za-z_]\w*)\s*\(",
+                body,
+            )
         ):
             continue
         pieces.append(
@@ -181,9 +185,14 @@ def _validation_harness_signature(
 
 
 def _reachability_signatures(
-    lines: list[str], calls: list[dict[str, object]], text: str, masked: str
+    lines: list[str],
+    calls: list[dict[str, object]],
+    text: str,
+    masked: str,
+    methods: list[MethodInfo] | None = None,
 ) -> dict[int, str]:
     """Return preprocessor and enclosing control-flow state for calls in one file."""
+    methods = methods if methods is not None else _method_infos(text, masked)
     states: list[str] = []
     directives: list[str] = []
     for line in lines:
@@ -198,6 +207,7 @@ def _reachability_signatures(
         elif directive.startswith("#endif") and directives:
             directives.pop()
     intervals: list[tuple[int, int, str]] = []
+    control_intervals: list[tuple[int, int, str]] = []
     for match in re.finditer(
         r"\b(?P<kind>if|else\s+if|while|foreach|for|switch|catch)\s*\(", masked
     ):
@@ -215,8 +225,10 @@ def _reachability_signatures(
             else masked.find(";", cursor)
         )
         if end is not None and end >= cursor:
-            intervals.append((cursor, end, f"{match.group('kind')}({condition})"))
-    exits: list[tuple[int, int, str]] = []
+            kind = match.group("kind")
+            intervals.append((cursor, end, f"{kind}({condition})"))
+            control_intervals.append((cursor, end, kind))
+    exits: list[tuple[int, int, str, str]] = []
     for match in re.finditer(
         r"\b(?P<kind>return|throw|continue|break|goto)\b[^;]*;|\byield\s+break\s*;",
         masked,
@@ -229,14 +241,26 @@ def _reachability_signatures(
         ]
         condition = conditions[-1][3:-1] if conditions else ""
         suffix = f":{condition}" if condition else ""
-        exits.append((match.start(), match.end(), f"exit:{kind}{suffix}"))
+        exits.append((match.start(), match.end(), kind, f"exit:{kind}{suffix}"))
     result: dict[int, str] = {}
     for call in calls:
         start = int(call["start"])
         line = int(call["start_line"])
-        block_start = max(masked.rfind("{", 0, start), masked.rfind("}", 0, start))
+        method = _method_for_offset(methods, start)
         active = [value for begin, end, value in intervals if begin <= start <= end]
-        active.extend(value for begin, end, value in exits if block_start < begin and end < start)
+        for begin, end, kind, value in exits:
+            if method is None or not (method.body_start < begin and end < start):
+                continue
+            if _method_for_offset(methods, begin) is not method:
+                continue
+            if kind in {"continue", "break"} and not any(
+                loop_kind in {"while", "foreach", "for"}
+                and loop_start <= begin <= loop_end
+                and loop_start <= start <= loop_end
+                for loop_start, loop_end, loop_kind in control_intervals
+            ):
+                continue
+            active.append(value)
         result[start] = "|".join(
             ([states[line]] if line < len(states) and states[line] else []) + active
         )

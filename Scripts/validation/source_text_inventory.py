@@ -118,7 +118,11 @@ def scan_file(
         method_infos,
     )
     reachability = _reachability_signatures(
-        lines, receiver_calls + derived_calls + assertion_calls, source_text, masked_file
+        lines,
+        receiver_calls + derived_calls + assertion_calls,
+        source_text,
+        masked_file,
+        method_infos,
     )
     receiver_ends = {int(call["end"]) for call in receiver_calls}
     candidates: list[tuple[int, dict[str, object], str]] = []
@@ -215,6 +219,8 @@ def scan_file(
 
 def inventory(root: Path) -> list[dict[str, object]]:
     """Scan runtime and unit C# validation files under every package."""
+    _text_module._clear_text_caches()
+    _symbols_module._clear_symbol_caches()
     rows: list[dict[str, object]] = []
     xunit_index = _build_xunit_index(root)
     files = sorted(

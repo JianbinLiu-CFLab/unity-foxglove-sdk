@@ -9,6 +9,11 @@ _SCOPED_SYMBOL_CACHE: dict[
     tuple[str, tuple[tuple[str, str], ...]], list[tuple[int, tuple[int, ...], str, str]]
 ] = {}
 
+
+def _clear_symbol_caches() -> None:
+    """Clear scope-bound symbol caches before scanning a tree."""
+    _SCOPED_SYMBOL_CACHE.clear()
+
 try:
     from . import source_text_inventory_text as _text_module
     from .source_text_inventory_text import *

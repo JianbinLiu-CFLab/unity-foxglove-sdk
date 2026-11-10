@@ -51,6 +51,16 @@ _LINE_START_CACHE: dict[str, list[int]] = {}
 _PRODUCT_TYPE_CACHE: dict[tuple[str, str], set[str]] = {}
 
 
+def _clear_text_caches() -> None:
+    """Clear text and repository caches before scanning a tree."""
+    _MASK_CACHE.clear()
+    _COMMENT_CACHE.clear()
+    _REPO_FILE_CACHE.clear()
+    _BRACE_CACHE.clear()
+    _LINE_START_CACHE.clear()
+    _PRODUCT_TYPE_CACHE.clear()
+
+
 def classify(target: str, line: str) -> str:
     """Classify one source-text assertion as boundary, wiring, or implementation."""
     if not target or "<unresolved>" in target:
