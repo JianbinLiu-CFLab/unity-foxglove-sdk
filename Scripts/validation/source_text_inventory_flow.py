@@ -634,17 +634,19 @@ def _delegate_binding_signature(
 
 def _catch_descriptor(text: str, masked: str, header: str, body_start: int, body_end: int) -> str:
     """Describe catch type, filter text, and whether its body rethrows."""
-    header = re.sub(r"\s+", " ", header.strip())
+    header = _normalize_csharp_expression(header)
     body = masked[body_start + 1 : body_end]
     behavior = "rethrow" if re.search(r"\bthrow\b", body) else "swallow"
-    body_hash = hashlib.sha256(re.sub(r"\s+", " ", body).strip().encode()).hexdigest()[:16]
+    normalized_body = _normalize_csharp_expression(text[body_start + 1 : body_end])
+    body_hash = hashlib.sha256(normalized_body.encode()).hexdigest()[:16]
     return f"catch({header}):{behavior}:{body_hash}"
 
-def _finally_descriptor(masked: str, body_start: int, body_end: int) -> str:
+def _finally_descriptor(text: str, masked: str, body_start: int, body_end: int) -> str:
     """Describe finally-body exits and normalized body content."""
     body = masked[body_start + 1 : body_end]
     behavior = "exit" if re.search(r"\b(?:return|throw|goto)\b", body) else "normal"
-    body_hash = hashlib.sha256(re.sub(r"\s+", " ", body).strip().encode()).hexdigest()[:16]
+    normalized_body = _normalize_csharp_expression(text[body_start + 1 : body_end])
+    body_hash = hashlib.sha256(normalized_body.encode()).hexdigest()[:16]
     return f"finally:{behavior}:{body_hash}"
 
 def _lambda_binding_signature(
@@ -798,12 +800,11 @@ def _reachability_signatures(
             directives[-1].append("else")
         elif directive.startswith("#endif") and directives:
             directives.pop()
-    intervals: list[tuple[int, int, str]] = []
-    control_intervals: list[tuple[int, int, str]] = []
-    branch_intervals: list[tuple[int, str]] = []
     constant_values = _constant_values(text, masked)
+    intervals = _symbol_helpers._conditional_branch_intervals(text, masked, constant_values)
+    control_intervals: list[tuple[int, int, str]] = []
     for match in re.finditer(
-        r"\b(?P<kind>if|else\s+if|while|foreach|for|switch)\s*\(", masked
+        r"\b(?P<kind>while|foreach|for|switch)\s*\(", masked
     ):
         open_index = masked.find("(", match.start(), match.end())
         close_index = _balanced_call_end(masked, open_index)
@@ -816,17 +817,11 @@ def _reachability_signatures(
         selector = constant_values.get(condition)
         if selector is not None:
             condition = f"{condition}={selector}"
-        end = (
-            _balanced_brace_end(masked, cursor)
-            if cursor < len(masked) and masked[cursor] == "{"
-            else masked.find(";", cursor)
-        )
+        end = _symbol_helpers._embedded_statement_end(masked, cursor)
         if end is not None and end >= cursor:
             kind = match.group("kind")
             intervals.append((cursor, end, f"{kind}({condition})"))
             control_intervals.append((cursor, end, kind))
-            if kind in {"if", "else if"}:
-                branch_intervals.append((end, condition))
             if kind == "switch" and cursor < len(masked) and masked[cursor] == "{":
                 body_start = cursor + 1
                 body_end = end
@@ -849,11 +844,7 @@ def _reachability_signatures(
                     intervals.append((case_start, case_end, f"switch-case({label})"))
     for match in re.finditer(r"\bdo\s*", masked):
         cursor = match.end()
-        end = (
-            _balanced_brace_end(masked, cursor)
-            if cursor < len(masked) and masked[cursor] == "{"
-            else masked.find(";", cursor)
-        )
+        end = _symbol_helpers._embedded_statement_end(masked, cursor)
         if end is None or end < cursor:
             continue
         tail = re.match(r"\s*while\s*\(", masked[end + 1 :])
@@ -885,28 +876,10 @@ def _reachability_signatures(
             catch_end = _balanced_brace_end(masked, catch_open)
             if catch_end is None:
                 break
-            descriptors.append(
-                _catch_descriptor(
-                    text,
-                    masked,
-                    catch_match.group("header") or "",
-                    catch_open,
-                    catch_end,
-                )
-            )
-            intervals.append(
-                (
-                    catch_open + 1,
-                    catch_end,
-                    _catch_descriptor(
-                        text,
-                        masked,
-                        catch_match.group("header") or "",
-                        catch_open,
-                        catch_end,
-                    ),
-                )
-            )
+            header = text[cursor + catch_match.start("header") : cursor + catch_match.end("header")]
+            descriptor = _catch_descriptor(text, masked, header, catch_open, catch_end)
+            descriptors.append(descriptor)
+            intervals.append((catch_open + 1, catch_end, descriptor))
             cursor = catch_end + 1
         finally_match = re.match(r"\s*finally\s*\{", masked[cursor:], re.DOTALL)
         finally_descriptor = ""
@@ -914,7 +887,7 @@ def _reachability_signatures(
             finally_open = cursor + finally_match.end() - 1
             finally_end = _balanced_brace_end(masked, finally_open)
             if finally_end is not None:
-                finally_descriptor = _finally_descriptor(masked, finally_open, finally_end)
+                finally_descriptor = _finally_descriptor(text, masked, finally_open, finally_end)
                 intervals.append((finally_open + 1, finally_end, finally_descriptor))
         if descriptors:
             value = "try-catch[" + "|".join(descriptors) + "]"
@@ -923,23 +896,6 @@ def _reachability_signatures(
         if finally_descriptor:
             value += f"|{finally_descriptor}"
         intervals.append((open_index + 1, end, value))
-    for match in re.finditer(r"\belse\b(?!\s+if)", masked):
-        cursor = match.end()
-        while cursor < len(masked) and masked[cursor].isspace():
-            cursor += 1
-        end = (
-            _balanced_brace_end(masked, cursor)
-            if cursor < len(masked) and masked[cursor] == "{"
-            else masked.find(";", cursor)
-        )
-        if end is not None and end >= cursor:
-            begin = cursor + 1 if cursor < len(masked) and masked[cursor] == "{" else cursor
-            branch = max(
-                (item for item in branch_intervals if item[0] < match.start()),
-                default=None,
-            )
-            value = f"else({branch[1]})" if branch is not None else "else"
-            intervals.append((begin, end, value))
     exits: list[tuple[int, int, str, str]] = []
     for match in re.finditer(
         r"\b(?P<kind>return|throw|continue|break|goto)\b[^;]*;|\byield\s+break\s*;",

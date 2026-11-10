@@ -271,12 +271,44 @@ class SourceTextInventoryMigrationTests(_FixtureSupport, unittest.TestCase):
             self.assertEqual(1, result.returncode, result.stdout + result.stderr)
             self.assertIn('"field": "reader_signature"', result.stdout)
 
+    def test_upstream_reader_alias_definition_remains_bound(self):
+        """Reject an injected source literal before one or more reader aliases."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(directory, validation_text=(
+                "public static class FixtureValidation { public static void Validate() {\n"
+                'var input = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                'var intermediate = input;\nvar source = intermediate;\nCheck(source.Contains("Product"));\n} }\n'
+            ))
+            self.assertEqual(1, len(inventory(root)))
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            validation.write_text(validation.read_text(encoding="utf-8").replace('Product.cs");', 'Product.cs") + "Product";'), encoding="utf-8")
+            (root / "Packages/fixture/Runtime/Product.cs").write_text("public sealed class Other {}\n", encoding="utf-8")
+            result = self._run_migration_cli(root)
+            self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+            self.assertIn('"field": "reader_signature"', result.stdout)
+
+    def test_delayed_consumer_retains_actual_reachability(self):
+        """Reject an exit inserted between a source predicate and its consumer."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(directory, validation_text=(
+                "public static class FixtureValidation { public static void Validate() {\n"
+                'var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                'bool ok = source.Contains("Product");\nCheck(ok);\n} }\n'
+            ))
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            validation.write_text(validation.read_text(encoding="utf-8").replace("Check(ok);", "if (source.Length >= 0) return;\nCheck(ok);"), encoding="utf-8")
+            result = self._run_migration_cli(root)
+            self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+            self.assertIn('"field": "assertion_signature"', result.stdout)
+
     def test_separate_assertion_result_remains_bound_to_its_consumer(self):
         """Reject bypassed direct and forwarded predicate consumers without blocking additions."""
         for declarations, before, after, expected in (
             ("", "Check(ok);", "Check(true);", 1),
             ("bool forwarded = ok;\n", "Check(forwarded);", "Check(true);", 1),
             ("", "Check(ok);", "Check(ok); Check(true);", 0),
+            ("", "Check(ok);", "{ Check(true); }\nCheck(ok);", 0),
+            ("", "Check(ok);", "{ Check(true); }\n // unchanged consumer\n    Check(ok);", 0),
             ("", "Check(ok);", "// unchanged consumer\nCheck(ok);", 0),
             (
                 "",

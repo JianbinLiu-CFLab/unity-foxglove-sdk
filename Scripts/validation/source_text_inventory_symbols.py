@@ -160,6 +160,102 @@ def _local_dependency_signature(
     return hashlib.sha256("\n".join(pieces).encode()).hexdigest() if pieces else ""
 
 
+def _embedded_statement_end(masked: str, start: int, ends: dict[int, int | None] | None = None) -> int | None:
+    """Locate a complete embedded statement, including its nested dangling else branches."""
+    ends = ends if ends is not None else {}
+    cursor = start
+    while cursor < len(masked) and masked[cursor].isspace():
+        cursor += 1
+    if cursor in ends:
+        return ends[cursor]
+    if cursor >= len(masked):
+        return None
+    end = None
+    header = re.match(r"(?P<kind>if|for|foreach|while|switch|using|lock|fixed)\s*\(", masked[cursor:])
+    if masked[cursor] == "{":
+        end = _balanced_brace_end(masked, cursor)
+    elif header:
+        open_index = cursor + header.end() - 1
+        close_index = _balanced_call_end(masked, open_index)
+        if close_index is not None:
+            end = _embedded_statement_end(masked, close_index + 1, ends)
+            if header.group("kind") == "if" and end is not None:
+                alternate = re.match(r"\s*else\b", masked[end + 1 :])
+                if alternate:
+                    end = _embedded_statement_end(masked, end + 1 + alternate.end(), ends)
+    elif re.match(r"do\b", masked[cursor:]):
+        body_end = _embedded_statement_end(masked, cursor + 2, ends)
+        tail = re.match(r"\s*while\s*\(", masked[body_end + 1 :]) if body_end is not None else None
+        if tail is not None:
+            close_index = _balanced_call_end(masked, body_end + tail.end())
+            if close_index is not None:
+                semicolon = close_index + 1
+                while semicolon < len(masked) and masked[semicolon].isspace():
+                    semicolon += 1
+                if masked[semicolon : semicolon + 1] == ";":
+                    end = semicolon
+    else:
+        depth = 0
+        for index in range(cursor, len(masked)):
+            character = masked[index]
+            if character in "([{":
+                depth += 1
+            elif character in ")]}":
+                if depth == 0:
+                    break
+                depth -= 1
+            elif character == ";" and depth == 0:
+                end = index
+                break
+    ends[cursor] = end
+    return end
+
+
+def _conditional_branch_intervals(
+    text: str, masked: str, constant_values: dict[str, str]
+) -> list[tuple[int, int, str]]:
+    """Bind each runtime branch to its adjacent predecessor and complete condition history."""
+    intervals: list[tuple[int, int, str]] = []
+    branches: list[tuple[int, int, tuple[str, ...]]] = []
+    ends: dict[int, int | None] = {}
+    pattern = re.compile(r"\b(?P<kind>else\s+if|if)\s*\(|\b(?P<alternate>else)\b")
+    for match in pattern.finditer(masked):
+        line_start = masked.rfind("\n", 0, match.start()) + 1
+        if masked[line_start : match.start()].lstrip().startswith("#"):
+            continue
+        kind = _normalize_csharp_expression(match.group("kind") or "else")
+        previous = max(
+            (branch for branch in branches if branch[1] < match.start() and not masked[branch[1] + 1 : match.start()].strip()),
+            key=lambda branch: branch[0],
+            default=None,
+        ) if kind != "if" else None
+        history = previous[2] if previous else (() if kind == "if" else ("UNKNOWN",))
+        prefix = " && ".join(f"!({condition})" for condition in history)
+        body_start = match.end()
+        if kind != "else":
+            open_index = match.end() - 1
+            close_index = _balanced_call_end(masked, open_index)
+            if close_index is None:
+                continue
+            condition = _normalize_csharp_expression(text[open_index + 1 : close_index])
+            if condition in constant_values:
+                condition = f"{condition}={constant_values[condition]}"
+            history += (condition,)
+            condition = f"{prefix} && ({condition})" if prefix else condition
+            descriptor = f"{kind}({condition})"
+            body_start = close_index + 1
+        else:
+            descriptor = f"else({prefix})"
+        while body_start < len(masked) and masked[body_start].isspace():
+            body_start += 1
+        end = _embedded_statement_end(masked, body_start, ends)
+        if end is not None and end >= body_start:
+            intervals.append((body_start, end, descriptor))
+            if kind != "else":
+                branches.append((match.start(), end, history))
+    return intervals
+
+
 def _source_targets(lines: list[str], include_variables: bool = True) -> dict[str, str]:
     """Build a local symbol-to-source-path map from reader calls and path arrays."""
     paths: dict[str, str] = {}

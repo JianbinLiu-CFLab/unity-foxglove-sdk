@@ -197,7 +197,9 @@ def scan_file(
             if containing_method is not None
             else "UNKNOWN"
         )
-        reader_signature = _reader_expression_signature(source_text, call, method_infos)
+        reader_signature = _reader_expression_signature(
+            source_text, call, method_infos, argument_definitions, reachability
+        )
         label_match = PHASE_LABEL_PATTERN.search("".join(lines[max(0, index - 5) : index + 1]))
         containing_harness = min(
             (
@@ -299,17 +301,20 @@ def _predicate_consumer_signature(
             methods, begin + references.start()
         ) is not method:
             continue
-        pieces.append(text[begin:end])
+        prefix_length = re.match(r"[\s}]*", statement.group()).end()
+        pieces.append(text[begin + prefix_length : end])
         forwarded = re.search(r"(?<![\w.])([A-Za-z_]\w*)\s*=(?!=)", statement.group())
         if forwarded:
             names.add(forwarded.group(1))
-        pieces.extend(
-            _local_dependency_signature(
-                text[begin:end], position, argument_definitions.get(method.body_start, []), contexts
+        for position in contexts:
+            if not begin <= position < end:
+                continue
+            pieces.append(contexts.get(position, ""))
+            pieces.append(
+                _local_dependency_signature(
+                    text[begin:end], position, argument_definitions.get(method.body_start, []), contexts
+                )
             )
-            for position in contexts
-            if begin <= position < end
-        )
     normalized = _normalize_csharp_expression("\n".join(pieces))
     return hashlib.sha256(normalized.encode()).hexdigest()
 
@@ -480,9 +485,13 @@ def _validation_metadata(root: Path, source_file: str) -> tuple[str, str]:
 
 
 def _reader_expression_signature(
-    text: str, call: dict[str, object], methods: list[object] | None = None
+    text: str,
+    call: dict[str, object],
+    methods: list[object] | None = None,
+    argument_definitions: dict[int, list[tuple[int, str, str, str]]] | None = None,
+    call_contexts: dict[int, str] | None = None,
 ) -> str:
-    """Return all preceding source assignments in the containing method."""
+    """Return preceding source assignments and their recursive local dependencies."""
     receiver = str(call.get("receiver") or "").split(".", 1)[0]
     if not receiver:
         return ""
@@ -508,6 +517,22 @@ def _reader_expression_signature(
             expressions.append(expression)
         else:
             expressions.append(f"{operator} {expression}")
+    if method is not None:
+        if argument_definitions is None:
+            argument_definitions = _flow_module._argument_definition_index(text, masked, methods)
+        if call_contexts is None:
+            call_contexts = _flow_module._method_call_contexts(
+                text,
+                masked,
+                methods,
+                [{"start": offset, "start_line": text.count("\n", 0, offset)}],
+                argument_definitions,
+            )
+        dependency = _local_dependency_signature(
+            receiver, offset, argument_definitions.get(method.body_start, []), call_contexts
+        )
+        if dependency:
+            expressions.append(f"upstream:{dependency}")
     return "; ".join(expressions)
 
 

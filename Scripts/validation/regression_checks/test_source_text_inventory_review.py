@@ -12,6 +12,118 @@ from .test_source_text_inventory_semantics import _FixtureSupport
 class SourceTextInventoryReviewTests(_FixtureSupport, unittest.TestCase):
     """Keep helper arguments and branch exits bound to existing inventory rows."""
 
+    def test_handler_literal_change_requires_ack(self):
+        """Reject literal changes in filters, rethrows, and finally exception replacement."""
+        bodies = (
+            'try { Check(source.Contains("Product")); } '
+            'catch (System.Exception e) when (string.IsNullOrEmpty("reject")) { }',
+            'try { throw new System.Exception(); } '
+            'catch (System.Exception e) when (!string.IsNullOrEmpty("reject")) { Check(source.Contains("Product")); } '
+            'catch (System.Exception) { }',
+            'try { Check(source.Contains("Product")); } '
+            'catch (System.Exception) { if (!string.IsNullOrEmpty("reject")) throw; }',
+            'try { try { Check(source.Contains("Product")); } '
+            'finally { if (string.IsNullOrEmpty("reject")) throw new System.OperationCanceledException(); } } '
+            'catch (System.OperationCanceledException) { }',
+        )
+        for body in bodies:
+            with self.subTest(body=body):
+                self._assert_flow_mutation(body, '"reject"', '""', 1)
+
+    def test_runtime_else_chain_condition_change_requires_ack(self):
+        """Reject suppressing chained assertions through any prior or enclosing condition."""
+        cases = (
+            (
+                "braced-final-else",
+                'if (source.Length < -1) { } else if (source.Length < 0) { } else { Check(source.Contains("Product")); }',
+                "source.Length < -1",
+                "source.Length >= 0",
+            ),
+            (
+                "braced-else-if",
+                'if (source.Length < 0) { } else if (source.Length >= 0) { Check(source.Contains("Product")); }',
+                "source.Length < 0",
+                "source.Length >= 0",
+            ),
+            (
+                "multiple-else-if",
+                "if (source.Length < -2) { } else if (source.Length < -1) { } "
+                'else if (source.Length < 0) { } else { Check(source.Contains("Product")); }',
+                "source.Length < -1",
+                "source.Length >= 0",
+            ),
+            (
+                "unbraced-final-else",
+                'if (source.Length < -1) ; else if (source.Length < 0) ; else Check(source.Contains("Product"));',
+                "source.Length < -1",
+                "source.Length >= 0",
+            ),
+            (
+                "unbraced-outer-chain",
+                "if (source.Length >= 0) if (source.Length < -1) ; "
+                'else if (source.Length < 0) ; else Check(source.Contains("Product"));',
+                "source.Length >= 0",
+                "source.Length < 0",
+            ),
+            (
+                "dangling-else",
+                'if (source.Length >= 0) if (source.Length < 0) ; else Check(source.Contains("Product"));',
+                "source.Length < 0",
+                "source.Length >= 0",
+            ),
+            (
+                "nested-braced-chain",
+                "if (source.Length < -1) { if (source.Length >= 0) { } } /* branch gap */ "
+                'else if (source.Length < 0) { } else { Check(source.Contains("Product")); }',
+                "source.Length < -1",
+                "source.Length >= 0",
+            ),
+        )
+        for name, body, old, new in cases:
+            with self.subTest(name=name):
+                self._assert_flow_mutation(body, old, new, 1)
+
+    def test_unrelated_branch_conditions_preserve_else_binding(self):
+        """Keep unrelated preceding and nested branches out of an assertion's else chain."""
+        cases = (
+            (
+                "if (source.Length < -1) { } System.Console.WriteLine(0); "
+                'if (source.Length < 0) { } else { Check(source.Contains("Product")); }',
+                "source.Length < -1",
+                "source.Length >= 0",
+            ),
+            (
+                'if (source.Length < 0) { if (source.Length >= 0) { } } else { Check(source.Contains("Product")); }',
+                "source.Length >= 0",
+                "source.Length < 0",
+            ),
+        )
+        for body, old, new in cases:
+            with self.subTest(body=body):
+                self._assert_flow_mutation(body, old, new, 0)
+
+    def _assert_flow_mutation(self, body, old, new, expected):
+        """Observe a control-flow mutation through the real CLI and fixture Git baseline."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(
+                directory,
+                validation_text=(
+                    "public static class FixtureValidation {\n"
+                    "    public static void Validate() {\n"
+                    '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                    f"        {body}\n"
+                    "    }\n}\n"
+                ),
+            )
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace(old, new, 1), encoding="utf-8"
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(expected, code, output)
+            if expected:
+                self.assertIn('field": "reachability"', output)
+
     def test_helper_argument_local_definition_change_requires_ack(self):
         """Reject argument changes through local initializers, aliases, and writes."""
         cases = (

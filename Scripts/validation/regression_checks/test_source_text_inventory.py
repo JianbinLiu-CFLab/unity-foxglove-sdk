@@ -40,6 +40,7 @@ class SourceTextInventoryTests(unittest.TestCase):
             ('source += "Before";', 'source += "Product";', True),
             ('source ??= "Before";', 'source ??= "Product";', True),
             ('source = Same();', 'source += Same();', True),
+            ('var input = ReadAgain(); source = input;', 'var input = ReadAgain() + "Product"; source = input;', True),
             ('source = Before(); source = source.Trim();', 'source = Product(); source = source.Trim();', True),
             ('', '// var source = Fake();\n', False),
             ('', 'var text = @"var source = Fake();";\n', False),
