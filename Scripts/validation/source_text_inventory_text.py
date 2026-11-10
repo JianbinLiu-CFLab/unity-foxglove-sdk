@@ -453,6 +453,19 @@ def _brace_paths(lines: list[str]) -> list[tuple[int, ...]]:
     return scopes
 
 
+def _normalize_csharp_expression(text: str) -> str:
+    """Normalize code spacing and comments while retaining every literal character."""
+    if '"""' in text or re.search(r'\$@?"|@\$', text):
+        return text.strip()
+    pattern = (
+        r"""(?P<literal>@"(?:""|[^"])*"|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')"""
+        r"|(?://[^\n]*|/\*.*?\*/|\s+)+"
+    )
+    return re.sub(
+        pattern, lambda match: match.group("literal") or " ", text, flags=re.DOTALL
+    ).strip()
+
+
 def _strip_csharp_comments_and_strings(text: str) -> str:
     """Remove C# comments and string literals before symbol matching."""
     cached = _MASK_CACHE.get(text)

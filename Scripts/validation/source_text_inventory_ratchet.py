@@ -14,9 +14,9 @@ from pathlib import Path
 from typing import Callable
 
 try:
-    from .source_text_inventory_text import _balanced_call_end, _split_first_argument
+    from .source_text_inventory_text import _balanced_call_end, _normalize_csharp_expression, _split_first_argument
 except ImportError:
-    from source_text_inventory_text import _balanced_call_end, _split_first_argument
+    from source_text_inventory_text import _balanced_call_end, _normalize_csharp_expression, _split_first_argument
 
 
 ACKNOWLEDGEMENTS_PATH = Path("Scripts/validation/source_text_inventory_acknowledgements.json")
@@ -98,10 +98,8 @@ def _checked_expression_signature(token: str, harness: str | None = None) -> str
             open_index = harness.find("(", match.start(), match.end())
             close_index = _balanced_call_end(harness, open_index)
             if close_index is not None:
-                return re.sub(
-                    r"\s+",
-                    " ",
-                    _split_first_argument(harness[open_index + 1 : close_index]).strip(),
+                return _normalize_csharp_expression(
+                    _split_first_argument(harness[open_index + 1 : close_index])
                 )
     match = re.search(r"\bAssert\.(?:Contains|DoesNotContain)\s*\(", token)
     if match:
@@ -114,8 +112,8 @@ def _checked_expression_signature(token: str, harness: str | None = None) -> str
             comma = arguments.find(",", first_offset + len(first)) if first_offset >= 0 else -1
             if comma >= 0:
                 second = _split_first_argument(arguments[comma + 1 :])
-                return re.sub(r"\s+", " ", second.strip())
-    return re.sub(r"\s+", " ", token.strip())
+                return _normalize_csharp_expression(second)
+    return _normalize_csharp_expression(token)
 
 
 def _assertion_context(token: str, harness: str | None = None) -> str:
@@ -659,8 +657,12 @@ def _inventory_parser_migration_change(base_version: str, head_version: str) -> 
 
 
 def _inventory_fingerprint(rows: list[dict[str, object]]) -> str:
-    """Hash the complete inventory with platform-independent JSON encoding."""
-    payload = json.dumps(rows, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    """Hash every row value and duplicate independently of platform row ordering."""
+    serialized = sorted(
+        json.dumps(row, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+        for row in rows
+    )
+    payload = "[" + ",".join(serialized) + "]"
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 

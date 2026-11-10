@@ -44,7 +44,8 @@ class SourceTextInventoryTests(unittest.TestCase):
             ('', '// var source = Fake();\n', False),
             ('', 'var text = @"var source = Fake();";\n', False),
             ('', 'void Other() { var source = Fake(); }\n', False),
-            ('source += "Before"; source = Last();', 'source += "Product"; source = Last();', False),
+            ('source += "Before"; source = Last();', 'source += "Product"; source = Last();', True),
+            ('source = Before(); if (flag) source = Last();', 'source = Product(); if (flag) source = Last();', True),
         )
         for before, after, changed in cases:
             with self.subTest(before=before, after=after):
@@ -804,7 +805,7 @@ class SourceTextInventoryTests(unittest.TestCase):
             )
             rows = inventory(root)
             self.assertEqual(1, len(rows))
-            self.assertIn("exit:return:source.Length > 0", rows[0]["reachability"])
+            self.assertIn("exit:return:if(source.Length > 0)", rows[0]["reachability"])
 
     def test_inventory_caches_reset_between_scans(self):
         """Do not reuse file metadata after a fixture is changed in place."""

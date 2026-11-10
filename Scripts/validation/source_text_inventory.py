@@ -115,11 +115,13 @@ def scan_file(
     validation_flag, dispatch = _validation_metadata(root, path.relative_to(root).as_posix())
     entrypoint = dispatch.rsplit("|", 1)[-1] if dispatch else ""
     method_infos = _flow_module._method_infos(source_text, masked_file)
+    argument_definitions = _flow_module._argument_definition_index(source_text, masked_file, method_infos)
     reachability = _flow_module._method_call_contexts(
         source_text,
         masked_file,
         method_infos,
-        receiver_calls + derived_calls + assertion_calls,
+        receiver_calls + derived_calls + assertion_calls + harness_calls,
+        argument_definitions,
     )
     _, call_paths = _flow_module._call_path_index(
         source_text,
@@ -127,6 +129,7 @@ def scan_file(
         entrypoint,
         reachability,
         method_infos,
+        argument_definitions,
     )
     call_bindings = _flow_module._ambiguous_call_bindings(source_text, masked_file, method_infos)
     harness_signature = _validation_harness_signature(
@@ -134,6 +137,8 @@ def scan_file(
         masked_file,
         method_infos,
         entrypoint,
+        argument_definitions,
+        reachability,
     )
     if partial_harness_signature:
         harness_signature = partial_harness_signature
@@ -203,6 +208,19 @@ def scan_file(
             key=lambda candidate: int(candidate["end"]) - int(candidate["start"]),
             default=None,
         )
+        assertion_signature = _normalize_csharp_expression(token_text)
+        if containing_method is not None:
+            control_signature = _local_dependency_signature(
+                "", int(call["start"]), argument_definitions.get(containing_method.body_start, []), reachability
+            )
+            if control_signature:
+                assertion_signature += f"|control:{control_signature}"
+        if containing_harness is None:
+            consumer_signature = _predicate_consumer_signature(
+                source_text, masked_file, call, method_infos, reachability, argument_definitions
+            )
+            if consumer_signature:
+                assertion_signature += f"|consumer:{consumer_signature}"
         rows.append(
             {
                 "file": path.relative_to(root).as_posix(),
@@ -216,7 +234,7 @@ def scan_file(
                 "unresolved_reason": unresolved_reason,
                 "xunit_coverage": _xunit_coverage(target, root, xunit_index),
                 "token": token_text,
-                "assertion_signature": re.sub(r"\s+", " ", token_text),
+                "assertion_signature": assertion_signature,
                 "reader_signature": reader_signature,
                 "comment_only": _target_comment_only(target, token_text, root, comment_cache),
                 "checked_expression": _checked_expression_signature(
@@ -241,6 +259,59 @@ def scan_file(
             }
         )
     return rows
+
+
+def _predicate_consumer_signature(
+    text: str,
+    masked: str,
+    call: dict[str, object],
+    methods: list[object],
+    contexts: dict[int, str],
+    argument_definitions: dict[int, list[tuple[int, str, str, str]]],
+) -> str:
+    """Bind a stored source predicate to subsequent uses and assertion consumers."""
+    start = int(call["start"])
+    method = _flow_module._method_for_offset(methods, start)
+    if method is None:
+        return ""
+    statement_start = max(
+        masked.rfind(";", method.body_start, start),
+        masked.rfind("{", method.body_start, start),
+    ) + 1
+    assignment = re.search(
+        r"(?<![\w.])(?P<name>[A-Za-z_]\w*)\s*=(?!=)\s*[^;{}]*$",
+        masked[statement_start:start],
+    )
+    statement_end = masked.find(";", int(call["end"]), method.body_end)
+    if assignment is None or statement_end < 0:
+        return ""
+    names = {assignment.group("name")}
+    pieces = [text[statement_start : statement_end + 1]]
+    cursor = statement_end + 1
+    for statement in re.finditer(r"[^;]+;", masked[cursor : method.body_end]):
+        begin = cursor + statement.start()
+        end = cursor + statement.end()
+        references = re.search(
+            r"\b(?:" + "|".join(re.escape(name) for name in sorted(names)) + r")\b",
+            statement.group(),
+        )
+        if references is None or _flow_module._method_for_offset(
+            methods, begin + references.start()
+        ) is not method:
+            continue
+        pieces.append(text[begin:end])
+        forwarded = re.search(r"(?<![\w.])([A-Za-z_]\w*)\s*=(?!=)", statement.group())
+        if forwarded:
+            names.add(forwarded.group(1))
+        pieces.extend(
+            _local_dependency_signature(
+                text[begin:end], position, argument_definitions.get(method.body_start, []), contexts
+            )
+            for position in contexts
+            if begin <= position < end
+        )
+    normalized = _normalize_csharp_expression("\n".join(pieces))
+    return hashlib.sha256(normalized.encode()).hexdigest()
 
 
 def inventory(root: Path) -> list[dict[str, object]]:
@@ -303,9 +374,13 @@ def _validation_harness_signature(
     masked: str | None = None,
     methods: list[object] | None = None,
     entrypoint: str = "",
+    argument_definitions: dict[int, list[tuple[int, str, str, str]]] | None = None,
+    call_contexts: dict[int, str] | None = None,
 ) -> str:
     """Hash local assertion and source-reader helper implementations."""
-    return _flow_module._validation_harness_signature(text, masked, methods, entrypoint)
+    return _flow_module._validation_harness_signature(
+        text, masked, methods, entrypoint, argument_definitions, call_contexts
+    )
 
 
 def _legacy_validation_harness_signature(
@@ -407,7 +482,7 @@ def _validation_metadata(root: Path, source_file: str) -> tuple[str, str]:
 def _reader_expression_signature(
     text: str, call: dict[str, object], methods: list[object] | None = None
 ) -> str:
-    """Return the effective source assignments feeding one assertion."""
+    """Return all preceding source assignments in the containing method."""
     receiver = str(call.get("receiver") or "").split(".", 1)[0]
     if not receiver:
         return ""
@@ -425,15 +500,12 @@ def _reader_expression_signature(
     for match in assignments.finditer(masked, start, offset):
         if _flow_module._method_for_offset(methods, match.start()) != method:
             continue
-        expression = re.sub(
-            r"\s+", " ", text[match.start("expression") : match.end("expression")].strip()
+        expression = _normalize_csharp_expression(
+            text[match.start("expression") : match.end("expression")]
         )
         operator = match.group("operator")
-        depends_on_receiver = re.search(
-            rf"(?<![\w.]){re.escape(receiver)}\b", match.group("expression")
-        )
-        if operator == "=" and not depends_on_receiver:
-            expressions = [expression]
+        if operator == "=" and not expressions:
+            expressions.append(expression)
         else:
             expressions.append(f"{operator} {expression}")
     return "; ".join(expressions)

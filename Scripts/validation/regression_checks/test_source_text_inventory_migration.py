@@ -11,11 +11,16 @@ import textwrap
 import unittest
 from pathlib import Path
 
-from Scripts.validation.source_text_inventory import inventory, _legacy_validation_harness_signature
+from Scripts.validation.source_text_inventory import (
+    inventory,
+    _legacy_validation_harness_signature,
+    _normalize_csharp_expression,
+)
 from Scripts.validation.source_text_inventory_report import write_report
 from Scripts.validation.source_text_inventory_ratchet import (
     _classify_change,
     _checker_digest,
+    _inventory_fingerprint,
     _parser_semantic_changes,
 )
 from .test_source_text_inventory_semantics import _FixtureSupport
@@ -23,6 +28,55 @@ from .test_source_text_inventory_semantics import _FixtureSupport
 
 class SourceTextInventoryMigrationTests(_FixtureSupport, unittest.TestCase):
     """Verify additive legacy metadata and reject parser semantic rewrites."""
+
+    def test_complete_inventory_hash_is_independent_of_row_order(self):
+        """Preserve all values and duplicate rows while normalizing platform sorting."""
+        rows = [{"file": "a.cs", "line": 1, "token": "first"}, {"file": "B.cs", "line": 2, "token": "second"}]
+        self.assertEqual(_inventory_fingerprint(rows), _inventory_fingerprint(list(reversed(rows))))
+        self.assertNotEqual(_inventory_fingerprint(rows), _inventory_fingerprint(rows + [rows[0]]))
+        self.assertNotEqual(
+            _inventory_fingerprint(rows), _inventory_fingerprint([{**rows[0], "token": "changed"}, rows[1]])
+        )
+
+    def test_expression_normalization_preserves_literal_values(self):
+        """Ignore external comments and retain semantic whitespace inside C# literals."""
+        self.assertEqual(
+            _normalize_csharp_expression("bool seed = true;"),
+            _normalize_csharp_expression("bool seed /* unchanged */ = true;"),
+        )
+        for before, after in (
+            ('"two  spaces"', '"two spaces"'),
+            ('"/* first */"', '"/* second */"'),
+            ('@"a""  b"', '@"a"" b"'),
+        ):
+            with self.subTest(literal=before):
+                self.assertNotEqual(_normalize_csharp_expression(before), _normalize_csharp_expression(after))
+
+    def test_inline_guard_definition_and_goto_destination_remain_bound(self):
+        """Reject changed guard values and goto targets before an inline assertion."""
+        for before, after in (
+            (
+                "bool skip = source.Length < 0; if (skip) return;",
+                "bool skip = source.Length >= 0; if (skip) return;",
+            ),
+            ("goto CheckLabel;", "goto EndLabel;"),
+        ):
+            with self.subTest(change=after), tempfile.TemporaryDirectory() as directory:
+                root = self._git_fixture(
+                    directory,
+                    validation_text=(
+                        "public static class FixtureValidation { public static void Validate() {\n"
+                        'var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                        + before
+                        + '\nCheckLabel: Check(source.Contains("Product"));\nEndLabel: return;\n} }\n'
+                    ),
+                )
+                validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+                validation.write_text(
+                    validation.read_text(encoding="utf-8").replace(before, after), encoding="utf-8"
+                )
+                result = self._run_migration_cli(root)
+                self.assertEqual(1, result.returncode, result.stdout + result.stderr)
 
     def test_workflow_hashes_checker_without_trusting_checker_code(self):
         """Detect checker mutations even when the checker forges its own digest."""
@@ -49,14 +103,28 @@ class SourceTextInventoryMigrationTests(_FixtureSupport, unittest.TestCase):
             (root / "Scripts/validation/dataclasses.py").write_text("raise SystemExit(0)\n", encoding="utf-8")
             result = subprocess.run(
                 [sys.executable, "-I", "-B", str(checker), "--help"],
-                cwd=root, capture_output=True, text=True, check=True,
+                cwd=root,
+                capture_output=True,
+                text=True,
+                check=True,
             )
             self.assertIn("usage:", result.stdout)
             write_report(inventory(root), root / "build/imported")
             subprocess.run(
-                [sys.executable, "-I", "-B", str(checker), "--root", str(root),
-                 "--output", str(root / "build/staged")],
-                cwd=root, capture_output=True, text=True, check=True,
+                [
+                    sys.executable,
+                    "-I",
+                    "-B",
+                    str(checker),
+                    "--root",
+                    str(root),
+                    "--output",
+                    str(root / "build/staged"),
+                ],
+                cwd=root,
+                capture_output=True,
+                text=True,
+                check=True,
             )
             self.assertEqual(
                 (root / "build/imported/source_text_inventory.csv").read_bytes(),
@@ -178,6 +246,68 @@ class SourceTextInventoryMigrationTests(_FixtureSupport, unittest.TestCase):
                 result = self._run_migration_cli(root)
                 self.assertEqual(1, result.returncode, result.stdout + result.stderr)
                 self.assertIn('"field": "reader_signature"', result.stdout)
+
+    def test_conditional_reader_assignment_retains_initializer(self):
+        """Reject injected initializer literals despite a later conditional read."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(
+                directory,
+                validation_text=(
+                    "public static class FixtureValidation { public static void Validate() {\n"
+                    'var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                    'if (System.Environment.TickCount == int.MinValue) source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                    'Check(source.Contains("Product"));\n} }\n'
+                ),
+            )
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            text = validation.read_text(encoding="utf-8")
+            validation.write_text(
+                text.replace('Product.cs");', 'Product.cs") + "Product";', 1), encoding="utf-8"
+            )
+            (root / "Packages/fixture/Runtime/Product.cs").write_text(
+                "public sealed class Other {}\n", encoding="utf-8"
+            )
+            result = self._run_migration_cli(root)
+            self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+            self.assertIn('"field": "reader_signature"', result.stdout)
+
+    def test_separate_assertion_result_remains_bound_to_its_consumer(self):
+        """Reject bypassed direct and forwarded predicate consumers without blocking additions."""
+        for declarations, before, after, expected in (
+            ("", "Check(ok);", "Check(true);", 1),
+            ("bool forwarded = ok;\n", "Check(forwarded);", "Check(true);", 1),
+            ("", "Check(ok);", "Check(ok); Check(true);", 0),
+            ("", "Check(ok);", "// unchanged consumer\nCheck(ok);", 0),
+            (
+                "",
+                'Check(ok || "two  spaces" == "two spaces");',
+                'Check(ok || "two spaces" == "two spaces");',
+                1,
+            ),
+            (
+                "",
+                "bool enabled = true; if (enabled) Check(ok);",
+                "bool enabled = false; if (enabled) Check(ok);",
+                1,
+            ),
+        ):
+            with self.subTest(consumer=after), tempfile.TemporaryDirectory() as directory:
+                root = self._git_fixture(
+                    directory,
+                    validation_text=(
+                        "public static class FixtureValidation { public static void Validate() {\n"
+                        'var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                        'bool ok = source.Contains("Product");\n' + declarations + before + "\n} }\n"
+                    ),
+                )
+                validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+                validation.write_text(
+                    validation.read_text(encoding="utf-8").replace(before, after), encoding="utf-8"
+                )
+                result = self._run_migration_cli(root)
+                self.assertEqual(expected, result.returncode, result.stdout + result.stderr)
+                if expected:
+                    self.assertIn('"field": "assertion_signature"', result.stdout)
 
     def test_workflow_approval_cannot_authorize_schema_or_row_loss(self):
         """Preserve schema and row invariants even with exact reviewed fingerprints."""

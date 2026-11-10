@@ -9,17 +9,27 @@ from collections import Counter
 from dataclasses import dataclass
 
 try:
-    from .source_text_inventory_symbols import _normalize_type, _parameter_types, _split_arguments
+    from . import source_text_inventory_symbols as _symbol_helpers
+    from .source_text_inventory_symbols import (
+        _constant_values, _method_parameter_types, _method_return_type,
+        _normalize_type, _parameter_types, _split_arguments,
+    )
     from .source_text_inventory_text import (
         _balanced_brace_end,
         _balanced_call_end,
+        _normalize_csharp_expression,
         _strip_csharp_comments_and_strings,
     )
 except ImportError:
-    from source_text_inventory_symbols import _normalize_type, _parameter_types, _split_arguments
+    import source_text_inventory_symbols as _symbol_helpers
+    from source_text_inventory_symbols import (
+        _constant_values, _method_parameter_types, _method_return_type,
+        _normalize_type, _parameter_types, _split_arguments,
+    )
     from source_text_inventory_text import (
         _balanced_brace_end,
         _balanced_call_end,
+        _normalize_csharp_expression,
         _strip_csharp_comments_and_strings,
     )
 
@@ -76,7 +86,7 @@ def _method_infos(text: str, masked: str) -> list[MethodInfo]:
         body_end = _balanced_brace_end(masked, body_start)
         if body_start < 0 or body_end is None:
             continue
-        signature = re.sub(r"\s+", " ", text[match.start() : body_start].strip())
+        signature = _normalize_csharp_expression(text[match.start() : body_start])
         methods.append(
             MethodInfo(
                 name,
@@ -103,11 +113,7 @@ def _method_infos(text: str, masked: str) -> list[MethodInfo]:
             continue
         body_start = match.start("body")
         body_end = match.end("body")
-        signature = re.sub(
-            r"\s+",
-            " ",
-            text[match.start() : match.start("body")].removesuffix("=>").strip(),
-        )
+        signature = _normalize_csharp_expression(text[match.start() : match.start("body")].removesuffix("=>"))
         methods.append(
             MethodInfo(
                 name,
@@ -125,23 +131,6 @@ def _method_for_offset(methods: list[MethodInfo], offset: int) -> MethodInfo | N
     """Return the smallest method body containing an offset."""
     candidates = [method for method in methods if method.body_start < offset < method.body_end]
     return min(candidates, key=lambda method: method.body_end - method.body_start, default=None)
-
-def _method_parameter_types(masked: str, start: int, body_start: int) -> tuple[str, ...]:
-    """Extract a method's parameter types from its declaration span."""
-    open_index = masked.find("(", start, body_start)
-    close_index = masked.rfind(")", start, body_start)
-    if open_index < 0 or close_index < open_index:
-        return ()
-    return _parameter_types(masked[open_index + 1 : close_index])
-
-def _method_return_type(signature: str, name: str) -> str:
-    """Extract a simple declared return type from a method signature."""
-    match = re.search(
-        rf"(?P<return>[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)?(?:<[^>]+>)?(?:\[\])?)\s+"
-        rf"{re.escape(name)}\s*\(",
-        signature,
-    )
-    return _normalize_type(match.group("return")) if match else ""
 
 def _method_return_types(methods: list[MethodInfo]) -> dict[str, str]:
     """Return unambiguous same-file method return types."""
@@ -166,17 +155,6 @@ def _field_types(text: str, masked: str, methods: list[MethodInfo]) -> dict[str,
             continue
         result[match.group("name")] = _normalize_type(match.group("type"))
     return result
-
-def _constant_values(text: str, masked: str) -> dict[str, str]:
-    """Collect simple boolean, integer, and string initializers for branch selectors."""
-    values: dict[str, str] = {}
-    for match in re.finditer(
-        r"\b(?:(?:bool|int|string|var)\s+)?(?P<name>[A-Za-z_]\w*)\s*=\s*"
-        r"(?P<value>true|false|-?\d+|\"(?:\\.|[^\"\\])*\")\s*;",
-        masked,
-    ):
-        values[match.group("name")] = re.sub(r"\s+", " ", text[match.start("value") : match.end("value")].strip())
-    return values
 
 def _local_types(
     text: str,
@@ -253,6 +231,13 @@ def _call_sites(
         name = match.group("name")
         if name in CONTROL_KEYWORDS:
             continue
+        name_start = method.body_start + match.start()
+        prefix = masked[method.body_start:name_start].rstrip()
+        if prefix.endswith((".", "::")):
+            qualifier_start = max(
+                [method.body_start] + [masked.rfind(delimiter, method.body_start, name_start) + 1 for delimiter in ";{}"]
+            )
+            name = _normalize_csharp_expression(text[qualifier_start:name_start]) + name
         open_index = method.body_start + match.end() - 1
         if known_names is not None:
             if name not in known_names:
@@ -266,11 +251,16 @@ def _call_sites(
                     continue
         yield name, open_index
 
+def _argument_definition_index(text: str, masked: str, methods: list[MethodInfo]) -> dict[int, list[tuple[int, str, str, str]]]:
+    """Build one local-definition index from the already-discovered method bodies."""
+    return _symbol_helpers._argument_definition_index(text, masked, [(method.body_start, method.body_end) for method in methods])
+
 def _method_call_contexts(
     text: str,
     masked: str,
     methods: list[MethodInfo],
     extra_calls: list[dict[str, object]] | None = None,
+    argument_definitions: dict[int, list[tuple[int, str, str, str]]] | None = None,
 ) -> dict[int, str]:
     """Return one shared reachability map for method and assertion calls."""
     methods_by_name: dict[str, list[MethodInfo]] = {}
@@ -278,8 +268,15 @@ def _method_call_contexts(
         methods_by_name.setdefault(method.name, []).append(method)
     calls = list(extra_calls or [])
     line_starts = _line_starts(text)
+    argument_definitions = argument_definitions if argument_definitions is not None else _argument_definition_index(text, masked, methods)
+    calls.extend(
+        {"start": definition[0], "start_line": _line_number(line_starts, definition[0])}
+        for definitions in argument_definitions.values() for definition in definitions
+    )
     for method in methods:
-        for _, open_index in _call_sites(text, masked, method, set(methods_by_name)):
+        for name, open_index in _call_sites(text, masked, method):
+            if name.rsplit(".", 1)[-1].rsplit("::", 1)[-1] not in methods_by_name:
+                continue
             calls.append(
                 {
                     "start": open_index,
@@ -341,6 +338,7 @@ def _method_call_graph(
     masked: str,
     methods: list[MethodInfo],
     call_contexts: dict[int, str] | None = None,
+    argument_definitions: dict[int, list[tuple[int, str, str, str]]] | None = None,
 ) -> dict[str, dict[str, set[str]]]:
     """Build same-file calls with their enclosing control-flow contexts."""
     graph: dict[str, dict[str, set[str]]] = {
@@ -357,7 +355,8 @@ def _method_call_graph(
             _call_sites(text, masked, method, set(methods_by_name))
         )
         call_sites_by_method[method.identity] = call_sites
-    contexts = call_contexts or _method_call_contexts(text, masked, methods)
+    argument_definitions = argument_definitions if argument_definitions is not None else _argument_definition_index(text, masked, methods)
+    contexts = call_contexts if call_contexts is not None else _method_call_contexts(text, masked, methods, argument_definitions=argument_definitions)
     for method in methods:
         local_types: dict[str, str] | None = None
         for name, open_index in call_sites_by_method[method.identity]:
@@ -382,10 +381,15 @@ def _method_call_graph(
             else:
                 continue
             if target is not None:
-                normalized_arguments = re.sub(r"\s+", " ", arguments).strip()
+                normalized_arguments = _normalize_csharp_expression(arguments)
                 context = contexts.get(open_index, "")
                 if normalized_arguments:
                     context = "|".join(value for value in (context, f"args({normalized_arguments})") if value)
+                dependencies = _symbol_helpers._local_dependency_signature(
+                    arguments, open_index, argument_definitions.get(method.body_start, []), contexts
+                )
+                if dependencies:
+                    context = "|".join(value for value in (context, f"locals({dependencies})") if value)
                 graph[method.identity].setdefault(target.identity, set()).add(context)
     return graph
 
@@ -438,7 +442,7 @@ def _ambiguous_call_bindings(
                         ).strip().encode()
                     ).hexdigest()[:16]
                 calls.append(
-                    f"{call_name}({re.sub(r'\\s+', ' ', arguments).strip()}):"
+                    f"{call_name}({_normalize_csharp_expression(arguments)}):"
                     f"{argument_types}->{identity}:unknown_body={unknown_body}"
                 )
         digest = hashlib.sha256("\n".join(sorted(calls)).encode()).hexdigest()
@@ -474,10 +478,11 @@ def _call_path_index(
     entrypoint: str,
     call_contexts: dict[int, str] | None = None,
     methods: list[MethodInfo] | None = None,
+    argument_definitions: dict[int, list[tuple[int, str, str, str]]] | None = None,
 ) -> tuple[list[MethodInfo], dict[str, str]]:
     """Build method metadata and registry call paths once per source file."""
     methods = methods if methods is not None else _method_infos(text, masked)
-    graph = _method_call_graph(text, masked, methods, call_contexts)
+    graph = _method_call_graph(text, masked, methods, call_contexts, argument_definitions)
     paths: dict[str, str] = {}
     entrypoints = [name for name in entrypoint.split(";") if name]
     methods_by_name: dict[str, list[MethodInfo]] = {}
@@ -513,10 +518,14 @@ def _validation_harness_signature(
     masked: str | None = None,
     methods: list[MethodInfo] | None = None,
     entrypoint: str = "",
+    argument_definitions: dict[int, list[tuple[int, str, str, str]]] | None = None,
+    call_contexts: dict[int, str] | None = None,
 ) -> str:
     """Hash assertion and reader helper bodies while excluding registered entrypoints."""
     masked = masked if masked is not None else _strip_csharp_comments_and_strings(text)
     methods = methods if methods is not None else _method_infos(text, masked)
+    argument_definitions = argument_definitions if argument_definitions is not None else _argument_definition_index(text, masked, methods)
+    call_contexts = call_contexts if call_contexts is not None else _method_call_contexts(text, masked, methods, argument_definitions=argument_definitions)
     entrypoints = set(entrypoint.split(";"))
     counts = Counter(method.name for method in methods)
     pieces: list[str] = []
@@ -540,13 +549,18 @@ def _validation_harness_signature(
             )
         ):
             continue
-        pieces.append(
-            re.sub(
-                r"\s+",
-                " ",
-                method.signature + " " + text[method.body_start : method.body_end + 1],
-            ).strip()
-        )
+        pieces.append(_normalize_csharp_expression(method.signature + " " + text[method.body_start : method.body_end + 1]))
+    method_names = {method.name for method in methods}
+    for method in methods:
+        for name, open_index in _call_sites(text, masked, method):
+            terminal = re.search(r"[A-Za-z_]\w*$", name)
+            if name not in method_names and terminal and terminal.group() in method_names:
+                arguments = _call_arguments(text, masked, open_index) or ""
+                normalized = _normalize_csharp_expression(arguments)
+                dependencies = _symbol_helpers._local_dependency_signature(
+                    f"{name}({arguments})", open_index, argument_definitions.get(method.body_start, []), call_contexts
+                )
+                pieces.append(f"qualified:{method.signature}:{name}({normalized})@{call_contexts.get(open_index, '')}:locals({dependencies})")
     lambda_signature = _lambda_binding_signature(text, masked, methods)
     if lambda_signature:
         pieces.append(f"lambda:{lambda_signature}")
@@ -614,7 +628,7 @@ def _delegate_binding_signature(
                 r"=>|\bdelegate\s*\(", arguments
             ):
                 continue
-            normalized = re.sub(r"\s+", " ", arguments).strip()
+            normalized = _normalize_csharp_expression(arguments)
             pieces.append(f"call:{call_name}({normalized})")
     return hashlib.sha256("\n".join(sorted(pieces)).encode()).hexdigest() if pieces else ""
 
@@ -798,7 +812,7 @@ def _reachability_signatures(
         cursor = close_index + 1
         while cursor < len(masked) and masked[cursor].isspace():
             cursor += 1
-        condition = re.sub(r"\s+", " ", text[open_index + 1 : close_index].strip())
+        condition = _normalize_csharp_expression(text[open_index + 1 : close_index])
         selector = constant_values.get(condition)
         if selector is not None:
             condition = f"{condition}={selector}"
@@ -831,7 +845,7 @@ def _reachability_signatures(
                     )
                     label_start = body_start + case_match.start()
                     label_end = body_start + case_match.end() - 1
-                    label = re.sub(r"\s+", " ", text[label_start:label_end].strip())
+                    label = _normalize_csharp_expression(text[label_start:label_end])
                     intervals.append((case_start, case_end, f"switch-case({label})"))
     for match in re.finditer(r"\bdo\s*", masked):
         cursor = match.end()
@@ -848,7 +862,7 @@ def _reachability_signatures(
         open_index = end + tail.end()
         close_index = _balanced_call_end(masked, open_index)
         if close_index is not None:
-            condition = re.sub(r"\s+", " ", text[open_index + 1 : close_index].strip())
+            condition = _normalize_csharp_expression(text[open_index + 1 : close_index])
             selector = constant_values.get(condition)
             if selector is not None:
                 condition = f"{condition}={selector}"
@@ -935,10 +949,12 @@ def _reachability_signatures(
         conditions = [
             value
             for begin, end, value in intervals
-            if begin <= match.start() <= end and value.startswith("if(")
+            if begin <= match.start() <= end
         ]
-        condition = conditions[-1][3:-1] if conditions else ""
+        condition = "|".join(conditions)
         suffix = f":{condition}" if condition else ""
+        if kind == "goto":
+            suffix += ":" + _normalize_csharp_expression(text[match.start() : match.end()])
         exits.append((match.start(), match.end(), kind, f"exit:{kind}{suffix}"))
     result: dict[int, str] = {}
     for call in calls:

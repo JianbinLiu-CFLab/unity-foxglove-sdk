@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 from pathlib import Path
 
@@ -74,6 +75,89 @@ def _parameter_types(parameter_text: str) -> tuple[str, ...]:
         elif tokens:
             result.append(_normalize_type(tokens[0]))
     return tuple(result)
+
+
+def _method_parameter_types(masked: str, start: int, body_start: int) -> tuple[str, ...]:
+    """Extract a method's parameter types from its declaration span."""
+    open_index = masked.find("(", start, body_start)
+    close_index = masked.rfind(")", start, body_start)
+    if open_index < 0 or close_index < open_index:
+        return ()
+    return _parameter_types(masked[open_index + 1 : close_index])
+
+
+def _method_return_type(signature: str, name: str) -> str:
+    """Extract a simple declared return type from a method signature."""
+    match = re.search(
+        rf"(?P<return>[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)?(?:<[^>]+>)?(?:\[\])?)\s+"
+        rf"{re.escape(name)}\s*\(",
+        signature,
+    )
+    return _normalize_type(match.group("return")) if match else ""
+
+
+def _constant_values(text: str, masked: str) -> dict[str, str]:
+    """Collect simple boolean, integer, and string initializers for branch selectors."""
+    values: dict[str, str] = {}
+    for match in re.finditer(
+        r"\b(?:(?:bool|int|string|var)\s+)?(?P<name>[A-Za-z_]\w*)\s*=\s*"
+        r"(?P<value>true|false|-?\d+|\"(?:\\.|[^\"\\])*\")\s*;",
+        masked,
+    ):
+        values[match.group("name")] = _normalize_csharp_expression(text[match.start("value") : match.end("value")])
+    return values
+
+
+def _argument_definition_index(
+    text: str, masked: str, method_regions: list[tuple[int, int]]
+) -> dict[int, list[tuple[int, str, str, str]]]:
+    """Index caller-local definitions and writes once for subsequent dependency queries."""
+    result: dict[int, list[tuple[int, str, str, str]]] = {begin: [] for begin, _ in method_regions}
+    writes = re.compile(
+        r"(?<![\w.])(?P<name>[A-Za-z_]\w*)\s*"
+        r"(?:\?\?=|>>>?=|<<=|[-+*/%&|^]=|=(?!=|>)|\+\+|--)"
+    )
+    declarations = re.compile(
+        r"\b(?:bool|byte|sbyte|short|ushort|int|uint|long|ulong|float|double|decimal|char|string|object)\s+"
+        r"(?P<name>[A-Za-z_]\w*)\s*(?=;)"
+    )
+    matches = sorted([*writes.finditer(masked), *declarations.finditer(masked)], key=lambda match: match.start())
+    for match in matches:
+        owner = min(
+            ((begin, end) for begin, end in method_regions if begin < match.start() < end),
+            key=lambda region: region[1] - region[0],
+            default=None,
+        )
+        if owner is None:
+            continue
+        begin, end = owner
+        statement_end = masked.find(";", match.end(), end)
+        if statement_end < 0:
+            statement_end = end
+        statement_start = max([begin] + [masked.rfind(delimiter, begin, match.start()) + 1 for delimiter in ";{}"])
+        statement = _normalize_csharp_expression(text[statement_start : statement_end + 1])
+        result[begin].append((match.start(), match.group("name"), statement, masked[match.end() : statement_end]))
+    return result
+
+
+def _local_dependency_signature(
+    expression: str,
+    offset: int,
+    definitions: list[tuple[int, str, str, str]],
+    contexts: dict[int, str],
+) -> str:
+    """Hash all preceding definitions reached through an expression and its control guards."""
+    names = set(re.findall(r"\b[A-Za-z_]\w*\b", _strip_csharp_comments_and_strings(expression + " " + contexts.get(offset, ""))))
+    preceding = [definition for definition in definitions if definition[0] < offset]
+    previous_size = -1
+    while previous_size != len(names):
+        previous_size = len(names)
+        for start, name, _, references in preceding:
+            if name in names:
+                dependency_text = references + " " + contexts.get(start, "")
+                names.update(re.findall(r"\b[A-Za-z_]\w*\b", _strip_csharp_comments_and_strings(dependency_text)))
+    pieces = [f"{statement}@{contexts.get(start, '')}" for start, name, statement, _ in preceding if name in names]
+    return hashlib.sha256("\n".join(pieces).encode()).hexdigest() if pieces else ""
 
 
 def _source_targets(lines: list[str], include_variables: bool = True) -> dict[str, str]:
