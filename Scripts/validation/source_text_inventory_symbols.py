@@ -256,6 +256,87 @@ def _conditional_branch_intervals(
     return intervals
 
 
+def _execution_barriers(
+    text: str, masked: str, method_regions: list[tuple[int, int]]
+) -> tuple[list[tuple[int, int, int, str, str]], list[tuple[int, int]]]:
+    """Locate direct awaits and process termination calls within their execution frames."""
+    lambda_regions: list[tuple[int, int]] = []
+    for match in re.finditer(
+        r"(?:\([^;{}]*\)|[A-Za-z_]\w*)\s*=>|\bdelegate(?:\s*\([^)]*\))?\s*\{", masked
+    ):
+        cursor = match.end() - 1 if match.group().endswith("{") else match.end()
+        while cursor < len(masked) and masked[cursor].isspace():
+            cursor += 1
+        if any(begin == cursor for begin, _ in method_regions):
+            continue
+        if masked[cursor : cursor + 1] == "{":
+            end = _balanced_brace_end(masked, cursor)
+        else:
+            end = None
+            depth = 0
+            for index in range(cursor, len(masked)):
+                character = masked[index]
+                if character in "([{":
+                    depth += 1
+                elif character in ")]}":
+                    if depth == 0:
+                        end = index - 1
+                        break
+                    depth -= 1
+                elif character in ",;" and depth == 0:
+                    end = index - 1
+                    break
+        if end is not None and end >= cursor:
+            lambda_regions.append((cursor, end))
+    pattern = re.compile(
+        r"(?<![@\w])(?P<await>await)\b|(?<![\w.:])(?:global\s*::\s*)?"
+        r"(?:System\s*\.\s*)?Environment\s*\.\s*(?P<terminate>Exit|FailFast)\s*\("
+    )
+    barriers: list[tuple[int, int, int, str, str]] = []
+    for match in pattern.finditer(masked):
+        if any(begin <= match.start() <= end for begin, end in lambda_regions):
+            continue
+        owner = min(
+            ((begin, end) for begin, end in method_regions if begin < match.start() < end),
+            key=lambda region: region[1] - region[0],
+            default=None,
+        )
+        if owner is None:
+            continue
+        kind = "await" if match.group("await") else "terminate"
+        end = (
+            _embedded_statement_end(masked, match.start())
+            if kind == "await"
+            else _balanced_call_end(masked, match.end() - 1)
+        )
+        if end is not None:
+            expression = _normalize_csharp_expression(text[match.start() : end + 1])
+            barriers.append((match.start(), end, owner[0], kind, expression))
+    return barriers, lambda_regions
+
+
+def _bind_execution_barriers(
+    barriers: list[tuple[int, int, int, str, str]],
+    lambda_regions: list[tuple[int, int]],
+    contexts: dict[int, str],
+    owners: dict[int, int | None],
+    argument_definitions: dict[int, list[tuple[int, str, str, str]]],
+) -> dict[int, str]:
+    """Bind prior same-frame barriers and local dependencies to existing call contexts."""
+    grouped: dict[int, list[tuple[int, str]]] = {}
+    for begin, end, owner, kind, expression in barriers:
+        dependency = _local_dependency_signature(expression, begin, argument_definitions.get(owner, []), contexts)
+        descriptor = f"before:{kind}:{expression}@{contexts.get(begin, '')}:locals({dependency})"
+        grouped.setdefault(owner, []).append((end, descriptor))
+    result = dict(contexts)
+    for position, context in contexts.items():
+        if any(begin <= position <= end for begin, end in lambda_regions):
+            continue
+        preceding = [descriptor for end, descriptor in grouped.get(owners.get(position), []) if end < position]
+        result[position] = "|".join(value for value in [context, *preceding] if value)
+    return result
+
+
 def _source_targets(lines: list[str], include_variables: bool = True) -> dict[str, str]:
     """Build a local symbol-to-source-path map from reader calls and path arrays."""
     paths: dict[str, str] = {}

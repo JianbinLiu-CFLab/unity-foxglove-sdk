@@ -12,6 +12,66 @@ from .test_source_text_inventory_semantics import _FixtureSupport
 class SourceTextInventoryReviewTests(_FixtureSupport, unittest.TestCase):
     """Keep helper arguments and branch exits bound to existing inventory rows."""
 
+    def test_preceding_await_expression_change_requires_ack(self):
+        """Reject an await that stops completing through literal or caller-local changes."""
+        cases = (
+            ("await System.Threading.Tasks.Task.Delay(0);", "Delay(0)", "Delay(-1)"),
+            ("int delay = 0; await System.Threading.Tasks.Task.Delay(delay);", "delay = 0", "delay = -1"),
+            (
+                "int initial = 0; int delay = initial; await System.Threading.Tasks.Task.Delay(delay);",
+                "initial = 0",
+                "initial = -1",
+            ),
+        )
+        for prelude, old, new in cases:
+            with self.subTest(prelude=prelude):
+                body = prelude + ' Check(source.Contains("Product"));'
+                self._assert_flow_mutation(body, old, new, 1, async_entry=True)
+
+    def test_direct_process_termination_before_assertion_requires_ack(self):
+        """Reject direct Exit and FailFast calls that terminate the validation runner."""
+        for qualifier in ("Environment", "System.Environment", "global::System.Environment"):
+            for invocation in ('Exit(0)', 'FailFast("failure")'):
+                with self.subTest(qualifier=qualifier, invocation=invocation):
+                    assertion = 'Check(source.Contains("Product"));'
+                    self._assert_flow_mutation(assertion, assertion, f"{qualifier}.{invocation}; " + assertion, 1)
+
+    def test_unused_nested_barriers_preserve_outer_assertion(self):
+        """Keep uncalled local-function and lambda barriers out of the enclosing method."""
+        cases = (
+            (
+                "async System.Threading.Tasks.Task Unused() { await System.Threading.Tasks.Task.Delay(0); }",
+                "Delay(0)",
+                "Delay(-1)",
+            ),
+            ("void Unused() { System.Environment.Exit(0); }", "Exit(0)", "Exit(1)"),
+            (
+                "System.Func<System.Threading.Tasks.Task<string>> unused = async () => "
+                '{ return await System.Threading.Tasks.Task.FromResult("before"); };',
+                '"before"',
+                '"after"',
+            ),
+            ('System.Action unused = () => { System.Environment.FailFast("before"); };', '"before"', '"after"'),
+        )
+        for prelude, old, new in cases:
+            with self.subTest(prelude=prelude):
+                self._assert_flow_mutation(prelude + ' Check(source.Contains("Product"));', old, new, 0)
+
+    def test_execution_barrier_comments_and_unrelated_checks_are_strengthening(self):
+        """Allow comments and unrelated checks around an unchanged execution barrier."""
+        for prelude, async_entry in (
+            ("await System.Threading.Tasks.Task.Delay(0);", True),
+            ("System.Environment.Exit(0);", False),
+        ):
+            with self.subTest(prelude=prelude):
+                self._assert_flow_mutation(
+                    prelude + ' Check(source.Contains("Product"));',
+                    prelude,
+                    "/* unchanged execution */ " + prelude + " Check(1 + 1 == 2);",
+                    0,
+                    async_entry=async_entry,
+                )
+
     def test_handler_literal_change_requires_ack(self):
         """Reject literal changes in filters, rethrows, and finally exception replacement."""
         bodies = (
@@ -102,14 +162,15 @@ class SourceTextInventoryReviewTests(_FixtureSupport, unittest.TestCase):
             with self.subTest(body=body):
                 self._assert_flow_mutation(body, old, new, 0)
 
-    def _assert_flow_mutation(self, body, old, new, expected):
+    def _assert_flow_mutation(self, body, old, new, expected, async_entry=False):
         """Observe a control-flow mutation through the real CLI and fixture Git baseline."""
         with tempfile.TemporaryDirectory() as directory:
+            modifiers = "public static async void" if async_entry else "public static void"
             root = self._git_fixture(
                 directory,
                 validation_text=(
                     "public static class FixtureValidation {\n"
-                    "    public static void Validate() {\n"
+                    f"    {modifiers} Validate() {{\n"
                     '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
                     f"        {body}\n"
                     "    }\n}\n"

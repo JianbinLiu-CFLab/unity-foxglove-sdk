@@ -210,10 +210,16 @@ def scan_file(
             key=lambda candidate: int(candidate["end"]) - int(candidate["start"]),
             default=None,
         )
+        checked_expression = _checked_expression_signature(
+            token_text, str(containing_harness["text"]) if containing_harness else None
+        )
         assertion_signature = _normalize_csharp_expression(token_text)
         if containing_method is not None:
             control_signature = _local_dependency_signature(
-                "", int(call["start"]), argument_definitions.get(containing_method.body_start, []), reachability
+                checked_expression,
+                int(call["start"]),
+                argument_definitions.get(containing_method.body_start, []),
+                reachability,
             )
             if control_signature:
                 assertion_signature += f"|control:{control_signature}"
@@ -239,9 +245,7 @@ def scan_file(
                 "assertion_signature": assertion_signature,
                 "reader_signature": reader_signature,
                 "comment_only": _target_comment_only(target, token_text, root, comment_cache),
-                "checked_expression": _checked_expression_signature(
-                    token_text, str(containing_harness["text"]) if containing_harness else None
-                ),
+                "checked_expression": checked_expression,
                 "assertion_context": _assertion_context(
                     token_text, str(containing_harness["text"]) if containing_harness else None
                 ),

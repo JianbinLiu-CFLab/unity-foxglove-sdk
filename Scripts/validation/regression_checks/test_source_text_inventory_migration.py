@@ -52,6 +52,48 @@ class SourceTextInventoryMigrationTests(_FixtureSupport, unittest.TestCase):
             with self.subTest(literal=before):
                 self.assertNotEqual(_normalize_csharp_expression(before), _normalize_csharp_expression(after))
 
+    def test_inline_assertion_operands_retain_local_dependencies(self):
+        """Reject bypass operands and aliases while allowing unrelated local checks."""
+        scratch = Path(__file__).resolve().parents[3] / "build/tmp/scratch"
+        scratch.mkdir(parents=True, exist_ok=True)
+        cases = (
+            ("direct", "bool bypass = false;", 'Check(bypass || source.Contains("Product"));',
+             "bool bypass = false;", "bool bypass = true;", 1),
+            ("alias", "bool seed = false; bool bypass = seed;", 'Check(bypass || source.Contains("Product"));',
+             "bool seed = false;", "bool seed = true;", 1),
+            ("unrelated-local", "bool unused = false;", 'Check(source.Contains("Product"));',
+             "bool unused = false;", "bool unused = true;", 0),
+            ("unrelated-check", "bool unrelated = false;", 'Check(unrelated); Check(source.Contains("Product"));',
+             "bool unrelated = false;", "bool unrelated = true;", 0),
+            ("added-check", "", 'Check(source.Contains("Product"));',
+             'Check(source.Contains("Product"));', 'Check(true); Check(source.Contains("Product"));', 0),
+        )
+        for name, declarations, checks, before, after, expected in cases:
+            with self.subTest(name=name), tempfile.TemporaryDirectory(dir=scratch) as directory:
+                root = self._git_fixture(
+                    directory,
+                    validation_text=(
+                        "public static class FixtureValidation { public static void Validate() {\n"
+                        'var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                        + declarations + "\n" + checks + "\n} }\n"
+                    ),
+                )
+                self.assertEqual(1, len(inventory(root)))
+                baseline = self._run_migration_cli(root)
+                self.assertEqual(0, baseline.returncode, baseline.stdout + baseline.stderr)
+                validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+                validation.write_text(
+                    validation.read_text(encoding="utf-8").replace(before, after), encoding="utf-8"
+                )
+                if expected:
+                    (root / "Packages/fixture/Runtime/Product.cs").write_text(
+                        "public sealed class Other {}\n", encoding="utf-8"
+                    )
+                result = self._run_migration_cli(root)
+                self.assertEqual(expected, result.returncode, result.stdout + result.stderr)
+                if expected:
+                    self.assertIn('"field": "assertion_signature"', result.stdout)
+
     def test_inline_guard_definition_and_goto_destination_remain_bound(self):
         """Reject changed guard values and goto targets before an inline assertion."""
         for before, after in (
@@ -689,8 +731,8 @@ class SourceTextInventoryMigrationTests(_FixtureSupport, unittest.TestCase):
                 row["legacy_harness_signature"],
             )
 
-    def test_added_harness_sensitivity_is_strengthening(self):
-        """Treat a newly populated harness signature as added parser sensitivity."""
+    def test_new_opaque_harness_signature_requires_acknowledgement(self):
+        """Require review when a new helper may shadow imported behavior."""
         base = {
             "file": "FixtureValidation.cs",
             "validation_flag": "--fixture",
@@ -700,8 +742,8 @@ class SourceTextInventoryMigrationTests(_FixtureSupport, unittest.TestCase):
         }
         head = {**base, "harness_signature": "new-signature"}
         strengthened, weakening = _classify_change(base, head, ("harness_signature",))
-        self.assertEqual([], weakening)
-        self.assertEqual(["harness_signature"], [item["field"] for item in strengthened])
+        self.assertEqual(["harness_signature"], weakening)
+        self.assertEqual([], strengthened)
 
     def test_legacy_unversioned_parser_migration_is_inventory_scoped(self):
         """Report new version metadata without acknowledging semantic weakening."""

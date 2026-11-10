@@ -317,9 +317,9 @@ jobs:
             cat > "$migration_approval_file" <<'MIGRATION_APPROVAL'
           {
             "base_revision": "fe195f288a3df0c9754056ef2d84c095c2e98cf7",
-            "checker_sha256": "d1463be1d89db85ba35d6f93392e1c05dfa1ef2bfa21fb66f7e3a2e7e6b7ffbf",
+            "checker_sha256": "0ade619f83c032dd3c49c68e64a7dc4d3f944414aba0e39a14b48ba8eecaa52d",
             "base_inventory_sha256": "ae5e9f418ef6d23fb65485a2ba756ba7aeeb27632cd040735d0ed111540856cc",
-            "current_inventory_sha256": "a6472011426d8d90c1f6321b551aa5b82691daa28b08ffd798b609afe18451e8",
+            "current_inventory_sha256": "0d4c2ff61ac1ee07ed076ed5b254e62724e1b9ec4e98193c518b1ad48d4a31a9",
             "reason": "User approved this exact legacy-to-v2 parser migration through the reviewed workflow on 2026-11-10."
           }
           MIGRATION_APPROVAL

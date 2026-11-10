@@ -284,7 +284,7 @@ def _method_call_contexts(
                 }
             )
     return _reachability_signatures(
-        text.splitlines(), calls, text, masked, methods
+        text.splitlines(), calls, text, masked, methods, argument_definitions
     )
 
 def _line_starts(text: str) -> list[int]:
@@ -784,9 +784,21 @@ def _reachability_signatures(
     text: str,
     masked: str,
     methods: list[MethodInfo] | None = None,
+    argument_definitions: dict[int, list[tuple[int, str, str, str]]] | None = None,
 ) -> dict[int, str]:
     """Return preprocessor and enclosing control-flow state for calls in one file."""
     methods = methods if methods is not None else _method_infos(text, masked)
+    argument_definitions = argument_definitions if argument_definitions is not None else _argument_definition_index(text, masked, methods)
+    barriers, lambda_regions = _symbol_helpers._execution_barriers(text, masked, [(method.body_start, method.body_end) for method in methods])
+    calls = list(calls)
+    positions = {int(call["start"]) for call in calls}
+    line_starts = _line_starts(text)
+    extra_positions = [definition[0] for definitions in argument_definitions.values() for definition in definitions]
+    extra_positions.extend(barrier[0] for barrier in barriers)
+    calls.extend(
+        {"start": position, "start_line": _line_number(line_starts, position)}
+        for position in extra_positions if position not in positions
+    )
     states: list[str] = []
     directives: list[list[str]] = []
     for line in lines:
@@ -913,10 +925,12 @@ def _reachability_signatures(
             suffix += ":" + _normalize_csharp_expression(text[match.start() : match.end()])
         exits.append((match.start(), match.end(), kind, f"exit:{kind}{suffix}"))
     result: dict[int, str] = {}
+    owners: dict[int, int | None] = {}
     for call in calls:
         start = int(call["start"])
         line = int(call["start_line"])
         method = _method_for_offset(methods, start)
+        owners[start] = method.body_start if method is not None else None
         active = [value for begin, end, value in intervals if begin <= start <= end]
         for begin, end, kind, value in exits:
             if method is None or not (method.body_start < begin and end < start):
@@ -941,4 +955,4 @@ def _reachability_signatures(
         result[start] = "|".join(
             ([states[line]] if line < len(states) and states[line] else []) + active
         )
-    return result
+    return _symbol_helpers._bind_execution_barriers(barriers, lambda_regions, result, owners, argument_definitions)

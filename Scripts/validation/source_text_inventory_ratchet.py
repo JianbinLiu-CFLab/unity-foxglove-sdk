@@ -361,12 +361,16 @@ def _load_acknowledgements(
         )
         if completed.returncode != 0:
             return [], []
-        data = json.loads(completed.stdout.decode("utf-8"))
+        raw = completed.stdout.decode("utf-8")
     else:
         path = root / ACKNOWLEDGEMENTS_PATH
         if not path.is_file():
             return [], []
-        data = json.loads(path.read_text(encoding="utf-8"))
+        raw = path.read_text(encoding="utf-8")
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return [], ["acknowledgements must contain valid JSON"]
     entries = data.get("acknowledgements", data) if isinstance(data, dict) else data
     if not isinstance(entries, list):
         return [], ["acknowledgements must be a list"]
@@ -505,12 +509,6 @@ def _classify_change(
             continue
         if field == "dispatch":
             if not _dispatch_default(base) and _dispatch_default(head):
-                strengthened.append(_change(base, head, field, before, after))
-            else:
-                weakening.append(field)
-            continue
-        if field == "harness_signature":
-            if not before and after:
                 strengthened.append(_change(base, head, field, before, after))
             else:
                 weakening.append(field)
@@ -773,6 +771,8 @@ def _verify_base_inventory(
         changes.append(_inventory_count_change("unknown_count", base_unknown, head_unknown))
     changes = list({_ack_key(change): change for change in changes}.values())
     acknowledgements, ack_errors = _load_acknowledgements(root, revision)
+    _, head_ack_errors = _load_acknowledgements(root)
+    ack_errors.extend(f"head {error}" for error in head_ack_errors)
     ack_map = {_ack_key(entry): entry for entry in acknowledgements}
     acknowledged: list[dict[str, object]] = []
     unacknowledged: list[dict[str, object]] = []

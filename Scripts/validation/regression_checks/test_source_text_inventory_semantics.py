@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 import tempfile
@@ -17,6 +18,61 @@ class _FixtureSupport:
     _run_fixture_gate = _gate_module.SourceTextInventoryGateTests._run_fixture_gate
 class SourceTextInventorySemanticTests(_FixtureSupport, unittest.TestCase):
     """Cover parser schema, control flow, overload, and lambda semantics."""
+
+    def test_head_acknowledgement_schema_is_validated(self):
+        """Reject malformed proposed manifests without granting head entries authority."""
+        entry = {
+            "file": "old.cs", "validation_flag": "--old", "label": "old", "field": "row_removed",
+            "base_sha256": "a" * 64, "head_sha256": "b" * 64,
+            "reason": "Reviewed replacement behavior is recorded before the later removal.",
+        }
+        for content, expected in (
+            (json.dumps({"acknowledgements": [entry]}), 0),
+            (json.dumps({"acknowledgements": [{**entry, "reason": ""}]}), 1),
+            (json.dumps({"acknowledgements": "invalid"}), 1),
+            ("{invalid-json", 1),
+        ):
+            with self.subTest(content=content), tempfile.TemporaryDirectory() as directory:
+                root = self._git_fixture(directory)
+                path = root / "Scripts/validation/source_text_inventory_acknowledgements.json"
+                path.write_text(content, encoding="utf-8")
+                code, output = self._run_fixture_gate(root)
+                self.assertEqual(expected, code, output)
+                if not expected:
+                    self.assertIn("ack_unused=0", output)
+
+    def test_shadowing_imported_harness_addition_requires_ack(self):
+        """Reject local assertion or reader helpers shadowing imported throwing behavior."""
+        for helper in (
+            "private static void Check(bool ok) { }",
+            'private static string ReadRequiredRepoText(string path) { return "Product"; }',
+        ):
+            with self.subTest(helper=helper), tempfile.TemporaryDirectory() as directory:
+                root = self._git_fixture(directory, validation_text=(
+                    "using static SharedAssertions;\npublic static class FixtureValidation {\n"
+                    "public static void Validate() {\n"
+                    'var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                    'Check(source.Contains("Product"));\n}\n}\n'
+                ))
+                shared = root / "Packages/fixture/Tests/Runtime/SharedAssertions.cs"
+                shared.write_text(
+                    "public static class SharedAssertions {\n"
+                    "public static string ReadRequiredRepoText(string path) => System.IO.File.ReadAllText(path);\n"
+                    "public static void Check(bool ok) { if (!ok) throw new System.Exception(); }\n}\n",
+                    encoding="utf-8",
+                )
+                subprocess.run(["git", "-C", str(root), "add", str(shared)], check=True)
+                subprocess.run(["git", "-C", str(root), "commit", "-q", "-m", "shared-harness-base"], check=True)
+                rows = _gate_module.inventory(root)
+                self.assertEqual(1, len(rows))
+                self.assertEqual("", rows[0]["harness_signature"])
+                validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+                text = validation.read_text(encoding="utf-8")
+                closing = text.rfind("}")
+                validation.write_text(text[:closing] + helper + "\n" + text[closing:], encoding="utf-8")
+                code, output = self._run_fixture_gate(root)
+                self.assertEqual(1, code, output)
+                self.assertIn('field": "harness_signature"', output)
 
 
 
