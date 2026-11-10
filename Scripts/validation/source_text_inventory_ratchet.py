@@ -544,7 +544,8 @@ def _parser_semantic_changes(
     current_versions = {
         str(row.get("parser_version", "")) for row in current_rows if row.get("parser_version")
     }
-    legacy_unversioned = not base_versions and bool(current_versions)
+    base_has_version_field = any("parser_version" in row for row in base_rows)
+    legacy_unversioned = not base_has_version_field and len(current_versions) == 1
     if legacy_unversioned:
         strengthened.append(
             {
@@ -552,11 +553,11 @@ def _parser_semantic_changes(
                 "field": "parser_schema_added",
             }
         )
-    elif current_versions and base_versions != current_versions:
+    elif base_versions != current_versions:
         changes.append(
             _inventory_parser_migration_change(
-                next(iter(base_versions), "legacy-unversioned"),
-                next(iter(current_versions)),
+                "|".join(sorted(base_versions)) or ("<missing>" if base_has_version_field else "legacy-unversioned"),
+                "|".join(sorted(current_versions)) or "<missing>",
             )
         )
     for base, current in matches:
@@ -569,14 +570,6 @@ def _parser_semantic_changes(
         for field in weakening_fields:
             before = str(base.get(field, ""))
             after = str(current.get(field, ""))
-            if legacy_unversioned and _legacy_parser_change_is_additive(
-                field,
-                before,
-                after,
-                current,
-            ):
-                strengthened.append(_change(base, current, f"parser_{field}", before, after))
-                continue
             changes.append(
                 _change(
                     base,
@@ -615,8 +608,10 @@ def _row_schema_changes(rows: list[dict[str, object]], parser_side: str) -> list
     """Build weakening records for rows that omit protected parser metadata."""
     changes: list[dict[str, object]] = []
     for row in rows:
-        missing = sorted(REQUIRED_ROW_FIELDS - set(row))
-        for field in missing:
+        missing = REQUIRED_ROW_FIELDS - set(row)
+        if not row.get("parser_version"):
+            missing = missing | {"parser_version"}
+        for field in sorted(missing):
             changes.append(
                 {
                     "file": row.get("file", ""),
@@ -633,44 +628,6 @@ def _row_schema_changes(rows: list[dict[str, object]], parser_side: str) -> list
                 }
             )
     return changes
-
-
-def _legacy_parser_change_is_additive(
-    field: str,
-    before: str,
-    after: str,
-    current: dict[str, object],
-) -> bool:
-    """Allow only audited additive metadata during the first parser migration."""
-    if not after:
-        return False
-    if field == "harness_signature":
-        return bool(current.get("legacy_harness_signature")) and (
-            current.get("legacy_harness_signature") == before
-        )
-    if field == "target":
-        before_parts = [part for part in before.split(";") if part]
-        after_parts = [part for part in after.split(";") if part]
-        return all(
-            part in after_parts
-            or (
-                part == "<directory>"
-                and any(value.startswith("<directory>:") for value in after_parts)
-            )
-            for part in before_parts
-        )
-    if field == "reachability":
-        before_parts = [part for part in before.split("|") if part]
-        after_parts = [part for part in after.split("|") if part]
-        return all(
-            part in after_parts
-            or (
-                re.fullmatch(r"exit:(?:return|throw|break|continue|goto|yield break)", part)
-                and any(value.startswith(part + ":") for value in after_parts)
-            )
-            for part in before_parts
-        )
-    return False
 
 
 def _inventory_count_change(field: str, base_value: int, head_value: int) -> dict[str, object]:
@@ -701,17 +658,46 @@ def _inventory_parser_migration_change(base_version: str, head_version: str) -> 
     }
 
 
+def _inventory_fingerprint(rows: list[dict[str, object]]) -> str:
+    """Hash the complete inventory with platform-independent JSON encoding."""
+    payload = json.dumps(rows, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _migration_fingerprints(
+    root: Path,
+    revision: str,
+    base_rows: list[dict[str, object]],
+    current_rows: list[dict[str, object]],
+) -> dict[str, str]:
+    """Bind migration evidence to one base commit, checker, and pair of full scans."""
+    base_revision = subprocess.run(
+        ["git", "rev-parse", f"{revision}^{{commit}}"],
+        cwd=root, check=True, capture_output=True, text=True,
+    ).stdout.strip()
+    return {
+        "base_revision": base_revision,
+        "checker_sha256": _checker_digest(root),
+        "base_inventory_sha256": _inventory_fingerprint(base_rows),
+        "current_inventory_sha256": _inventory_fingerprint(current_rows),
+    }
+
+
 def _verify_base_inventory(
     root: Path,
     rows: list[dict[str, object]],
     revision: str,
     inventory_callback: Callable[[Path], list[dict[str, object]]] | None = None,
+    migration_approval: Path | None = None,
+    output: Path | None = None,
 ) -> int:
     """Classify base/head changes and enforce exact acknowledgement entries."""
     if inventory_callback is None:
         raise RuntimeError("current inventory callback is required")
     checker_changed = _checker_digest(root) != _checker_digest(root, revision)
     base_rows = _inventory_at_revision(root, revision, inventory_callback=inventory_callback)
+    migration_errors: list[str] = []
+    approved_parser_changes: list[dict[str, object]] = []
     if checker_changed:
         base_status_rows = _inventory_at_revision(
             root,
@@ -720,10 +706,43 @@ def _verify_base_inventory(
             inventory_callback=inventory_callback,
         )
         parser_changes, parser_strengthened = _parser_semantic_changes(base_rows, base_status_rows)
+        fingerprints = _migration_fingerprints(root, revision, base_rows, base_status_rows)
+        if output is not None:
+            evidence = {
+                "fingerprints": fingerprints,
+                "parser_changes": parser_changes,
+                "parser_change_fields": dict(Counter(str(change["field"]) for change in parser_changes)),
+            }
+            output.mkdir(parents=True, exist_ok=True)
+            (output / "parser_migration_evidence.json").write_text(
+                json.dumps(evidence, sort_keys=True, indent=2) + "\n", encoding="utf-8"
+            )
+        if migration_approval is not None:
+            approval = json.loads(migration_approval.read_text(encoding="utf-8"))
+            if not isinstance(approval, dict):
+                raise RuntimeError("parser migration approval must be an object")
+            migration_errors = [
+                field for field, value in fingerprints.items() if approval.get(field) != value
+            ]
+            if not isinstance(approval.get("reason"), str) or not approval["reason"].strip():
+                migration_errors.append("reason")
+            current_versions = {row.get("parser_version") for row in base_status_rows}
+            if any("parser_version" in row for row in base_rows) or len(current_versions) != 1:
+                migration_errors.append("not a legacy-to-versioned migration")
+            if not migration_errors:
+                approved_fields = {f"parser_{field}" for field in PARSER_COMPARE_FIELDS}
+                approved_parser_changes = [
+                    change for change in parser_changes if change["field"] in approved_fields
+                ]
+                parser_changes = [
+                    change for change in parser_changes if change["field"] not in approved_fields
+                ]
     else:
         base_status_rows = base_rows
         parser_changes = []
         parser_strengthened = []
+        if migration_approval is not None:
+            migration_errors.append("checker did not change")
     matches, missing = _match_base_rows(base_status_rows, rows, strict=True)
     strengthened: list[dict[str, object]] = list(parser_strengthened)
     changes: list[dict[str, object]] = _row_schema_changes(rows, "head")
@@ -778,6 +797,14 @@ def _verify_base_inventory(
                 "SOURCE_TEXT_INVENTORY_PARSER_MIGRATION "
                 f"{change['base_value']}->{change['head_value']} additive_schema"
             )
+    if migration_approval is not None and not migration_errors:
+        print(
+            "SOURCE_TEXT_INVENTORY_PARSER_MIGRATION_APPROVED "
+            f"changes={len(approved_parser_changes)} "
+            f"fingerprints={json.dumps(fingerprints, sort_keys=True)}"
+        )
+    if migration_errors:
+        print(f"SOURCE_TEXT_INVENTORY_PARSER_MIGRATION_REJECTED {','.join(migration_errors)}")
     if ack_errors:
         for error in ack_errors:
             print(f"SOURCE_TEXT_INVENTORY_ACK_ERROR {error}")
@@ -788,4 +815,4 @@ def _verify_base_inventory(
             suggestion = dict(change)
             suggestion["reason"] = ""
             print(f"SOURCE_TEXT_INVENTORY_UNACKNOWLEDGED {json.dumps(suggestion, sort_keys=True)}")
-    return 1 if ack_errors or unacknowledged else 0
+    return 1 if ack_errors or unacknowledged or migration_errors else 0

@@ -336,6 +336,12 @@ class _RunCiTestsPart1:
         self.assertIn("trusted_checker", gate)
         self.assertIn("--base-ref", gate)
         self.assertIn(":(glob)Scripts/validation/source_text_inventory*.py", gate)
+        self.assertIn("--parser-migration-approval", gate)
+        self.assertIn("actual_migration_checker_sha", gate)
+        self.assertIn("expected_migration_checker_sha", gate)
+        self.assertIn("base_inventory_sha256", gate)
+        self.assertIn("current_inventory_sha256", gate)
+        self.assertIn("hashlib.sha256()", gate)
         self.assertNotIn("16763361a8c6d009eb2bfb4e7dab7af9efb94ca7", gate)
         self.assertNotIn("using reviewed bootstrap checker", gate)
 

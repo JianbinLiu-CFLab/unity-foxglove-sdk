@@ -133,6 +133,7 @@ def scan_file(
         source_text,
         masked_file,
         method_infos,
+        entrypoint,
     )
     if partial_harness_signature:
         harness_signature = partial_harness_signature
@@ -191,7 +192,7 @@ def scan_file(
             if containing_method is not None
             else "UNKNOWN"
         )
-        reader_signature = _reader_expression_signature(source_text, call)
+        reader_signature = _reader_expression_signature(source_text, call, method_infos)
         label_match = PHASE_LABEL_PATTERN.search("".join(lines[max(0, index - 5) : index + 1]))
         containing_harness = min(
             (
@@ -272,7 +273,14 @@ def inventory(root: Path) -> list[dict[str, object]]:
         )
         masked = _strip_csharp_comments_and_strings(combined)
         methods = _flow_module._method_infos(combined, masked)
-        signature = _validation_harness_signature(combined, masked, methods)
+        entrypoints = set()
+        for path in group_paths:
+            _, dispatch = _validation_metadata(root, path.relative_to(root).as_posix())
+            if dispatch:
+                entrypoints.update(dispatch.rsplit("|", 1)[-1].split(";"))
+        signature = _validation_harness_signature(
+            combined, masked, methods, ";".join(sorted(entrypoints))
+        )
         for path in group_paths:
             partial_signatures[path] = signature
     comment_cache: dict[str, tuple[str, str]] = {}
@@ -294,9 +302,10 @@ def _validation_harness_signature(
     text: str,
     masked: str | None = None,
     methods: list[object] | None = None,
+    entrypoint: str = "",
 ) -> str:
     """Hash local assertion and source-reader helper implementations."""
-    return _flow_module._validation_harness_signature(text, masked, methods)
+    return _flow_module._validation_harness_signature(text, masked, methods, entrypoint)
 
 
 def _legacy_validation_harness_signature(
@@ -395,22 +404,39 @@ def _validation_metadata(root: Path, source_file: str) -> tuple[str, str]:
     return result
 
 
-def _reader_expression_signature(text: str, call: dict[str, object]) -> str:
-    """Return the source-reader assignment expression feeding one assertion."""
+def _reader_expression_signature(
+    text: str, call: dict[str, object], methods: list[object] | None = None
+) -> str:
+    """Return the effective source assignments feeding one assertion."""
     receiver = str(call.get("receiver") or "").split(".", 1)[0]
     if not receiver:
         return ""
-    prefix = text[: int(call["start"])]
-    matches = list(
-        re.finditer(
-            rf"(?:var|string)\s+{re.escape(receiver)}\s*=\s*(?P<expression>[^;]+);",
-            prefix,
-            re.DOTALL,
-        )
+    offset = int(call["start"])
+    masked = str(call.get("masked") or _strip_csharp_comments_and_strings(text))
+    methods = methods if methods is not None else _flow_module._method_infos(text, masked)
+    method = _flow_module._method_for_offset(methods, offset)
+    start = method.body_start + 1 if method is not None else 0
+    assignments = re.compile(
+        rf"(?<![\w.]){re.escape(receiver)}\s*"
+        r"(?P<operator>\?\?=|>>>?=|<<=|[-+*/%&|^]=|=(?!=|>))(?P<expression>[^;]*);",
+        re.DOTALL,
     )
-    if not matches:
-        return ""
-    return re.sub(r"\s+", " ", matches[-1].group("expression").strip())
+    expressions: list[str] = []
+    for match in assignments.finditer(masked, start, offset):
+        if _flow_module._method_for_offset(methods, match.start()) != method:
+            continue
+        expression = re.sub(
+            r"\s+", " ", text[match.start("expression") : match.end("expression")].strip()
+        )
+        operator = match.group("operator")
+        depends_on_receiver = re.search(
+            rf"(?<![\w.]){re.escape(receiver)}\b", match.group("expression")
+        )
+        if operator == "=" and not depends_on_receiver:
+            expressions = [expression]
+        else:
+            expressions.append(f"{operator} {expression}")
+    return "; ".join(expressions)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -419,7 +445,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument("--output", type=Path, default=Path("build/review/source-text-inventory"))
     parser.add_argument("--base-ref")
+    parser.add_argument("--parser-migration-approval", type=Path)
     args = parser.parse_args(argv)
+    if args.parser_migration_approval and not args.base_ref:
+        parser.error("--parser-migration-approval requires --base-ref")
     root = args.root.resolve()
     rows = inventory(root)
     write_report(rows, args.output)
@@ -434,6 +463,8 @@ def main(argv: list[str] | None = None) -> int:
             rows,
             args.base_ref,
             inventory_callback=inventory,
+            migration_approval=args.parser_migration_approval,
+            output=args.output,
         )
     return 0
 

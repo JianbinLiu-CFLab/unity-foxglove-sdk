@@ -30,6 +30,52 @@ globals().update(
 )
 
 
+def _split_arguments(text: str) -> list[str]:
+    """Split a masked C# argument or parameter list at top-level commas."""
+    parts: list[str] = []
+    start = 0
+    depth = 0
+    for index, character in enumerate(text):
+        if character in "(<[{":
+            depth += 1
+        elif character in ")>]}" and depth:
+            depth -= 1
+        elif character == "," and depth == 0:
+            parts.append(text[start:index].strip())
+            start = index + 1
+    tail = text[start:].strip()
+    if tail:
+        parts.append(tail)
+    return parts
+
+
+def _normalize_type(value: str) -> str:
+    """Normalize common C# aliases for lightweight overload matching."""
+    normalized = re.sub(r"\s+", "", value).replace("global::", "").rstrip("?")
+    aliases = {
+        "System.String": "string",
+        "System.Int32": "int",
+        "System.Boolean": "bool",
+        "System.Object": "object",
+    }
+    return aliases.get(normalized, normalized)
+
+
+def _parameter_types(parameter_text: str) -> tuple[str, ...]:
+    """Return normalized parameter types from a method declaration."""
+    result: list[str] = []
+    for parameter in _split_arguments(parameter_text):
+        parameter = re.sub(r"\s*=.*$", "", parameter).strip()
+        parameter = re.sub(r"\[[^\]]*\]\s*", "", parameter)
+        tokens = parameter.split()
+        tokens = [token for token in tokens if token not in {"this", "ref", "out", "in", "params"}]
+        if len(tokens) >= 2:
+            result.append(_normalize_type(" ".join(tokens[:-1])))
+        elif tokens:
+            result.append(_normalize_type(tokens[0]))
+    return tuple(result)
+
+
 def _source_targets(lines: list[str], include_variables: bool = True) -> dict[str, str]:
     """Build a local symbol-to-source-path map from reader calls and path arrays."""
     paths: dict[str, str] = {}

@@ -7,8 +7,10 @@ from pathlib import Path
 from Scripts.validation.source_text_inventory import (
     _build_xunit_index,
     _checked_expression_signature,
+    _flow_module,
     _match_base_rows,
     _repo_file,
+    _reader_expression_signature,
     _validation_harness_signature,
     classify,
     inventory,
@@ -29,6 +31,31 @@ class SourceTextInventoryTests(unittest.TestCase):
         )
         self.assertEqual("B", classify(".github/workflows/check.yml", 'source.Contains("run_ci")'))
         self.assertEqual("C", classify("Runtime/Core/Foo.cs", 'source.Contains("privateField")'))
+
+    def test_reader_signature_tracks_effective_assignments(self):
+        """Track assignment changes while excluding masked and unrelated method text."""
+        declaration = 'var source = ReadRequiredRepoText("Product.cs");\n'
+        cases = (
+            ('source = ReadAgain();', 'source = ReadAgain() + "Product";', True),
+            ('source += "Before";', 'source += "Product";', True),
+            ('source ??= "Before";', 'source ??= "Product";', True),
+            ('source = Same();', 'source += Same();', True),
+            ('source = Before(); source = source.Trim();', 'source = Product(); source = source.Trim();', True),
+            ('', '// var source = Fake();\n', False),
+            ('', 'var text = @"var source = Fake();";\n', False),
+            ('', 'void Other() { var source = Fake(); }\n', False),
+            ('source += "Before"; source = Last();', 'source += "Product"; source = Last();', False),
+        )
+        for before, after, changed in cases:
+            with self.subTest(before=before, after=after):
+                signatures = []
+                for assignment in (before, after):
+                    source = 'static void Validate() {\n' + declaration + assignment + '\nCheck(source.Contains("Product"));\n}'
+                    call = {"receiver": "source", "start": source.rfind("source.Contains")}
+                    signatures.append(_reader_expression_signature(source, call))
+                    methods = _flow_module._method_infos(source, _flow_module._strip_csharp_comments_and_strings(source))
+                    self.assertEqual(signatures[-1], _reader_expression_signature(source, call, methods))
+                self.assertEqual(changed, signatures[0] != signatures[1], signatures)
 
     def test_base_matching_ignores_line_shifts_and_legacy_token_shape(self):
         """Match unchanged rows after line insertion and parser token expansion."""
@@ -641,18 +668,18 @@ class SourceTextInventoryTests(unittest.TestCase):
             self.assertEqual("Ci|false|Validate", rows[0]["dispatch"])
             source_text = validation.read_text(encoding="utf-8")
             self.assertEqual(
-                _validation_harness_signature(source_text), rows[0]["harness_signature"]
+                _validation_harness_signature(source_text, entrypoint="Validate"), rows[0]["harness_signature"]
             )
             self.assertNotEqual(
                 rows[0]["harness_signature"],
                 _validation_harness_signature(
-                    source_text.replace("throw new System.Exception();", "return;")
+                    source_text.replace("throw new System.Exception();", "return;"), entrypoint="Validate"
                 ),
             )
 
             self.assertEqual(
                 rows[0]["harness_signature"],
-                _validation_harness_signature(source_text.replace("Check(source);", "return;")),
+                _validation_harness_signature(source_text.replace("Check(source);", "return;"), entrypoint="Validate"),
             )
 
     def test_same_line_source_reassignment_invalidates_reader_target(self):

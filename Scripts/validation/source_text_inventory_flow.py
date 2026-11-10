@@ -9,12 +9,14 @@ from collections import Counter
 from dataclasses import dataclass
 
 try:
+    from .source_text_inventory_symbols import _normalize_type, _parameter_types, _split_arguments
     from .source_text_inventory_text import (
         _balanced_brace_end,
         _balanced_call_end,
         _strip_csharp_comments_and_strings,
     )
 except ImportError:
+    from source_text_inventory_symbols import _normalize_type, _parameter_types, _split_arguments
     from source_text_inventory_text import (
         _balanced_brace_end,
         _balanced_call_end,
@@ -123,49 +125,6 @@ def _method_for_offset(methods: list[MethodInfo], offset: int) -> MethodInfo | N
     """Return the smallest method body containing an offset."""
     candidates = [method for method in methods if method.body_start < offset < method.body_end]
     return min(candidates, key=lambda method: method.body_end - method.body_start, default=None)
-
-def _split_arguments(text: str) -> list[str]:
-    """Split a masked C# argument or parameter list at top-level commas."""
-    parts: list[str] = []
-    start = 0
-    depth = 0
-    for index, character in enumerate(text):
-        if character in "(<[{":
-            depth += 1
-        elif character in ")>]}" and depth:
-            depth -= 1
-        elif character == "," and depth == 0:
-            parts.append(text[start:index].strip())
-            start = index + 1
-    tail = text[start:].strip()
-    if tail:
-        parts.append(tail)
-    return parts
-
-def _normalize_type(value: str) -> str:
-    """Normalize common C# aliases for lightweight overload matching."""
-    normalized = re.sub(r"\s+", "", value).replace("global::", "").rstrip("?")
-    aliases = {
-        "System.String": "string",
-        "System.Int32": "int",
-        "System.Boolean": "bool",
-        "System.Object": "object",
-    }
-    return aliases.get(normalized, normalized)
-
-def _parameter_types(parameter_text: str) -> tuple[str, ...]:
-    """Return normalized parameter types from a method declaration."""
-    result: list[str] = []
-    for parameter in _split_arguments(parameter_text):
-        parameter = re.sub(r"\s*=.*$", "", parameter).strip()
-        parameter = re.sub(r"\[[^\]]*\]\s*", "", parameter)
-        tokens = parameter.split()
-        tokens = [token for token in tokens if token not in {"this", "ref", "out", "in", "params"}]
-        if len(tokens) >= 2:
-            result.append(_normalize_type(" ".join(tokens[:-1])))
-        elif tokens:
-            result.append(_normalize_type(tokens[0]))
-    return tuple(result)
 
 def _method_parameter_types(masked: str, start: int, body_start: int) -> tuple[str, ...]:
     """Extract a method's parameter types from its declaration span."""
@@ -402,15 +361,15 @@ def _method_call_graph(
     for method in methods:
         local_types: dict[str, str] | None = None
         for name, open_index in call_sites_by_method[method.identity]:
+            arguments = _call_arguments(text, masked, open_index)
+            if arguments is None:
+                continue
             candidates = methods_by_name.get(name, [])
             if len(candidates) == 1:
                 target = candidates[0]
             elif candidates:
                 if local_types is None:
                     local_types = _local_types(text, method, field_types, return_types)
-                arguments = _call_arguments(text, masked, open_index)
-                if arguments is None:
-                    continue
                 target = _resolve_call_target(
                     name,
                     arguments,
@@ -422,12 +381,12 @@ def _method_call_graph(
                 )
             else:
                 continue
-            if len(candidates) > 1 and local_types is None:
-                local_types = _local_types(text, method, field_types, return_types)
             if target is not None:
-                graph[method.identity].setdefault(target.identity, set()).add(
-                    contexts.get(open_index, "")
-                )
+                normalized_arguments = re.sub(r"\s+", " ", arguments).strip()
+                context = contexts.get(open_index, "")
+                if normalized_arguments:
+                    context = "|".join(value for value in (context, f"args({normalized_arguments})") if value)
+                graph[method.identity].setdefault(target.identity, set()).add(context)
     return graph
 
 def _ambiguous_call_bindings(
@@ -553,13 +512,16 @@ def _validation_harness_signature(
     text: str,
     masked: str | None = None,
     methods: list[MethodInfo] | None = None,
+    entrypoint: str = "",
 ) -> str:
-    """Hash assertion and reader helper bodies while excluding Validate entrypoints."""
+    """Hash assertion and reader helper bodies while excluding registered entrypoints."""
     masked = masked if masked is not None else _strip_csharp_comments_and_strings(text)
     methods = methods if methods is not None else _method_infos(text, masked)
+    entrypoints = set(entrypoint.split(";"))
+    counts = Counter(method.name for method in methods)
     pieces: list[str] = []
     for method in methods:
-        if method.name.startswith("Validate"):
+        if method.name in entrypoints and counts[method.name] == 1:
             continue
         body = masked[method.body_start : method.body_end]
         delegate_parameter = any(
@@ -570,7 +532,7 @@ def _validation_harness_signature(
         )
         if (
             method.name != "Check"
-            and not method.name.startswith(("Assert", "Read", "Source"))
+            and not method.name.startswith(("Assert", "Read", "Source", "Validate"))
             and not delegate_parameter
             and not re.search(
                 r"\b(?:Check|Contains|IndexOf|DoesNotContain|Assert\.(?:True|False|Contains|DoesNotContain)|Read[A-Za-z_]\w*|Source[A-Za-z_]\w*)\s*\(",
@@ -810,16 +772,16 @@ def _reachability_signatures(
     """Return preprocessor and enclosing control-flow state for calls in one file."""
     methods = methods if methods is not None else _method_infos(text, masked)
     states: list[str] = []
-    directives: list[str] = []
+    directives: list[list[str]] = []
     for line in lines:
         directive = line.strip()
-        states.append("|".join(directives))
+        states.append("|".join("->".join(branches) for branches in directives))
         if directive.startswith("#if"):
-            directives.append("if:" + re.sub(r"\s+", " ", directive[3:].strip()))
+            directives.append(["if:" + re.sub(r"\s+", " ", directive[3:].strip())])
         elif directive.startswith("#elif") and directives:
-            directives[-1] = "elif:" + re.sub(r"\s+", " ", directive[5:].strip())
+            directives[-1].append("elif:" + re.sub(r"\s+", " ", directive[5:].strip()))
         elif directive.startswith("#else") and directives:
-            directives[-1] = "else"
+            directives[-1].append("else")
         elif directive.startswith("#endif") and directives:
             directives.pop()
     intervals: list[tuple[int, int, str]] = []
@@ -871,6 +833,27 @@ def _reachability_signatures(
                     label_end = body_start + case_match.end() - 1
                     label = re.sub(r"\s+", " ", text[label_start:label_end].strip())
                     intervals.append((case_start, case_end, f"switch-case({label})"))
+    for match in re.finditer(r"\bdo\s*", masked):
+        cursor = match.end()
+        end = (
+            _balanced_brace_end(masked, cursor)
+            if cursor < len(masked) and masked[cursor] == "{"
+            else masked.find(";", cursor)
+        )
+        if end is None or end < cursor:
+            continue
+        tail = re.match(r"\s*while\s*\(", masked[end + 1 :])
+        if tail is None:
+            continue
+        open_index = end + tail.end()
+        close_index = _balanced_call_end(masked, open_index)
+        if close_index is not None:
+            condition = re.sub(r"\s+", " ", text[open_index + 1 : close_index].strip())
+            selector = constant_values.get(condition)
+            if selector is not None:
+                condition = f"{condition}={selector}"
+            intervals.append((cursor, end, f"do({condition})"))
+            control_intervals.append((cursor, end, "do"))
     for match in re.finditer(r"\btry\s*\{", masked):
         open_index = masked.find("{", match.start(), match.end())
         end = _balanced_brace_end(masked, open_index)
@@ -969,14 +952,14 @@ def _reachability_signatures(
             if _method_for_offset(methods, begin) is not method:
                 continue
             if kind == "continue" and not any(
-                loop_kind in {"while", "foreach", "for"}
+                loop_kind in {"while", "foreach", "for", "do"}
                 and loop_start <= begin <= loop_end
                 and loop_start <= start <= loop_end
                 for loop_start, loop_end, loop_kind in control_intervals
             ):
                 continue
             if kind == "break" and not any(
-                loop_kind in {"while", "foreach", "for", "switch"}
+                loop_kind in {"while", "foreach", "for", "do", "switch"}
                 and loop_start <= begin <= loop_end
                 and loop_start <= start <= loop_end
                 for loop_start, loop_end, loop_kind in control_intervals
