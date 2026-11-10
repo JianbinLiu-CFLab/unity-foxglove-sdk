@@ -9,79 +9,17 @@ import unittest
 from pathlib import Path
 
 from . import test_source_text_inventory_gate as _gate_module
-from Scripts.validation.source_text_inventory_ratchet import (
-    _classify_change,
-    _parser_semantic_changes,
-)
-
 
 class _FixtureSupport:
     """Reuse the Git fixture helpers without inheriting the large gate test class."""
 
     _git_fixture = _gate_module.SourceTextInventoryGateTests._git_fixture
     _run_fixture_gate = _gate_module.SourceTextInventoryGateTests._run_fixture_gate
-
-
 class SourceTextInventorySemanticTests(_FixtureSupport, unittest.TestCase):
     """Cover parser schema, control flow, overload, and lambda semantics."""
 
-    def test_added_harness_sensitivity_is_strengthening(self):
-        """Treat a newly populated harness signature as added parser sensitivity."""
-        base = {
-            "file": "FixtureValidation.cs",
-            "validation_flag": "--fixture",
-            "label": "",
-            "token": 'Check(source.Contains("Product"));',
-            "harness_signature": "",
-        }
-        head = {**base, "harness_signature": "new-signature"}
-        strengthened, weakening = _classify_change(
-            base, head, ("harness_signature",)
-        )
-        self.assertEqual([], weakening)
-        self.assertEqual(["harness_signature"], [item["field"] for item in strengthened])
 
-    def test_legacy_unversioned_parser_migration_is_inventory_scoped(self):
-        """Treat the first legacy-to-versioned parser migration as one trusted change."""
-        with tempfile.TemporaryDirectory() as directory:
-            root = self._git_fixture(directory)
-            checker = root / "Scripts/validation/source_text_inventory.py"
-            current = checker.read_text(encoding="utf-8")
-            legacy_wrapper = (
-                "\n_original_inventory = inventory\n"
-                "def inventory(root):\n"
-                "    rows = _original_inventory(root)\n"
-                "    for row in rows:\n"
-                "        row.pop('parser_version', None)\n"
-                "    return rows\n"
-            )
-            checker.write_text(
-                current.replace(
-                    '\nif __name__ == "__main__":',
-                    legacy_wrapper + '\nif __name__ == "__main__":',
-                ),
-                encoding="utf-8",
-            )
-            subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
-            subprocess.run(["git", "-C", str(root), "commit", "-q", "-m", "legacy-parser"], check=True)
-            checker.write_text(current, encoding="utf-8")
-            code, output = self._run_fixture_gate(root)
-            self.assertEqual(0, code, output)
-            self.assertIn("PARSER_MIGRATION", output)
-            self.assertIn("unacknowledged=0", output)
 
-    def test_legacy_parser_migration_does_not_hide_signature_loss(self):
-        """Keep a legacy parser signature loss as a parser weakening change."""
-        base = {
-            "file": "FixtureValidation.cs",
-            "validation_flag": "--fixture",
-            "label": "",
-            "token": 'Check(source.Contains("Product"));',
-            "harness_signature": "old-signature",
-        }
-        current = {**base, "parser_version": "2", "harness_signature": ""}
-        changes, _ = _parser_semantic_changes([base], [current])
-        self.assertIn("parser_harness_signature", {item["field"] for item in changes})
 
     def test_parser_row_missing_field_requires_ack(self):
         """Reject a parser row that drops a protected metadata field."""

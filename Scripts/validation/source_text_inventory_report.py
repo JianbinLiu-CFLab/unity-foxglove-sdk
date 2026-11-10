@@ -30,6 +30,7 @@ def write_report(rows: list[dict[str, object]], output: Path) -> None:
         "assertion_literal",
         "assertion_polarity",
         "harness_signature",
+        "legacy_harness_signature",
         "comment_only",
         "reachability",
         "call_path",

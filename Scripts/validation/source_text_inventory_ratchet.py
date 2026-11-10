@@ -27,6 +27,7 @@ NEW_FIELDS = {
     "assertion_polarity",
     "call_binding",
     "call_path",
+    "legacy_harness_signature",
     "reader_signature",
     "parser_version",
     "unresolved_reason",
@@ -71,6 +72,7 @@ REQUIRED_ROW_FIELDS = frozenset(
         "assertion_literal",
         "assertion_polarity",
         "harness_signature",
+        "legacy_harness_signature",
         "reachability",
         "call_path",
         "call_binding",
@@ -543,7 +545,14 @@ def _parser_semantic_changes(
         str(row.get("parser_version", "")) for row in current_rows if row.get("parser_version")
     }
     legacy_unversioned = not base_versions and bool(current_versions)
-    if current_versions and base_versions != current_versions:
+    if legacy_unversioned:
+        strengthened.append(
+            {
+                **_inventory_parser_migration_change("legacy-unversioned", next(iter(current_versions))),
+                "field": "parser_schema_added",
+            }
+        )
+    elif current_versions and base_versions != current_versions:
         changes.append(
             _inventory_parser_migration_change(
                 next(iter(base_versions), "legacy-unversioned"),
@@ -558,15 +567,23 @@ def _parser_semantic_changes(
             {**change, "field": f"parser_{change['field']}"} for change in row_strengthened
         )
         for field in weakening_fields:
-            if legacy_unversioned and str(current.get(field, "")):
+            before = str(base.get(field, ""))
+            after = str(current.get(field, ""))
+            if legacy_unversioned and _legacy_parser_change_is_additive(
+                field,
+                before,
+                after,
+                current,
+            ):
+                strengthened.append(_change(base, current, f"parser_{field}", before, after))
                 continue
             changes.append(
                 _change(
                     base,
                     current,
                     f"parser_{field}",
-                    base.get(field, ""),
-                    current.get(field, ""),
+                    before,
+                    after,
                 )
             )
     changes.extend(
@@ -618,6 +635,44 @@ def _row_schema_changes(rows: list[dict[str, object]], parser_side: str) -> list
     return changes
 
 
+def _legacy_parser_change_is_additive(
+    field: str,
+    before: str,
+    after: str,
+    current: dict[str, object],
+) -> bool:
+    """Allow only audited additive metadata during the first parser migration."""
+    if not after:
+        return False
+    if field == "harness_signature":
+        return bool(current.get("legacy_harness_signature")) and (
+            current.get("legacy_harness_signature") == before
+        )
+    if field == "target":
+        before_parts = [part for part in before.split(";") if part]
+        after_parts = [part for part in after.split(";") if part]
+        return all(
+            part in after_parts
+            or (
+                part == "<directory>"
+                and any(value.startswith("<directory>:") for value in after_parts)
+            )
+            for part in before_parts
+        )
+    if field == "reachability":
+        before_parts = [part for part in before.split("|") if part]
+        after_parts = [part for part in after.split("|") if part]
+        return all(
+            part in after_parts
+            or (
+                re.fullmatch(r"exit:(?:return|throw|break|continue|goto|yield break)", part)
+                and any(value.startswith(part + ":") for value in after_parts)
+            )
+            for part in before_parts
+        )
+    return False
+
+
 def _inventory_count_change(field: str, base_value: int, head_value: int) -> dict[str, object]:
     """Build an exact acknowledgement record for a monotonicity violation."""
     return {
@@ -657,8 +712,6 @@ def _verify_base_inventory(
         raise RuntimeError("current inventory callback is required")
     checker_changed = _checker_digest(root) != _checker_digest(root, revision)
     base_rows = _inventory_at_revision(root, revision, inventory_callback=inventory_callback)
-    legacy_migration_keys: set[tuple[object, ...]] = set()
-    legacy_migration_label = ""
     if checker_changed:
         base_status_rows = _inventory_at_revision(
             root,
@@ -667,21 +720,6 @@ def _verify_base_inventory(
             inventory_callback=inventory_callback,
         )
         parser_changes, parser_strengthened = _parser_semantic_changes(base_rows, base_status_rows)
-        base_versions = {str(row.get("parser_version", "")) for row in base_rows if row.get("parser_version")}
-        current_versions = {
-            str(row.get("parser_version", ""))
-            for row in base_status_rows
-            if row.get("parser_version")
-        }
-        if not base_versions and current_versions:
-            legacy_migration_keys = {
-                _ack_key(change)
-                for change in parser_changes
-                if change.get("field") == "parser_migration"
-            }
-            legacy_migration_label = (
-                f"legacy-unversioned->{next(iter(current_versions))}"
-            )
     else:
         base_status_rows = base_rows
         parser_changes = []
@@ -720,9 +758,7 @@ def _verify_base_inventory(
     for change in changes:
         change_key = _ack_key(change)
         entry = ack_map.get(change_key)
-        if change_key in legacy_migration_keys:
-            acknowledged.append(change)
-        elif entry is None:
+        if entry is None:
             unacknowledged.append(change)
         else:
             acknowledged.append(change)
@@ -736,8 +772,12 @@ def _verify_base_inventory(
         f"strengthened={len(strengthened)} acknowledged={len(acknowledged)} "
         f"unacknowledged={len(unacknowledged)} ack_unused={len(unused)}"
     )
-    if legacy_migration_label:
-        print(f"SOURCE_TEXT_INVENTORY_PARSER_MIGRATION {legacy_migration_label} accepted")
+    for change in parser_strengthened:
+        if change.get("field") == "parser_schema_added":
+            print(
+                "SOURCE_TEXT_INVENTORY_PARSER_MIGRATION "
+                f"{change['base_value']}->{change['head_value']} additive_schema"
+            )
     if ack_errors:
         for error in ack_errors:
             print(f"SOURCE_TEXT_INVENTORY_ACK_ERROR {error}")

@@ -136,6 +136,9 @@ def scan_file(
     )
     if partial_harness_signature:
         harness_signature = partial_harness_signature
+    legacy_harness_signature = _legacy_validation_harness_signature(
+        source_text, masked_file
+    )
     receiver_ends = {int(call["end"]) for call in receiver_calls}
     candidates: list[tuple[int, dict[str, object], str]] = []
     for call in receiver_calls:
@@ -226,6 +229,7 @@ def scan_file(
                     token_text, str(containing_harness["text"]) if containing_harness else None
                 ),
                 "harness_signature": harness_signature,
+                "legacy_harness_signature": legacy_harness_signature,
                 "reachability": reachability.get(int(call["start"]), ""),
                 "call_path": call_path,
                 "call_binding": (
@@ -293,6 +297,24 @@ def _validation_harness_signature(
 ) -> str:
     """Hash local assertion and source-reader helper implementations."""
     return _flow_module._validation_harness_signature(text, masked, methods)
+
+
+def _legacy_validation_harness_signature(
+    text: str, masked: str | None = None
+) -> str:
+    """Hash harness bodies with the pre-migration parser semantics."""
+    masked = masked if masked is not None else _strip_csharp_comments_and_strings(text)
+    pattern = re.compile(
+        r"\b(?:Check|Read[A-Za-z_]\w*|Source[A-Za-z_]\w*|Validate(?:[A-Za-z_]\w*)?)\s*"
+        r"\([^;{}]*\)\s*\{"
+    )
+    pieces: list[str] = []
+    for match in pattern.finditer(masked):
+        brace = masked.find("{", match.start(), match.end())
+        end = _balanced_brace_end(masked, brace)
+        if end is not None:
+            pieces.append(text[match.start() : end + 1])
+    return hashlib.sha256("\n".join(pieces).encode()).hexdigest() if pieces else ""
 
 
 def _validation_metadata(root: Path, source_file: str) -> tuple[str, str]:
