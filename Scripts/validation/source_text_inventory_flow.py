@@ -36,6 +36,7 @@ CONTROL_KEYWORDS = {
     "return",
     "throw",
 }
+CALL_PATTERN = re.compile(r"\b(?P<name>[A-Za-z_]\w*)\s*\(")
 
 
 @dataclass(frozen=True)
@@ -47,6 +48,7 @@ class MethodInfo:
     body_start: int
     body_end: int
     signature: str
+    parameter_types: tuple[str, ...] = ()
 
     @property
     def identity(self) -> str:
@@ -57,13 +59,15 @@ class MethodInfo:
 def _method_infos(text: str, masked: str) -> list[MethodInfo]:
     """Discover method-like declarations and their balanced bodies."""
     pattern = re.compile(
-        r"(?P<signature>(?:(?:public|private|protected|internal|static|async|sealed|virtual|override|partial|unsafe|new)\s+)*"
+        r"(?<![A-Za-z0-9_\[])(?P<signature>(?:(?:public|private|protected|internal|static|async|sealed|virtual|override|partial|unsafe|new)\s+)*"
         r"(?:(?:[A-Za-z_]\w*)\s+)?"
         r"(?P<name>[A-Za-z_]\w*)\s*\([^;{}]*\))\s*\{",
         re.DOTALL,
     )
     methods: list[MethodInfo] = []
     for match in pattern.finditer(masked):
+        if masked.rfind("[", 0, match.start()) > masked.rfind("]", 0, match.start()):
+            continue
         name = match.group("name")
         if name in CONTROL_KEYWORDS:
             continue
@@ -72,15 +76,26 @@ def _method_infos(text: str, masked: str) -> list[MethodInfo]:
         if body_start < 0 or body_end is None:
             continue
         signature = re.sub(r"\s+", " ", text[match.start() : body_start].strip())
-        methods.append(MethodInfo(name, match.start(), body_start, body_end, signature))
+        methods.append(
+            MethodInfo(
+                name,
+                match.start(),
+                body_start,
+                body_end,
+                signature,
+                _method_parameter_types(masked, match.start(), body_start),
+            )
+        )
     expression_pattern = re.compile(
-        r"(?P<signature>(?:(?:public|private|protected|internal|static|async|sealed|virtual|override|partial|unsafe|new)\s+)*"
+        r"(?<![A-Za-z0-9_\[])(?P<signature>(?:(?:public|private|protected|internal|static|async|sealed|virtual|override|partial|unsafe|new)\s+)*"
         r"(?:(?:[A-Za-z_]\w*)\s+)?"
         r"(?P<name>[A-Za-z_]\w*)\s*\([^;{}]*\))\s*=>\s*"
         r"(?P<body>[^;{}]+);",
         re.DOTALL,
     )
     for match in expression_pattern.finditer(masked):
+        if masked.rfind("[", 0, match.start()) > masked.rfind("]", 0, match.start()):
+            continue
         name = match.group("name")
         if name in CONTROL_KEYWORDS:
             continue
@@ -91,7 +106,16 @@ def _method_infos(text: str, masked: str) -> list[MethodInfo]:
             " ",
             text[match.start() : match.start("body")].removesuffix("=>").strip(),
         )
-        methods.append(MethodInfo(name, match.start(), body_start, body_end, signature))
+        methods.append(
+            MethodInfo(
+                name,
+                match.start(),
+                body_start,
+                body_end,
+                signature,
+                _method_parameter_types(masked, match.start(), match.start("body")),
+            )
+        )
     return sorted(methods, key=lambda method: method.start)
 
 
@@ -101,19 +125,186 @@ def _method_for_offset(methods: list[MethodInfo], offset: int) -> MethodInfo | N
     return min(candidates, key=lambda method: method.body_end - method.body_start, default=None)
 
 
+def _split_arguments(text: str) -> list[str]:
+    """Split a masked C# argument or parameter list at top-level commas."""
+    parts: list[str] = []
+    start = 0
+    depth = 0
+    for index, character in enumerate(text):
+        if character in "(<[{":
+            depth += 1
+        elif character in ")>]}" and depth:
+            depth -= 1
+        elif character == "," and depth == 0:
+            parts.append(text[start:index].strip())
+            start = index + 1
+    tail = text[start:].strip()
+    if tail:
+        parts.append(tail)
+    return parts
+
+
+def _normalize_type(value: str) -> str:
+    """Normalize common C# aliases for lightweight overload matching."""
+    normalized = re.sub(r"\s+", "", value).replace("global::", "").rstrip("?")
+    aliases = {
+        "System.String": "string",
+        "System.Int32": "int",
+        "System.Boolean": "bool",
+        "System.Object": "object",
+    }
+    return aliases.get(normalized, normalized)
+
+
+def _parameter_types(parameter_text: str) -> tuple[str, ...]:
+    """Return normalized parameter types from a method declaration."""
+    result: list[str] = []
+    for parameter in _split_arguments(parameter_text):
+        parameter = re.sub(r"\s*=.*$", "", parameter).strip()
+        parameter = re.sub(r"\[[^\]]*\]\s*", "", parameter)
+        tokens = parameter.split()
+        tokens = [token for token in tokens if token not in {"this", "ref", "out", "in", "params"}]
+        if len(tokens) >= 2:
+            result.append(_normalize_type(" ".join(tokens[:-1])))
+        elif tokens:
+            result.append(_normalize_type(tokens[0]))
+    return tuple(result)
+
+
+def _method_parameter_types(masked: str, start: int, body_start: int) -> tuple[str, ...]:
+    """Extract a method's parameter types from its declaration span."""
+    open_index = masked.find("(", start, body_start)
+    close_index = masked.rfind(")", start, body_start)
+    if open_index < 0 or close_index < open_index:
+        return ()
+    return _parameter_types(masked[open_index + 1 : close_index])
+
+
+def _local_types(text: str, method: MethodInfo) -> dict[str, str]:
+    """Infer simple local and parameter types used by overload calls."""
+    result: dict[str, str] = {}
+    for parameter in _split_arguments(
+        method.signature[method.signature.find("(") + 1 : method.signature.rfind(")")]
+    ):
+        tokens = parameter.strip().split()
+        tokens = [token for token in tokens if token not in {"this", "ref", "out", "in", "params"}]
+        if len(tokens) >= 2:
+            result[tokens[-1]] = _normalize_type(" ".join(tokens[:-1]))
+
+    body = text[method.body_start : method.body_end]
+    for match in re.finditer(
+        r"\b(?P<type>[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)?(?:<[^;=]+>)?(?:\[\])?|var)\s+"
+        r"(?P<name>[A-Za-z_]\w*)\s*=\s*(?P<value>[^;]+);",
+        body,
+        re.DOTALL,
+    ):
+        declared = match.group("type")
+        value = match.group("value").strip()
+        result[match.group("name")] = (
+            _infer_expression_type(value, result) if declared == "var" else _normalize_type(declared)
+        )
+    return result
+
+
+def _infer_expression_type(expression: str, local_types: dict[str, str]) -> str:
+    """Infer a small set of C# expression types used for overload binding."""
+    expression = expression.strip()
+    if re.fullmatch(r'"(?:\\.|[^"\\])*"', expression, re.DOTALL):
+        return "string"
+    if re.fullmatch(r"'(?:\\.|[^'\\])'", expression, re.DOTALL):
+        return "char"
+    if re.fullmatch(r"(?:true|false)", expression):
+        return "bool"
+    if re.fullmatch(r"[-+]?\d+[uUlLfFdDmM]?", expression):
+        return "int"
+    match = re.match(r"new\s+([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)?(?:<[^>]+>)?)", expression)
+    if match:
+        return _normalize_type(match.group(1))
+    if expression == "null":
+        return "null"
+    if re.fullmatch(r"[A-Za-z_]\w*", expression):
+        return local_types.get(expression, "")
+    match = re.match(r"\(([^)]+)\)", expression)
+    return _normalize_type(match.group(1)) if match else ""
+
+
+def _call_sites(text: str, masked: str, method: MethodInfo):
+    """Yield same-file method call names and opening offsets for one method."""
+    body = masked[method.body_start : method.body_end]
+    for match in CALL_PATTERN.finditer(body):
+        name = match.group("name")
+        if name in CONTROL_KEYWORDS:
+            continue
+        open_index = method.body_start + match.end() - 1
+        yield name, open_index
+
+
+def _call_arguments(text: str, masked: str, open_index: int) -> str | None:
+    """Return one call's argument text when its parentheses are balanced."""
+    close_index = _balanced_call_end(masked, open_index)
+    return text[open_index + 1 : close_index] if close_index is not None else None
+
+
+def _resolve_call_target(
+    name: str,
+    arguments: str,
+    caller: MethodInfo,
+    methods_by_name: dict[str, list[MethodInfo]],
+    text: str,
+    local_types: dict[str, str] | None = None,
+) -> MethodInfo | None:
+    """Resolve a same-file call when its overload is statically identifiable."""
+    candidates = methods_by_name.get(name, [])
+    if not candidates:
+        return None
+    if len(candidates) == 1:
+        return candidates[0]
+    local_types = local_types if local_types is not None else _local_types(text, caller)
+    argument_types = [_infer_expression_type(item, local_types) for item in _split_arguments(arguments)]
+    exact: list[MethodInfo] = []
+    for candidate in candidates:
+        if len(candidate.parameter_types) != len(argument_types):
+            continue
+        if all(
+            not actual or actual == "null" or actual == expected
+            for actual, expected in zip(argument_types, candidate.parameter_types)
+        ):
+            exact.append(candidate)
+    return exact[0] if len(exact) == 1 else None
+
+
 def _method_call_graph(text: str, masked: str, methods: list[MethodInfo]) -> dict[str, set[str]]:
-    """Build direct same-file method calls for call-path binding."""
-    if any(count > 1 for count in Counter(method.name for method in methods).values()):
-        return {}
-    graph: dict[str, set[str]] = {method.name: set() for method in methods}
-    known = set(graph)
-    call_pattern = re.compile(r"\b(?P<name>[A-Za-z_]\w*)\s*\(")
+    """Build direct same-file method calls using method identities."""
+    graph: dict[str, set[str]] = {method.identity: set() for method in methods}
+    methods_by_name: dict[str, list[MethodInfo]] = {}
     for method in methods:
-        body = masked[method.body_start : method.body_end]
-        for match in call_pattern.finditer(body):
-            name = match.group("name")
-            if name in known and name not in CONTROL_KEYWORDS:
-                graph[method.name].add(name)
+        methods_by_name.setdefault(method.name, []).append(method)
+    for method in methods:
+        local_types: dict[str, str] | None = None
+        for name, open_index in _call_sites(text, masked, method):
+            candidates = methods_by_name.get(name, [])
+            if len(candidates) == 1:
+                target = candidates[0]
+            elif candidates:
+                if local_types is None:
+                    local_types = _local_types(text, method)
+                arguments = _call_arguments(text, masked, open_index)
+                if arguments is None:
+                    continue
+                target = _resolve_call_target(
+                    name,
+                    arguments,
+                    method,
+                    methods_by_name,
+                    text,
+                    local_types,
+                )
+            else:
+                continue
+            if len(candidates) > 1 and local_types is None:
+                local_types = _local_types(text, method)
+            if target is not None:
+                graph[method.identity].add(target.identity)
     return graph
 
 
@@ -121,17 +312,37 @@ def _ambiguous_call_bindings(
     text: str, masked: str, methods: list[MethodInfo]
 ) -> dict[str, str]:
     """Hash ambiguous overload call sites so deleting one cannot preserve a row."""
+    methods_by_name: dict[str, list[MethodInfo]] = {}
+    for method in methods:
+        methods_by_name.setdefault(method.name, []).append(method)
     counts = Counter(method.name for method in methods)
     bindings: dict[str, str] = {}
     for name, count in counts.items():
         if count < 2:
             continue
         calls: list[str] = []
-        for match in re.finditer(rf"\b{re.escape(name)}\s*\(", masked):
-            open_index = masked.find("(", match.start(), match.end())
-            close_index = _balanced_call_end(text, open_index)
-            if close_index is not None:
-                calls.append(re.sub(r"\s+", " ", text[match.start() : close_index + 1]).strip())
+        for method in methods:
+            local_types = _local_types(text, method)
+            for call_name, open_index in _call_sites(text, masked, method):
+                if call_name != name:
+                    continue
+                arguments = _call_arguments(text, masked, open_index)
+                if arguments is None:
+                    continue
+                target = _resolve_call_target(
+                    call_name,
+                    arguments,
+                    method,
+                    methods_by_name,
+                    text,
+                    local_types,
+                )
+                argument_types = ",".join(
+                    _infer_expression_type(item, local_types) or "?"
+                    for item in _split_arguments(arguments)
+                )
+                identity = target.identity if target is not None else "AMBIGUOUS"
+                calls.append(f"{call_name}({re.sub(r'\\s+', ' ', arguments).strip()}):{argument_types}->{identity}")
         digest = hashlib.sha256("\n".join(sorted(calls)).encode()).hexdigest()
         for method in methods:
             if method.name == name:
@@ -139,29 +350,27 @@ def _ambiguous_call_bindings(
     return bindings
 
 
+def _method_labels(methods: list[MethodInfo]) -> dict[str, str]:
+    """Return stable display labels that distinguish overloaded methods."""
+    counts = Counter(method.name for method in methods)
+    return {
+        method.identity: (
+            method.name
+            if counts[method.name] == 1
+            else f"{method.name}({','.join(method.parameter_types)})"
+        )
+        for method in methods
+    }
+
+
 def _call_path_for_offset(text: str, masked: str, offset: int, entrypoint: str) -> str:
     """Return a registry-to-method path or ``UNKNOWN`` when static binding fails."""
     methods = _method_infos(text, masked)
     target = _method_for_offset(methods, offset)
-    entrypoints = [name for name in entrypoint.split(";") if name]
-    if target is None or not entrypoints:
+    if target is None:
         return "UNKNOWN"
-    graph = _method_call_graph(text, masked, methods)
-    if not graph or not any(name in graph for name in entrypoints):
-        return "UNKNOWN"
-    queue: list[tuple[str, list[str]]] = [
-        (name, [name]) for name in entrypoints if name in graph
-    ]
-    seen = set(entrypoints)
-    while queue:
-        current, path = queue.pop(0)
-        if current == target.name:
-            return "->".join(path)
-        for callee in sorted(graph.get(current, ())):
-            if callee not in seen:
-                seen.add(callee)
-                queue.append((callee, path + [callee]))
-    return "UNKNOWN"
+    _, paths = _call_path_index(text, masked, entrypoint)
+    return paths.get(target.identity, "UNKNOWN")
 
 
 def _call_path_index(
@@ -172,10 +381,19 @@ def _call_path_index(
     graph = _method_call_graph(text, masked, methods)
     paths: dict[str, str] = {}
     entrypoints = [name for name in entrypoint.split(";") if name]
-    if not graph or not any(name in graph for name in entrypoints):
+    methods_by_name: dict[str, list[MethodInfo]] = {}
+    for method in methods:
+        methods_by_name.setdefault(method.name, []).append(method)
+    entrypoint_methods = [
+        methods_by_name[name][0]
+        for name in entrypoints
+        if len(methods_by_name.get(name, [])) == 1
+    ]
+    if not graph or not entrypoint_methods:
         return methods, paths
+    labels = _method_labels(methods)
     queue: list[tuple[str, list[str]]] = [
-        (name, [name]) for name in entrypoints if name in graph
+        (method.identity, [labels[method.identity]]) for method in entrypoint_methods
     ]
     while queue:
         current, path = queue.pop(0)
@@ -184,7 +402,7 @@ def _call_path_index(
         paths[current] = "->".join(path)
         for callee in sorted(graph.get(current, ())):
             if callee not in paths:
-                queue.append((callee, path + [callee]))
+                queue.append((callee, path + [labels[callee]]))
     return methods, paths
 
 

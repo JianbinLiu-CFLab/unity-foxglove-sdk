@@ -506,16 +506,12 @@ def _parser_semantic_changes(
     changes: list[dict[str, object]] = []
     strengthened: list[dict[str, object]] = []
     for base, current in matches:
-        parser_migration = str(base.get("parser_version", "")) != str(
-            current.get("parser_version", "")
-        )
-        row_strengthened, weakening_fields = _classify_change(base, current)
+        base_version = str(base.get("parser_version", ""))
+        current_version = str(current.get("parser_version", ""))
+        parser_migration = bool(base_version and current_version and base_version != current_version)
         if parser_migration:
-            row_strengthened.extend(
-                _change(base, current, f"parser_{field}", base.get(field, ""), current.get(field, ""))
-                for field in weakening_fields
-            )
-            weakening_fields = []
+            changes.append(_change(base, current, "parser_migration", base_version, current_version))
+        row_strengthened, weakening_fields = _classify_change(base, current)
         strengthened.extend(
             {**change, "field": f"parser_{change['field']}"} for change in row_strengthened
         )

@@ -449,6 +449,126 @@ class SourceTextInventoryGateTests(unittest.TestCase):
             self.assertEqual(1, result.returncode, result.stdout + result.stderr)
             self.assertIn('field": "parser_target"', result.stdout)
 
+    def test_parser_version_change_does_not_authorize_downgrade(self):
+        """Require acknowledgement when a parser version changes with weaker semantics."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(directory)
+            checker = root / "Scripts/validation/source_text_inventory.py"
+            checker.write_text(
+                checker.read_text(encoding="utf-8").replace(
+                    'PARSER_SEMANTICS_VERSION = "2"',
+                    'PARSER_SEMANTICS_VERSION = "3"',
+                ),
+                encoding="utf-8",
+            )
+            parser = root / "Scripts/validation/source_text_inventory_text.py"
+            parser.write_text(
+                parser.read_text(encoding="utf-8")
+                + '\n\ndef classify(target, line):\n    return "A"\n',
+                encoding="utf-8",
+            )
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(checker),
+                    "--root",
+                    str(root),
+                    "--base-ref",
+                    "HEAD",
+                    "--output",
+                    str(root / "build" / "inventory"),
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+            self.assertIn('field": "parser_class"', result.stdout)
+
+    def test_unrelated_overload_does_not_hide_call_path(self):
+        """Reject deleting a source helper call when another method is overloaded."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(
+                directory,
+                validation_text=(
+                    "public static class FixtureValidation {\n"
+                    "    private static void Noop(string value) { }\n"
+                    "    private static void Noop(int value) { }\n"
+                    "    private static void Used() {\n"
+                    '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                    '        Check(source.Contains("Product"));\n'
+                    "    }\n"
+                    "    public static void Validate() {\n"
+                    "        Used();\n"
+                    "    }\n"
+                    "}\n"
+                ),
+            )
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace("        Used();\n", ""),
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code)
+            self.assertIn('field": "call_path"', output)
+
+    def test_overload_argument_type_change_requires_ack(self):
+        """Reject changing a call to a source-bearing overload through a local type."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(
+                directory,
+                validation_text=(
+                    "public static class FixtureValidation {\n"
+                    "    private static void Helper(string value) {\n"
+                    '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                    '        Check(source.Contains("Product"));\n'
+                    "    }\n"
+                    "    private static void Helper(int value) { }\n"
+                    "    public static void Validate() {\n"
+                    '        string value = "run";\n'
+                    "        Helper(value);\n"
+                    "    }\n"
+                    "}\n"
+                ),
+            )
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace(
+                    '        string value = "run";\n',
+                    "        int value = 1;\n",
+                ),
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code)
+            self.assertIn('field": "call_binding"', output)
+
+    def test_unit_entrypoint_with_trait_binds_helper(self):
+        """Reject deleting a helper call from a Fact entrypoint with a Trait."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(directory)
+            unit = root / "Packages/fixture/Tests/Unit/FixtureTests.cs"
+            unit.parent.mkdir(parents=True)
+            unit.write_text(
+                "public static class FixtureTests {\n"
+                "    private static void Helper() {\n"
+                '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                '        Check(source.Contains("Product"));\n'
+                "    }\n"
+                "    [Fact]\n"
+                '    [Trait("Phase", "X")]\n'
+                "    public static void ProductTest() { Helper(); }\n"
+                "}\n",
+                encoding="utf-8",
+            )
+            subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+            subprocess.run(["git", "-C", str(root), "commit", "-q", "-m", "unit-trait-base"], check=True)
+            unit.write_text(unit.read_text(encoding="utf-8").replace("Helper();", ""), encoding="utf-8")
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code)
+            self.assertIn('field": "call_path"', output)
+
     def test_try_catch_swallow_requires_ack(self):
         """Reject wrapping a source assertion in a swallowing try/catch."""
         with tempfile.TemporaryDirectory() as directory:
