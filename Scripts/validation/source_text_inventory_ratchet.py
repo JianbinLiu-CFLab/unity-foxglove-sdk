@@ -294,6 +294,7 @@ def _archive_revision(root: Path, revision: str, destination: Path) -> None:
             archive.extractall(destination, filter="data")
         except TypeError:
             archive.extractall(destination)
+        process.stdout.read()
     process.stdout.close()
     if process.wait() != 0:
         raise RuntimeError(f"git archive failed for {revision}")
