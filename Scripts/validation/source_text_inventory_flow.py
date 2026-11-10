@@ -21,7 +21,6 @@ except ImportError:
         _strip_csharp_comments_and_strings,
     )
 
-
 CONTROL_KEYWORDS = {
     "if",
     "else",
@@ -39,7 +38,6 @@ CONTROL_KEYWORDS = {
 }
 CALL_PATTERN = re.compile(r"\b(?P<name>[A-Za-z_]\w*)\s*\(")
 
-
 @dataclass(frozen=True)
 class MethodInfo:
     """Describe one C# method body discovered by the lightweight parser."""
@@ -56,7 +54,6 @@ class MethodInfo:
     def identity(self) -> str:
         """Return a source-stable identity for one method declaration."""
         return f"{self.name}@{self.start}"
-
 
 def _method_infos(text: str, masked: str) -> list[MethodInfo]:
     """Discover method-like declarations and their balanced bodies."""
@@ -122,12 +119,10 @@ def _method_infos(text: str, masked: str) -> list[MethodInfo]:
         )
     return sorted(methods, key=lambda method: method.start)
 
-
 def _method_for_offset(methods: list[MethodInfo], offset: int) -> MethodInfo | None:
     """Return the smallest method body containing an offset."""
     candidates = [method for method in methods if method.body_start < offset < method.body_end]
     return min(candidates, key=lambda method: method.body_end - method.body_start, default=None)
-
 
 def _split_arguments(text: str) -> list[str]:
     """Split a masked C# argument or parameter list at top-level commas."""
@@ -147,7 +142,6 @@ def _split_arguments(text: str) -> list[str]:
         parts.append(tail)
     return parts
 
-
 def _normalize_type(value: str) -> str:
     """Normalize common C# aliases for lightweight overload matching."""
     normalized = re.sub(r"\s+", "", value).replace("global::", "").rstrip("?")
@@ -158,7 +152,6 @@ def _normalize_type(value: str) -> str:
         "System.Object": "object",
     }
     return aliases.get(normalized, normalized)
-
 
 def _parameter_types(parameter_text: str) -> tuple[str, ...]:
     """Return normalized parameter types from a method declaration."""
@@ -174,7 +167,6 @@ def _parameter_types(parameter_text: str) -> tuple[str, ...]:
             result.append(_normalize_type(tokens[0]))
     return tuple(result)
 
-
 def _method_parameter_types(masked: str, start: int, body_start: int) -> tuple[str, ...]:
     """Extract a method's parameter types from its declaration span."""
     open_index = masked.find("(", start, body_start)
@@ -182,7 +174,6 @@ def _method_parameter_types(masked: str, start: int, body_start: int) -> tuple[s
     if open_index < 0 or close_index < open_index:
         return ()
     return _parameter_types(masked[open_index + 1 : close_index])
-
 
 def _method_return_type(signature: str, name: str) -> str:
     """Extract a simple declared return type from a method signature."""
@@ -192,7 +183,6 @@ def _method_return_type(signature: str, name: str) -> str:
         signature,
     )
     return _normalize_type(match.group("return")) if match else ""
-
 
 def _method_return_types(methods: list[MethodInfo]) -> dict[str, str]:
     """Return unambiguous same-file method return types."""
@@ -204,7 +194,6 @@ def _method_return_types(methods: list[MethodInfo]) -> dict[str, str]:
         for name, methods_for_name in grouped.items()
         if len(methods_for_name) == 1 and methods_for_name[0].return_type
     }
-
 
 def _field_types(text: str, masked: str, methods: list[MethodInfo]) -> dict[str, str]:
     """Collect simple field declarations outside method bodies."""
@@ -219,7 +208,6 @@ def _field_types(text: str, masked: str, methods: list[MethodInfo]) -> dict[str,
         result[match.group("name")] = _normalize_type(match.group("type"))
     return result
 
-
 def _constant_values(text: str, masked: str) -> dict[str, str]:
     """Collect simple boolean, integer, and string initializers for branch selectors."""
     values: dict[str, str] = {}
@@ -230,7 +218,6 @@ def _constant_values(text: str, masked: str) -> dict[str, str]:
     ):
         values[match.group("name")] = re.sub(r"\s+", " ", text[match.start("value") : match.end("value")].strip())
     return values
-
 
 def _local_types(
     text: str,
@@ -265,7 +252,6 @@ def _local_types(
         )
     return result
 
-
 def _infer_expression_type(
     expression: str,
     local_types: dict[str, str],
@@ -296,7 +282,6 @@ def _infer_expression_type(
     match = re.match(r"\(([^)]+)\)", expression)
     return _normalize_type(match.group(1)) if match else ""
 
-
 def _call_sites(
     text: str,
     masked: str,
@@ -322,7 +307,6 @@ def _call_sites(
                     continue
         yield name, open_index
 
-
 def _method_call_contexts(
     text: str,
     masked: str,
@@ -347,24 +331,20 @@ def _method_call_contexts(
         text.splitlines(), calls, text, masked, methods
     )
 
-
 def _line_starts(text: str) -> list[int]:
     """Return source line starts for indexed call-site lookups."""
     starts = [0]
     starts.extend(index + 1 for index, character in enumerate(text) if character == "\n")
     return starts
 
-
 def _line_number(starts: list[int], offset: int) -> int:
     """Return a zero-based line number from precomputed line starts."""
     return bisect_right(starts, offset) - 1
-
 
 def _call_arguments(text: str, masked: str, open_index: int) -> str | None:
     """Return one call's argument text when its parentheses are balanced."""
     close_index = _balanced_call_end(masked, open_index)
     return text[open_index + 1 : close_index] if close_index is not None else None
-
 
 def _resolve_call_target(
     name: str,
@@ -396,7 +376,6 @@ def _resolve_call_target(
         ):
             exact.append(candidate)
     return exact[0] if len(exact) == 1 else None
-
 
 def _method_call_graph(
     text: str,
@@ -450,7 +429,6 @@ def _method_call_graph(
                     contexts.get(open_index, "")
                 )
     return graph
-
 
 def _ambiguous_call_bindings(
     text: str, masked: str, methods: list[MethodInfo]
@@ -510,7 +488,6 @@ def _ambiguous_call_bindings(
                 bindings[method.identity] = f"ambiguous:{digest}"
     return bindings
 
-
 def _method_labels(methods: list[MethodInfo]) -> dict[str, str]:
     """Return stable display labels that distinguish overloaded methods."""
     counts = Counter(method.name for method in methods)
@@ -523,7 +500,6 @@ def _method_labels(methods: list[MethodInfo]) -> dict[str, str]:
         for method in methods
     }
 
-
 def _call_path_for_offset(text: str, masked: str, offset: int, entrypoint: str) -> str:
     """Return a registry-to-method path or ``UNKNOWN`` when static binding fails."""
     methods = _method_infos(text, masked)
@@ -532,7 +508,6 @@ def _call_path_for_offset(text: str, masked: str, offset: int, entrypoint: str) 
         return "UNKNOWN"
     _, paths = _call_path_index(text, masked, entrypoint)
     return paths.get(target.identity, "UNKNOWN")
-
 
 def _call_path_index(
     text: str,
@@ -574,7 +549,6 @@ def _call_path_index(
                 queue.append((callee, path + [edge]))
     return methods, paths
 
-
 def _validation_harness_signature(
     text: str,
     masked: str | None = None,
@@ -588,9 +562,16 @@ def _validation_harness_signature(
         if method.name.startswith("Validate"):
             continue
         body = masked[method.body_start : method.body_end]
+        delegate_parameter = any(
+            _normalize_type(parameter).removeprefix("System.").startswith(
+                ("Action", "Func", "Predicate")
+            )
+            for parameter in method.parameter_types
+        )
         if (
             method.name != "Check"
             and not method.name.startswith(("Assert", "Read", "Source"))
+            and not delegate_parameter
             and not re.search(
                 r"\b(?:Check|Contains|IndexOf|DoesNotContain|Assert\.(?:True|False|Contains|DoesNotContain)|Read[A-Za-z_]\w*|Source[A-Za-z_]\w*)\s*\(",
                 body,
@@ -612,11 +593,10 @@ def _validation_harness_signature(
         pieces.append(f"delegate:{delegate_signature}")
     return hashlib.sha256("\n".join(pieces).encode()).hexdigest() if pieces else ""
 
-
 def _delegate_binding_signature(
     text: str, masked: str, methods: list[MethodInfo]
 ) -> str:
-    """Hash method-group and delegate-factory assignments with their invocations."""
+    """Hash delegate assignments, method-group arguments, and forwarding calls."""
     delegate_methods = {
         method.name
         for method in methods
@@ -633,20 +613,27 @@ def _delegate_binding_signature(
         )
     )
     pieces: list[str] = []
+    method_names = {method.name for method in methods}
+    delegate_variables: set[str] = set()
     assignment_pattern = re.compile(
-        r"\b(?P<type>(?:(?:System\.)?(?:Action|Func|Predicate)(?:<[^;=]+>)?|var))\s+"
-        r"(?P<name>[A-Za-z_]\w*)\s*=\s*"
-        r"(?P<target>[A-Za-z_]\w*(?:\s*\([^;]*\))?)\s*;"
+        r"\b(?:(?P<type>(?:(?:System\.)?(?:Action|Func|Predicate)(?:<[^;=]+>)?|var))\s+)?"
+        r"(?P<name>[A-Za-z_]\w*)\s*=\s*(?P<target>[^;]+);"
     )
     for match in assignment_pattern.finditer(masked):
         target = re.sub(r"\s+", " ", match.group("target")).strip()
-        target_name = re.match(r"[A-Za-z_]\w*", target)
-        if target_name is None:
-            continue
-        explicit_delegate = match.group("type") != "var"
-        if not explicit_delegate and target_name.group() not in delegate_methods:
+        target_names = set(re.findall(r"\b[A-Za-z_]\w*\b", target))
+        explicit_delegate = bool(match.group("type")) and match.group("type") != "var"
+        is_delegate = (
+            explicit_delegate
+            or match.group("name") in delegate_variables
+            or bool(target_names & delegate_methods)
+            or "=>" in target
+            or re.search(r"\bdelegate\s*\(", target) is not None
+        )
+        if not is_delegate:
             continue
         name = match.group("name")
+        delegate_variables.add(name)
         invocation = re.search(
             rf"\b{re.escape(name)}(?:\s*\([^;]*\)|\s*\?\.\s*Invoke\s*\([^;]*\)|"
             rf"\s*\.\s*Invoke\s*\([^;]*\))\s*;|"
@@ -654,11 +641,20 @@ def _delegate_binding_signature(
             masked[match.end() :],
         )
         invocation_text = re.sub(r"\s+", " ", invocation.group()).strip() if invocation else ""
-        pieces.append(
-            f"{match.group('type')} {name}={target}|invoke:{invocation_text}"
-        )
+        pieces.append(f"assign:{match.group('type') or ''} {name}={target}|invoke:{invocation_text}")
+    for method in methods:
+        for call_name, open_index in _call_sites(text, masked, method):
+            arguments = _call_arguments(text, masked, open_index)
+            if arguments is None:
+                continue
+            argument_names = set(re.findall(r"\b[A-Za-z_]\w*\b", arguments))
+            if not argument_names & method_names and not re.search(
+                r"=>|\bdelegate\s*\(", arguments
+            ):
+                continue
+            normalized = re.sub(r"\s+", " ", arguments).strip()
+            pieces.append(f"call:{call_name}({normalized})")
     return hashlib.sha256("\n".join(sorted(pieces)).encode()).hexdigest() if pieces else ""
-
 
 def _catch_descriptor(text: str, masked: str, header: str, body_start: int, body_end: int) -> str:
     """Describe catch type, filter text, and whether its body rethrows."""
@@ -668,14 +664,12 @@ def _catch_descriptor(text: str, masked: str, header: str, body_start: int, body
     body_hash = hashlib.sha256(re.sub(r"\s+", " ", body).strip().encode()).hexdigest()[:16]
     return f"catch({header}):{behavior}:{body_hash}"
 
-
 def _finally_descriptor(masked: str, body_start: int, body_end: int) -> str:
     """Describe finally-body exits and normalized body content."""
     body = masked[body_start + 1 : body_end]
     behavior = "exit" if re.search(r"\b(?:return|throw|goto)\b", body) else "normal"
     body_hash = hashlib.sha256(re.sub(r"\s+", " ", body).strip().encode()).hexdigest()[:16]
     return f"finally:{behavior}:{body_hash}"
-
 
 def _lambda_binding_signature(
     text: str, masked: str, methods: list[MethodInfo] | None = None
@@ -805,7 +799,6 @@ def _lambda_binding_signature(
             f"delegate:{owner}:{owner_digest}:{statement}:{body}:context:{contexts.get(position, '')}"
         )
     return hashlib.sha256("\n".join(pieces).encode()).hexdigest() if pieces else ""
-
 
 def _reachability_signatures(
     lines: list[str],

@@ -9,6 +9,10 @@ import unittest
 from pathlib import Path
 
 from . import test_source_text_inventory_gate as _gate_module
+from Scripts.validation.source_text_inventory_ratchet import (
+    _classify_change,
+    _parser_semantic_changes,
+)
 
 
 class _FixtureSupport:
@@ -20,6 +24,64 @@ class _FixtureSupport:
 
 class SourceTextInventorySemanticTests(_FixtureSupport, unittest.TestCase):
     """Cover parser schema, control flow, overload, and lambda semantics."""
+
+    def test_added_harness_sensitivity_is_strengthening(self):
+        """Treat a newly populated harness signature as added parser sensitivity."""
+        base = {
+            "file": "FixtureValidation.cs",
+            "validation_flag": "--fixture",
+            "label": "",
+            "token": 'Check(source.Contains("Product"));',
+            "harness_signature": "",
+        }
+        head = {**base, "harness_signature": "new-signature"}
+        strengthened, weakening = _classify_change(
+            base, head, ("harness_signature",)
+        )
+        self.assertEqual([], weakening)
+        self.assertEqual(["harness_signature"], [item["field"] for item in strengthened])
+
+    def test_legacy_unversioned_parser_migration_is_inventory_scoped(self):
+        """Treat the first legacy-to-versioned parser migration as one trusted change."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(directory)
+            checker = root / "Scripts/validation/source_text_inventory.py"
+            current = checker.read_text(encoding="utf-8")
+            legacy_wrapper = (
+                "\n_original_inventory = inventory\n"
+                "def inventory(root):\n"
+                "    rows = _original_inventory(root)\n"
+                "    for row in rows:\n"
+                "        row.pop('parser_version', None)\n"
+                "    return rows\n"
+            )
+            checker.write_text(
+                current.replace(
+                    '\nif __name__ == "__main__":',
+                    legacy_wrapper + '\nif __name__ == "__main__":',
+                ),
+                encoding="utf-8",
+            )
+            subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+            subprocess.run(["git", "-C", str(root), "commit", "-q", "-m", "legacy-parser"], check=True)
+            checker.write_text(current, encoding="utf-8")
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(0, code, output)
+            self.assertIn("PARSER_MIGRATION", output)
+            self.assertIn("unacknowledged=0", output)
+
+    def test_legacy_parser_migration_does_not_hide_signature_loss(self):
+        """Keep a legacy parser signature loss as a parser weakening change."""
+        base = {
+            "file": "FixtureValidation.cs",
+            "validation_flag": "--fixture",
+            "label": "",
+            "token": 'Check(source.Contains("Product"));',
+            "harness_signature": "old-signature",
+        }
+        current = {**base, "parser_version": "2", "harness_signature": ""}
+        changes, _ = _parser_semantic_changes([base], [current])
+        self.assertIn("parser_harness_signature", {item["field"] for item in changes})
 
     def test_parser_row_missing_field_requires_ack(self):
         """Reject a parser row that drops a protected metadata field."""
@@ -318,6 +380,119 @@ class SourceTextInventorySemanticTests(_FixtureSupport, unittest.TestCase):
             validation.write_text(
                 validation.read_text(encoding="utf-8").replace(
                     "var run = Make()", "var run = Noop()"
+                ),
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code)
+            self.assertIn('field": "harness_signature"', output)
+
+    def test_method_group_forwarding_argument_change_requires_ack(self):
+        """Reject switching a method-group argument to a no-op helper."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(
+                directory,
+                validation_text=(
+                    "public static class FixtureValidation {\n"
+                    "    private static void Used() {\n"
+                    '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                    '        Check(source.Contains("Product"));\n'
+                    "    }\n"
+                    "    private static void Noop() { }\n"
+                    "    private static void Run(System.Action action) { action(); }\n"
+                    "    public static void Validate() { Run(Used); }\n"
+                    "}\n"
+                ),
+            )
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace("Run(Used)", "Run(Noop)"),
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code)
+            self.assertIn('field": "harness_signature"', output)
+
+    def test_conditional_delegate_binding_change_requires_ack(self):
+        """Reject changing the selected branch of a conditional delegate binding."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(
+                directory,
+                validation_text=(
+                    "public static class FixtureValidation {\n"
+                    "    private static void Used() {\n"
+                    '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                    '        Check(source.Contains("Product"));\n'
+                    "    }\n"
+                    "    private static void Noop() { }\n"
+                    "    public static void Validate() {\n"
+                    "        System.Action run = true ? Used : Noop;\n"
+                    "        run();\n"
+                    "    }\n"
+                    "}\n"
+                ),
+            )
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace("true ? Used", "false ? Used"),
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code)
+            self.assertIn('field": "harness_signature"', output)
+
+    def test_delegate_reassignment_change_requires_ack(self):
+        """Reject changing a later delegate reassignment to a no-op helper."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(
+                directory,
+                validation_text=(
+                    "public static class FixtureValidation {\n"
+                    "    private static void Used() {\n"
+                    '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                    '        Check(source.Contains("Product"));\n'
+                    "    }\n"
+                    "    private static void Noop() { }\n"
+                    "    public static void Validate() {\n"
+                    "        System.Action run = Used;\n"
+                    "        run = Used;\n"
+                    "        run();\n"
+                    "    }\n"
+                    "}\n"
+                ),
+            )
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace("run = Used;\n        run();", "run = Noop;\n        run();"),
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code)
+            self.assertIn('field": "harness_signature"', output)
+
+    def test_multilevel_delegate_forwarding_change_requires_ack(self):
+        """Reject removing a second-level delegate forwarding call."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(
+                directory,
+                validation_text=(
+                    "public static class FixtureValidation {\n"
+                    "    private static void Invoke(System.Action action) { action(); }\n"
+                    "    private static void Run(System.Action action) { Invoke(action); }\n"
+                    "    public static void Validate() {\n"
+                    "        Run(() => {\n"
+                    '            var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                    '            Check(source.Contains("Product"));\n'
+                    "        });\n"
+                    "    }\n"
+                    "}\n"
+                ),
+            )
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace(
+                    "private static void Invoke(System.Action action) { action(); }",
+                    "private static void Invoke(System.Action action) { }",
                 ),
                 encoding="utf-8",
             )

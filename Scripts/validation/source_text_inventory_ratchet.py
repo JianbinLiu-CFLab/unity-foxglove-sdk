@@ -509,6 +509,12 @@ def _classify_change(
             else:
                 weakening.append(field)
             continue
+        if field == "harness_signature":
+            if not before and after:
+                strengthened.append(_change(base, head, field, before, after))
+            else:
+                weakening.append(field)
+            continue
         if field == "call_path":
             if before == "UNKNOWN" and after != "UNKNOWN":
                 strengthened.append(_change(base, head, field, before, after))
@@ -536,10 +542,12 @@ def _parser_semantic_changes(
     current_versions = {
         str(row.get("parser_version", "")) for row in current_rows if row.get("parser_version")
     }
-    if base_versions and current_versions and base_versions != current_versions:
+    legacy_unversioned = not base_versions and bool(current_versions)
+    if current_versions and base_versions != current_versions:
         changes.append(
             _inventory_parser_migration_change(
-                next(iter(base_versions)), next(iter(current_versions))
+                next(iter(base_versions), "legacy-unversioned"),
+                next(iter(current_versions)),
             )
         )
     for base, current in matches:
@@ -550,6 +558,8 @@ def _parser_semantic_changes(
             {**change, "field": f"parser_{change['field']}"} for change in row_strengthened
         )
         for field in weakening_fields:
+            if legacy_unversioned and str(current.get(field, "")):
+                continue
             changes.append(
                 _change(
                     base,
@@ -647,6 +657,8 @@ def _verify_base_inventory(
         raise RuntimeError("current inventory callback is required")
     checker_changed = _checker_digest(root) != _checker_digest(root, revision)
     base_rows = _inventory_at_revision(root, revision, inventory_callback=inventory_callback)
+    legacy_migration_keys: set[tuple[object, ...]] = set()
+    legacy_migration_label = ""
     if checker_changed:
         base_status_rows = _inventory_at_revision(
             root,
@@ -655,6 +667,21 @@ def _verify_base_inventory(
             inventory_callback=inventory_callback,
         )
         parser_changes, parser_strengthened = _parser_semantic_changes(base_rows, base_status_rows)
+        base_versions = {str(row.get("parser_version", "")) for row in base_rows if row.get("parser_version")}
+        current_versions = {
+            str(row.get("parser_version", ""))
+            for row in base_status_rows
+            if row.get("parser_version")
+        }
+        if not base_versions and current_versions:
+            legacy_migration_keys = {
+                _ack_key(change)
+                for change in parser_changes
+                if change.get("field") == "parser_migration"
+            }
+            legacy_migration_label = (
+                f"legacy-unversioned->{next(iter(current_versions))}"
+            )
     else:
         base_status_rows = base_rows
         parser_changes = []
@@ -691,8 +718,11 @@ def _verify_base_inventory(
     acknowledged: list[dict[str, object]] = []
     unacknowledged: list[dict[str, object]] = []
     for change in changes:
-        entry = ack_map.get(_ack_key(change))
-        if entry is None:
+        change_key = _ack_key(change)
+        entry = ack_map.get(change_key)
+        if change_key in legacy_migration_keys:
+            acknowledged.append(change)
+        elif entry is None:
             unacknowledged.append(change)
         else:
             acknowledged.append(change)
@@ -706,6 +736,8 @@ def _verify_base_inventory(
         f"strengthened={len(strengthened)} acknowledged={len(acknowledged)} "
         f"unacknowledged={len(unacknowledged)} ack_unused={len(unused)}"
     )
+    if legacy_migration_label:
+        print(f"SOURCE_TEXT_INVENTORY_PARSER_MIGRATION {legacy_migration_label} accepted")
     if ack_errors:
         for error in ack_errors:
             print(f"SOURCE_TEXT_INVENTORY_ACK_ERROR {error}")
