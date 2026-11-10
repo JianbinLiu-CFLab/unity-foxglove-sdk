@@ -277,6 +277,11 @@ jobs:
           rm -rf "$trusted_root"
           mkdir -p "$trusted_root"
           trusted_revision="$SOURCE_TEXT_INVENTORY_BASE_SHA"
+          trusted_minimum_revision="fe195f288a3df0c9754056ef2d84c095c2e98cf7"
+          if ! git merge-base --is-ancestor "$trusted_minimum_revision" "$trusted_revision"; then
+            echo "Trusted source-text inventory base predates the --base-ref checker minimum" >&2
+            exit 1
+          fi
           if ! git cat-file -e "$trusted_revision:Scripts/validation/source_text_inventory.py" 2>/dev/null; then
             echo "Trusted source-text inventory checker is missing from the PR base" >&2
             exit 1
