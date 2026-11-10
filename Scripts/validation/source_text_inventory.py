@@ -285,15 +285,18 @@ def _validation_metadata(root: Path, source_file: str) -> tuple[str, str]:
     source_path = root / source_file
     if source_path.is_file():
         source = source_path.read_text(encoding="utf-8", errors="replace")
-        test_entry = re.search(
-            r"(?:\[(?:Fact|Theory|Test|TestCase|UnityTest)(?:[^\]]*)\]\s*)+"
-            r"(?:(?:public|private|protected|internal|static|async|override|virtual|new)\s+)*"
-            r"(?:[A-Za-z_]\w*(?:<[^>]+>)?\s+)?(?P<entry>[A-Za-z_]\w*)\s*\([^;{}]*\)\s*\{",
-            source,
-            re.DOTALL,
-        )
-        if test_entry:
-            return "<unit>", f"Unit|true|{test_entry.group('entry')}"
+        test_entries = [
+            match.group("entry")
+            for match in re.finditer(
+                r"(?:\[(?:Fact|Theory|Test|TestCase|UnityTest)(?:[^\]]*)\]\s*)+"
+                r"(?:(?:public|private|protected|internal|static|async|override|virtual|new)\s+)*"
+                r"(?:[A-Za-z_]\w*(?:<[^>]+>)?\s+)?(?P<entry>[A-Za-z_]\w*)\s*\([^;{}]*\)\s*\{",
+                source,
+                re.DOTALL,
+            )
+        ]
+        if test_entries:
+            return "<unit>", f"Unit|true|{';'.join(dict.fromkeys(test_entries))}"
     return "", ""
 
 

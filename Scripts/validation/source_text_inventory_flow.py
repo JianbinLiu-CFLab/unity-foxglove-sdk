@@ -143,13 +143,16 @@ def _call_path_for_offset(text: str, masked: str, offset: int, entrypoint: str) 
     """Return a registry-to-method path or ``UNKNOWN`` when static binding fails."""
     methods = _method_infos(text, masked)
     target = _method_for_offset(methods, offset)
-    if target is None or not entrypoint:
+    entrypoints = [name for name in entrypoint.split(";") if name]
+    if target is None or not entrypoints:
         return "UNKNOWN"
     graph = _method_call_graph(text, masked, methods)
-    if entrypoint not in graph:
+    if not graph or not any(name in graph for name in entrypoints):
         return "UNKNOWN"
-    queue: list[tuple[str, list[str]]] = [(entrypoint, [entrypoint])]
-    seen = {entrypoint}
+    queue: list[tuple[str, list[str]]] = [
+        (name, [name]) for name in entrypoints if name in graph
+    ]
+    seen = set(entrypoints)
     while queue:
         current, path = queue.pop(0)
         if current == target.name:
@@ -168,9 +171,12 @@ def _call_path_index(
     methods = _method_infos(text, masked)
     graph = _method_call_graph(text, masked, methods)
     paths: dict[str, str] = {}
-    if entrypoint not in graph:
+    entrypoints = [name for name in entrypoint.split(";") if name]
+    if not graph or not any(name in graph for name in entrypoints):
         return methods, paths
-    queue: list[tuple[str, list[str]]] = [(entrypoint, [entrypoint])]
+    queue: list[tuple[str, list[str]]] = [
+        (name, [name]) for name in entrypoints if name in graph
+    ]
     while queue:
         current, path = queue.pop(0)
         if current in paths:

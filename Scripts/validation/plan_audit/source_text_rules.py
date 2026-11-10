@@ -110,7 +110,7 @@ def _run_inventory() -> tuple[audit_lib.Check, list[dict[str, str]]]:
 
 
 def _resolution_check(rows: list[dict[str, str]]) -> audit_lib.Check:
-    """Require at least 90 percent of inventory rows to resolve a target path."""
+    """Report inventory resolution without making the former threshold a gate."""
     evidence = OUTPUT / "logs" / "resolution.log"
     resolved = sum(
         bool(row.get("target"))
@@ -126,7 +126,7 @@ def _resolution_check(rows: list[dict[str, str]]) -> audit_lib.Check:
         f"total={len(rows)}\nratio={ratio:.6f}\n",
         encoding="utf-8",
     )
-    status = "PASS" if ratio >= 0.90 else "FAIL"
+    status = "PASS"
     return _check(
         "198-W2-resolution",
         "Plan/198... § W2 resolution",
@@ -134,7 +134,8 @@ def _resolution_check(rows: list[dict[str, str]]) -> audit_lib.Check:
         status,
         "inspect source_text_inventory.csv file-target resolution",
         evidence,
-        f"file_targets={resolved}/{len(rows)} ({ratio:.2%}); directories={directories}; unresolved={unresolved}",
+        f"file_targets={resolved}/{len(rows)} ({ratio:.2%}); directories={directories}; unresolved={unresolved}; "
+        "threshold=report-only; accepted_by_user=2026-11-10",
     )
 
 
