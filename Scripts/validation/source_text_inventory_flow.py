@@ -264,6 +264,19 @@ def _reachability_signatures(
             kind = match.group("kind")
             intervals.append((cursor, end, f"{kind}({condition})"))
             control_intervals.append((cursor, end, kind))
+    for match in re.finditer(r"\btry\s*\{", masked):
+        open_index = masked.find("{", match.start(), match.end())
+        end = _balanced_brace_end(masked, open_index)
+        if end is None:
+            continue
+        after = masked[end + 1 :]
+        value = "try-catch" if re.match(r"\s*catch\b", after) else "try"
+        intervals.append((open_index + 1, end, value))
+    for match in re.finditer(r"\bcatch(?:\s*\([^)]*\))?\s*\{", masked):
+        open_index = masked.find("{", match.start(), match.end())
+        end = _balanced_brace_end(masked, open_index)
+        if end is not None:
+            intervals.append((open_index + 1, end, "catch"))
     exits: list[tuple[int, int, str, str]] = []
     for match in re.finditer(
         r"\b(?P<kind>return|throw|continue|break|goto)\b[^;]*;|\byield\s+break\s*;",

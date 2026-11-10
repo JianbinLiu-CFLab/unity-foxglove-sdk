@@ -449,6 +449,25 @@ class SourceTextInventoryGateTests(unittest.TestCase):
             self.assertEqual(1, result.returncode, result.stdout + result.stderr)
             self.assertIn('field": "parser_target"', result.stdout)
 
+    def test_try_catch_swallow_requires_ack(self):
+        """Reject wrapping a source assertion in a swallowing try/catch."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(directory)
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            original = validation.read_text(encoding="utf-8")
+            validation.write_text(
+                original.replace(
+                    '        Check(source.Contains("Product"));\n',
+                    "        try {\n"
+                    '            Check(source.Contains("Product"));\n'
+                    "        } catch (System.Exception) { }\n",
+                ),
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code)
+            self.assertIn('field": "reachability"', output)
+
     def test_head_acknowledgement_is_not_trusted(self):
         """Reject a weakening acknowledgement added only in the proposed head."""
         with tempfile.TemporaryDirectory() as directory:
