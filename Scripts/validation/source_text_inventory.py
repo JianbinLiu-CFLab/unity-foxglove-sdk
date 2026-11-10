@@ -92,6 +92,7 @@ def scan_file(
     xunit_index: dict[str, list[str]],
     shared_paths: dict[str, str] | None = None,
     comment_cache: dict[str, tuple[str, str]] | None = None,
+    partial_harness_signature: str | None = None,
 ) -> list[dict[str, object]]:
     """Collect source-text assertions from one validation file."""
     lines = path.read_text(encoding="utf-8").splitlines()
@@ -123,6 +124,8 @@ def scan_file(
         masked_file,
         method_infos,
     )
+    if partial_harness_signature:
+        harness_signature = partial_harness_signature
     reachability = _reachability_signatures(
         lines,
         receiver_calls + derived_calls + assertion_calls,
@@ -246,9 +249,36 @@ def inventory(root: Path) -> list[dict[str, object]]:
         }
     )
     scopes = _shared_scope_paths(files)
+    partial_signatures: dict[Path, str] = {}
+    partial_groups: dict[tuple[tuple[str, ...], str], list[Path]] = {}
+    for path in files:
+        source = path.read_text(encoding="utf-8", errors="replace")
+        package_key = tuple(path.parts[: path.parts.index("Tests")]) if "Tests" in path.parts else ()
+        for match in re.finditer(r"\bpartial\s+class\s+(?P<name>[A-Za-z_]\w*)", source):
+            partial_groups.setdefault((package_key, match.group("name")), []).append(path)
+    for group_paths in partial_groups.values():
+        if len(group_paths) < 2:
+            continue
+        combined = "\n".join(
+            path.read_text(encoding="utf-8", errors="replace") for path in sorted(set(group_paths))
+        )
+        masked = _strip_csharp_comments_and_strings(combined)
+        methods = _flow_module._method_infos(combined, masked)
+        signature = _validation_harness_signature(combined, masked, methods)
+        for path in group_paths:
+            partial_signatures[path] = signature
     comment_cache: dict[str, tuple[str, str]] = {}
     for path in files:
-        rows.extend(scan_file(path, root, xunit_index, scopes.get(path), comment_cache))
+        rows.extend(
+            scan_file(
+                path,
+                root,
+                xunit_index,
+                scopes.get(path),
+                comment_cache,
+                partial_signatures.get(path),
+            )
+        )
     return rows
 
 

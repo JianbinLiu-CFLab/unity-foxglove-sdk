@@ -555,3 +555,38 @@ class SourceTextInventorySemanticTests(_FixtureSupport, unittest.TestCase):
             code, output = self._run_fixture_gate(root)
             self.assertEqual(1, code)
             self.assertIn('field": "reachability"', output)
+
+    def test_partial_class_sibling_helper_change_requires_ack(self):
+        """Reject changing a helper implemented in a sibling partial-class file."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(
+                directory,
+                validation_text=(
+                    "public static partial class FixtureValidation {\n"
+                    "    public static void Validate() {\n"
+                    '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                    '        Check(source.Contains("Product"));\n'
+                    "    }\n"
+                    "}\n"
+                ),
+            )
+            sibling = root / "Packages/fixture/Tests/Runtime/FixtureValidation.Check.cs"
+            sibling.write_text(
+                "public static partial class FixtureValidation {\n"
+                "    private static void Check(bool condition) {\n"
+                "        if (!condition) throw new System.Exception();\n"
+                "    }\n"
+                "}\n",
+                encoding="utf-8",
+            )
+            subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+            subprocess.run(["git", "-C", str(root), "commit", "-q", "-m", "partial-base"], check=True)
+            sibling.write_text(
+                "public static partial class FixtureValidation {\n"
+                "    private static void Check(bool condition) { }\n"
+                "}\n",
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code)
+            self.assertIn('field": "harness_signature"', output)
