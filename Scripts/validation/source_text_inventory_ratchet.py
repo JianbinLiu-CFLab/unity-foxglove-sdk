@@ -646,5 +646,3 @@ def _verify_base_inventory(
             suggestion["reason"] = ""
             print(f"SOURCE_TEXT_INVENTORY_UNACKNOWLEDGED {json.dumps(suggestion, sort_keys=True)}")
     return 1 if ack_errors or unacknowledged else 0
-
-
