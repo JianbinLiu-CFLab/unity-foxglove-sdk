@@ -236,6 +236,126 @@ class SourceTextInventorySemanticTests(_FixtureSupport, unittest.TestCase):
             self.assertEqual(1, code)
             self.assertIn('field": "harness_signature"', output)
 
+    def test_method_group_delegate_change_requires_ack(self):
+        """Reject switching a delegate method group to a no-op method."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(
+                directory,
+                validation_text=(
+                    "public static class FixtureValidation {\n"
+                    "    private static void Used() {\n"
+                    '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                    '        Check(source.Contains("Product"));\n'
+                    "    }\n"
+                    "    private static void Noop() { }\n"
+                    "    public static void Validate() {\n"
+                    "        System.Action run = Used;\n"
+                    "        run();\n"
+                    "    }\n"
+                    "}\n"
+                ),
+            )
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace(
+                    "System.Action run = Used", "System.Action run = Noop"
+                ),
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code)
+            self.assertIn('field": "harness_signature"', output)
+
+    def test_inline_delegate_forwarding_change_requires_ack(self):
+        """Reject changing an inline lambda receiver into a no-op helper."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(
+                directory,
+                validation_text=(
+                    "public static class FixtureValidation {\n"
+                    "    private static void Run(System.Action action) { action(); }\n"
+                    "    public static void Validate() {\n"
+                    "        Run(() => {\n"
+                    '            var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                    '            Check(source.Contains("Product"));\n'
+                    "        });\n"
+                    "    }\n"
+                    "}\n"
+                ),
+            )
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace(
+                    "private static void Run(System.Action action) { action(); }",
+                    "private static void Run(System.Action action) { }",
+                ),
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code)
+            self.assertIn('field": "harness_signature"', output)
+
+    def test_delegate_factory_change_requires_ack(self):
+        """Reject switching a delegate factory to an empty delegate factory."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(
+                directory,
+                validation_text=(
+                    "public static class FixtureValidation {\n"
+                    "    private static System.Action Make() => () => {\n"
+                    '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                    '        Check(source.Contains("Product"));\n'
+                    "    };\n"
+                    "    private static System.Action Noop() => () => { };\n"
+                    "    public static void Validate() {\n"
+                    "        var run = Make();\n"
+                    "        run();\n"
+                    "    }\n"
+                    "}\n"
+                ),
+            )
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace(
+                    "var run = Make()", "var run = Noop()"
+                ),
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code)
+            self.assertIn('field": "harness_signature"', output)
+
+    def test_conditional_overload_change_requires_ack(self):
+        """Reject an unresolved conditional expression that changes overload targets."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(
+                directory,
+                validation_text=(
+                    "public static class FixtureValidation {\n"
+                    "    private static void Helper(string value) {\n"
+                    '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                    '        Check(source.Contains("Product"));\n'
+                    "    }\n"
+                    "    private static void Helper(int value) { }\n"
+                    "    public static void Validate() {\n"
+                    "        bool enabled = true;\n"
+                    '        var value = enabled ? "run" : 1;\n'
+                    "        Helper(value);\n"
+                    "    }\n"
+                    "}\n"
+                ),
+            )
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace(
+                    "bool enabled = true", "bool enabled = false"
+                ),
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code)
+            self.assertIn('field": "call_binding"', output)
+
     def test_local_function_invocation_change_requires_ack(self):
         """Reject deleting a local function invocation that owns a source assertion."""
         with tempfile.TemporaryDirectory() as directory:

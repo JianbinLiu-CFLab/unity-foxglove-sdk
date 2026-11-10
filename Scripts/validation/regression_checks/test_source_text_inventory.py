@@ -8,6 +8,7 @@ from Scripts.validation.source_text_inventory import (
     _build_xunit_index,
     _checked_expression_signature,
     _match_base_rows,
+    _repo_file,
     _validation_harness_signature,
     classify,
     inventory,
@@ -538,6 +539,15 @@ class SourceTextInventoryTests(unittest.TestCase):
             rows = inventory(root)
             self.assertEqual(1, len(rows))
             self.assertFalse(rows[0]["comment_only"])
+
+    def test_repo_file_preserves_the_previous_eight_mib_limit(self):
+        """Keep bounded source reads compatible with the previous checker limit."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            target = root / "Packages" / "fixture" / "Runtime" / "Large.cs"
+            target.parent.mkdir(parents=True)
+            target.write_bytes(b"x" * (5 * 1024 * 1024))
+            self.assertEqual(target.resolve(), _repo_file(root, "Packages/fixture/Runtime/Large.cs"))
 
     def test_ambiguous_parameter_targets_fail_closed(self):
         """Do not merge different reader paths under one helper parameter name."""

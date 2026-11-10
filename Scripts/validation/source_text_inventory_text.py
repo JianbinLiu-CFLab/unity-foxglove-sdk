@@ -110,7 +110,7 @@ def _repo_file(root: Path, value: str) -> Path | None:
         _REPO_FILE_CACHE[cache_key] = None
         return None
     result = (
-        candidate if candidate.is_file() and candidate.stat().st_size <= 4 * 1024 * 1024 else None
+        candidate if candidate.is_file() and candidate.stat().st_size <= 8 * 1024 * 1024 else None
     )
     _REPO_FILE_CACHE[cache_key] = result
     return result

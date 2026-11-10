@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+from bisect import bisect_right
 from collections import Counter
 from dataclasses import dataclass
 
@@ -322,6 +323,43 @@ def _call_sites(
         yield name, open_index
 
 
+def _method_call_contexts(
+    text: str,
+    masked: str,
+    methods: list[MethodInfo],
+    extra_calls: list[dict[str, object]] | None = None,
+) -> dict[int, str]:
+    """Return one shared reachability map for method and assertion calls."""
+    methods_by_name: dict[str, list[MethodInfo]] = {}
+    for method in methods:
+        methods_by_name.setdefault(method.name, []).append(method)
+    calls = list(extra_calls or [])
+    line_starts = _line_starts(text)
+    for method in methods:
+        for _, open_index in _call_sites(text, masked, method, set(methods_by_name)):
+            calls.append(
+                {
+                    "start": open_index,
+                    "start_line": _line_number(line_starts, open_index),
+                }
+            )
+    return _reachability_signatures(
+        text.splitlines(), calls, text, masked, methods
+    )
+
+
+def _line_starts(text: str) -> list[int]:
+    """Return source line starts for indexed call-site lookups."""
+    starts = [0]
+    starts.extend(index + 1 for index, character in enumerate(text) if character == "\n")
+    return starts
+
+
+def _line_number(starts: list[int], offset: int) -> int:
+    """Return a zero-based line number from precomputed line starts."""
+    return bisect_right(starts, offset) - 1
+
+
 def _call_arguments(text: str, masked: str, open_index: int) -> str | None:
     """Return one call's argument text when its parentheses are balanced."""
     close_index = _balanced_call_end(masked, open_index)
@@ -361,7 +399,10 @@ def _resolve_call_target(
 
 
 def _method_call_graph(
-    text: str, masked: str, methods: list[MethodInfo]
+    text: str,
+    masked: str,
+    methods: list[MethodInfo],
+    call_contexts: dict[int, str] | None = None,
 ) -> dict[str, dict[str, set[str]]]:
     """Build same-file calls with their enclosing control-flow contexts."""
     graph: dict[str, dict[str, set[str]]] = {
@@ -373,26 +414,12 @@ def _method_call_graph(
     return_types = _method_return_types(methods)
     field_types = _field_types(text, masked, methods)
     call_sites_by_method: dict[str, list[tuple[str, int]]] = {}
-    all_call_sites: list[tuple[str, int]] = []
     for method in methods:
         call_sites = list(
             _call_sites(text, masked, method, set(methods_by_name))
         )
         call_sites_by_method[method.identity] = call_sites
-        all_call_sites.extend(call_sites)
-    contexts = _reachability_signatures(
-        text.splitlines(),
-        [
-            {
-                "start": open_index,
-                "start_line": text.count("\n", 0, open_index),
-            }
-            for _, open_index in all_call_sites
-        ],
-        text,
-        masked,
-        methods,
-    )
+    contexts = call_contexts or _method_call_contexts(text, masked, methods)
     for method in methods:
         local_types: dict[str, str] | None = None
         for name, open_index in call_sites_by_method[method.identity]:
@@ -464,7 +491,19 @@ def _ambiguous_call_bindings(
                     for item in _split_arguments(arguments)
                 )
                 identity = target.identity if target is not None else "AMBIGUOUS"
-                calls.append(f"{call_name}({re.sub(r'\\s+', ' ', arguments).strip()}):{argument_types}->{identity}")
+                unknown_body = ""
+                if target is None or "?" in argument_types:
+                    unknown_body = hashlib.sha256(
+                        re.sub(
+                            r"\s+",
+                            " ",
+                            masked[method.body_start : method.body_end],
+                        ).strip().encode()
+                    ).hexdigest()[:16]
+                calls.append(
+                    f"{call_name}({re.sub(r'\\s+', ' ', arguments).strip()}):"
+                    f"{argument_types}->{identity}:unknown_body={unknown_body}"
+                )
         digest = hashlib.sha256("\n".join(sorted(calls)).encode()).hexdigest()
         for method in methods:
             if method.name == name:
@@ -496,11 +535,15 @@ def _call_path_for_offset(text: str, masked: str, offset: int, entrypoint: str) 
 
 
 def _call_path_index(
-    text: str, masked: str, entrypoint: str
+    text: str,
+    masked: str,
+    entrypoint: str,
+    call_contexts: dict[int, str] | None = None,
+    methods: list[MethodInfo] | None = None,
 ) -> tuple[list[MethodInfo], dict[str, str]]:
     """Build method metadata and registry call paths once per source file."""
-    methods = _method_infos(text, masked)
-    graph = _method_call_graph(text, masked, methods)
+    methods = methods if methods is not None else _method_infos(text, masked)
+    graph = _method_call_graph(text, masked, methods, call_contexts)
     paths: dict[str, str] = {}
     entrypoints = [name for name in entrypoint.split(";") if name]
     methods_by_name: dict[str, list[MethodInfo]] = {}
@@ -561,10 +604,60 @@ def _validation_harness_signature(
                 method.signature + " " + text[method.body_start : method.body_end + 1],
             ).strip()
         )
-    lambda_signature = _lambda_binding_signature(text, masked)
+    lambda_signature = _lambda_binding_signature(text, masked, methods)
     if lambda_signature:
         pieces.append(f"lambda:{lambda_signature}")
+    delegate_signature = _delegate_binding_signature(text, masked, methods)
+    if delegate_signature:
+        pieces.append(f"delegate:{delegate_signature}")
     return hashlib.sha256("\n".join(pieces).encode()).hexdigest() if pieces else ""
+
+
+def _delegate_binding_signature(
+    text: str, masked: str, methods: list[MethodInfo]
+) -> str:
+    """Hash method-group and delegate-factory assignments with their invocations."""
+    delegate_methods = {
+        method.name
+        for method in methods
+        if _normalize_type(method.return_type)
+        .removeprefix("System.")
+        .startswith(("Action", "Func", "Predicate"))
+    }
+    delegate_methods.update(
+        match.group("name")
+        for match in re.finditer(
+            r"\b(?:System\.)?(?:Action|Func|Predicate)(?:<[^;{}]+>)?\s+"
+            r"(?P<name>[A-Za-z_]\w*)\s*\([^;{}]*\)\s*=>",
+            masked,
+        )
+    )
+    pieces: list[str] = []
+    assignment_pattern = re.compile(
+        r"\b(?P<type>(?:(?:System\.)?(?:Action|Func|Predicate)(?:<[^;=]+>)?|var))\s+"
+        r"(?P<name>[A-Za-z_]\w*)\s*=\s*"
+        r"(?P<target>[A-Za-z_]\w*(?:\s*\([^;]*\))?)\s*;"
+    )
+    for match in assignment_pattern.finditer(masked):
+        target = re.sub(r"\s+", " ", match.group("target")).strip()
+        target_name = re.match(r"[A-Za-z_]\w*", target)
+        if target_name is None:
+            continue
+        explicit_delegate = match.group("type") != "var"
+        if not explicit_delegate and target_name.group() not in delegate_methods:
+            continue
+        name = match.group("name")
+        invocation = re.search(
+            rf"\b{re.escape(name)}(?:\s*\([^;]*\)|\s*\?\.\s*Invoke\s*\([^;]*\)|"
+            rf"\s*\.\s*Invoke\s*\([^;]*\))\s*;|"
+            rf"\b[A-Za-z_]\w*\s*\(\s*{re.escape(name)}\s*\)\s*;",
+            masked[match.end() :],
+        )
+        invocation_text = re.sub(r"\s+", " ", invocation.group()).strip() if invocation else ""
+        pieces.append(
+            f"{match.group('type')} {name}={target}|invoke:{invocation_text}"
+        )
+    return hashlib.sha256("\n".join(sorted(pieces)).encode()).hexdigest() if pieces else ""
 
 
 def _catch_descriptor(text: str, masked: str, header: str, body_start: int, body_end: int) -> str:
@@ -584,21 +677,35 @@ def _finally_descriptor(masked: str, body_start: int, body_end: int) -> str:
     return f"finally:{behavior}:{body_hash}"
 
 
-def _lambda_binding_signature(text: str, masked: str) -> str:
+def _lambda_binding_signature(
+    text: str, masked: str, methods: list[MethodInfo] | None = None
+) -> str:
     """Hash lambda/delegate bodies, invocation forms, and enclosing control flow."""
     pieces: list[str] = []
     seen: set[int] = set()
+    context_positions: list[int] = []
+    line_starts = _line_starts(text)
+    assignment_records: list[tuple[re.Match[str], int, list[re.Match[str]]]] = []
+    inline_records: list[tuple[str, str, str, str, int]] = []
+    delegate_records: list[tuple[str, str, str, str, int]] = []
+    methods_by_name: dict[str, list[MethodInfo]] = {}
+    for method in methods or []:
+        methods_by_name.setdefault(method.name, []).append(method)
 
-    def context_for(positions: list[int]) -> dict[int, str]:
-        """Return reachability contexts for delegate invocation offsets."""
-        calls = [
-            {
-                "start": position,
-                "start_line": text.count("\n", 0, position),
-            }
-            for position in positions
-        ]
-        return _reachability_signatures(text.splitlines(), calls, text, masked)
+    def owner_signature(owner: str) -> str:
+        """Return a stable digest for an inline lambda receiver method."""
+        candidates = methods_by_name.get(owner, [])
+        if not candidates:
+            return ""
+        payload = "\n".join(
+            re.sub(
+                r"\s+",
+                " ",
+                method.signature + " " + masked[method.body_start : method.body_end + 1],
+            ).strip()
+            for method in candidates
+        )
+        return hashlib.sha256(payload.encode()).hexdigest()[:16]
 
     def region_end(cursor: int) -> int | None:
         """Return the end of one lambda or delegate body."""
@@ -633,13 +740,8 @@ def _lambda_binding_signature(text: str, masked: str) -> str:
             rf"\b[A-Za-z_]\w*\s*\(\s*{re.escape(name)}\s*\)\s*;"
         )
         invocation_matches = list(invocation_pattern.finditer(masked, end + 1))
-        contexts = context_for([item.start() for item in invocation_matches])
-        body = re.sub(r"\s+", " ", masked[match.start() : end + 1]).strip()
-        calls = "|".join(
-            f"{re.sub(r'\s+', ' ', item.group()).strip()}@{contexts.get(item.start(), '')}"
-            for item in invocation_matches
-        )
-        pieces.append(f"{body}|calls:{calls}")
+        assignment_records.append((match, end, invocation_matches))
+        context_positions.extend(item.start() for item in invocation_matches)
 
     inline_pattern = re.compile(r"(?:\([^)]*\)|[A-Za-z_]\w*)\s*=>")
     for match in inline_pattern.finditer(masked):
@@ -651,12 +753,12 @@ def _lambda_binding_signature(text: str, masked: str) -> str:
         prefix = masked[max(0, match.start() - 200) : match.start() + 1]
         owner_match = re.search(r"\b([A-Za-z_]\w*)\s*\([^()]*$", prefix)
         owner = owner_match.group(1) if owner_match else "UNKNOWN"
-        context = context_for([match.start()]).get(match.start(), "")
         body = re.sub(r"\s+", " ", masked[match.start() : end + 1]).strip()
         statement = statement_for(match.start(), end)
-        pieces.append(
-            f"inline:{owner}:{statement}:{body}:context:{context}"
+        inline_records.append(
+            (owner, owner_signature(owner), statement, body, match.start())
         )
+        context_positions.append(match.start())
 
     delegate_pattern = re.compile(r"\bdelegate(?:\s*\([^)]*\))?\s*\{")
     for match in delegate_pattern.finditer(masked):
@@ -668,11 +770,39 @@ def _lambda_binding_signature(text: str, masked: str) -> str:
         prefix = masked[max(0, match.start() - 200) : match.start() + 1]
         owner_match = re.search(r"\b([A-Za-z_]\w*)\s*\([^()]*$", prefix)
         owner = owner_match.group(1) if owner_match else "UNKNOWN"
-        context = context_for([match.start()]).get(match.start(), "")
         body = re.sub(r"\s+", " ", masked[match.start() : end + 1]).strip()
         statement = statement_for(match.start(), end)
+        delegate_records.append(
+            (owner, owner_signature(owner), statement, body, match.start())
+        )
+        context_positions.append(match.start())
+    contexts = _reachability_signatures(
+        text.splitlines(),
+        [
+            {
+                "start": position,
+                "start_line": _line_number(line_starts, position),
+            }
+            for position in context_positions
+        ],
+        text,
+        masked,
+        methods,
+    ) if context_positions else {}
+    for match, end, invocation_matches in assignment_records:
+        body = re.sub(r"\s+", " ", masked[match.start() : end + 1]).strip()
+        calls = "|".join(
+            f"{re.sub(r'\s+', ' ', item.group()).strip()}@{contexts.get(item.start(), '')}"
+            for item in invocation_matches
+        )
+        pieces.append(f"{body}|calls:{calls}")
+    for owner, owner_digest, statement, body, position in inline_records:
         pieces.append(
-            f"delegate:{owner}:{statement}:{body}:context:{context}"
+            f"inline:{owner}:{owner_digest}:{statement}:{body}:context:{contexts.get(position, '')}"
+        )
+    for owner, owner_digest, statement, body, position in delegate_records:
+        pieces.append(
+            f"delegate:{owner}:{owner_digest}:{statement}:{body}:context:{contexts.get(position, '')}"
         )
     return hashlib.sha256("\n".join(pieces).encode()).hexdigest() if pieces else ""
 

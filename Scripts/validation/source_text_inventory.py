@@ -16,6 +16,7 @@ from pathlib import Path
 
 MODULE_DIR = Path(__file__).resolve().parent
 PARSER_SEMANTICS_VERSION = "2"
+_VALIDATION_METADATA_CACHE: dict[tuple[str, str], tuple[str, str]] = {}
 if str(MODULE_DIR) not in sys.path:
     sys.path.insert(0, str(MODULE_DIR))
 
@@ -113,10 +114,19 @@ def scan_file(
         call.update(text_file=source_text, masked=masked_file)
     validation_flag, dispatch = _validation_metadata(root, path.relative_to(root).as_posix())
     entrypoint = dispatch.rsplit("|", 1)[-1] if dispatch else ""
-    method_infos, call_paths = _flow_module._call_path_index(
+    method_infos = _flow_module._method_infos(source_text, masked_file)
+    reachability = _flow_module._method_call_contexts(
+        source_text,
+        masked_file,
+        method_infos,
+        receiver_calls + derived_calls + assertion_calls,
+    )
+    _, call_paths = _flow_module._call_path_index(
         source_text,
         masked_file,
         entrypoint,
+        reachability,
+        method_infos,
     )
     call_bindings = _flow_module._ambiguous_call_bindings(source_text, masked_file, method_infos)
     harness_signature = _validation_harness_signature(
@@ -126,13 +136,6 @@ def scan_file(
     )
     if partial_harness_signature:
         harness_signature = partial_harness_signature
-    reachability = _reachability_signatures(
-        lines,
-        receiver_calls + derived_calls + assertion_calls,
-        source_text,
-        masked_file,
-        method_infos,
-    )
     receiver_ends = {int(call["end"]) for call in receiver_calls}
     candidates: list[tuple[int, dict[str, object], str]] = []
     for call in receiver_calls:
@@ -239,6 +242,7 @@ def inventory(root: Path) -> list[dict[str, object]]:
     """Scan runtime and unit C# validation files under every package."""
     _text_module._clear_text_caches()
     _symbols_module._clear_symbol_caches()
+    _VALIDATION_METADATA_CACHE.clear()
     rows: list[dict[str, object]] = []
     xunit_index = _build_xunit_index(root)
     files = sorted(
@@ -293,6 +297,10 @@ def _validation_harness_signature(
 
 def _validation_metadata(root: Path, source_file: str) -> tuple[str, str]:
     """Resolve a validation file to its registry flag and dispatch metadata."""
+    cache_key = (str(root.resolve()), source_file)
+    cached = _VALIDATION_METADATA_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
     stem = Path(source_file).stem
     registry = (
         root
@@ -314,26 +322,55 @@ def _validation_metadata(root: Path, source_file: str) -> tuple[str, str]:
             entrypoint = re.search(rf"\b{re.escape(stem)}\.(?P<entry>Validate\w*)\b", block)
             if entrypoint:
                 default = "false" if re.search(r"\bincludeInDefault\s*:\s*false\b", block) else "true"
-                return (
+                result = (
                     match.group("flag"),
                     f"{match.group('kind')}|{default}|{entrypoint.group('entry')}",
                 )
+                _VALIDATION_METADATA_CACHE[cache_key] = result
+                return result
     source_path = root / source_file
     if source_path.is_file():
         source = source_path.read_text(encoding="utf-8", errors="replace")
-        test_entries = []
-        attribute_pattern = re.compile(
-            r"(?P<attributes>(?:\s*\[[^\]]+\]\s*)+)"
-            r"(?:(?:public|private|protected|internal|static|async|override|virtual|new)\s+)*"
-            r"(?:[A-Za-z_]\w*(?:<[^>]+>)?\s+)?(?P<entry>[A-Za-z_]\w*)\s*\([^;{}]*\)\s*\{",
-            re.DOTALL,
-        )
-        for match in attribute_pattern.finditer(source):
-            if re.search(r"\[(?:Fact|Theory|Test|TestCase|UnityTest)(?:[^\]]*)\]", match.group("attributes")):
-                test_entries.append(match.group("entry"))
+        test_entries: list[str] = []
+        source_lines = source.splitlines()
+        test_attribute = re.compile(r"\[(?:Fact|Theory|Test|TestCase|UnityTest)\b")
+        method_pattern = re.compile(r"\b(?P<entry>[A-Za-z_]\w*)\s*\([^;{}]*\)\s*\{")
+        index = 0
+        while index < len(source_lines):
+            attribute_block = False
+            inline_entry = ""
+            cursor = index
+            while cursor < len(source_lines):
+                stripped = source_lines[cursor].strip()
+                if not stripped or stripped.startswith("["):
+                    attribute_block = attribute_block or bool(test_attribute.search(stripped))
+                    if attribute_block:
+                        inline_match = method_pattern.search(stripped)
+                        if inline_match:
+                            inline_entry = inline_match.group("entry")
+                            cursor += 1
+                            break
+                    cursor += 1
+                    continue
+                break
+            if inline_entry:
+                test_entries.append(inline_entry)
+                index = max(index + 1, cursor)
+                continue
+            if attribute_block:
+                for candidate_line in source_lines[cursor : min(cursor + 8, len(source_lines))]:
+                    match = method_pattern.search(candidate_line)
+                    if match:
+                        test_entries.append(match.group("entry"))
+                        break
+            index = max(index + 1, cursor)
         if test_entries:
-            return "<unit>", f"Unit|true|{';'.join(dict.fromkeys(test_entries))}"
-    return "", ""
+            result = "<unit>", f"Unit|true|{';'.join(dict.fromkeys(test_entries))}"
+            _VALIDATION_METADATA_CACHE[cache_key] = result
+            return result
+    result = "", ""
+    _VALIDATION_METADATA_CACHE[cache_key] = result
+    return result
 
 
 def _reader_expression_signature(text: str, call: dict[str, object]) -> str:
