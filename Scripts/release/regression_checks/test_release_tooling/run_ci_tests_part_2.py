@@ -82,7 +82,7 @@ class _RunCiTestsPart2:
             "Scripts.validation.regression_checks.test_performance_evidence",
             "Scripts.validation.regression_checks.test_source_text_inventory",
             "Scripts.validation.regression_checks.test_source_text_inventory_gate",
-        "Scripts.validation.regression_checks.test_source_text_inventory_semantics",
+            "Scripts.validation.regression_checks.test_source_text_inventory_semantics",
             "Scripts.architecture.regression_checks.test_structure_guards",
             "Scripts.release.regression_checks.test_regression_inventory",
             "Scripts.native.regression_checks.test_native_sources",

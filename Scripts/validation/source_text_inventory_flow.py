@@ -210,13 +210,25 @@ def _field_types(text: str, masked: str, methods: list[MethodInfo]) -> dict[str,
     result: dict[str, str] = {}
     for match in re.finditer(
         r"\b(?P<type>[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)?(?:<[^;=]+>)?(?:\[\])?)\s+"
-        r"(?P<name>[A-Za-z_]\w*)\s*=",
+        r"(?P<name>[A-Za-z_]\w*)\s*(?:=|;|\{)",
         masked,
     ):
         if any(method.body_start < match.start() < method.body_end for method in methods):
             continue
         result[match.group("name")] = _normalize_type(match.group("type"))
     return result
+
+
+def _constant_values(text: str, masked: str) -> dict[str, str]:
+    """Collect simple boolean, integer, and string initializers for branch selectors."""
+    values: dict[str, str] = {}
+    for match in re.finditer(
+        r"\b(?:(?:bool|int|string|var)\s+)?(?P<name>[A-Za-z_]\w*)\s*=\s*"
+        r"(?P<value>true|false|-?\d+|\"(?:\\.|[^\"\\])*\")\s*;",
+        masked,
+    ):
+        values[match.group("name")] = re.sub(r"\s+", " ", text[match.start("value") : match.end("value")].strip())
+    return values
 
 
 def _local_types(
@@ -275,6 +287,8 @@ def _infer_expression_type(
         return "null"
     if re.fullmatch(r"[A-Za-z_]\w*", expression):
         return local_types.get(expression, "")
+    if re.fullmatch(r"this\.[A-Za-z_]\w*", expression):
+        return local_types.get(expression.split(".", 1)[1], "")
     call = re.fullmatch(r"([A-Za-z_]\w*)\s*\([^;{}]*\)", expression)
     if call:
         return (return_types or {}).get(call.group(1), "")
@@ -282,7 +296,12 @@ def _infer_expression_type(
     return _normalize_type(match.group(1)) if match else ""
 
 
-def _call_sites(text: str, masked: str, method: MethodInfo):
+def _call_sites(
+    text: str,
+    masked: str,
+    method: MethodInfo,
+    known_names: set[str] | None = None,
+):
     """Yield same-file method call names and opening offsets for one method."""
     body = masked[method.body_start : method.body_end]
     for match in CALL_PATTERN.finditer(body):
@@ -290,6 +309,16 @@ def _call_sites(text: str, masked: str, method: MethodInfo):
         if name in CONTROL_KEYWORDS:
             continue
         open_index = method.body_start + match.end() - 1
+        if known_names is not None:
+            if name not in known_names:
+                continue
+            close_index = _balanced_call_end(masked, open_index)
+            if close_index is not None:
+                cursor = close_index + 1
+                while cursor < len(masked) and masked[cursor].isspace():
+                    cursor += 1
+                if cursor < len(masked) and masked[cursor] in "{=":
+                    continue
         yield name, open_index
 
 
@@ -341,7 +370,7 @@ def _method_call_graph(text: str, masked: str, methods: list[MethodInfo]) -> dic
     field_types = _field_types(text, masked, methods)
     for method in methods:
         local_types: dict[str, str] | None = None
-        for name, open_index in _call_sites(text, masked, method):
+        for name, open_index in _call_sites(text, masked, method, set(methods_by_name)):
             candidates = methods_by_name.get(name, [])
             if len(candidates) == 1:
                 target = candidates[0]
@@ -386,7 +415,9 @@ def _ambiguous_call_bindings(
         field_types = _field_types(text, masked, methods)
         for method in methods:
             local_types = _local_types(text, method, field_types, return_types)
-            for call_name, open_index in _call_sites(text, masked, method):
+            for call_name, open_index in _call_sites(
+                text, masked, method, set(methods_by_name)
+            ):
                 if call_name != name:
                     continue
                 arguments = _call_arguments(text, masked, open_index)
@@ -514,28 +545,90 @@ def _catch_descriptor(text: str, masked: str, header: str, body_start: int, body
     return f"catch({header}):{behavior}:{body_hash}"
 
 
+def _finally_descriptor(masked: str, body_start: int, body_end: int) -> str:
+    """Describe finally-body exits and normalized body content."""
+    body = masked[body_start + 1 : body_end]
+    behavior = "exit" if re.search(r"\b(?:return|throw|goto)\b", body) else "normal"
+    body_hash = hashlib.sha256(re.sub(r"\s+", " ", body).strip().encode()).hexdigest()[:16]
+    return f"finally:{behavior}:{body_hash}"
+
+
 def _lambda_binding_signature(text: str, masked: str) -> str:
-    """Hash lambda/delegate bodies together with their local invocation sites."""
+    """Hash lambda/delegate bodies, invocation forms, and enclosing control flow."""
     pieces: list[str] = []
+    seen: set[int] = set()
+
+    def context_for(positions: list[int]) -> dict[int, str]:
+        """Return reachability contexts for delegate invocation offsets."""
+        calls = [
+            {
+                "start": position,
+                "start_line": text.count("\n", 0, position),
+            }
+            for position in positions
+        ]
+        return _reachability_signatures(text.splitlines(), calls, text, masked)
+
+    def region_end(cursor: int) -> int | None:
+        """Return the end of one lambda or delegate body."""
+        while cursor < len(masked) and masked[cursor].isspace():
+            cursor += 1
+        if cursor < len(masked) and masked[cursor] == "{":
+            return _balanced_brace_end(masked, cursor)
+        return masked.find(";", cursor)
+
     pattern = re.compile(
         r"\b(?P<name>[A-Za-z_]\w*)\s*=\s*"
         r"(?P<lambda>(?:\([^)]*\)|[A-Za-z_]\w*)\s*=>|delegate(?:\s*\([^)]*\))?\s*\{)"
     )
     for match in pattern.finditer(masked):
-        cursor = match.end()
-        while cursor < len(masked) and masked[cursor].isspace():
-            cursor += 1
-        if cursor < len(masked) and masked[cursor] == "{":
-            end = _balanced_brace_end(masked, cursor)
-        else:
-            end = masked.find(";", cursor)
+        end = region_end(match.end())
         if end is None:
             continue
+        seen.add(match.start())
+        seen.add(match.start("lambda"))
         name = match.group("name")
-        invocations = re.findall(rf"\b{re.escape(name)}\s*\([^;]*\)\s*;", masked[end + 1 :])
+        invocation_pattern = re.compile(
+            rf"\b{re.escape(name)}(?:\s*\([^;]*\)|\s*\?\.\s*Invoke\s*\([^;]*\)|"
+            rf"\s*\.\s*Invoke\s*\([^;]*\))\s*;|"
+            rf"\b[A-Za-z_]\w*\s*\(\s*{re.escape(name)}\s*\)\s*;"
+        )
+        invocation_matches = list(invocation_pattern.finditer(masked, end + 1))
+        contexts = context_for([item.start() for item in invocation_matches])
         body = re.sub(r"\s+", " ", masked[match.start() : end + 1]).strip()
-        calls = "|".join(re.sub(r"\s+", " ", call).strip() for call in invocations)
+        calls = "|".join(
+            f"{re.sub(r'\s+', ' ', item.group()).strip()}@{contexts.get(item.start(), '')}"
+            for item in invocation_matches
+        )
         pieces.append(f"{body}|calls:{calls}")
+
+    inline_pattern = re.compile(r"(?:\([^)]*\)|[A-Za-z_]\w*)\s*=>")
+    for match in inline_pattern.finditer(masked):
+        if match.start() in seen:
+            continue
+        end = region_end(match.end())
+        if end is None:
+            continue
+        prefix = masked[max(0, match.start() - 200) : match.start() + 1]
+        owner_match = re.search(r"\b([A-Za-z_]\w*)\s*\([^()]*$", prefix)
+        owner = owner_match.group(1) if owner_match else "UNKNOWN"
+        context = context_for([match.start()]).get(match.start(), "")
+        body = re.sub(r"\s+", " ", masked[match.start() : end + 1]).strip()
+        pieces.append(f"inline:{owner}:{body}:context:{context}")
+
+    delegate_pattern = re.compile(r"\bdelegate(?:\s*\([^)]*\))?\s*\{")
+    for match in delegate_pattern.finditer(masked):
+        if match.start() in seen:
+            continue
+        end = region_end(match.end())
+        if end is None:
+            continue
+        prefix = masked[max(0, match.start() - 200) : match.start() + 1]
+        owner_match = re.search(r"\b([A-Za-z_]\w*)\s*\([^()]*$", prefix)
+        owner = owner_match.group(1) if owner_match else "UNKNOWN"
+        context = context_for([match.start()]).get(match.start(), "")
+        body = re.sub(r"\s+", " ", masked[match.start() : end + 1]).strip()
+        pieces.append(f"delegate:{owner}:{body}:context:{context}")
     return hashlib.sha256("\n".join(pieces).encode()).hexdigest() if pieces else ""
 
 
@@ -564,8 +657,9 @@ def _reachability_signatures(
     intervals: list[tuple[int, int, str]] = []
     control_intervals: list[tuple[int, int, str]] = []
     branch_intervals: list[tuple[int, str]] = []
+    constant_values = _constant_values(text, masked)
     for match in re.finditer(
-        r"\b(?P<kind>if|else\s+if|while|foreach|for|switch|catch)\s*\(", masked
+        r"\b(?P<kind>if|else\s+if|while|foreach|for|switch)\s*\(", masked
     ):
         open_index = masked.find("(", match.start(), match.end())
         close_index = _balanced_call_end(masked, open_index)
@@ -575,6 +669,9 @@ def _reachability_signatures(
         while cursor < len(masked) and masked[cursor].isspace():
             cursor += 1
         condition = re.sub(r"\s+", " ", text[open_index + 1 : close_index].strip())
+        selector = constant_values.get(condition)
+        if selector is not None:
+            condition = f"{condition}={selector}"
         end = (
             _balanced_brace_end(masked, cursor)
             if cursor < len(masked) and masked[cursor] == "{"
@@ -611,12 +708,19 @@ def _reachability_signatures(
         end = _balanced_brace_end(masked, open_index)
         if end is None:
             continue
-        after = masked[end + 1 :]
-        catch_match = re.match(r"\s*catch(?:\s*\((?P<header>[^)]*)\))?\s*\{", after)
-        if catch_match:
-            catch_open = end + 1 + catch_match.end() - 1
+        cursor = end + 1
+        descriptors: list[str] = []
+        while True:
+            catch_match = re.match(
+                r"\s*catch(?P<header>[^{}]*?)\{", masked[cursor:], re.DOTALL
+            )
+            if catch_match is None:
+                break
+            catch_open = cursor + catch_match.end() - 1
             catch_end = _balanced_brace_end(masked, catch_open)
-            descriptor = (
+            if catch_end is None:
+                break
+            descriptors.append(
                 _catch_descriptor(
                     text,
                     masked,
@@ -624,26 +728,36 @@ def _reachability_signatures(
                     catch_open,
                     catch_end,
                 )
-                if catch_end is not None
-                else "catch(unknown)"
             )
-            value = f"try-catch:{descriptor}"
-        else:
-            value = "try"
-        intervals.append((open_index + 1, end, value))
-    for match in re.finditer(r"\bcatch(?:\s*\([^)]*\))?\s*\{", masked):
-        open_index = masked.find("{", match.start(), match.end())
-        end = _balanced_brace_end(masked, open_index)
-        if end is not None:
-            header_match = re.match(r"\bcatch(?:\s*\((?P<header>[^)]*)\))?", masked[match.start() :])
-            header = header_match.group("header") if header_match else ""
             intervals.append(
                 (
-                    open_index + 1,
-                    end,
-                    _catch_descriptor(text, masked, header or "", open_index, end),
+                    catch_open + 1,
+                    catch_end,
+                    _catch_descriptor(
+                        text,
+                        masked,
+                        catch_match.group("header") or "",
+                        catch_open,
+                        catch_end,
+                    ),
                 )
             )
+            cursor = catch_end + 1
+        finally_match = re.match(r"\s*finally\s*\{", masked[cursor:], re.DOTALL)
+        finally_descriptor = ""
+        if finally_match:
+            finally_open = cursor + finally_match.end() - 1
+            finally_end = _balanced_brace_end(masked, finally_open)
+            if finally_end is not None:
+                finally_descriptor = _finally_descriptor(masked, finally_open, finally_end)
+                intervals.append((finally_open + 1, finally_end, finally_descriptor))
+        if descriptors:
+            value = "try-catch[" + "|".join(descriptors) + "]"
+        else:
+            value = "try"
+        if finally_descriptor:
+            value += f"|{finally_descriptor}"
+        intervals.append((open_index + 1, end, value))
     for match in re.finditer(r"\belse\b(?!\s+if)", masked):
         cursor = match.end()
         while cursor < len(masked) and masked[cursor].isspace():

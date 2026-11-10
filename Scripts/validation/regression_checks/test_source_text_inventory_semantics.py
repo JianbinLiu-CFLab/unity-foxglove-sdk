@@ -12,6 +12,8 @@ from . import test_source_text_inventory_gate as _gate_module
 
 
 class _FixtureSupport:
+    """Reuse the Git fixture helpers without inheriting the large gate test class."""
+
     _git_fixture = _gate_module.SourceTextInventoryGateTests._git_fixture
     _run_fixture_gate = _gate_module.SourceTextInventoryGateTests._run_fixture_gate
 
@@ -233,3 +235,323 @@ class SourceTextInventorySemanticTests(_FixtureSupport, unittest.TestCase):
             code, output = self._run_fixture_gate(root)
             self.assertEqual(1, code)
             self.assertIn('field": "harness_signature"', output)
+
+    def test_local_function_invocation_change_requires_ack(self):
+        """Reject deleting a local function invocation that owns a source assertion."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(
+                directory,
+                validation_text=(
+                    "public static class FixtureValidation {\n"
+                    "    public static void Validate() {\n"
+                    "        void Local() {\n"
+                    '            var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                    '            Check(source.Contains("Product"));\n'
+                    "        }\n"
+                    "        Local();\n"
+                    "    }\n"
+                    "}\n"
+                ),
+            )
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace("        Local();\n", ""),
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code)
+            self.assertTrue(
+                'field": "call_path"' in output or 'field": "harness_signature"' in output,
+                output,
+            )
+
+    def test_catch_when_filter_change_requires_ack(self):
+        """Reject changing a catch filter that controls whether an assertion failure is swallowed."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(
+                directory,
+                validation_text=(
+                    "public static class FixtureValidation {\n"
+                    "    public static void Validate() {\n"
+                    '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                    "        try {\n"
+                    '            Check(source.Contains("Product"));\n'
+                    "        } catch (System.Exception e) when (e.Message.Length < 0) {\n"
+                    "        }\n"
+                    "    }\n"
+                    "}\n"
+                ),
+            )
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace(
+                    "when (e.Message.Length < 0)", "when (true)"
+                ),
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code)
+            self.assertIn('field": "reachability"', output)
+
+    def test_if_selector_value_change_requires_ack(self):
+        """Reject disabling a source assertion through a changed boolean selector."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(
+                directory,
+                validation_text=(
+                    "public static class FixtureValidation {\n"
+                    "    public static void Validate() {\n"
+                    '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                    "        bool enabled = true;\n"
+                    "        if (enabled) {\n"
+                    '            Check(source.Contains("Product"));\n'
+                    "        }\n"
+                    "    }\n"
+                    "}\n"
+                ),
+            )
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace(
+                    "bool enabled = true", "bool enabled = false"
+                ),
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code)
+            self.assertIn('field": "reachability"', output)
+
+    def test_switch_selector_value_change_requires_ack(self):
+        """Reject changing a switch selector so the asserted case is no longer selected."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(
+                directory,
+                validation_text=(
+                    "public static class FixtureValidation {\n"
+                    "    public static void Validate() {\n"
+                    '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                    "        int mode = 1;\n"
+                    "        switch (mode) {\n"
+                    "            case 1:\n"
+                    '                Check(source.Contains("Product"));\n'
+                    "                break;\n"
+                    "        }\n"
+                    "    }\n"
+                    "}\n"
+                ),
+            )
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace(
+                    "int mode = 1", "int mode = 2"
+                ),
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code)
+            self.assertIn('field": "reachability"', output)
+
+    def test_lambda_invoke_and_forwarding_change_requires_ack(self):
+        """Reject deleting Invoke or forwarding calls for a source-bearing lambda."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(
+                directory,
+                validation_text=(
+                    "public static class FixtureValidation {\n"
+                    "    public static void Validate() {\n"
+                    "        System.Action run = () => {\n"
+                    '            var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                    '            Check(source.Contains("Product"));\n'
+                    "        };\n"
+                    "        run.Invoke();\n"
+                    "    }\n"
+                    "}\n"
+                ),
+            )
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace("        run.Invoke();\n", ""),
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code)
+            self.assertIn('field": "harness_signature"', output)
+
+    def test_lambda_outer_selector_change_requires_ack(self):
+        """Reject disabling a recognized lambda invocation through an outer branch."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(
+                directory,
+                validation_text=(
+                    "public static class FixtureValidation {\n"
+                    "    public static void Validate() {\n"
+                    "        System.Action run = () => {\n"
+                    '            var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                    '            Check(source.Contains("Product"));\n'
+                    "        };\n"
+                    "        bool enabled = true;\n"
+                    "        if (enabled) { run(); }\n"
+                    "    }\n"
+                    "}\n"
+                ),
+            )
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace(
+                    "bool enabled = true", "bool enabled = false"
+                ),
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code)
+            self.assertIn('field": "harness_signature"', output)
+
+    def test_inline_lambda_owner_change_requires_ack(self):
+        """Reject changing the helper that receives an inline source-bearing lambda."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(
+                directory,
+                validation_text=(
+                    "public static class FixtureValidation {\n"
+                    "    private static void Run(System.Action action) { action(); }\n"
+                    "    private static void Noop(System.Action action) { }\n"
+                    "    public static void Validate() {\n"
+                    "        Run(() => {\n"
+                    '            var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                    '            Check(source.Contains("Product"));\n'
+                    "        });\n"
+                    "    }\n"
+                    "}\n"
+                ),
+            )
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace("Run(() =>", "Noop(() =>"),
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code)
+            self.assertIn('field": "harness_signature"', output)
+
+    def test_uninitialized_field_overload_change_requires_ack(self):
+        """Reject an overload switch through an uninitialized typed field."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(
+                directory,
+                validation_text=(
+                    "public static class FixtureValidation {\n"
+                    "    private static string value;\n"
+                    "    private static void Helper(string argument) {\n"
+                    '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                    '        Check(source.Contains("Product"));\n'
+                    "    }\n"
+                    "    private static void Helper(int argument) { }\n"
+                    "    public static void Validate() { Helper(value); }\n"
+                    "}\n"
+                ),
+            )
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace(
+                    "private static string value;", "private static int value;"
+                ),
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code)
+            self.assertTrue(
+                'field": "call_path"' in output or 'field": "call_binding"' in output,
+                output,
+            )
+
+    def test_property_overload_change_requires_ack(self):
+        """Reject an overload switch through a typed auto-property."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(
+                directory,
+                validation_text=(
+                    "public static class FixtureValidation {\n"
+                    '    private static string Value { get; } = "run";\n'
+                    "    private static void Helper(string argument) {\n"
+                    '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                    '        Check(source.Contains("Product"));\n'
+                    "    }\n"
+                    "    private static void Helper(int argument) { }\n"
+                    "    public static void Validate() { Helper(Value); }\n"
+                    "}\n"
+                ),
+            )
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace(
+                    'private static string Value { get; } = "run";',
+                    'private static int Value { get; } = 1;',
+                ),
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code)
+            self.assertTrue(
+                'field": "call_path"' in output or 'field": "call_binding"' in output,
+                output,
+            )
+
+    def test_second_catch_change_requires_ack(self):
+        """Reject changing a later catch body in a multi-catch chain."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(
+                directory,
+                validation_text=(
+                    "public static class FixtureValidation {\n"
+                    "    public static void Validate() {\n"
+                    '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                    "        try {\n"
+                    '            Check(source.Contains("Product"));\n'
+                    "        } catch (System.InvalidOperationException) {\n"
+                    "            throw;\n"
+                    "        } catch (System.Exception) {\n"
+                    "            throw;\n"
+                    "        }\n"
+                    "    }\n"
+                    "}\n"
+                ),
+            )
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace(
+                    "        } catch (System.Exception) {\n            throw;",
+                    "        } catch (System.Exception) {\n",
+                ),
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code)
+            self.assertIn('field": "reachability"', output)
+
+    def test_finally_exit_change_requires_ack(self):
+        """Reject adding a finally return that changes exception propagation."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(
+                directory,
+                validation_text=(
+                    "public static class FixtureValidation {\n"
+                    "    public static void Validate() {\n"
+                    '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                    "        try {\n"
+                    '            Check(source.Contains("Product"));\n'
+                    "        } finally {\n"
+                    "        }\n"
+                    "    }\n"
+                    "}\n"
+                ),
+            )
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace(
+                    "        } finally {\n        }", "        } finally {\n            return;\n        }"
+                ),
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code)
+            self.assertIn('field": "reachability"', output)
