@@ -251,6 +251,204 @@ class SourceTextInventoryGateTests(unittest.TestCase):
             self.assertEqual(1, code)
             self.assertIn('field": "dispatch"', output)
 
+    def test_new_unresolved_row_requires_ack(self):
+        """Reject a newly added unresolved source assertion row."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(directory)
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace(
+                    '        Check(source.Contains("Product"));\n',
+                    '        Check(source.Contains("Product"));\n'
+                    '        var missing = ReadRequiredRepoText(ResolvePath());\n'
+                    '        Check(missing.Contains("Missing"));\n',
+                ),
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code)
+            self.assertIn('field": "row_added_unresolved"', output)
+
+    def test_new_unknown_row_requires_ack(self):
+        """Reject a newly added directory-backed source assertion row."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(directory)
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace(
+                    '        Check(source.Contains("Product"));\n',
+                    '        Check(source.Contains("Product"));\n'
+                    '        var directoryText = ReadRepoDirectoryText("Packages/fixture/Runtime", "*.cs");\n'
+                    '        Check(directoryText.Contains("Product"));\n',
+                ),
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code)
+            self.assertIn('field": "row_added_unknown"', output)
+
+    def test_unresolved_reader_expression_change_requires_ack(self):
+        """Reject changing an unresolved reader expression in place."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(
+                directory,
+                validation_text=(
+                    "public static class FixtureValidation {\n"
+                    "    public static void Validate() {\n"
+                    '        var source = ReadRequiredRepoText(ResolvePathA());\n'
+                    '        Check(source.Contains("Product"));\n'
+                    "    }\n"
+                    "}\n"
+                ),
+            )
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace("ResolvePathA()", "ResolvePathB()"),
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code)
+            self.assertIn('field": "reader_signature"', output)
+
+    def test_unit_test_entrypoint_binds_helper(self):
+        """Reject deleting a helper call from an attributed unit test entrypoint."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(directory)
+            unit = root / "Packages/fixture/Tests/Unit/FixtureTests.cs"
+            unit.parent.mkdir(parents=True)
+            unit.write_text(
+                "public static class FixtureTests {\n"
+                "    private static void Helper() {\n"
+                '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                '        Check(source.Contains("Product"));\n'
+                "    }\n"
+                "    [Fact] public static void ProductTest() { Helper(); }\n"
+                "}\n",
+                encoding="utf-8",
+            )
+            subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+            subprocess.run(["git", "-C", str(root), "commit", "-q", "-m", "unit-base"], check=True)
+            unit.write_text(unit.read_text(encoding="utf-8").replace("Helper();", ""), encoding="utf-8")
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code)
+            self.assertIn('field": "call_path"', output)
+
+    def test_overloaded_helper_call_binding_requires_ack(self):
+        """Reject deleting the source-bearing overload while keeping another overload."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(
+                directory,
+                validation_text=(
+                    "public static class FixtureValidation {\n"
+                    "    private static void Helper(string value) {\n"
+                    '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                    '        Check(source.Contains("Product"));\n'
+                    "    }\n"
+                    "    private static void Helper(int value) { }\n"
+                    "    public static void Validate() {\n"
+                    '        Helper("run");\n'
+                    "        Helper(1);\n"
+                    "    }\n"
+                    "}\n"
+                ),
+            )
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace('        Helper("run");\n', ""),
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code)
+            self.assertIn('field": "call_binding"', output)
+
+    def test_assertion_overload_change_requires_ack(self):
+        """Reject changing an assertion overload's comparison semantics."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(
+                directory,
+                validation_text=(
+                    "public static class FixtureValidation {\n"
+                    "    public static void Validate() {\n"
+                    '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                    '        Assert.Contains("Product", source);\n'
+                    "    }\n"
+                    "}\n"
+                ),
+            )
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace(
+                    'Assert.Contains("Product", source);',
+                    'Assert.Contains("Product", source, StringComparison.OrdinalIgnoreCase);',
+                ),
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code)
+            self.assertIn('field": "assertion_signature"', output)
+
+    def test_checker_classification_change_requires_ack(self):
+        """Reject a checker change that downgrades a trusted classification."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(directory)
+            checker = root / "Scripts/validation/source_text_inventory_text.py"
+            checker.write_text(
+                checker.read_text(encoding="utf-8")
+                + "\n\ndef classify(target, line):\n"
+                + "    return \"A\"\n",
+                encoding="utf-8",
+            )
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(root / "Scripts/validation/source_text_inventory.py"),
+                    "--root",
+                    str(root),
+                    "--base-ref",
+                    "HEAD",
+                    "--output",
+                    str(root / "build" / "inventory"),
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+            self.assertIn('field": "parser_class"', result.stdout)
+
+    def test_checker_target_change_requires_ack(self):
+        """Reject a checker change that retargets a trusted source assertion."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(directory)
+            checker = root / "Scripts/validation/source_text_inventory_text.py"
+            checker.write_text(
+                checker.read_text(encoding="utf-8")
+                + "\n\ndef _extract_argument_path(argument, paths):\n"
+                + "    return \"Packages/fixture/Runtime/Benign.cs\"\n",
+                encoding="utf-8",
+            )
+            (root / "Packages/fixture/Runtime/Benign.cs").write_text(
+                "public sealed class Benign {}\n",
+                encoding="utf-8",
+            )
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(root / "Scripts/validation/source_text_inventory.py"),
+                    "--root",
+                    str(root),
+                    "--base-ref",
+                    "HEAD",
+                    "--output",
+                    str(root / "build" / "inventory"),
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+            self.assertIn('field": "parser_target"', result.stdout)
+
     def test_head_acknowledgement_is_not_trusted(self):
         """Reject a weakening acknowledgement added only in the proposed head."""
         with tempfile.TemporaryDirectory() as directory:

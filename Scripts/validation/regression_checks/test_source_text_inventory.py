@@ -331,8 +331,8 @@ class SourceTextInventoryTests(unittest.TestCase):
             self.assertEqual("UNRESOLVED", by_line[11]["class"])
             self.assertEqual("<unresolved>", by_line[11]["target"])
             self.assertEqual("UNKNOWN", by_line[14]["class"])
-            self.assertEqual("<directory>", by_line[14]["target"])
-            self.assertEqual("<directory>", by_line[16]["target"])
+            self.assertTrue(by_line[14]["target"].startswith("<directory>:Packages/fixture/Runtime/DirectoryTarget"))
+            self.assertTrue(by_line[16]["target"].startswith("<directory>:Packages/fixture/Runtime/DirectoryTarget"))
             self.assertTrue(
                 any(row["class"] == "UNRESOLVED" and "inline" in str(row["token"]) for row in rows)
             )
