@@ -151,6 +151,7 @@ def _test_and_workflow_checks() -> list[audit_lib.Check]:
         "unittest",
         "Scripts.validation.regression_checks.test_source_text_inventory",
         "Scripts.validation.regression_checks.test_source_text_inventory_gate",
+        "Scripts.validation.regression_checks.test_source_text_inventory_semantics",
     ]
     result = audit_lib.run(test_command, test_log, 300)
     checks.append(_check("198-W2-tests", "Plan/198... § W2 tests", "probe", "PASS" if result["exit_code"] == 0 else "FAIL", "python -B -m unittest source inventory regression modules", test_log, f"exit={result['exit_code']}"))

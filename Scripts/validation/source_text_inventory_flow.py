@@ -49,6 +49,7 @@ class MethodInfo:
     body_end: int
     signature: str
     parameter_types: tuple[str, ...] = ()
+    return_type: str = ""
 
     @property
     def identity(self) -> str:
@@ -84,6 +85,7 @@ def _method_infos(text: str, masked: str) -> list[MethodInfo]:
                 body_end,
                 signature,
                 _method_parameter_types(masked, match.start(), body_start),
+                _method_return_type(signature, name),
             )
         )
     expression_pattern = re.compile(
@@ -114,6 +116,7 @@ def _method_infos(text: str, masked: str) -> list[MethodInfo]:
                 body_end,
                 signature,
                 _method_parameter_types(masked, match.start(), match.start("body")),
+                _method_return_type(signature, name),
             )
         )
     return sorted(methods, key=lambda method: method.start)
@@ -180,9 +183,51 @@ def _method_parameter_types(masked: str, start: int, body_start: int) -> tuple[s
     return _parameter_types(masked[open_index + 1 : close_index])
 
 
-def _local_types(text: str, method: MethodInfo) -> dict[str, str]:
-    """Infer simple local and parameter types used by overload calls."""
+def _method_return_type(signature: str, name: str) -> str:
+    """Extract a simple declared return type from a method signature."""
+    match = re.search(
+        rf"(?P<return>[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)?(?:<[^>]+>)?(?:\[\])?)\s+"
+        rf"{re.escape(name)}\s*\(",
+        signature,
+    )
+    return _normalize_type(match.group("return")) if match else ""
+
+
+def _method_return_types(methods: list[MethodInfo]) -> dict[str, str]:
+    """Return unambiguous same-file method return types."""
+    grouped: dict[str, list[MethodInfo]] = {}
+    for method in methods:
+        grouped.setdefault(method.name, []).append(method)
+    return {
+        name: methods_for_name[0].return_type
+        for name, methods_for_name in grouped.items()
+        if len(methods_for_name) == 1 and methods_for_name[0].return_type
+    }
+
+
+def _field_types(text: str, masked: str, methods: list[MethodInfo]) -> dict[str, str]:
+    """Collect simple field declarations outside method bodies."""
     result: dict[str, str] = {}
+    for match in re.finditer(
+        r"\b(?P<type>[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)?(?:<[^;=]+>)?(?:\[\])?)\s+"
+        r"(?P<name>[A-Za-z_]\w*)\s*=",
+        masked,
+    ):
+        if any(method.body_start < match.start() < method.body_end for method in methods):
+            continue
+        result[match.group("name")] = _normalize_type(match.group("type"))
+    return result
+
+
+def _local_types(
+    text: str,
+    method: MethodInfo,
+    field_types: dict[str, str] | None = None,
+    return_types: dict[str, str] | None = None,
+) -> dict[str, str]:
+    """Infer simple local and parameter types used by overload calls."""
+    result: dict[str, str] = dict(field_types or {})
+    return_types = return_types or {}
     for parameter in _split_arguments(
         method.signature[method.signature.find("(") + 1 : method.signature.rfind(")")]
     ):
@@ -201,12 +246,18 @@ def _local_types(text: str, method: MethodInfo) -> dict[str, str]:
         declared = match.group("type")
         value = match.group("value").strip()
         result[match.group("name")] = (
-            _infer_expression_type(value, result) if declared == "var" else _normalize_type(declared)
+            _infer_expression_type(value, result, return_types)
+            if declared == "var"
+            else _normalize_type(declared)
         )
     return result
 
 
-def _infer_expression_type(expression: str, local_types: dict[str, str]) -> str:
+def _infer_expression_type(
+    expression: str,
+    local_types: dict[str, str],
+    return_types: dict[str, str] | None = None,
+) -> str:
     """Infer a small set of C# expression types used for overload binding."""
     expression = expression.strip()
     if re.fullmatch(r'"(?:\\.|[^"\\])*"', expression, re.DOTALL):
@@ -224,6 +275,9 @@ def _infer_expression_type(expression: str, local_types: dict[str, str]) -> str:
         return "null"
     if re.fullmatch(r"[A-Za-z_]\w*", expression):
         return local_types.get(expression, "")
+    call = re.fullmatch(r"([A-Za-z_]\w*)\s*\([^;{}]*\)", expression)
+    if call:
+        return (return_types or {}).get(call.group(1), "")
     match = re.match(r"\(([^)]+)\)", expression)
     return _normalize_type(match.group(1)) if match else ""
 
@@ -252,6 +306,7 @@ def _resolve_call_target(
     methods_by_name: dict[str, list[MethodInfo]],
     text: str,
     local_types: dict[str, str] | None = None,
+    return_types: dict[str, str] | None = None,
 ) -> MethodInfo | None:
     """Resolve a same-file call when its overload is statically identifiable."""
     candidates = methods_by_name.get(name, [])
@@ -260,7 +315,10 @@ def _resolve_call_target(
     if len(candidates) == 1:
         return candidates[0]
     local_types = local_types if local_types is not None else _local_types(text, caller)
-    argument_types = [_infer_expression_type(item, local_types) for item in _split_arguments(arguments)]
+    argument_types = [
+        _infer_expression_type(item, local_types, return_types)
+        for item in _split_arguments(arguments)
+    ]
     exact: list[MethodInfo] = []
     for candidate in candidates:
         if len(candidate.parameter_types) != len(argument_types):
@@ -279,6 +337,8 @@ def _method_call_graph(text: str, masked: str, methods: list[MethodInfo]) -> dic
     methods_by_name: dict[str, list[MethodInfo]] = {}
     for method in methods:
         methods_by_name.setdefault(method.name, []).append(method)
+    return_types = _method_return_types(methods)
+    field_types = _field_types(text, masked, methods)
     for method in methods:
         local_types: dict[str, str] | None = None
         for name, open_index in _call_sites(text, masked, method):
@@ -287,7 +347,7 @@ def _method_call_graph(text: str, masked: str, methods: list[MethodInfo]) -> dic
                 target = candidates[0]
             elif candidates:
                 if local_types is None:
-                    local_types = _local_types(text, method)
+                    local_types = _local_types(text, method, field_types, return_types)
                 arguments = _call_arguments(text, masked, open_index)
                 if arguments is None:
                     continue
@@ -298,11 +358,12 @@ def _method_call_graph(text: str, masked: str, methods: list[MethodInfo]) -> dic
                     methods_by_name,
                     text,
                     local_types,
+                    return_types,
                 )
             else:
                 continue
             if len(candidates) > 1 and local_types is None:
-                local_types = _local_types(text, method)
+                local_types = _local_types(text, method, field_types, return_types)
             if target is not None:
                 graph[method.identity].add(target.identity)
     return graph
@@ -321,8 +382,10 @@ def _ambiguous_call_bindings(
         if count < 2:
             continue
         calls: list[str] = []
+        return_types = _method_return_types(methods)
+        field_types = _field_types(text, masked, methods)
         for method in methods:
-            local_types = _local_types(text, method)
+            local_types = _local_types(text, method, field_types, return_types)
             for call_name, open_index in _call_sites(text, masked, method):
                 if call_name != name:
                     continue
@@ -336,9 +399,10 @@ def _ambiguous_call_bindings(
                     methods_by_name,
                     text,
                     local_types,
+                    return_types,
                 )
                 argument_types = ",".join(
-                    _infer_expression_type(item, local_types) or "?"
+                    _infer_expression_type(item, local_types, return_types) or "?"
                     for item in _split_arguments(arguments)
                 )
                 identity = target.identity if target is not None else "AMBIGUOUS"
@@ -435,6 +499,43 @@ def _validation_harness_signature(
                 method.signature + " " + text[method.body_start : method.body_end + 1],
             ).strip()
         )
+    lambda_signature = _lambda_binding_signature(text, masked)
+    if lambda_signature:
+        pieces.append(f"lambda:{lambda_signature}")
+    return hashlib.sha256("\n".join(pieces).encode()).hexdigest() if pieces else ""
+
+
+def _catch_descriptor(text: str, masked: str, header: str, body_start: int, body_end: int) -> str:
+    """Describe catch type, filter text, and whether its body rethrows."""
+    header = re.sub(r"\s+", " ", header.strip())
+    body = masked[body_start + 1 : body_end]
+    behavior = "rethrow" if re.search(r"\bthrow\b", body) else "swallow"
+    body_hash = hashlib.sha256(re.sub(r"\s+", " ", body).strip().encode()).hexdigest()[:16]
+    return f"catch({header}):{behavior}:{body_hash}"
+
+
+def _lambda_binding_signature(text: str, masked: str) -> str:
+    """Hash lambda/delegate bodies together with their local invocation sites."""
+    pieces: list[str] = []
+    pattern = re.compile(
+        r"\b(?P<name>[A-Za-z_]\w*)\s*=\s*"
+        r"(?P<lambda>(?:\([^)]*\)|[A-Za-z_]\w*)\s*=>|delegate(?:\s*\([^)]*\))?\s*\{)"
+    )
+    for match in pattern.finditer(masked):
+        cursor = match.end()
+        while cursor < len(masked) and masked[cursor].isspace():
+            cursor += 1
+        if cursor < len(masked) and masked[cursor] == "{":
+            end = _balanced_brace_end(masked, cursor)
+        else:
+            end = masked.find(";", cursor)
+        if end is None:
+            continue
+        name = match.group("name")
+        invocations = re.findall(rf"\b{re.escape(name)}\s*\([^;]*\)\s*;", masked[end + 1 :])
+        body = re.sub(r"\s+", " ", masked[match.start() : end + 1]).strip()
+        calls = "|".join(re.sub(r"\s+", " ", call).strip() for call in invocations)
+        pieces.append(f"{body}|calls:{calls}")
     return hashlib.sha256("\n".join(pieces).encode()).hexdigest() if pieces else ""
 
 
@@ -462,6 +563,7 @@ def _reachability_signatures(
             directives.pop()
     intervals: list[tuple[int, int, str]] = []
     control_intervals: list[tuple[int, int, str]] = []
+    branch_intervals: list[tuple[int, str]] = []
     for match in re.finditer(
         r"\b(?P<kind>if|else\s+if|while|foreach|for|switch|catch)\s*\(", masked
     ):
@@ -482,19 +584,66 @@ def _reachability_signatures(
             kind = match.group("kind")
             intervals.append((cursor, end, f"{kind}({condition})"))
             control_intervals.append((cursor, end, kind))
+            if kind in {"if", "else if"}:
+                branch_intervals.append((end, condition))
+            if kind == "switch" and cursor < len(masked) and masked[cursor] == "{":
+                body_start = cursor + 1
+                body_end = end
+                case_matches = list(
+                    re.finditer(
+                        r"\b(?P<label>case\b[^:]*|default)\s*:",
+                        masked[body_start:body_end],
+                    )
+                )
+                for case_index, case_match in enumerate(case_matches):
+                    case_start = body_start + case_match.end()
+                    case_end = (
+                        body_start + case_matches[case_index + 1].start() - 1
+                        if case_index + 1 < len(case_matches)
+                        else body_end
+                    )
+                    label_start = body_start + case_match.start()
+                    label_end = body_start + case_match.end() - 1
+                    label = re.sub(r"\s+", " ", text[label_start:label_end].strip())
+                    intervals.append((case_start, case_end, f"switch-case({label})"))
     for match in re.finditer(r"\btry\s*\{", masked):
         open_index = masked.find("{", match.start(), match.end())
         end = _balanced_brace_end(masked, open_index)
         if end is None:
             continue
         after = masked[end + 1 :]
-        value = "try-catch" if re.match(r"\s*catch\b", after) else "try"
+        catch_match = re.match(r"\s*catch(?:\s*\((?P<header>[^)]*)\))?\s*\{", after)
+        if catch_match:
+            catch_open = end + 1 + catch_match.end() - 1
+            catch_end = _balanced_brace_end(masked, catch_open)
+            descriptor = (
+                _catch_descriptor(
+                    text,
+                    masked,
+                    catch_match.group("header") or "",
+                    catch_open,
+                    catch_end,
+                )
+                if catch_end is not None
+                else "catch(unknown)"
+            )
+            value = f"try-catch:{descriptor}"
+        else:
+            value = "try"
         intervals.append((open_index + 1, end, value))
     for match in re.finditer(r"\bcatch(?:\s*\([^)]*\))?\s*\{", masked):
         open_index = masked.find("{", match.start(), match.end())
         end = _balanced_brace_end(masked, open_index)
         if end is not None:
-            intervals.append((open_index + 1, end, "catch"))
+            header_match = re.match(r"\bcatch(?:\s*\((?P<header>[^)]*)\))?", masked[match.start() :])
+            header = header_match.group("header") if header_match else ""
+            intervals.append(
+                (
+                    open_index + 1,
+                    end,
+                    _catch_descriptor(text, masked, header or "", open_index, end),
+                )
+            )
     for match in re.finditer(r"\belse\b(?!\s+if)", masked):
         cursor = match.end()
         while cursor < len(masked) and masked[cursor].isspace():
@@ -506,7 +655,12 @@ def _reachability_signatures(
         )
         if end is not None and end >= cursor:
             begin = cursor + 1 if cursor < len(masked) and masked[cursor] == "{" else cursor
-            intervals.append((begin, end, "else"))
+            branch = max(
+                (item for item in branch_intervals if item[0] < match.start()),
+                default=None,
+            )
+            value = f"else({branch[1]})" if branch is not None else "else"
+            intervals.append((begin, end, value))
     exits: list[tuple[int, int, str, str]] = []
     for match in re.finditer(
         r"\b(?P<kind>return|throw|continue|break|goto)\b[^;]*;|\byield\s+break\s*;",

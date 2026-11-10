@@ -49,6 +49,33 @@ COMPARE_FIELDS = (
     "call_binding",
     "reader_signature",
 )
+PARSER_COMPARE_FIELDS = tuple(field for field in COMPARE_FIELDS if field != "parser_version")
+REQUIRED_ROW_FIELDS = frozenset(
+    {
+        "file",
+        "line",
+        "label",
+        "validation_flag",
+        "dispatch",
+        "parser_version",
+        "class",
+        "target",
+        "unresolved_reason",
+        "xunit_coverage",
+        "token",
+        "assertion_signature",
+        "reader_signature",
+        "comment_only",
+        "checked_expression",
+        "assertion_context",
+        "assertion_literal",
+        "assertion_polarity",
+        "harness_signature",
+        "reachability",
+        "call_path",
+        "call_binding",
+    }
+)
 
 
 def _token_signatures(token: str) -> set[tuple[str, str]]:
@@ -438,12 +465,12 @@ def _ack_key(change: dict[str, object]) -> tuple[object, ...]:
 
 
 def _classify_change(
-    base: dict[str, object], head: dict[str, object]
+    base: dict[str, object], head: dict[str, object], fields: tuple[str, ...] = COMPARE_FIELDS
 ) -> tuple[list[dict[str, object]], list[str]]:
     """Classify one matched base/head row pair into strengthening or weakening."""
     strengthened: list[dict[str, object]] = []
     weakening: list[str] = []
-    for field in COMPARE_FIELDS:
+    for field in fields:
         if field not in base or field not in head:
             continue
         before = str(base.get(field, ""))
@@ -503,15 +530,22 @@ def _parser_semantic_changes(
 ) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
     """Compare every shared parser field on the trusted base tree."""
     matches, missing = _match_base_rows(base_rows, current_rows, strict=True)
-    changes: list[dict[str, object]] = []
+    changes: list[dict[str, object]] = _row_schema_changes(current_rows, "current-parser")
     strengthened: list[dict[str, object]] = []
+    base_versions = {str(row.get("parser_version", "")) for row in base_rows if row.get("parser_version")}
+    current_versions = {
+        str(row.get("parser_version", "")) for row in current_rows if row.get("parser_version")
+    }
+    if base_versions and current_versions and base_versions != current_versions:
+        changes.append(
+            _inventory_parser_migration_change(
+                next(iter(base_versions)), next(iter(current_versions))
+            )
+        )
     for base, current in matches:
-        base_version = str(base.get("parser_version", ""))
-        current_version = str(current.get("parser_version", ""))
-        parser_migration = bool(base_version and current_version and base_version != current_version)
-        if parser_migration:
-            changes.append(_change(base, current, "parser_migration", base_version, current_version))
-        row_strengthened, weakening_fields = _classify_change(base, current)
+        row_strengthened, weakening_fields = _classify_change(
+            base, current, PARSER_COMPARE_FIELDS
+        )
         strengthened.extend(
             {**change, "field": f"parser_{change['field']}"} for change in row_strengthened
         )
@@ -550,6 +584,30 @@ def _row_added_change(row: dict[str, object]) -> dict[str, object]:
     return _change(base, row, field, "<missing>", row.get("class", ""))
 
 
+def _row_schema_changes(rows: list[dict[str, object]], parser_side: str) -> list[dict[str, object]]:
+    """Build weakening records for rows that omit protected parser metadata."""
+    changes: list[dict[str, object]] = []
+    for row in rows:
+        missing = sorted(REQUIRED_ROW_FIELDS - set(row))
+        for field in missing:
+            changes.append(
+                {
+                    "file": row.get("file", ""),
+                    "validation_flag": row.get("validation_flag", ""),
+                    "label": row.get("label", ""),
+                    "token": row.get("token", ""),
+                    "field": "parser_field_missing",
+                    "missing_field": field,
+                    "parser_side": parser_side,
+                    "base_value": "present",
+                    "head_value": "<missing>",
+                    "base_sha256": _sha("present"),
+                    "head_sha256": _sha(field),
+                }
+            )
+    return changes
+
+
 def _inventory_count_change(field: str, base_value: int, head_value: int) -> dict[str, object]:
     """Build an exact acknowledgement record for a monotonicity violation."""
     return {
@@ -561,6 +619,20 @@ def _inventory_count_change(field: str, base_value: int, head_value: int) -> dic
         "head_value": str(head_value),
         "base_sha256": _sha(base_value),
         "head_sha256": _sha(head_value),
+    }
+
+
+def _inventory_parser_migration_change(base_version: str, head_version: str) -> dict[str, object]:
+    """Build one trusted acknowledgement record for a parser version migration."""
+    return {
+        "file": "<inventory>",
+        "validation_flag": "<inventory>",
+        "label": "inventory:parser_migration",
+        "field": "parser_migration",
+        "base_value": base_version,
+        "head_value": head_version,
+        "base_sha256": _sha(base_version),
+        "head_sha256": _sha(head_version),
     }
 
 
@@ -589,7 +661,8 @@ def _verify_base_inventory(
         parser_strengthened = []
     matches, missing = _match_base_rows(base_status_rows, rows, strict=True)
     strengthened: list[dict[str, object]] = list(parser_strengthened)
-    changes: list[dict[str, object]] = list(parser_changes)
+    changes: list[dict[str, object]] = _row_schema_changes(rows, "head")
+    changes.extend(parser_changes)
     for base, head in matches:
         row_strengthened, weakening_fields = _classify_change(base, head)
         strengthened.extend(row_strengthened)
@@ -612,6 +685,7 @@ def _verify_base_inventory(
         changes.append(_inventory_count_change("unresolved_count", base_unresolved, head_unresolved))
     if head_unknown > base_unknown:
         changes.append(_inventory_count_change("unknown_count", base_unknown, head_unknown))
+    changes = list({_ack_key(change): change for change in changes}.values())
     acknowledgements, ack_errors = _load_acknowledgements(root, revision)
     ack_map = {_ack_key(entry): entry for entry in acknowledgements}
     acknowledged: list[dict[str, object]] = []
