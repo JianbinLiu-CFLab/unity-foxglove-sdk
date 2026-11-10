@@ -730,6 +730,89 @@ class SourceTextInventoryTests(unittest.TestCase):
             self.assertNotEqual(unbraced["reachability"], live["reachability"])
             self.assertNotEqual(after_exit["reachability"], live["reachability"])
 
+    def test_reachability_tracks_braced_early_returns(self):
+        """Record a return nested in a braced branch before a source assertion."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runtime = root / "Packages" / "fixture" / "Tests" / "Runtime"
+            runtime.mkdir(parents=True)
+            product = root / "Packages" / "fixture" / "Runtime" / "Product.cs"
+            product.parent.mkdir(parents=True)
+            product.write_text("public sealed class Product {}\n", encoding="utf-8")
+            validation = runtime / "BracedReturnValidation.cs"
+            validation.write_text(
+                "public static class BracedReturnValidation {\n"
+                "    public static void Validate() {\n"
+                '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                "        if (source.Length > 0) {\n"
+                "            return;\n"
+                "        }\n"
+                '        Check(source.Contains("Product"));\n'
+                "    }\n"
+                "}\n",
+                encoding="utf-8",
+            )
+            registry = (
+                root
+                / "Packages"
+                / "dev.unity2foxglove.sdk"
+                / "Tests"
+                / "Runtime"
+                / "PhaseValidationRegistry.cs"
+            )
+            registry.parent.mkdir(parents=True, exist_ok=True)
+            registry.write_text(
+                'Ci("--phase-braced-return", "fixture", BracedReturnValidation.Validate, evidence: ValidationEvidence.Behavior),\n',
+                encoding="utf-8",
+            )
+            rows = inventory(root)
+            self.assertEqual(1, len(rows))
+            self.assertIn("exit:return:source.Length > 0", rows[0]["reachability"])
+
+    def test_inventory_caches_reset_between_scans(self):
+        """Do not reuse file metadata after a fixture is changed in place."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runtime = root / "Packages" / "fixture" / "Tests" / "Runtime"
+            unit = root / "Packages" / "fixture" / "Tests" / "Unit"
+            runtime.mkdir(parents=True)
+            unit.mkdir(parents=True)
+            product = root / "Packages" / "fixture" / "Runtime" / "Thing.cs"
+            product.parent.mkdir(parents=True)
+            product.write_text("public sealed class Product {}\n", encoding="utf-8")
+            (unit / "ProductTests.cs").write_text(
+                "public class ProductTests { void Test() { var value = new Product(); } }\n",
+                encoding="utf-8",
+            )
+            validation = runtime / "CacheValidation.cs"
+            validation.write_text(
+                "public static class CacheValidation {\n"
+                "    public static void Validate() {\n"
+                '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Thing.cs");\n'
+                '        Check(source.Contains("Product"));\n'
+                "    }\n"
+                "}\n",
+                encoding="utf-8",
+            )
+            registry = (
+                root
+                / "Packages"
+                / "dev.unity2foxglove.sdk"
+                / "Tests"
+                / "Runtime"
+                / "PhaseValidationRegistry.cs"
+            )
+            registry.parent.mkdir(parents=True, exist_ok=True)
+            registry.write_text(
+                'Ci("--phase-cache", "fixture", CacheValidation.Validate, evidence: ValidationEvidence.Behavior),\n',
+                encoding="utf-8",
+            )
+            first = inventory(root)
+            self.assertIn("ProductTests.cs", first[0]["xunit_coverage"])
+            product.write_text("public sealed class Renamed {}\n", encoding="utf-8")
+            second = inventory(root)
+            self.assertEqual("", second[0]["xunit_coverage"])
+
     def test_reachability_tracks_loop_and_jump_exits(self):
         """Record loop and goto exits that can bypass a later source assertion."""
         with tempfile.TemporaryDirectory() as directory:

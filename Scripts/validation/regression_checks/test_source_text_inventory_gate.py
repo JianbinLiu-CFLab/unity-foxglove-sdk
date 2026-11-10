@@ -97,6 +97,160 @@ class SourceTextInventoryGateTests(unittest.TestCase):
             self.assertEqual(1, code)
             self.assertIn("unacknowledged=1", output)
 
+    def test_braced_early_return_requires_ack(self):
+        """Reject a braced early return before a source assertion."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(directory)
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace(
+                    '        Check(source.Contains("Product"));\n',
+                    '        if (source.Length > 0) { return; }\n'
+                    '        Check(source.Contains("Product"));\n',
+                ),
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code)
+            self.assertIn('field": "reachability"', output)
+
+    def test_unrelated_check_is_strengthening(self):
+        """Allow an unrelated executable check added to an entrypoint."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(directory)
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace(
+                    '        Check(source.Contains("Product"));\n',
+                    '        Check(source.Contains("Product"));\n'
+                    '        Check(1 + 1 == 2);\n',
+                ),
+                encoding="utf-8",
+            )
+            code, _ = self._run_fixture_gate(root)
+            self.assertEqual(0, code)
+
+    def test_xunit_coverage_addition_is_strengthening(self):
+        """Allow a new unit test that covers the target product type."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(directory)
+            unit = root / "Packages/fixture/Tests/Unit/ProductTests.cs"
+            unit.parent.mkdir(parents=True)
+            unit.write_text(
+                "public class ProductTests {\n"
+                "    public void ProductSmoke() { var value = new Product(); }\n"
+                "}\n",
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(0, code)
+            self.assertIn("strengthened=1", output)
+
+    def test_helper_body_change_requires_ack(self):
+        """Reject changing a source assertion helper to a no-op."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(
+                directory,
+                validation_text=(
+                    "public static class FixtureValidation {\n"
+                    "    private static void Check(bool condition) {\n"
+                    "        if (!condition) throw new System.Exception();\n"
+                    "    }\n"
+                    "    public static void Validate() {\n"
+                    '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                    '        Check(source.Contains("Product"));\n'
+                    "    }\n"
+                    "}\n"
+                ),
+            )
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace(
+                    "        if (!condition) throw new System.Exception();\n",
+                    "        return;\n",
+                ),
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code)
+            self.assertIn('field": "harness_signature"', output)
+
+    def test_unreachable_helper_requires_ack(self):
+        """Reject source assertions left only in a helper the entrypoint cannot call."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(
+                directory,
+                validation_text=(
+                    "public static class FixtureValidation {\n"
+                    "    private static void Used() {\n"
+                    '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                    '        Check(source.Contains("Product"));\n'
+                    "    }\n"
+                    "    public static void Validate() {\n"
+                    "        Used();\n"
+                    "    }\n"
+                    "}\n"
+                ),
+            )
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace(
+                    "        Used();\n",
+                    '        System.Console.WriteLine("ok");\n'
+                    "        return;\n",
+                ),
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code)
+            self.assertIn('field": "call_path"', output)
+
+    def test_unused_acknowledgement_is_reported_without_failure(self):
+        """Report a trusted acknowledgement that matches no current change."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(directory)
+            acknowledgement = root / "Scripts/validation/source_text_inventory_acknowledgements.json"
+            acknowledgement.write_text(
+                json.dumps(
+                    {
+                        "acknowledgements": [
+                            {
+                                "file": "old.cs",
+                                "validation_flag": "--old",
+                                "label": "old",
+                                "field": "row_removed",
+                                "base_sha256": "a" * 64,
+                                "head_sha256": "b" * 64,
+                                "reason": "Retained for historical review traceability.",
+                            }
+                        ]
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+            subprocess.run(["git", "-C", str(root), "commit", "-q", "-m", "unused-ack"], check=True)
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(0, code)
+            self.assertIn("ack_unused=1", output)
+
+    def test_include_in_default_false_requires_ack(self):
+        """Reject moving a registered validation out of the default lane."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(directory)
+            registry = root / "Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs"
+            registry.write_text(
+                registry.read_text(encoding="utf-8").replace(
+                    "FixtureValidation.Validate, evidence:",
+                    "FixtureValidation.Validate, includeInDefault: false, evidence:",
+                ),
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code)
+            self.assertIn('field": "dispatch"', output)
+
     def test_head_acknowledgement_is_not_trusted(self):
         """Reject a weakening acknowledgement added only in the proposed head."""
         with tempfile.TemporaryDirectory() as directory:
