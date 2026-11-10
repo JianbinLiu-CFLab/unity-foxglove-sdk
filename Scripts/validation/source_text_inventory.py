@@ -112,6 +112,7 @@ def scan_file(
         masked_file,
         entrypoint,
     )
+    call_bindings = _flow_module._ambiguous_call_bindings(source_text, masked_file, method_infos)
     harness_signature = _validation_harness_signature(
         source_text,
         masked_file,
@@ -156,7 +157,7 @@ def scan_file(
         for part in target.split(";"):
             candidate = (root / part).resolve() if part and part != "<unresolved>" else None
             if candidate is not None and candidate.is_dir():
-                target_parts.append("<directory>")
+                target_parts.append(f"<directory>:{part}")
             elif part:
                 target_parts.append(part)
         target = ";".join(dict.fromkeys(target_parts)) or "<unresolved>"
@@ -176,6 +177,7 @@ def scan_file(
             if containing_method is not None
             else "UNKNOWN"
         )
+        reader_signature = _reader_expression_signature(source_text, call)
         label_match = PHASE_LABEL_PATTERN.search("".join(lines[max(0, index - 5) : index + 1]))
         containing_harness = min(
             (
@@ -198,6 +200,8 @@ def scan_file(
                 "unresolved_reason": unresolved_reason,
                 "xunit_coverage": _xunit_coverage(target, root, xunit_index),
                 "token": token_text,
+                "assertion_signature": re.sub(r"\s+", " ", token_text),
+                "reader_signature": reader_signature,
                 "comment_only": _target_comment_only(target, token_text, root, comment_cache),
                 "checked_expression": _checked_expression_signature(
                     token_text, str(containing_harness["text"]) if containing_harness else None
@@ -212,6 +216,11 @@ def scan_file(
                 "harness_signature": harness_signature,
                 "reachability": reachability.get(int(call["start"]), ""),
                 "call_path": call_path,
+                "call_binding": (
+                    call_bindings.get(containing_method.identity, "")
+                    if containing_method is not None
+                    else ""
+                ),
             }
         )
     return rows
@@ -257,24 +266,53 @@ def _validation_metadata(root: Path, source_file: str) -> tuple[str, str]:
         / "Runtime"
         / "PhaseValidationRegistry.cs"
     )
-    if not registry.is_file():
-        return "", ""
-    text = registry.read_text(encoding="utf-8", errors="replace")
-    entry_start = re.compile(
-        r"^\s*(?P<kind>Ci|Local|DefaultOnly)\(\"(?P<flag>--[A-Za-z0-9-]+)\"", re.MULTILINE
-    )
-    matches = list(entry_start.finditer(text))
-    for index, match in enumerate(matches):
-        end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
-        block = text[match.start() : end]
-        entrypoint = re.search(rf"\b{re.escape(stem)}\.(?P<entry>Validate\w*)\b", block)
-        if entrypoint:
-            default = "false" if re.search(r"\bincludeInDefault\s*:\s*false\b", block) else "true"
-            return (
-                match.group("flag"),
-                f"{match.group('kind')}|{default}|{entrypoint.group('entry')}",
-            )
+    if registry.is_file():
+        text = registry.read_text(encoding="utf-8", errors="replace")
+        entry_start = re.compile(
+            r"^\s*(?P<kind>Ci|Local|DefaultOnly)\(\"(?P<flag>--[A-Za-z0-9-]+)\"", re.MULTILINE
+        )
+        matches = list(entry_start.finditer(text))
+        for index, match in enumerate(matches):
+            end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+            block = text[match.start() : end]
+            entrypoint = re.search(rf"\b{re.escape(stem)}\.(?P<entry>Validate\w*)\b", block)
+            if entrypoint:
+                default = "false" if re.search(r"\bincludeInDefault\s*:\s*false\b", block) else "true"
+                return (
+                    match.group("flag"),
+                    f"{match.group('kind')}|{default}|{entrypoint.group('entry')}",
+                )
+    source_path = root / source_file
+    if source_path.is_file():
+        source = source_path.read_text(encoding="utf-8", errors="replace")
+        test_entry = re.search(
+            r"(?:\[(?:Fact|Theory|Test|TestCase|UnityTest)(?:[^\]]*)\]\s*)+"
+            r"(?:(?:public|private|protected|internal|static|async|override|virtual|new)\s+)*"
+            r"(?:[A-Za-z_]\w*(?:<[^>]+>)?\s+)?(?P<entry>[A-Za-z_]\w*)\s*\([^;{}]*\)\s*\{",
+            source,
+            re.DOTALL,
+        )
+        if test_entry:
+            return "<unit>", f"Unit|true|{test_entry.group('entry')}"
     return "", ""
+
+
+def _reader_expression_signature(text: str, call: dict[str, object]) -> str:
+    """Return the source-reader assignment expression feeding one assertion."""
+    receiver = str(call.get("receiver") or "").split(".", 1)[0]
+    if not receiver:
+        return ""
+    prefix = text[: int(call["start"])]
+    matches = list(
+        re.finditer(
+            rf"(?:var|string)\s+{re.escape(receiver)}\s*=\s*(?P<expression>[^;]+);",
+            prefix,
+            re.DOTALL,
+        )
+    )
+    if not matches:
+        return ""
+    return re.sub(r"\s+", " ", matches[-1].group("expression").strip())
 
 
 def main(argv: list[str] | None = None) -> int:

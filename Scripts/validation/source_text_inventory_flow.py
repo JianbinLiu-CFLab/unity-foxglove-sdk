@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+from collections import Counter
 from dataclasses import dataclass
 
 try:
@@ -46,6 +47,11 @@ class MethodInfo:
     body_start: int
     body_end: int
     signature: str
+
+    @property
+    def identity(self) -> str:
+        """Return a source-stable identity for one method declaration."""
+        return f"{self.name}@{self.start}"
 
 
 def _method_infos(text: str, masked: str) -> list[MethodInfo]:
@@ -97,6 +103,8 @@ def _method_for_offset(methods: list[MethodInfo], offset: int) -> MethodInfo | N
 
 def _method_call_graph(text: str, masked: str, methods: list[MethodInfo]) -> dict[str, set[str]]:
     """Build direct same-file method calls for call-path binding."""
+    if any(count > 1 for count in Counter(method.name for method in methods).values()):
+        return {}
     graph: dict[str, set[str]] = {method.name: set() for method in methods}
     known = set(graph)
     call_pattern = re.compile(r"\b(?P<name>[A-Za-z_]\w*)\s*\(")
@@ -107,6 +115,28 @@ def _method_call_graph(text: str, masked: str, methods: list[MethodInfo]) -> dic
             if name in known and name not in CONTROL_KEYWORDS:
                 graph[method.name].add(name)
     return graph
+
+
+def _ambiguous_call_bindings(
+    text: str, masked: str, methods: list[MethodInfo]
+) -> dict[str, str]:
+    """Hash ambiguous overload call sites so deleting one cannot preserve a row."""
+    counts = Counter(method.name for method in methods)
+    bindings: dict[str, str] = {}
+    for name, count in counts.items():
+        if count < 2:
+            continue
+        calls: list[str] = []
+        for match in re.finditer(rf"\b{re.escape(name)}\s*\(", masked):
+            open_index = masked.find("(", match.start(), match.end())
+            close_index = _balanced_call_end(text, open_index)
+            if close_index is not None:
+                calls.append(re.sub(r"\s+", " ", text[match.start() : close_index + 1]).strip())
+        digest = hashlib.sha256("\n".join(sorted(calls)).encode()).hexdigest()
+        for method in methods:
+            if method.name == name:
+                bindings[method.identity] = f"ambiguous:{digest}"
+    return bindings
 
 
 def _call_path_for_offset(text: str, masked: str, offset: int, entrypoint: str) -> str:

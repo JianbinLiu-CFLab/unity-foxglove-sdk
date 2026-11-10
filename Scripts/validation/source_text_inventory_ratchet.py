@@ -22,10 +22,13 @@ except ImportError:
 
 ACKNOWLEDGEMENTS_PATH = Path("Scripts/validation/source_text_inventory_acknowledgements.json")
 NEW_FIELDS = {
+    "assertion_signature",
     "assertion_context",
     "assertion_literal",
     "assertion_polarity",
+    "call_binding",
     "call_path",
+    "reader_signature",
     "unresolved_reason",
 }
 COMPARE_FIELDS = (
@@ -38,9 +41,12 @@ COMPARE_FIELDS = (
     "assertion_context",
     "assertion_literal",
     "assertion_polarity",
+    "assertion_signature",
     "dispatch",
     "harness_signature",
     "call_path",
+    "call_binding",
+    "reader_signature",
 )
 
 
@@ -490,26 +496,65 @@ def _classify_change(
     return strengthened, weakening
 
 
-def _parser_resolution_changes(
+def _parser_semantic_changes(
     base_rows: list[dict[str, object]], current_rows: list[dict[str, object]]
-) -> list[dict[str, object]]:
-    """Return rows resolved by the base parser but lost by the current parser."""
-    matches, _ = _match_base_rows(base_rows, current_rows, strict=True)
+) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+    """Compare every shared parser field on the trusted base tree."""
+    matches, missing = _match_base_rows(base_rows, current_rows, strict=True)
     changes: list[dict[str, object]] = []
+    strengthened: list[dict[str, object]] = []
     for base, current in matches:
-        base_resolved = base.get("class") not in {"UNKNOWN", "UNRESOLVED"}
-        current_resolved = current.get("class") not in {"UNKNOWN", "UNRESOLVED"}
-        if base_resolved and not current_resolved:
+        row_strengthened, weakening_fields = _classify_change(base, current)
+        strengthened.extend(
+            {**change, "field": f"parser_{change['field']}"} for change in row_strengthened
+        )
+        for field in weakening_fields:
             changes.append(
                 _change(
                     base,
                     current,
-                    "parser_resolution",
-                    base.get("target", ""),
-                    current.get("target", ""),
+                    f"parser_{field}",
+                    base.get(field, ""),
+                    current.get(field, ""),
                 )
             )
-    return changes
+    changes.extend(
+        _change(base, None, "parser_row_removed", base.get("token", ""), "")
+        for base in missing
+    )
+    matched_current_ids = {id(current) for _, current in matches}
+    strengthened.extend(
+        {"file": row.get("file", ""), "field": "parser_row_added"}
+        for row in current_rows
+        if id(row) not in matched_current_ids
+    )
+    return changes, strengthened
+
+
+def _row_added_change(row: dict[str, object]) -> dict[str, object]:
+    """Build a weakening record for a newly unresolved or unknown row."""
+    base = {
+        "file": row.get("file", ""),
+        "validation_flag": row.get("validation_flag", ""),
+        "label": row.get("label", ""),
+        "token": row.get("token", ""),
+    }
+    field = "row_added_unresolved" if row.get("class") == "UNRESOLVED" else "row_added_unknown"
+    return _change(base, row, field, "<missing>", row.get("class", ""))
+
+
+def _inventory_count_change(field: str, base_value: int, head_value: int) -> dict[str, object]:
+    """Build an exact acknowledgement record for a monotonicity violation."""
+    return {
+        "file": "<inventory>",
+        "validation_flag": "<inventory>",
+        "label": f"inventory:{field}",
+        "field": field,
+        "base_value": str(base_value),
+        "head_value": str(head_value),
+        "base_sha256": _sha(base_value),
+        "head_sha256": _sha(head_value),
+    }
 
 
 def _verify_base_inventory(
@@ -521,8 +566,8 @@ def _verify_base_inventory(
     """Classify base/head changes and enforce exact acknowledgement entries."""
     if inventory_callback is None:
         raise RuntimeError("current inventory callback is required")
-    base_rows = _inventory_at_revision(root, revision, inventory_callback=inventory_callback)
     checker_changed = _checker_digest(root) != _checker_digest(root, revision)
+    base_rows = _inventory_at_revision(root, revision, inventory_callback=inventory_callback)
     if checker_changed:
         base_status_rows = _inventory_at_revision(
             root,
@@ -530,17 +575,13 @@ def _verify_base_inventory(
             use_current_parser=True,
             inventory_callback=inventory_callback,
         )
-        parser_changes = _parser_resolution_changes(base_rows, base_status_rows)
-        _, parser_missing = _match_base_rows(base_rows, base_status_rows, strict=True)
-        parser_changes.extend(
-            _change(base, None, "parser_row_removed", base.get("token", ""), "")
-            for base in parser_missing
-        )
+        parser_changes, parser_strengthened = _parser_semantic_changes(base_rows, base_status_rows)
     else:
         base_status_rows = base_rows
         parser_changes = []
+        parser_strengthened = []
     matches, missing = _match_base_rows(base_status_rows, rows, strict=True)
-    strengthened: list[dict[str, object]] = []
+    strengthened: list[dict[str, object]] = list(parser_strengthened)
     changes: list[dict[str, object]] = list(parser_changes)
     for base, head in matches:
         row_strengthened, weakening_fields = _classify_change(base, head)
@@ -550,11 +591,20 @@ def _verify_base_inventory(
     for base in missing:
         changes.append(_change(base, None, "row_removed", base.get("token", ""), ""))
     matched_head_ids = {id(head) for _, head in matches}
-    strengthened.extend(
-        {"file": row.get("file", ""), "field": "row_added"}
-        for row in rows
-        if id(row) not in matched_head_ids
-    )
+    for row in rows:
+        if id(row) not in matched_head_ids:
+            if row.get("class") in {"UNKNOWN", "UNRESOLVED"}:
+                changes.append(_row_added_change(row))
+            else:
+                strengthened.append({"file": row.get("file", ""), "field": "row_added"})
+    base_unresolved = sum(row.get("class") == "UNRESOLVED" for row in base_status_rows)
+    head_unresolved = sum(row.get("class") == "UNRESOLVED" for row in rows)
+    base_unknown = sum(row.get("class") == "UNKNOWN" for row in base_status_rows)
+    head_unknown = sum(row.get("class") == "UNKNOWN" for row in rows)
+    if head_unresolved > base_unresolved:
+        changes.append(_inventory_count_change("unresolved_count", base_unresolved, head_unresolved))
+    if head_unknown > base_unknown:
+        changes.append(_inventory_count_change("unknown_count", base_unknown, head_unknown))
     acknowledgements, ack_errors = _load_acknowledgements(root, revision)
     ack_map = {_ack_key(entry): entry for entry in acknowledgements}
     acknowledged: list[dict[str, object]] = []
@@ -567,10 +617,6 @@ def _verify_base_inventory(
             acknowledged.append(change)
     used_keys = {_ack_key(change) for change in changes}
     unused = [entry for entry in acknowledgements if _ack_key(entry) not in used_keys]
-    base_unresolved = sum(row.get("class") == "UNRESOLVED" for row in base_status_rows)
-    head_unresolved = sum(row.get("class") == "UNRESOLVED" for row in rows)
-    base_unknown = sum(row.get("class") == "UNKNOWN" for row in base_status_rows)
-    head_unknown = sum(row.get("class") == "UNKNOWN" for row in rows)
     print(
         "SOURCE_TEXT_INVENTORY_BASE_OK "
         f"base_rows={len(base_rows)} head_rows={len(rows)} missing={len(missing)} "
@@ -607,6 +653,8 @@ def write_report(rows: list[dict[str, object]], output: Path) -> None:
         "unresolved_reason",
         "xunit_coverage",
         "token",
+        "assertion_signature",
+        "reader_signature",
         "checked_expression",
         "assertion_context",
         "assertion_literal",
@@ -615,6 +663,7 @@ def write_report(rows: list[dict[str, object]], output: Path) -> None:
         "comment_only",
         "reachability",
         "call_path",
+        "call_binding",
     )
     with csv_path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=fields)
