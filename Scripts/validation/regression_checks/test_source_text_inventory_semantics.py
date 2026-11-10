@@ -526,6 +526,37 @@ class SourceTextInventorySemanticTests(_FixtureSupport, unittest.TestCase):
             self.assertEqual(1, code)
             self.assertIn('field": "reachability"', output)
 
+    def test_switch_break_before_assertion_requires_ack(self):
+        """Reject adding a switch break that skips a source assertion."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(
+                directory,
+                validation_text=(
+                    "public static class FixtureValidation {\n"
+                    "    public static void Validate() {\n"
+                    '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                    "        switch (1) {\n"
+                    "            case 1:\n"
+                    '                Check(source.Contains("Product"));\n'
+                    "                break;\n"
+                    "        }\n"
+                    "    }\n"
+                    "}\n"
+                ),
+            )
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace(
+                    '                Check(source.Contains("Product"));\n',
+                    "                if (source.Length >= 0) break;\n"
+                    '                Check(source.Contains("Product"));\n',
+                ),
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code)
+            self.assertIn('field": "reachability"', output)
+
     def test_lambda_invoke_and_forwarding_change_requires_ack(self):
         """Reject deleting Invoke or forwarding calls for a source-bearing lambda."""
         with tempfile.TemporaryDirectory() as directory:

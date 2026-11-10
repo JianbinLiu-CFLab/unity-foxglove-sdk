@@ -975,8 +975,15 @@ def _reachability_signatures(
                 continue
             if _method_for_offset(methods, begin) is not method:
                 continue
-            if kind in {"continue", "break"} and not any(
+            if kind == "continue" and not any(
                 loop_kind in {"while", "foreach", "for"}
+                and loop_start <= begin <= loop_end
+                and loop_start <= start <= loop_end
+                for loop_start, loop_end, loop_kind in control_intervals
+            ):
+                continue
+            if kind == "break" and not any(
+                loop_kind in {"while", "foreach", "for", "switch"}
                 and loop_start <= begin <= loop_end
                 and loop_start <= start <= loop_end
                 for loop_start, loop_end, loop_kind in control_intervals
