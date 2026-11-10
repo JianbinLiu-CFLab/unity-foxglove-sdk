@@ -505,22 +505,16 @@ def _parser_semantic_changes(
     changes: list[dict[str, object]] = []
     strengthened: list[dict[str, object]] = []
     for base, current in matches:
+        parser_migration = str(base.get("parser_version", "")) != str(
+            current.get("parser_version", "")
+        )
         row_strengthened, weakening_fields = _classify_change(base, current)
-        if (
-            "harness_signature" in weakening_fields
-            and str(base.get("parser_version", ""))
-            != str(current.get("parser_version", ""))
-        ):
-            weakening_fields.remove("harness_signature")
-            row_strengthened.append(
-                _change(
-                    base,
-                    current,
-                    "parser_harness_signature",
-                    base.get("harness_signature", ""),
-                    current.get("harness_signature", ""),
-                )
+        if parser_migration:
+            row_strengthened.extend(
+                _change(base, current, f"parser_{field}", base.get(field, ""), current.get(field, ""))
+                for field in weakening_fields
             )
+            weakening_fields = []
         strengthened.extend(
             {**change, "field": f"parser_{change['field']}"} for change in row_strengthened
         )
