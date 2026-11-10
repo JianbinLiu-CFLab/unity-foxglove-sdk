@@ -17,6 +17,7 @@ def write_report(rows: list[dict[str, object]], output: Path) -> None:
         "label",
         "validation_flag",
         "dispatch",
+        "parser_version",
         "class",
         "target",
         "unresolved_reason",

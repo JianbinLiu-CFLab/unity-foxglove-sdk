@@ -15,6 +15,7 @@ from collections import Counter
 from pathlib import Path
 
 MODULE_DIR = Path(__file__).resolve().parent
+PARSER_SEMANTICS_VERSION = "2"
 if str(MODULE_DIR) not in sys.path:
     sys.path.insert(0, str(MODULE_DIR))
 
@@ -199,6 +200,7 @@ def scan_file(
                 "label": label_match.group("label") if label_match else "",
                 "validation_flag": validation_flag,
                 "dispatch": dispatch,
+                "parser_version": PARSER_SEMANTICS_VERSION,
                 "class": classify(target, classification_text),
                 "target": target,
                 "unresolved_reason": unresolved_reason,

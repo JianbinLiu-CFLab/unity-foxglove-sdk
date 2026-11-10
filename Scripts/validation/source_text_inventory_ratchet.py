@@ -28,10 +28,12 @@ NEW_FIELDS = {
     "call_binding",
     "call_path",
     "reader_signature",
+    "parser_version",
     "unresolved_reason",
 }
 COMPARE_FIELDS = (
     "target",
+    "parser_version",
     "class",
     "comment_only",
     "xunit_coverage",
@@ -506,8 +508,8 @@ def _parser_semantic_changes(
         row_strengthened, weakening_fields = _classify_change(base, current)
         if (
             "harness_signature" in weakening_fields
-            and not str(base.get("harness_signature", ""))
-            and str(current.get("harness_signature", ""))
+            and str(base.get("parser_version", ""))
+            != str(current.get("parser_version", ""))
         ):
             weakening_fields.remove("harness_signature")
             row_strengthened.append(
