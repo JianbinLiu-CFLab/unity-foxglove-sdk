@@ -20,6 +20,7 @@ if str(MODULE_DIR) not in sys.path:
 
 try:
     from . import source_text_inventory_ratchet as _ratchet_module
+    from . import source_text_inventory_report as _report_module
     from . import source_text_inventory_text as _text_module
     from . import source_text_inventory_flow as _flow_module
     from . import source_text_inventory_symbols as _symbols_module
@@ -27,8 +28,10 @@ try:
     from .source_text_inventory_symbols import *
     from .source_text_inventory_flow import *
     from .source_text_inventory_ratchet import *
+    from .source_text_inventory_report import *
 except ImportError:
     import source_text_inventory_ratchet as _ratchet_module
+    import source_text_inventory_report as _report_module
     import source_text_inventory_text as _text_module
     import source_text_inventory_flow as _flow_module
     import source_text_inventory_symbols as _symbols_module
@@ -36,8 +39,9 @@ except ImportError:
     from source_text_inventory_symbols import *
     from source_text_inventory_flow import *
     from source_text_inventory_ratchet import *
+    from source_text_inventory_report import *
 
-for _module in (_text_module, _symbols_module, _flow_module, _ratchet_module):
+for _module in (_text_module, _symbols_module, _flow_module, _ratchet_module, _report_module):
     globals().update(
         {
             _name: getattr(_module, _name)
