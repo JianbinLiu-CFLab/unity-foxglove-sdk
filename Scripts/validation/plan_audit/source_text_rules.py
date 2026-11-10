@@ -63,6 +63,7 @@ def _plan_check(base_sha: str) -> audit_lib.Check:
     base_match = base_sha in text
     current = (
         "W1 rules and W2 inventory are present on main" in status_line
+        or "Follow-up 11 W2 ratchet implementation are complete" in status_line
         or "W1-W4 complete" in status_line
     )
     evidence.write_text(status_line + "\n" + f"base_match={base_match}\n", encoding="utf-8")
