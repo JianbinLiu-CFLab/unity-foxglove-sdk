@@ -495,6 +495,18 @@ def _reachability_signatures(
         end = _balanced_brace_end(masked, open_index)
         if end is not None:
             intervals.append((open_index + 1, end, "catch"))
+    for match in re.finditer(r"\belse\b(?!\s+if)", masked):
+        cursor = match.end()
+        while cursor < len(masked) and masked[cursor].isspace():
+            cursor += 1
+        end = (
+            _balanced_brace_end(masked, cursor)
+            if cursor < len(masked) and masked[cursor] == "{"
+            else masked.find(";", cursor)
+        )
+        if end is not None and end >= cursor:
+            begin = cursor + 1 if cursor < len(masked) and masked[cursor] == "{" else cursor
+            intervals.append((begin, end, "else"))
     exits: list[tuple[int, int, str, str]] = []
     for match in re.finditer(
         r"\b(?P<kind>return|throw|continue|break|goto)\b[^;]*;|\byield\s+break\s*;",

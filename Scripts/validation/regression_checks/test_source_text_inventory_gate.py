@@ -114,6 +114,24 @@ class SourceTextInventoryGateTests(unittest.TestCase):
             self.assertEqual(1, code)
             self.assertIn('field": "reachability"', output)
 
+    def test_else_branch_reachability_requires_ack(self):
+        """Reject moving a source assertion into an else branch."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(directory)
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace(
+                    '        Check(source.Contains("Product"));\n',
+                    "        if (Environment.TickCount >= int.MinValue) { } else {\n"
+                    '            Check(source.Contains("Product"));\n'
+                    "        }\n",
+                ),
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code)
+            self.assertIn('field": "reachability"', output)
+
     def test_unrelated_check_is_strengthening(self):
         """Allow an unrelated executable check added to an entrypoint."""
         with tempfile.TemporaryDirectory() as directory:
