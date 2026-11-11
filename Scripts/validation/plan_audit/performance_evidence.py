@@ -103,8 +103,10 @@ def _threshold_check() -> audit_lib.Check:
                 "maxGen2Collections",
             ))
         )
-        def valid_threshold(value: dict[str, object]) -> bool:
+        def valid_threshold(value: object) -> bool:
             """Validate one scenario threshold map."""
+            if not isinstance(value, dict):
+                return False
             numeric = (
                 "maxElapsedMs",
                 "maxAllocatedBytesPerMessage",

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 from Scripts.validation.plan_audit import performance_evidence
 
@@ -31,6 +32,14 @@ class PerformanceEvidenceTests(unittest.TestCase):
         self.assertLessEqual(large["maxGen2Collections"], 2000)
         for key in ("maxAllocatedBytesPerMessage", "maxAllocatedBytesTotal", "maxGen1Collections", "maxGen2Collections"):
             self.assertLessEqual(quick_large[key], large[key], key)
+
+    def test_threshold_check_rejects_non_object_scenario_records(self) -> None:
+        """Return a failed audit when a required threshold record is null."""
+        data = performance_evidence._load_thresholds()
+        data["scenarios"]["FoxRunStreamIngest"] = None
+        with patch.object(performance_evidence, "_load_thresholds", return_value=data):
+            result = performance_evidence._threshold_check()
+        self.assertEqual("FAIL", result.status)
 
 
 if __name__ == "__main__":
