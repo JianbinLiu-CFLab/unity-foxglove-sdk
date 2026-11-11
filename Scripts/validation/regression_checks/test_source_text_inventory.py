@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 
 from Scripts.validation.source_text_inventory import (
+    _ExternalHelperIndex,
     _build_xunit_index,
     _checked_expression_signature,
     _flow_module,
@@ -194,6 +195,21 @@ class SourceTextInventoryTests(unittest.TestCase):
             self.assertIn(
                 "Class C implementation: 5", (output / "SUMMARY.md").read_text(encoding="utf-8")
             )
+
+    def test_external_helper_index_ignores_unscanned_performance_sources(self):
+        """Keep unrelated performance sources out of validation helper resolution."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runtime = root / "Packages" / "fixture" / "Tests" / "Runtime"
+            runtime.mkdir(parents=True)
+            performance = root / "Packages" / "fixture" / "Tests" / "Performance"
+            performance.mkdir(parents=True)
+            performance_file = performance / "Unrelated.cs"
+            performance_file.write_text("public sealed class Unrelated {}\n", encoding="utf-8")
+
+            index = _ExternalHelperIndex(root)
+
+            self.assertNotIn(performance_file, index.units)
 
     def test_scope_partial_coverage_and_comment_only_detection(self):
         """Resolve repeated local names, partial product types, and comment-only literals."""

@@ -72,7 +72,17 @@ class _ExternalHelperIndex:
         self.fallbacks = {}
         self.type_candidates_cache = {}
         self.declaration_files = None
-        for path in sorted(root.glob("Packages/*/**/*.cs")):
+        source_files = {
+            path
+            for pattern in (
+                "Packages/*/Runtime/**/*.cs",
+                "Packages/*/Editor/**/*.cs",
+                "Packages/*/Tests/Runtime/**/*.cs",
+                "Packages/*/Tests/Unit/**/*.cs",
+            )
+            for path in root.glob(pattern)
+        }
+        for path in sorted(source_files):
             source = path.read_text(encoding="utf-8", errors="replace")
             masked = _strip_csharp_comments_and_strings(source)
             regions = _source_type_regions(masked)
