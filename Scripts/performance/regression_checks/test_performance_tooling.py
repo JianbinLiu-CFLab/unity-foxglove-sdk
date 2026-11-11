@@ -136,6 +136,8 @@ class PerformanceToolingTests(unittest.TestCase):
             ("string-status", {"name": "bad", "passed": "false"}),
             ("null-entry", None),
             ("non-finite", {"name": "bad", "passed": True, "messagesPerSecond": float("nan")}),
+            ("negative-throughput", {"name": "bad", "passed": True, "messagesPerSecond": -1}),
+            ("negative-collections", {"name": "bad", "passed": True, "gen0Collections": -1}),
             ("bad-component", {"name": "bad", "passed": True, "components": [{"name": "component", "dropRatio": 2}]}),
         )
         for case, scenario in cases:

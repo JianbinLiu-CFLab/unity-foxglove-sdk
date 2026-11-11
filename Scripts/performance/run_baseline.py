@@ -275,7 +275,7 @@ def main() -> int:
                 return f"{label}: {metric} must be finite numeric"
         if "dropRatio" in record and not 0 <= record["dropRatio"] <= 1:
             return f"{label}: dropRatio must be between 0 and 1"
-        for metric in ("messageCount", "elapsedMs", "elapsedSeconds", "bytesPerSecond", "publishBytesPerSecond", "egressBytes", "allocatedBytesPerMessage", "allocatedBytesTotal", "allocatedBytesCurrentThread", "outputBytes", "acceptedBytes", "droppedBytes", "queuedBytesHighWater", "clientCount", "droppedDataFrames", "droppedDataFramesSnapshot"):
+        for metric in ("messageCount", "elapsedMs", "elapsedSeconds", "messagesPerSecond", "bytesPerSecond", "publishBytesPerSecond", "egressBytes", "allocatedBytesPerMessage", "allocatedBytesTotal", "allocatedBytesCurrentThread", "outputBytes", "acceptedBytes", "droppedBytes", "queuedBytesHighWater", "clientCount", "droppedDataFrames", "droppedDataFramesSnapshot", "gen0Collections", "gen1Collections", "gen2Collections"):
             if metric in record and record[metric] < 0:
                 return f"{label}: {metric} must be non-negative"
         components = record.get("components", [])
