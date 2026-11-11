@@ -104,7 +104,7 @@ namespace Unity.FoxgloveSDK.Performance
                 warmup,
                 jsonOne,
                 jsonFour,
-                "Generated StringBuilder JSON and FoxRunProtobufWire Protobuf one/four-client fanout; "
+                "Option A' JSON writer-shape and FrameTransform Protobuf building blocks one/four-client fanout; "
                     + $"MessagePack one/four-client: {messagePackOne.notes}; {messagePackFour.notes}",
                 protoOne,
                 protoFour,
@@ -131,6 +131,15 @@ namespace Unity.FoxgloveSDK.Performance
             result.thresholdNotes = componentFailures.Count == 0
                 ? (result.thresholdsEvaluated ? "component thresholds passed" : null)
                 : string.Join("; ", componentFailures);
+            result.passed &= componentFailures.Count == 0;
+            var componentNotes = result.thresholdNotes;
+            PerformanceRunner.ApplyThresholds(result, thresholds);
+            if (!string.IsNullOrEmpty(componentNotes))
+            {
+                result.thresholdNotes = string.IsNullOrEmpty(result.thresholdNotes)
+                    ? componentNotes
+                    : componentNotes + "; aggregate=" + result.thresholdNotes;
+            }
             return result;
         }
 

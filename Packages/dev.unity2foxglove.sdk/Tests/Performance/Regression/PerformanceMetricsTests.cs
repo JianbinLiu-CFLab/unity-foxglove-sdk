@@ -243,6 +243,35 @@ namespace Unity.FoxgloveSDK.Performance.Tests
         }
 
         [Fact]
+        public void FoxRunPublishPayloadAppliesAggregateThresholds()
+        {
+            var runnerType = typeof(PerformanceRunner).Assembly
+                .GetType("Unity.FoxgloveSDK.Performance.HighBandwidthScenarioRunner");
+            var method = runnerType.GetMethod("RunFoxRunPublishPayload", BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.NotNull(method);
+            var thresholds = new PerformanceThresholdConfig
+            {
+                enabled = true,
+                scenarios = new Dictionary<string, PerformanceScenarioThreshold>
+                {
+                    ["FoxRunPublishPayload"] = new PerformanceScenarioThreshold
+                    {
+                        maxAllocatedBytesPerMessage = 1,
+                        maxAllocatedBytesTotal = 1
+                    }
+                }
+            };
+
+            var result = (PerformanceScenarioResult)method.Invoke(
+                null,
+                new object[] { 1, 2, 2, thresholds });
+
+            Assert.False(result.passed);
+            Assert.True(result.thresholdsEvaluated);
+            Assert.Contains("allocatedBytesPerMessage", result.thresholdNotes);
+        }
+
+        [Fact]
         public void MessagePackPublishUsesConfiguredTopicCount()
         {
             var runnerType = typeof(PerformanceRunner).Assembly
