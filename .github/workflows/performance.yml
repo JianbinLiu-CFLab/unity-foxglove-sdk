@@ -7,6 +7,7 @@ on:
       - 'Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/**'
       - 'Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/**'
       - 'Packages/dev.unity2foxglove.sdk/Runtime/Core/**'
+      - 'Packages/dev.unity2foxglove.sdk/Runtime/Protocol/**'
       - 'Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/**'
       - 'Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/**'
       - 'Packages/dev.unity2foxglove.sdk/Runtime/Schemas/**'

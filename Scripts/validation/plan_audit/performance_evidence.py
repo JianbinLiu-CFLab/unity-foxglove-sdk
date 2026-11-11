@@ -104,6 +104,7 @@ def _threshold_check() -> audit_lib.Check:
             ))
         )
         def valid_threshold(value: dict[str, object]) -> bool:
+            """Validate one scenario threshold map."""
             numeric = (
                 "maxElapsedMs",
                 "maxAllocatedBytesPerMessage",

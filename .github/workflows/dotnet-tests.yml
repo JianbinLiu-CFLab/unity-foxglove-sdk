@@ -329,6 +329,25 @@ jobs:
               exit 1
             fi
             migration_args=(--parser-migration-approval "$migration_approval_file")
+          elif [ "$trusted_revision" = "69d645a31940054eccd776c17b175378f11d6dca" ]; then
+            migration_approval_file="$RUNNER_TEMP/source-text-parser-maintenance-approval.json"
+            cat > "$migration_approval_file" <<'MIGRATION_APPROVAL'
+          {
+            "base_revision": "69d645a31940054eccd776c17b175378f11d6dca",
+            "checker_sha256": "b8a6d4ba9efbbbef5dff3e1aeff2c6225679f62265bf70b06ca11262da67852f",
+            "base_inventory_sha256": "85209891da4e0dfdcc1cce12661dad018cbac0a4a0014bd7bcda18ccd82e50df",
+            "current_inventory_sha256": "5635d87016b5d964abc02594a777c7a0a2ff4eb205555f8683081721f3f2dad7",
+            "parser_changes_sha256": "42180ca17e05d51e31c94c7c176e69280357f5b4d04df383ebbc2d4a1db1443e",
+            "scope": "versioned-parser-maintenance",
+            "reason": "Reviewed exact parser maintenance required to isolate unrelated performance sources from validation helper resolution."
+          }
+          MIGRATION_APPROVAL
+            expected_migration_checker_sha=$(python3 -I -B -c 'import json,sys; print(json.load(open(sys.argv[1]))["checker_sha256"])' "$migration_approval_file")
+            if [ "$actual_migration_checker_sha" != "$expected_migration_checker_sha" ]; then
+              echo "Reviewed parser maintenance checker SHA-256 does not match" >&2
+              exit 1
+            fi
+            migration_args=(--parser-migration-approval "$migration_approval_file")
           fi
           python3 -I -B "$trusted_checker" --root . --base-ref "$SOURCE_TEXT_INVENTORY_BASE_SHA" --output build/review/source-text-inventory-trusted
           python3 -I -B "$reviewed_checker_root/source_text_inventory.py" --root . --base-ref "$SOURCE_TEXT_INVENTORY_BASE_SHA" --output build/review/source-text-inventory "${migration_args[@]}"

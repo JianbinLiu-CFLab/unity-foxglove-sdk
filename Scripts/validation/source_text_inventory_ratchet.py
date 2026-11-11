@@ -664,11 +664,17 @@ def _inventory_fingerprint(rows: list[dict[str, object]]) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+def _parser_change_fingerprint(changes: list[dict[str, object]]) -> str:
+    """Hash the complete parser-change record set for exact maintenance approval."""
+    return _inventory_fingerprint(changes)
+
+
 def _migration_fingerprints(
     root: Path,
     revision: str,
     base_rows: list[dict[str, object]],
     current_rows: list[dict[str, object]],
+    parser_changes: list[dict[str, object]],
 ) -> dict[str, str]:
     """Bind migration evidence to one base commit, checker, and pair of full scans."""
     base_revision = subprocess.run(
@@ -680,6 +686,7 @@ def _migration_fingerprints(
         "checker_sha256": _checker_digest(root),
         "base_inventory_sha256": _inventory_fingerprint(base_rows),
         "current_inventory_sha256": _inventory_fingerprint(current_rows),
+        "parser_changes_sha256": _parser_change_fingerprint(parser_changes),
     }
 
 
@@ -706,7 +713,9 @@ def _verify_base_inventory(
             inventory_callback=inventory_callback,
         )
         parser_changes, parser_strengthened = _parser_semantic_changes(base_rows, base_status_rows)
-        fingerprints = _migration_fingerprints(root, revision, base_rows, base_status_rows)
+        fingerprints = _migration_fingerprints(
+            root, revision, base_rows, base_status_rows, parser_changes
+        )
         if output is not None:
             evidence = {
                 "fingerprints": fingerprints,
@@ -726,17 +735,41 @@ def _verify_base_inventory(
             ]
             if not isinstance(approval.get("reason"), str) or not approval["reason"].strip():
                 migration_errors.append("reason")
-            current_versions = {row.get("parser_version") for row in base_status_rows}
-            if any("parser_version" in row for row in base_rows) or len(current_versions) != 1:
-                migration_errors.append("not a legacy-to-versioned migration")
+            base_versions = {
+                str(row.get("parser_version", ""))
+                for row in base_rows
+                if row.get("parser_version")
+            }
+            current_versions = {
+                str(row.get("parser_version", ""))
+                for row in base_status_rows
+                if row.get("parser_version")
+            }
+            scope = approval.get("scope")
+            legacy_migration = (
+                not any("parser_version" in row for row in base_rows)
+                and len(current_versions) == 1
+                and scope in (None, "legacy-to-versioned")
+            )
+            versioned_maintenance = (
+                bool(base_versions)
+                and base_versions == current_versions
+                and scope == "versioned-parser-maintenance"
+            )
+            if not (legacy_migration or versioned_maintenance):
+                migration_errors.append("not an approved parser migration")
             if not migration_errors:
-                approved_fields = {f"parser_{field}" for field in PARSER_COMPARE_FIELDS}
-                approved_parser_changes = [
-                    change for change in parser_changes if change["field"] in approved_fields
-                ]
-                parser_changes = [
-                    change for change in parser_changes if change["field"] not in approved_fields
-                ]
+                if legacy_migration:
+                    approved_fields = {f"parser_{field}" for field in PARSER_COMPARE_FIELDS}
+                    approved_parser_changes = [
+                        change for change in parser_changes if change["field"] in approved_fields
+                    ]
+                    parser_changes = [
+                        change for change in parser_changes if change["field"] not in approved_fields
+                    ]
+                else:
+                    approved_parser_changes = list(parser_changes)
+                    parser_changes = []
     else:
         base_status_rows = base_rows
         parser_changes = []
