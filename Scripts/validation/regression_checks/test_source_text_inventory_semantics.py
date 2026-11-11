@@ -19,6 +19,33 @@ class _FixtureSupport:
 class SourceTextInventorySemanticTests(_FixtureSupport, unittest.TestCase):
     """Cover parser schema, control flow, overload, and lambda semantics."""
 
+    def test_alternate_wrapper_paths_remain_bound(self):
+        """Reject disabling the effective path when an earlier wrapper path is inactive."""
+        for forwarding in ("RunChecks();", "Intermediate();"):
+            with self.subTest(forwarding=forwarding), tempfile.TemporaryDirectory() as directory:
+                root = self._git_fixture(directory, validation_text=(
+                    "public static class FixtureValidation {\n"
+                    "public static void Validate() { First(false); Second(true); }\n"
+                    f"private static void First(bool enabled) {{ if (enabled) {forwarding} }}\n"
+                    f"private static void Second(bool enabled) {{ if (enabled) {forwarding} }}\n"
+                    "private static void Intermediate() { RunChecks(); }\n"
+                    "private static void RunChecks() {\n"
+                    'var source=ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                    'Check(source.Contains("Product"));\n}\n'
+                    "private static string ReadRequiredRepoText(string p) => System.IO.File.ReadAllText(p);\n"
+                    "private static void Check(bool ok) { if (!ok) throw new System.Exception(); }\n}\n"
+                ))
+                rows = _gate_module.inventory(root)
+                self.assertEqual(1, len(rows))
+                self.assertIn("->First", rows[0]["call_path"])
+                validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+                text = validation.read_text(encoding="utf-8").replace("Second(true);", "Second(false);")
+                validation.write_text(text, encoding="utf-8")
+                (root / "Packages/fixture/Runtime/Product.cs").write_text("public class Other {}\n", encoding="utf-8")
+                code, output = self._run_fixture_gate(root)
+                self.assertEqual(1, code, output)
+                self.assertIn('field": "call_path"', output)
+
     def test_head_acknowledgement_schema_is_validated(self):
         """Reject malformed proposed manifests without granting head entries authority."""
         entry = {
@@ -65,7 +92,7 @@ class SourceTextInventorySemanticTests(_FixtureSupport, unittest.TestCase):
                 subprocess.run(["git", "-C", str(root), "commit", "-q", "-m", "shared-harness-base"], check=True)
                 rows = _gate_module.inventory(root)
                 self.assertEqual(1, len(rows))
-                self.assertEqual("", rows[0]["harness_signature"])
+                self.assertRegex(rows[0]["harness_signature"], r"^[0-9a-f]{64}$")
                 validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
                 text = validation.read_text(encoding="utf-8")
                 closing = text.rfind("}")

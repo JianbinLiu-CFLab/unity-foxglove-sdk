@@ -140,13 +140,54 @@ def _argument_definition_index(
     return result
 
 
-def _local_dependency_signature(
+def _byref_argument_definitions(
+    text: str, masked: str, method_regions: list[tuple[int, int]]
+) -> dict[int, list[tuple[int, str, str, str]]]:
+    """Index ref/out writes with their complete invocation and containing method."""
+    result: dict[int, list[tuple[int, str, str, str]]] = {}
+    if not re.search(r"\b(?:ref|out)\b", masked):
+        return result
+    invocation = re.compile(
+        r"(?<![\w.])(?:[A-Za-z_]\w*\s*(?:::|\.)\s*)*[A-Za-z_]\w*"
+        r"(?:\s*<[^;{}()]+>)?\s*\("
+    )
+    byref = re.compile(
+        r"(?:[A-Za-z_]\w*\s*:\s*)?(?:ref|out)\s+"
+        r"(?:[\w.<>\[\]?]+\s+)?(?P<name>[A-Za-z_]\w*)"
+    )
+    for match in invocation.finditer(masked):
+        open_index = match.end() - 1
+        close_index = _balanced_call_end(masked, open_index)
+        if close_index is None or re.match(r"\s*(?:\{|=>)", masked[close_index + 1 :]):
+            continue
+        targets = [
+            target.group("name")
+            for argument in _split_arguments(masked[open_index + 1 : close_index])
+            if (target := byref.fullmatch(argument)) is not None
+        ]
+        if not targets:
+            continue
+        owner = min(
+            ((begin, end) for begin, end in method_regions if begin < match.start() < end),
+            key=lambda region: region[1] - region[0],
+            default=None,
+        )
+        if owner is not None:
+            statement = _normalize_csharp_expression(text[match.start() : close_index + 1])
+            references = masked[match.start() : close_index + 1]
+            result.setdefault(owner[0], []).extend(
+                (match.start(), name, statement, references) for name in targets
+            )
+    return result
+
+
+def _dependency_definitions(
     expression: str,
     offset: int,
     definitions: list[tuple[int, str, str, str]],
     contexts: dict[int, str],
-) -> str:
-    """Hash all preceding definitions reached through an expression and its control guards."""
+) -> list[tuple[int, str, str, str]]:
+    """Select preceding definitions reached through an expression and its control guards."""
     names = set(re.findall(r"\b[A-Za-z_]\w*\b", _strip_csharp_comments_and_strings(expression + " " + contexts.get(offset, ""))))
     preceding = [definition for definition in definitions if definition[0] < offset]
     previous_size = -1
@@ -156,8 +197,45 @@ def _local_dependency_signature(
             if name in names:
                 dependency_text = references + " " + contexts.get(start, "")
                 names.update(re.findall(r"\b[A-Za-z_]\w*\b", _strip_csharp_comments_and_strings(dependency_text)))
-    pieces = [f"{statement}@{contexts.get(start, '')}" for start, name, statement, _ in preceding if name in names]
+    return [definition for definition in preceding if definition[1] in names]
+
+
+def _local_dependency_signature(
+    expression: str,
+    offset: int,
+    definitions: list[tuple[int, str, str, str]],
+    contexts: dict[int, str],
+) -> str:
+    """Hash all preceding definitions reached through an expression and its control guards."""
+    selected = _dependency_definitions(expression, offset, definitions, contexts)
+    pieces = [f"{statement}@{contexts.get(start, '')}" for start, _, statement, _ in selected]
     return hashlib.sha256("\n".join(pieces).encode()).hexdigest() if pieces else ""
+
+
+def _source_type_regions(masked: str) -> list[tuple[int, int, str]]:
+    """Resolve namespace and nested type identities without merging same-name classes."""
+    namespaces: list[tuple[int, int, str]] = []
+    for match in re.finditer(r"\bnamespace\s+([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*([;{])", masked):
+        begin = match.end() - 1
+        end = len(masked) if match.group(2) == ";" else _balanced_brace_end(masked, begin)
+        if end is None:
+            continue
+        parents = [item for item in namespaces if item[0] < begin < item[1]]
+        parent = min(parents, key=lambda item: item[1] - item[0], default=None)
+        name = (parent[2] + "." if parent else "") + match.group(1)
+        namespaces.append((begin, end, name))
+    regions: list[tuple[int, int, str]] = []
+    for match in re.finditer(r"\b(?:class|struct|record)\s+([A-Za-z_]\w*)[^;{}]*\{", masked):
+        begin = match.end() - 1
+        end = _balanced_brace_end(masked, begin)
+        if end is None:
+            continue
+        parents = [item for item in regions if item[0] < begin < item[1]]
+        parents += [item for item in namespaces if item[0] < begin < item[1]]
+        parent = min(parents, key=lambda item: item[1] - item[0], default=None)
+        name = (parent[2] + "." if parent else "") + match.group(1)
+        regions.append((begin, end, name))
+    return regions
 
 
 def _embedded_statement_end(masked: str, start: int, ends: dict[int, int | None] | None = None) -> int | None:

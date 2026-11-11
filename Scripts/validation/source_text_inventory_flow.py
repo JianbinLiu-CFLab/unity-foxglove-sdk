@@ -253,7 +253,12 @@ def _call_sites(
 
 def _argument_definition_index(text: str, masked: str, methods: list[MethodInfo]) -> dict[int, list[tuple[int, str, str, str]]]:
     """Build one local-definition index from the already-discovered method bodies."""
-    return _symbol_helpers._argument_definition_index(text, masked, [(method.body_start, method.body_end) for method in methods])
+    regions = [(method.body_start, method.body_end) for method in methods]
+    result = _symbol_helpers._argument_definition_index(text, masked, regions)
+    for owner, definitions in _symbol_helpers._byref_argument_definitions(text, masked, regions).items():
+        result[owner].extend(definitions)
+        result[owner].sort(key=lambda definition: definition[0])
+    return result
 
 def _method_call_contexts(
     text: str,
@@ -484,6 +489,7 @@ def _call_path_index(
     methods = methods if methods is not None else _method_infos(text, masked)
     graph = _method_call_graph(text, masked, methods, call_contexts, argument_definitions)
     paths: dict[str, str] = {}
+    depths: dict[str, int] = {}
     entrypoints = [name for name in entrypoint.split(";") if name]
     methods_by_name: dict[str, list[MethodInfo]] = {}
     for method in methods:
@@ -504,6 +510,7 @@ def _call_path_index(
         if current in paths:
             continue
         paths[current] = "->".join(path)
+        depths[current] = len(path) - 1
         for callee, contexts in sorted(graph.get(current, {}).items()):
             if callee not in paths:
                 edge = labels[callee]
@@ -511,6 +518,28 @@ def _call_path_index(
                 if context_values:
                     edge += "[" + "|".join(context_values) + "]"
                 queue.append((callee, path + [edge]))
+    incoming: dict[str, list[tuple[str, str]]] = {}
+    for caller in paths:
+        for callee, contexts in graph.get(caller, {}).items():
+            if callee in paths:
+                for context in contexts:
+                    edge = repr((labels[caller], labels[callee], context))
+                    incoming.setdefault(callee, []).append((caller, edge))
+    for target in paths:
+        pending = [target]
+        visited: set[str] = set()
+        edges: set[str] = set()
+        while pending:
+            current = pending.pop()
+            if current in visited:
+                continue
+            visited.add(current)
+            for caller, edge in incoming.get(current, []):
+                edges.add(edge)
+                pending.append(caller)
+        if len(edges) > depths[target]:
+            digest = hashlib.sha256(repr(sorted(edges)).encode("utf-8")).hexdigest()
+            paths[target] += "|edges(" + digest + ")"
     return methods, paths
 
 def _validation_harness_signature(
@@ -891,7 +920,7 @@ def _reachability_signatures(
             header = text[cursor + catch_match.start("header") : cursor + catch_match.end("header")]
             descriptor = _catch_descriptor(text, masked, header, catch_open, catch_end)
             descriptors.append(descriptor)
-            intervals.append((catch_open + 1, catch_end, descriptor))
+            intervals.append((catch_open + 1, catch_end, "|".join(descriptors)))
             cursor = catch_end + 1
         finally_match = re.match(r"\s*finally\s*\{", masked[cursor:], re.DOTALL)
         finally_descriptor = ""

@@ -94,6 +94,128 @@ class SourceTextInventoryMigrationTests(_FixtureSupport, unittest.TestCase):
                 if expected:
                     self.assertIn('"field": "assertion_signature"', result.stdout)
 
+    def test_byref_invocations_retain_assertion_dependencies(self):
+        """Bind ref/out writes and invocation inputs without binding unrelated checks."""
+        scratch = Path(__file__).resolve().parents[3] / "build/tmp/scratch"
+        scratch.mkdir(parents=True, exist_ok=True)
+        checked = 'Check(bypass || source.Contains("Product"));'
+        direct = 'Check(source.Contains("Product"));'
+        cases = (
+            ("out", 'bool bypass = false; bool.TryParse("false", out bypass);',
+             '"false"', '"true"', checked, 1),
+            ("ref", "bool bypass = false; System.Threading.Volatile.Write(ref bypass, false);",
+             "ref bypass, false", "ref bypass, true", checked, 1),
+            ("out-var", 'bool.TryParse("false", out var bypass);',
+             '"false"', '"true"', checked, 1),
+            ("alias", 'string seed = "false"; string input = seed; bool bypass = false; '
+             'bool.TryParse(input, out bypass);', 'seed = "false"', 'seed = "true"', checked, 1),
+            ("guard", 'bool enabled = false; bool bypass = false; '
+             'if (enabled) bool.TryParse("true", out bypass);', "enabled = false", "enabled = true", checked, 1),
+            ("unrelated-out", 'bool unused = false; bool.TryParse("false", out unused);',
+             '"false"', '"true"', direct, 0),
+            ("unrelated-ref", "bool unused = false; System.Threading.Volatile.Write(ref unused, false);",
+             "ref unused, false", "ref unused, true", direct, 0),
+            ("unrelated-check", 'bool unused = false; bool.TryParse("false", out unused);',
+             '"false"', '"true"', "Check(unused); " + direct, 0),
+        )
+        for name, prelude, before, after, checks, expected in cases:
+            with self.subTest(name=name), tempfile.TemporaryDirectory(dir=scratch) as directory:
+                root = self._git_fixture(
+                    directory,
+                    validation_text=(
+                        "public static class FixtureValidation { public static void Validate() {\n"
+                        'var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                        + prelude + "\n" + checks + "\n} }\n"
+                    ),
+                )
+                self.assertEqual(1, len(inventory(root)))
+                baseline = self._run_migration_cli(root)
+                self.assertEqual(0, baseline.returncode, baseline.stdout + baseline.stderr)
+                validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+                validation.write_text(
+                    validation.read_text(encoding="utf-8").replace(before, after), encoding="utf-8"
+                )
+                if expected:
+                    (root / "Packages/fixture/Runtime/Product.cs").write_text(
+                        "public sealed class Other {}\n", encoding="utf-8"
+                    )
+                result = self._run_migration_cli(root)
+                self.assertEqual(expected, result.returncode, result.stdout + result.stderr)
+                if expected:
+                    self.assertIn('"field": "assertion_signature"', result.stdout)
+
+    def test_external_helper_dependencies_remain_bound(self):
+        """Bind external helper chains while allowing unrelated methods and comments."""
+        scratch = Path(__file__).resolve().parents[3] / "build/tmp/scratch"
+        scratch.mkdir(parents=True, exist_ok=True)
+        cases = (
+            ("instance", "reader", "Check", "Sources.cs", "System.IO.File.ReadAllText(path)", '"Product"', 1),
+            ("direct", "Sources", "Check", "Sources.cs", "System.IO.File.ReadAllText(path)", '"Product"', 1),
+            ("initializer", "Sources", "Check", "State.cs", "Spoof = false", "Spoof = true", 1),
+            ("chain", "Sources", "Check", "Leaf.cs", "System.IO.File.ReadAllText(path)", '"Product"', 1),
+            ("static", "", "Check", "Sources.cs", "System.IO.File.ReadAllText(path)", '"Product"', 1),
+            ("assertion", "Sources", "SharedChecks.Check", "SharedChecks.cs", "if (!ok) throw new System.Exception();", "", 1),
+            ("unrelated-method", "Sources", "Check", "Sources.cs", "=> 1;", "=> 2;", 0),
+            ("other-namespace", "Sources", "Check", "Other.cs", "System.IO.File.ReadAllText(path)", '"Product"', 0),
+            ("unrelated-check", "Sources", "Check", "Noise.cs", "throw new System.Exception();", "return;", 0),
+            ("comment", "Sources", "Check", "Sources.cs", "System.IO.File.ReadAllText(path)",
+             "/* unchanged reader */ System.IO.File.ReadAllText(path)", 0),
+        )
+        for name, reader, check, changed_file, before, after, expected in cases:
+            with self.subTest(name=name), tempfile.TemporaryDirectory(dir=scratch) as directory:
+                imports = "using Helpers;" if reader else "using static Helpers.Sources;"
+                reader_call = (reader + "." if reader else "") + "ReadRequiredRepoText"
+                declarations = "var reader = new Sources();\n" if name == "instance" else ""
+                root = self._git_fixture(directory, validation_text=(
+                    imports + "\nnamespace Checks { public static class FixtureValidation { public static void Validate() {\n"
+                    + declarations
+                    + f'var source = {reader_call}("Packages/fixture/Runtime/Product.cs");\n'
+                    f'{check}(source.Contains("Product"));\n}} }} }}\n'
+                ))
+                shared = root / "Packages/fixture/Tests/Runtime/Shared"
+                shared.mkdir()
+                read_body = "Middle.Load(path)" if name == "chain" else "System.IO.File.ReadAllText(path)"
+                if name == "initializer":
+                    read_body = 'Spoof ? "Product" : System.IO.File.ReadAllText(path)'
+                helpers = {
+                    "Sources.cs": "namespace Helpers { public static partial class Sources { "
+                    + "public static string ReadRequiredRepoText(string path) => " + read_body
+                    + "; public static int Unrelated() => 1; } }\n",
+                    "State.cs": "namespace Helpers { public static partial class Sources { "
+                    "private const bool Spoof = false; } }\n",
+                    "Middle.cs": "namespace Helpers { public static class Middle { "
+                    "public static string Load(string path) => Leaf.Read(path); } }\n",
+                    "Leaf.cs": "namespace Helpers { public static class Leaf { "
+                    "public static string Read(string path) => System.IO.File.ReadAllText(path); } }\n",
+                    "SharedChecks.cs": "namespace Helpers { public static class SharedChecks { "
+                    "public static void Check(bool ok) { Ensure(ok); } "
+                    "private static void Ensure(bool ok) { if (!ok) throw new System.Exception(); } } }\n",
+                    "Other.cs": "namespace Other { public static class Sources { "
+                    "public static string ReadRequiredRepoText(string path) => System.IO.File.ReadAllText(path); } }\n",
+                    "Noise.cs": "namespace Helpers { public static class Noise { "
+                    "public static void Check(bool ok) { throw new System.Exception(); } } }\n",
+                }
+                for filename, source in helpers.items():
+                    if name == "instance":
+                        source = source.replace("static partial class Sources", "partial class Sources")
+                        source = source.replace("static string ReadRequiredRepoText", "string ReadRequiredRepoText")
+                    (shared / filename).write_text(source, encoding="utf-8")
+                subprocess.run(["git", "-C", str(root), "add", str(shared)], check=True)
+                subprocess.run(["git", "-C", str(root), "commit", "-qm", "external-helper-base"], check=True)
+                self.assertEqual(1, len(inventory(root)))
+                baseline = self._run_migration_cli(root)
+                self.assertEqual(0, baseline.returncode, baseline.stdout + baseline.stderr)
+                changed = shared / changed_file
+                changed.write_text(changed.read_text(encoding="utf-8").replace(before, after), encoding="utf-8")
+                if expected:
+                    (root / "Packages/fixture/Runtime/Product.cs").write_text(
+                        "public sealed class Other {}\n", encoding="utf-8"
+                    )
+                result = self._run_migration_cli(root)
+                self.assertEqual(expected, result.returncode, result.stdout + result.stderr)
+                if expected:
+                    self.assertIn('"field": "harness_signature"', result.stdout)
+
     def test_inline_guard_definition_and_goto_destination_remain_bound(self):
         """Reject changed guard values and goto targets before an inline assertion."""
         for before, after in (

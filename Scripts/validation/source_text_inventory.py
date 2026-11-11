@@ -12,6 +12,7 @@ import sys
 import tarfile
 import tempfile
 from collections import Counter
+from dataclasses import replace
 from pathlib import Path
 
 MODULE_DIR = Path(__file__).resolve().parent
@@ -51,6 +52,305 @@ for _module in (_text_module, _symbols_module, _flow_module, _ratchet_module, _r
             if _name.startswith("_") and not _name.startswith("__")
         }
     )
+
+
+class _ExternalHelperIndex:
+    """Bind selected package helper methods across namespaces and partial files."""
+
+    def __init__(self, root: Path):
+        """Index type identities once and defer parsing methods until referenced."""
+        self.root = root
+        self.units = {}
+        self.types = {}
+        self.methods = {}
+        self.closures = {}
+        self.node_work_cache = {}
+        self.fields = {}
+        self.receivers = {}
+        self.clr_builder_receivers = {}
+        self.fallbacks = {}
+        self.type_candidates_cache = {}
+        self.declaration_files = None
+        for path in sorted(root.glob("Packages/*/**/*.cs")):
+            source = path.read_text(encoding="utf-8", errors="replace")
+            masked = _strip_csharp_comments_and_strings(source)
+            regions = _source_type_regions(masked)
+            imports = re.findall(
+                r"\busing\s+(?:(static)\s+)?(?:([A-Za-z_]\w*)\s*=\s*)?((?:global::)?[\w.]+)\s*;", masked
+            )
+            self.units[path] = {"text": source, "masked": masked, "regions": regions, "imports": imports}
+            for begin, end, name in regions:
+                self.types.setdefault(name, []).append((path, begin, end))
+
+    def _load(self, path: Path):
+        """Cache method bodies and class initializer definitions for one source file."""
+        unit = self.units[path]
+        if unit.get("indexed"):
+            return
+        methods = unit.get("methods")
+        if methods is None:
+            methods = _flow_module._method_infos(unit["text"], unit["masked"])
+        regions = unit["regions"]
+        unit["fields"] = _symbols_module._argument_definition_index(
+            unit["text"], unit["masked"],
+            [(begin, end) for begin, end, _ in regions] + [(method.body_start, method.body_end) for method in methods],
+        )
+        for method in methods:
+            if _flow_module._method_for_offset(methods, method.start) is not None:
+                continue
+            owner = min(
+                (region for region in regions if region[0] < method.body_start < region[1]),
+                key=lambda region: region[1] - region[0], default=None,
+            )
+            if owner is not None:
+                self.methods.setdefault((owner[2], method.name), []).append((path, owner, method))
+        unit.update(methods=methods, indexed=True)
+
+    def _package(self, path: Path) -> tuple[str, ...]:
+        """Return the package identity of one indexed source file."""
+        return path.relative_to(self.root).parts[:2]
+
+    def _fragments(self, owner: str, path: Path):
+        """Prefer the caller package's type fragments while retaining external-only types."""
+        fragments = self.types.get(owner, [])
+        package = self._package(path)
+        local = [fragment for fragment in fragments if self._package(fragment[0]) == package]
+        return local or fragments
+
+    def _method_records(self, owner: str, name: str, path: Path):
+        """Select package-local method records even when foreign namesakes are loaded."""
+        fragments = self._fragments(owner, path)
+        paths = {fragment[0] for fragment in fragments}
+        for candidate_path, _, _ in fragments:
+            self._load(candidate_path)
+        return [record for record in self.methods.get((owner, name), []) if record[0] in paths]
+
+    def _type_candidates(self, reference: str, path: Path, owner: str) -> list[str]:
+        """Cache positive and negative type lookups within this immutable source index."""
+        key = (path, owner, reference)
+        if key not in self.type_candidates_cache:
+            self.type_candidates_cache[key] = tuple(self._lookup_type_candidates(reference, path, owner))
+        return list(self.type_candidates_cache[key])
+
+    def _lookup_type_candidates(self, reference: str, path: Path, owner: str) -> list[str]:
+        """Resolve lexical namespaces and imports before conservative same-name candidates."""
+        unit = self.units[path]
+        aliases = {alias: target for static, alias, target in unit["imports"] if alias}
+        head, separator, tail = reference.partition(".")
+        reference = aliases.get(head, head) + (separator + tail if separator else "")
+        if reference.startswith("global::"):
+            return [reference[8:]] if reference[8:] in self.types else []
+        if reference in {"this", "base"}:
+            return [owner]
+        scope = owner.split(".")[:-1]
+        for size in range(len(scope), -1, -1):
+            candidate = ".".join(scope[:size] + [reference])
+            if candidate in self.types:
+                return [candidate]
+        imported = sorted({
+            target + "." + reference for static, alias, target in unit["imports"]
+            if not static and not alias and target + "." + reference in self.types
+        })
+        return imported or sorted(name for name in self.types if name.endswith("." + reference))
+
+    def _receiver_types(self, path: Path, owner: str, method):
+        """Cache declared and constructor receiver types without losing helper return types."""
+        if method is None:
+            return {}
+        key = (path, method.start)
+        if key not in self.receivers:
+            unit = self.units[path]
+            local_types = _flow_module._local_types(unit["text"], method)
+            self.receivers[key] = local_types
+            masked_body = unit["masked"][method.body_start : method.body_end]
+            trusted_method = replace(method, signature=unit["masked"][method.start : method.body_start])
+            trusted_types = _flow_module._local_types(unit["masked"], trusted_method)
+            declarations = [match for match in re.finditer(
+                r"\bvar\s+([A-Za-z_]\w*)\s*=\s*([^;]+);", unit["text"][method.body_start : method.body_end]
+            ) if masked_body[match.start() : match.start() + 3] == "var"]
+            for declaration in declarations:
+                constructor = re.match(
+                    r"new\s+((?:global::)?[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*\(",
+                    masked_body[declaration.start(2) : declaration.end(2)].strip(),
+                )
+                if constructor:
+                    local_types[declaration.group(1)] = trusted_types[declaration.group(1)] = constructor.group(1)
+            writes = Counter(match.group(1) for match in re.finditer(
+                r"(?<![\w.])([A-Za-z_]\w*)\s*(?:\?\?=|>>>?=|<<=|[-+*/%&|^]=|=(?!=|>)|\+\+|--)", masked_body
+            ))
+            parameters = trusted_method.signature.split("(", 1)[1].rsplit(")", 1)[0]
+            writes.update(
+                parameter.split("=", 1)[0].strip().split()[-1]
+                for parameter in _split_arguments(parameters) if parameter.strip()
+            )
+            self.clr_builder_receivers[key] = {
+                name for name, reference in trusted_types.items()
+                if writes[name] <= 1 and self._is_clr_builder(reference, path) and not self._type_candidates(reference, path, owner)
+            }
+            changed = True
+            while changed:
+                changed = False
+                for declaration in declarations:
+                    name, value = declaration.groups()
+                    if local_types.get(name):
+                        continue
+                    inferred = local_types.get(value.strip(), "")
+                    call = re.match(r"((?:global::)?[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*\(", value.strip())
+                    if call:
+                        returns = {record[2].return_type for record in self._resolve(call.group(1), path, owner, method)}
+                        inferred = next(iter(returns)) if len(returns) == 1 else ""
+                    if inferred:
+                        local_types[name] = inferred
+                        changed = True
+        return self.receivers[key]
+
+    def _unresolved_candidates(self, name: str):
+        """Retain repository candidates when an instance receiver cannot be proved."""
+        if name not in self.fallbacks:
+            if self.declaration_files is None:
+                self.declaration_files = {}
+                declaration = re.compile(r"(?=\b(?P<name>[A-Za-z_]\w*)\s*\([^;{}]*\)\s*(?:\{|=>))")
+                for path, unit in self.units.items():
+                    names = {match.group("name") for match in declaration.finditer(unit["masked"])}
+                    for candidate in names:
+                        self.declaration_files.setdefault(candidate, []).append(path)
+            for path in self.declaration_files.get(name, []):
+                self._load(path)
+            self.fallbacks[name] = [record for (_, terminal), records in self.methods.items() if terminal == name for record in records]
+        return self.fallbacks[name]
+
+    def _is_clr_builder(self, reference: str, path: Path) -> bool:
+        """Recognize the sealed CLR builder only through qualified or imported type evidence."""
+        imports = self.units[path]["imports"]
+        aliases = {alias: target for static, alias, target in imports if alias}
+        head, separator, tail = reference.partition(".")
+        reference = aliases.get(head, head) + (separator + tail if separator else "")
+        reference = reference.removeprefix("global::")
+        return reference == "System.Text.StringBuilder" or (
+            reference == "StringBuilder"
+            and any(not static and not alias and target == "System.Text" for static, alias, target in imports)
+        )
+
+    def _resolve(self, name: str, path: Path, owner: str, method=None):
+        """Resolve referenced methods while retaining every plausible overload."""
+        qualifier, separator, terminal = name.rpartition(".")
+        local_types = self._receiver_types(path, owner, method)
+        receiver = qualifier.removeprefix("global::").split(".", 1)[0]
+        instance = receiver in local_types
+        declared = local_types.get(qualifier, "")
+        reference = declared if instance else qualifier
+        types = self._type_candidates(reference, path, owner) if separator and reference else ([] if separator else [owner])
+        if not separator:
+            if not self._method_records(owner, terminal, path):
+                types = []
+                for static, alias, target in self.units[path]["imports"]:
+                    if static:
+                        types.extend(self._type_candidates(target, path, owner))
+        candidates = []
+        for candidate in types:
+            candidates.extend(self._method_records(candidate, terminal, path))
+        primitives = {"string", "bool", "char", "int", "long", "float", "double", "decimal"}
+        framework = receiver in {
+            "System", "Microsoft", "UnityEngine", "File", "Directory", "Path", "Array", "Math", "Console",
+            "String", "Enumerable", "Task", "Regex", "Encoding", "StringBuilder", "Environment",
+        }
+        if not candidates and separator and (instance or not framework):
+            if declared not in primitives and qualifier not in primitives:
+                candidates = self._unresolved_candidates(terminal)
+                if instance and not types and qualifier in self.clr_builder_receivers.get((path, method.start), ()):
+                    candidates = [record for record in candidates if re.search(r"\bstatic\b", record[2].signature)]
+        return candidates
+
+    def _fields(self, owner: str, path: Path):
+        """Merge partial initializer definitions with their declaring source imports."""
+        key = (self._package(path), owner)
+        if key not in self.fields:
+            definitions = []
+            origins = {}
+            fragments = [fragment for fragment in self.types.get(owner, []) if self._package(fragment[0]) == key[0]]
+            for source, begin, _ in sorted(fragments, key=lambda item: item[0].relative_to(self.root).as_posix()):
+                self._load(source)
+                for definition in self.units[source]["fields"].get(begin, []):
+                    definitions.append(definition)
+                    origins[id(definition)] = source
+            self.fields[key] = (definitions, origins)
+        return self.fields[key]
+
+    def _calls(self, expression: str, path: Path, owner: str, method=None):
+        """Yield method records selected by calls in an actual dependency expression."""
+        masked = _strip_csharp_comments_and_strings(expression)
+        pattern = re.compile(r"(?<![\w.])(?:global\s*::\s*)?(?:[A-Za-z_]\w*\s*\.\s*)*[A-Za-z_]\w*\s*\(")
+        for match in pattern.finditer(masked):
+            name = re.sub(r"\s+", "", masked[match.start() : match.end() - 1])
+            if name in _flow_module.CONTROL_KEYWORDS:
+                continue
+            end = _balanced_call_end(masked, match.end() - 1)
+            if end is not None:
+                yield from self._resolve(name, path, owner, method)
+
+    def _node_work(self, record):
+        """Memoize one immutable node's piece, ordered field origins, and direct callees."""
+        key = (record[0], record[2].start)
+        if key not in self.node_work_cache:
+            path, owner, method = record
+            unit = self.units[path]
+            body = unit["text"][method.start : method.body_end + 1]
+            definitions, origins = self._fields(owner[2], path)
+            limit = max((definition[0] for definition in definitions), default=0) + 1
+            fields = _dependency_definitions(body, limit, definitions, {})
+            state = "\n".join(definition[2] for definition in fields)
+            piece = owner[2] + ":" + _normalize_csharp_expression(body) + "|state:" + state
+            outgoing = list(self._calls(body, path, owner[2], method))
+            selected_origins = []
+            for definition in fields:
+                origin = origins[id(definition)]
+                selected_origins.append(origin)
+                outgoing.extend(self._calls(definition[2], origin, owner[2]))
+            self.node_work_cache[key] = (piece, tuple(selected_origins), tuple(outgoing))
+        return self.node_work_cache[key]
+
+    def _closure(self, record):
+        """Hash transitive helper bodies and referenced class initializer dependencies."""
+        key = (record[0], record[2].start)
+        if key in self.closures:
+            return self.closures[key]
+        pending = [record]
+        visited = set()
+        pieces = set()
+        paths = set()
+        while pending:
+            path, owner, method = pending.pop()
+            identity = (path, method.start)
+            if identity in visited:
+                continue
+            visited.add(identity)
+            paths.add(path)
+            piece, origins, outgoing = self._node_work((path, owner, method))
+            pieces.add(piece)
+            paths.update(origins)
+            pending.extend(outgoing)
+        result = (pieces, paths)
+        self.closures[key] = result
+        return result
+
+    def signature(self, path: Path, method, expression: str) -> str:
+        """Sign only external helper dependencies of one source assertion."""
+        if method is None:
+            return ""
+        unit = self.units[path]
+        owner = min(
+            (region for region in unit["regions"] if region[0] < method.body_start < region[1]),
+            key=lambda region: region[1] - region[0], default=None,
+        )
+        if owner is None:
+            return ""
+        pieces = set()
+        paths = set()
+        for record in self._calls(expression, path, owner[2], method):
+            selected, selected_paths = self._closure(record)
+            pieces.update(selected)
+            paths.update(selected_paths)
+        return hashlib.sha256("\n".join(sorted(pieces)).encode()).hexdigest() if paths - {path} else ""
 
 
 def _unresolved_reason(
@@ -94,6 +394,7 @@ def scan_file(
     shared_paths: dict[str, str] | None = None,
     comment_cache: dict[str, tuple[str, str]] | None = None,
     partial_harness_signature: str | None = None,
+    external_helpers: _ExternalHelperIndex | None = None,
 ) -> list[dict[str, object]]:
     """Collect source-text assertions from one validation file."""
     lines = path.read_text(encoding="utf-8").splitlines()
@@ -115,6 +416,8 @@ def scan_file(
     validation_flag, dispatch = _validation_metadata(root, path.relative_to(root).as_posix())
     entrypoint = dispatch.rsplit("|", 1)[-1] if dispatch else ""
     method_infos = _flow_module._method_infos(source_text, masked_file)
+    if external_helpers is not None:
+        external_helpers.units[path]["methods"] = method_infos
     argument_definitions = _flow_module._argument_definition_index(source_text, masked_file, method_infos)
     reachability = _flow_module._method_call_contexts(
         source_text,
@@ -213,6 +516,17 @@ def scan_file(
         checked_expression = _checked_expression_signature(
             token_text, str(containing_harness["text"]) if containing_harness else None
         )
+        row_harness_signature = harness_signature
+        if external_helpers is not None:
+            helper_expression = _external_dependency_expression(
+                source_text, masked_file, call, containing_method, method_infos, checked_expression,
+                containing_harness, harness_calls, argument_definitions, reachability, call_path,
+            )
+            external_signature = external_helpers.signature(path, containing_method, helper_expression)
+            if external_signature:
+                row_harness_signature = hashlib.sha256(
+                    f"{harness_signature}|external:{external_signature}".encode()
+                ).hexdigest()
         assertion_signature = _normalize_csharp_expression(token_text)
         if containing_method is not None:
             control_signature = _local_dependency_signature(
@@ -253,7 +567,7 @@ def scan_file(
                 "assertion_polarity": _assertion_polarity(
                     token_text, str(containing_harness["text"]) if containing_harness else None
                 ),
-                "harness_signature": harness_signature,
+                "harness_signature": row_harness_signature,
                 "legacy_harness_signature": legacy_harness_signature,
                 "reachability": reachability.get(int(call["start"]), ""),
                 "call_path": call_path,
@@ -265,6 +579,43 @@ def scan_file(
             }
         )
     return rows
+
+
+def _external_dependency_expression(
+    text: str, masked: str, call: dict[str, object], method, methods: list[object], checked: str,
+    harness, harness_calls: list[dict[str, object]], definitions: dict[int, list[tuple[int, str, str, str]]],
+    contexts: dict[int, str], call_path: str,
+) -> str:
+    """Select reader definitions and actual assertion consumers for external binding."""
+    if method is None:
+        return ""
+    offset = int(call["start"])
+    receiver = str(call.get("receiver") or "").split(".", 1)[0]
+    local_definitions = definitions.get(method.body_start, [])
+    selected = _dependency_definitions(checked + " " + receiver, offset, local_definitions, contexts)
+    expressions = [checked, call_path] + [definition[2] for definition in selected]
+    consumers = [harness] if harness else []
+    if not harness:
+        begin = max(masked.rfind(";", method.body_start, offset), masked.rfind("{", method.body_start, offset)) + 1
+        assignment = re.search(r"([A-Za-z_]\w*)\s*=(?!=)\s*$", masked[begin:offset])
+        if assignment:
+            names = {assignment.group(1)}
+            for position, name, _, references in local_definitions:
+                if position > offset and names.intersection(re.findall(r"\b[A-Za-z_]\w*\b", references)):
+                    names.add(name)
+            consumers.extend(
+                candidate for candidate in harness_calls
+                if int(candidate["start"]) > offset
+                and _flow_module._method_for_offset(methods, int(candidate["start"])) is method
+                and names.intersection(re.findall(r"\b[A-Za-z_]\w*\b", _strip_csharp_comments_and_strings(str(candidate["text"]))))
+            )
+    for consumer in consumers:
+        start = int(consumer["start"])
+        qualifier = re.search(r"(?:global\s*::\s*)?(?:[A-Za-z_]\w*\s*\.\s*)+$", masked[method.body_start:start])
+        if qualifier:
+            start = method.body_start + qualifier.start()
+        expressions.append(text[start : int(consumer["end"])])
+    return "\n".join(expressions)
 
 
 def _predicate_consumer_signature(
@@ -338,18 +689,23 @@ def inventory(root: Path) -> list[dict[str, object]]:
         }
     )
     scopes = _shared_scope_paths(files)
+    external_helpers = _ExternalHelperIndex(root)
     partial_signatures: dict[Path, str] = {}
     partial_groups: dict[tuple[tuple[str, ...], str], list[Path]] = {}
     for path in files:
-        source = path.read_text(encoding="utf-8", errors="replace")
+        unit = external_helpers.units[path]
+        source = unit["masked"]
         package_key = tuple(path.parts[: path.parts.index("Tests")]) if "Tests" in path.parts else ()
         for match in re.finditer(r"\bpartial\s+class\s+(?P<name>[A-Za-z_]\w*)", source):
-            partial_groups.setdefault((package_key, match.group("name")), []).append(path)
+            body_start = source.find("{", match.end())
+            qualified = next((name for begin, _, name in unit["regions"] if begin == body_start), match.group("name"))
+            partial_groups.setdefault((package_key, qualified), []).append(path)
     for group_paths in partial_groups.values():
         if len(group_paths) < 2:
             continue
         combined = "\n".join(
-            path.read_text(encoding="utf-8", errors="replace") for path in sorted(set(group_paths))
+            path.read_text(encoding="utf-8", errors="replace")
+            for path in sorted(set(group_paths), key=lambda item: item.relative_to(root).as_posix())
         )
         masked = _strip_csharp_comments_and_strings(combined)
         methods = _flow_module._method_infos(combined, masked)
@@ -373,6 +729,7 @@ def inventory(root: Path) -> list[dict[str, object]]:
                 scopes.get(path),
                 comment_cache,
                 partial_signatures.get(path),
+                external_helpers,
             )
         )
     return rows

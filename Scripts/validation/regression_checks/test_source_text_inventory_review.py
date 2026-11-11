@@ -3,14 +3,254 @@
 from __future__ import annotations
 
 import subprocess
+import sys
 import tempfile
 import unittest
+from pathlib import Path
 
 from .test_source_text_inventory_semantics import _FixtureSupport
 
 
 class SourceTextInventoryReviewTests(_FixtureSupport, unittest.TestCase):
     """Keep helper arguments and branch exits bound to existing inventory rows."""
+
+    def test_clr_builder_binding_preserves_repository_helpers(self):
+        """Separate CLR instance members while retaining repository types and extensions."""
+        scratch = Path(__file__).resolve().parents[3] / "build/tmp/scratch"
+        scratch.mkdir(parents=True, exist_ok=True)
+        cases = (
+            ("import", "using System.Text;", "StringBuilder", 0),
+            ("alias", "using Builder = global::System.Text.StringBuilder;", "Builder", 0),
+            ("qualified", "", "global::System.Text.StringBuilder", 0),
+            ("repo-type", "using System.Text;", "StringBuilder", 1),
+            ("repo-type-fake", "using System.Text;", "StringBuilder", 1),
+            ("repo-factory-fake", "using System.Text;", "StringBuilder", 1),
+            ("repo-sibling", "using System.Text;", "StringBuilder", 1),
+            ("extension", "using System.Text;", "StringBuilder", 1),
+        )
+        for name, imports, constructor, expected in cases:
+            with self.subTest(name=name), tempfile.TemporaryDirectory(dir=scratch) as directory:
+                root = self._git_fixture(directory, validation_text=(
+                    "using Helpers; public static class FixtureValidation { public static void Validate() {\n"
+                    'var source = Sources.ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                    'Check(source.Contains("Product"));\n} }\n'
+                ))
+                folder = root / "Packages/fixture/Tests/Runtime"
+                member = "ReadFixtureText" if name == "extension" else "ToString"
+                creation = f"new {constructor}(System.IO.File.ReadAllText(path))"
+                extra = ""
+                if name.endswith("fake"):
+                    extra = 'var unused = "; var builder = new global::System.Text.StringBuilder();"; '
+                factory = ""
+                if name == "repo-factory-fake":
+                    creation = "MakeBuilder(path)"
+                    factory = "private static StringBuilder MakeBuilder(string path) => new StringBuilder(System.IO.File.ReadAllText(path)); "
+                read_body = f'var builder = {creation}; ' + extra + 'builder.Append(""); ' + f"return builder.{member}(); "
+                if name == "repo-sibling":
+                    read_body = (
+                        f"string result; {{ var builder = {creation}; result = builder.ToString(); }} "
+                        '{ var builder = new global::System.Text.StringBuilder(); builder.Append(""); } return result; '
+                    )
+                (folder / "Sources.cs").write_text(
+                    imports + "\nnamespace Helpers { public static class Sources { "
+                    "public static string ReadRequiredRepoText(string path) { "
+                    + read_body + "} " + factory + "} }\n", encoding="utf-8",
+                )
+                noise = folder / "Noise.cs"
+                noise.write_text(
+                    "namespace Noise { public sealed class Unrelated { "
+                    'public override string ToString() => "before"; '
+                    'public void Append(string value) { System.Console.WriteLine("before"); } } }\n', encoding="utf-8",
+                )
+                changed = noise
+                before, after = '"before"', '"after"'
+                if name.startswith("repo-"):
+                    changed = folder / "Builder.cs"
+                    changed.write_text(
+                        "namespace Helpers { public sealed class StringBuilder { private readonly string text; "
+                        "public StringBuilder(string value) { text = value; } public void Append(string value) { } "
+                        "public override string ToString() => text; } }\n", encoding="utf-8",
+                    )
+                    before, after = "=> text;", '=> "Product";'
+                elif name == "extension":
+                    changed = folder / "Extensions.cs"
+                    changed.write_text(
+                        "using System.Text; namespace Helpers { public static class BuilderExtensions { "
+                        "public static string ReadFixtureText(this StringBuilder builder) => builder.ToString(); } }\n",
+                        encoding="utf-8",
+                    )
+                    before, after = "=> builder.ToString();", '=> "Product";'
+                subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+                subprocess.run(["git", "-C", str(root), "commit", "-qm", "clr-builder-base"], check=True)
+                command = [sys.executable, "-B", str(root / "Scripts/validation/source_text_inventory.py"),
+                           "--root", str(root), "--base-ref", "HEAD", "--output", str(root / "build/inventory")]
+                baseline = subprocess.run(command, capture_output=True, text=True, check=False)
+                self.assertEqual(0, baseline.returncode, baseline.stdout + baseline.stderr)
+                self.assertIn("SOURCE_TEXT_INVENTORY_OK rows=1 ", baseline.stdout)
+                changed.write_text(changed.read_text(encoding="utf-8").replace(before, after), encoding="utf-8")
+                if expected:
+                    (root / "Packages/fixture/Runtime/Product.cs").write_text(
+                        "public sealed class Other {}\n", encoding="utf-8"
+                    )
+                result = subprocess.run(command, capture_output=True, text=True, check=False)
+                self.assertEqual(expected, result.returncode, result.stdout + result.stderr)
+                if expected:
+                    self.assertIn('"field": "harness_signature"', result.stdout)
+
+    def test_package_local_helper_identity_precedes_foreign_namesakes(self):
+        """Keep same-name package helpers distinct without excluding external-only types."""
+        scratch = Path(__file__).resolve().parents[3] / "build/tmp/scratch"
+        scratch.mkdir(parents=True, exist_ok=True)
+        cases = (
+            ("foreign-method", "foreign", "Sources.cs", 0),
+            ("foreign-field", "foreign", "State.cs", 0),
+            ("own-method", "own", "Sources.cs", 1),
+            ("own-field", "own", "State.cs", 1),
+            ("cross-package", "foreign", "Sources.cs", 1),
+            ("bare-import", "own", "Fallback.cs", 1),
+        )
+        for name, selected, filename, expected in cases:
+            with self.subTest(name=name), tempfile.TemporaryDirectory(dir=scratch) as directory:
+                imported = "using static Helpers.Fallback;" if name == "bare-import" else "using Helpers;"
+                reader = "ReadRequiredRepoText" if name == "bare-import" else "Sources.ReadRequiredRepoText"
+                root = self._git_fixture(directory, validation_text=(
+                    imported + "\nnamespace Checks { public static class FixtureValidation { public static void Validate() {\n"
+                    + f'var source = {reader}("Packages/fixture/Runtime/Product.cs");\n'
+                    + 'Check(source.Contains("Product"));\n} } }\n'
+                ))
+                own = root / "Packages/fixture/Tests/Runtime"
+                foreign = root / "Packages/aaa-other/Tests/Runtime"
+                foreign.mkdir(parents=True)
+                sources = (
+                    "namespace Helpers { public static partial class Sources { "
+                    "public static string ReadRequiredRepoText(string path) => "
+                    'Spoof ? "Product" : System.IO.File.ReadAllText(path); } }\n'
+                )
+                state = "namespace Helpers { public static partial class Sources { private const bool Spoof = false; } }\n"
+                for folder in (own, foreign):
+                    if folder == own and name == "cross-package":
+                        continue
+                    (folder / "Sources.cs").write_text(sources, encoding="utf-8")
+                    (folder / "State.cs").write_text(state, encoding="utf-8")
+                (own / "Fallback.cs").write_text(
+                    "namespace Helpers { public static class Fallback { "
+                    "public static string ReadRequiredRepoText(string path) => System.IO.File.ReadAllText(path); } }\n",
+                    encoding="utf-8",
+                )
+                (foreign / "FixtureValidation.cs").write_text(
+                    "namespace Checks { public static class FixtureValidation { "
+                    'public static string ReadRequiredRepoText(string path) => "Foreign"; } }\n', encoding="utf-8",
+                )
+                subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+                subprocess.run(["git", "-C", str(root), "commit", "-qm", "package-helper-base"], check=True)
+                command = [sys.executable, "-B", str(root / "Scripts/validation/source_text_inventory.py"),
+                           "--root", str(root), "--base-ref", "HEAD", "--output", str(root / "build/inventory")]
+                baseline = subprocess.run(command, capture_output=True, text=True, check=False)
+                self.assertEqual(0, baseline.returncode, baseline.stdout + baseline.stderr)
+                changed = (own if selected == "own" else foreign) / filename
+                before, after = ("Spoof = false", "Spoof = true") if filename == "State.cs" else (
+                    "System.IO.File.ReadAllText(path)", '"Product"'
+                )
+                changed.write_text(changed.read_text(encoding="utf-8").replace(before, after), encoding="utf-8")
+                if expected:
+                    (root / "Packages/fixture/Runtime/Product.cs").write_text(
+                        "public sealed class Other {}\n", encoding="utf-8"
+                    )
+                result = subprocess.run(command, capture_output=True, text=True, check=False)
+                self.assertEqual(expected, result.returncode, result.stdout + result.stderr)
+                if expected:
+                    self.assertIn('"field": "harness_signature"', result.stdout)
+
+    def test_unconditional_helper_call_survives_parallel_context_binding(self):
+        """Reject losing an effective call while preserving unrelated call-site additions."""
+        for remove_call in (True, False):
+            with self.subTest(remove_call=remove_call), tempfile.TemporaryDirectory() as directory:
+                root = self._git_fixture(
+                    directory,
+                    validation_text=(
+                        "public static class FixtureValidation {\n"
+                        "    private static void RunChecks() {\n"
+                        '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                        '        Check(source.Contains("Product"));\n'
+                        "    }\n"
+                        "    public static void Validate() {\n"
+                        '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                        "        RunChecks();\n"
+                        "        if (source.Length < 0) RunChecks();\n"
+                        "    }\n}\n"
+                    ),
+                )
+                validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+                replacement = "" if remove_call else "        // unchanged effective call\n        Check(true);\n        RunChecks();\n"
+                validation.write_text(
+                    validation.read_text(encoding="utf-8").replace("        RunChecks();\n", replacement, 1), encoding="utf-8"
+                )
+                if remove_call:
+                    product = root / "Packages/fixture/Runtime/Product.cs"
+                    product.write_text("public sealed class Other {}\n", encoding="utf-8")
+                code, output = self._run_fixture_gate(root)
+                self.assertEqual(1 if remove_call else 0, code, output)
+                if remove_call:
+                    self.assertIn('field": "call_path"', output)
+
+    def test_later_catch_retains_ordered_preceding_handlers(self):
+        """Reject earlier handler changes that can divert a later catch assertion."""
+        cases = (
+            (
+                'try { int.Parse("invalid"); } '
+                'catch (System.Exception e) when (string.IsNullOrEmpty("reject")) { } '
+                'catch (System.Exception) { Check(source.Contains("Product")); }',
+                '"reject"', '""', True,
+            ),
+            (
+                'try { int.Parse("invalid"); } '
+                'catch (System.ArgumentException e) when (!string.IsNullOrEmpty("keep")) { } '
+                'catch (System.Exception) { Check(source.Contains("Product")); }',
+                "System.ArgumentException", "System.Exception", True,
+            ),
+            (
+                'try { int.Parse("invalid"); } '
+                'catch (System.Exception e) when (string.IsNullOrEmpty("reject")) { } '
+                'catch (System.FormatException e) when (string.IsNullOrEmpty("also-reject")) { } '
+                'catch (System.Exception) { Check(source.Contains("Product")); }',
+                '"reject"', '""', True,
+            ),
+            (
+                'try { int.Parse("invalid"); } '
+                'catch (System.Exception e) when (string.IsNullOrEmpty("reject")) { System.Console.WriteLine("before"); } '
+                'catch (System.Exception) { Check(source.Contains("Product")); }',
+                '"before"', '"after"', False,
+            ),
+        )
+        for body, old, new, remove_product in cases:
+            with self.subTest(change=old):
+                self._assert_flow_mutation(body, old, new, 1, remove_product=remove_product)
+
+    def test_later_catch_ignores_unrelated_handlers_and_comments(self):
+        """Keep other try chains, later handlers, and comments outside a catch prefix."""
+        cases = (
+            (
+                'try { System.Console.WriteLine(0); } '
+                'catch (System.Exception e) when (string.IsNullOrEmpty("unrelated")) { } '
+                'try { int.Parse("invalid"); } catch (System.Exception) { Check(source.Contains("Product")); }',
+                '"unrelated"', '""',
+            ),
+            (
+                'try { int.Parse("invalid"); } '
+                'catch (System.Exception e) when (string.IsNullOrEmpty("reject")) { } '
+                'catch (System.Exception) { Check(source.Contains("Product")); }',
+                ") when (", ") /* unchanged filter */ when (",
+            ),
+            (
+                'try { int.Parse("invalid"); } catch (System.ArgumentException) { } '
+                'catch (System.FormatException) { Check(source.Contains("Product")); } '
+                'catch (System.Exception) { System.Console.WriteLine("later"); }',
+                '"later"', '"changed-later"',
+            ),
+        )
+        for body, old, new in cases:
+            with self.subTest(change=old):
+                self._assert_flow_mutation(body, old, new, 0)
 
     def test_preceding_await_expression_change_requires_ack(self):
         """Reject an await that stops completing through literal or caller-local changes."""
@@ -162,7 +402,7 @@ class SourceTextInventoryReviewTests(_FixtureSupport, unittest.TestCase):
             with self.subTest(body=body):
                 self._assert_flow_mutation(body, old, new, 0)
 
-    def _assert_flow_mutation(self, body, old, new, expected, async_entry=False):
+    def _assert_flow_mutation(self, body, old, new, expected, async_entry=False, remove_product=False):
         """Observe a control-flow mutation through the real CLI and fixture Git baseline."""
         with tempfile.TemporaryDirectory() as directory:
             modifiers = "public static async void" if async_entry else "public static void"
@@ -180,6 +420,9 @@ class SourceTextInventoryReviewTests(_FixtureSupport, unittest.TestCase):
             validation.write_text(
                 validation.read_text(encoding="utf-8").replace(old, new, 1), encoding="utf-8"
             )
+            if remove_product:
+                product = root / "Packages/fixture/Runtime/Product.cs"
+                product.write_text("public sealed class Other {}\n", encoding="utf-8")
             code, output = self._run_fixture_gate(root)
             self.assertEqual(expected, code, output)
             if expected:
