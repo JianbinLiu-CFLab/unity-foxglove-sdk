@@ -15,6 +15,23 @@ from .test_source_text_inventory_semantics import _FixtureSupport
 class SourceTextInventoryReviewTests(_FixtureSupport, unittest.TestCase):
     """Keep helper arguments and branch exits bound to existing inventory rows."""
 
+    def _run_migration_cli(self, root, approval=None):
+        """Run the proposed checker with an optional workflow migration approval."""
+        args = [
+            sys.executable,
+            "-B",
+            str(root / "Scripts/validation/source_text_inventory.py"),
+            "--root",
+            str(root),
+            "--base-ref",
+            "HEAD",
+            "--output",
+            str(root / "build/inventory"),
+        ]
+        if approval is not None:
+            args.extend(["--parser-migration-approval", str(approval)])
+        return subprocess.run(args, capture_output=True, text=True, check=False)
+
     def test_versioned_parser_maintenance_requires_exact_scope_and_fingerprints(self):
         """Allow only an exact protected approval for a versioned parser maintenance change."""
         with tempfile.TemporaryDirectory() as directory:
