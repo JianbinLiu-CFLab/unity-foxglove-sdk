@@ -95,7 +95,12 @@ namespace Unity.FoxgloveSDK.Performance
         public double publishBytesPerSecond { get; set; }
         public long egressBytes { get; set; }
         public long allocatedBytesTotal { get; set; }
+        public long allocatedBytesCurrentThread { get; set; }
         public double allocatedBytesPerMessage { get; set; }
+        public int gen0Collections { get; set; }
+        public int gen1Collections { get; set; }
+        public int gen2Collections { get; set; }
+        public string allocationNotes { get; set; }
         public long outputBytes { get; set; }
         public long acceptedBytes { get; set; }
         public long droppedBytes { get; set; }

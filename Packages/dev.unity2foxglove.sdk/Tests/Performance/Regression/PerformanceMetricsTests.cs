@@ -342,6 +342,15 @@ namespace Unity.FoxgloveSDK.Performance.Tests
                 Assert.True(result.allocatedBytesTotal > 0);
                 Assert.True(result.gen2Collections > 0);
                 Assert.False(result.passed);
+                Assert.NotNull(result.components);
+                Assert.All(result.components, component =>
+                {
+                    Assert.True(component.allocatedBytesCurrentThread > 0);
+                    Assert.True(component.gen0Collections > 0);
+                    Assert.True(component.gen1Collections > 0);
+                    Assert.True(component.gen2Collections > 0);
+                    Assert.Equal("override", component.allocationNotes);
+                });
             }
             finally
             {

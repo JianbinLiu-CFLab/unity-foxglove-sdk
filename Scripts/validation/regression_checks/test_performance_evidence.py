@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import unittest
+import tempfile
+from pathlib import Path
 from unittest.mock import patch
 
 from Scripts.validation.plan_audit import performance_evidence
@@ -37,8 +39,31 @@ class PerformanceEvidenceTests(unittest.TestCase):
         """Return a failed audit when a required threshold record is null."""
         data = performance_evidence._load_thresholds()
         data["scenarios"]["FoxRunStreamIngest"] = None
-        with patch.object(performance_evidence, "_load_thresholds", return_value=data):
-            result = performance_evidence._threshold_check()
+        with tempfile.TemporaryDirectory(dir=performance_evidence.audit_lib.BUILD_ROOT) as directory:
+            with patch.object(performance_evidence, "OUTPUT", Path(directory)):
+                with patch.object(performance_evidence, "_load_thresholds", return_value=data):
+                    result = performance_evidence._threshold_check()
+        self.assertEqual("FAIL", result.status)
+
+    def test_threshold_check_rejects_boolean_numeric_values(self) -> None:
+        """Reject booleans even though Python treats them as integers."""
+        data = performance_evidence._load_thresholds()
+        data["defaults"]["maxAllocatedBytesTotal"] = True
+        data["scenarios"]["LargePayloadFanout"]["maxGen2Collections"] = True
+        with tempfile.TemporaryDirectory(dir=performance_evidence.audit_lib.BUILD_ROOT) as directory:
+            with patch.object(performance_evidence, "OUTPUT", Path(directory)):
+                with patch.object(performance_evidence, "_load_thresholds", return_value=data):
+                    result = performance_evidence._threshold_check()
+        self.assertEqual("FAIL", result.status)
+
+    def test_threshold_check_rejects_non_object_top_level_records(self) -> None:
+        """Fail cleanly when a required top-level threshold record is null."""
+        data = performance_evidence._load_thresholds()
+        data["modes"]["quick"]["scenarios"]["LargePayloadFanout"] = None
+        with tempfile.TemporaryDirectory(dir=performance_evidence.audit_lib.BUILD_ROOT) as directory:
+            with patch.object(performance_evidence, "OUTPUT", Path(directory)):
+                with patch.object(performance_evidence, "_load_thresholds", return_value=data):
+                    result = performance_evidence._threshold_check()
         self.assertEqual("FAIL", result.status)
 
 

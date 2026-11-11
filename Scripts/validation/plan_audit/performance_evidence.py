@@ -58,11 +58,53 @@ def _load_thresholds() -> dict[str, object]:
 def _threshold_check() -> audit_lib.Check:
     """Require finite default and large-payload allocation/GC ceilings."""
     evidence = OUTPUT / "logs" / "thresholds.log"
+    evidence.parent.mkdir(parents=True, exist_ok=True)
+
+    def finite_number(value: object) -> bool:
+        """Return whether a value is a finite numeric threshold."""
+        return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
+    def valid_threshold(value: object) -> bool:
+        """Validate one scenario threshold map."""
+        if not isinstance(value, dict):
+            return False
+        numeric = (
+            "maxElapsedMs",
+            "maxAllocatedBytesPerMessage",
+            "maxAllocatedBytesTotal",
+            "maxGen0Collections",
+            "maxGen1Collections",
+            "maxGen2Collections",
+        )
+        finite_nonnegative = all(
+            finite_number(value.get(key)) and value[key] >= 0
+            for key in numeric
+        )
+        min_messages = value.get("minMessagesPerSecond", 0)
+        return (
+            finite_nonnegative
+            and value["maxElapsedMs"] > 0
+            and value["maxAllocatedBytesPerMessage"] > 0
+            and value["maxAllocatedBytesTotal"] > 0
+            and finite_number(min_messages)
+            and min_messages >= 0
+        )
+
     try:
         data = _load_thresholds()
-        defaults = data["defaults"]
-        large = data["scenarios"]["LargePayloadFanout"]
-        quick_large = data["modes"]["quick"]["scenarios"]["LargePayloadFanout"]
+        if not isinstance(data, dict):
+            raise TypeError("threshold configuration must be an object")
+        scenarios = data.get("scenarios")
+        modes = data.get("modes")
+        defaults = data.get("defaults")
+        quick_mode = modes.get("quick") if isinstance(modes, dict) else None
+        quick_scenarios = quick_mode.get("scenarios") if isinstance(quick_mode, dict) else None
+        large = scenarios.get("LargePayloadFanout") if isinstance(scenarios, dict) else None
+        quick_large = quick_scenarios.get("LargePayloadFanout") if isinstance(quick_scenarios, dict) else None
+        if not isinstance(defaults, dict) or not isinstance(scenarios, dict) or not isinstance(modes, dict):
+            raise TypeError("defaults, scenarios, and modes must be objects")
+        if not isinstance(large, dict) or not isinstance(quick_large, dict):
+            raise TypeError("LargePayloadFanout threshold records must be objects")
         required_scenarios = {
             "FoxRunStreamIngest",
             "FoxRunPublishPayload",
@@ -80,14 +122,18 @@ def _threshold_check() -> audit_lib.Check:
             "LargePayloadFanout.WebSocket.4",
             "LargePayloadFanout.Mcap",
         }
-        explicit_modes = all(
-            required_scenarios.issubset(data.get("modes", {}).get(mode, {}).get("scenarios", {}))
-            for mode in ("quick", "full")
-        )
+        mode_scenarios = {}
+        explicit_modes = True
+        for mode in ("quick", "full"):
+            mode_config = modes.get(mode)
+            scenarios_for_mode = mode_config.get("scenarios") if isinstance(mode_config, dict) else None
+            mode_scenarios[mode] = scenarios_for_mode
+            explicit_modes = explicit_modes and isinstance(scenarios_for_mode, dict)
+            if isinstance(scenarios_for_mode, dict):
+                explicit_modes = explicit_modes and required_scenarios.issubset(scenarios_for_mode)
         explicit_scenarios = required_scenarios.issubset(data.get("scenarios", {}))
         finite = all(
-            isinstance(defaults.get(key), (int, float))
-            and math.isfinite(defaults[key])
+            finite_number(defaults.get(key))
             and defaults[key] < 10_000_000_000
             for key in ("maxAllocatedBytesPerMessage", "maxAllocatedBytesTotal")
         )
@@ -103,38 +149,9 @@ def _threshold_check() -> audit_lib.Check:
                 "maxGen2Collections",
             ))
         )
-        def valid_threshold(value: object) -> bool:
-            """Validate one scenario threshold map."""
-            if not isinstance(value, dict):
-                return False
-            numeric = (
-                "maxElapsedMs",
-                "maxAllocatedBytesPerMessage",
-                "maxAllocatedBytesTotal",
-                "maxGen0Collections",
-                "maxGen1Collections",
-                "maxGen2Collections",
-            )
-            finite_nonnegative = all(
-                isinstance(value.get(key), (int, float))
-                and math.isfinite(value[key])
-                and value[key] >= 0
-                for key in numeric
-            )
-            min_messages = value.get("minMessagesPerSecond", 0)
-            return (
-                finite_nonnegative
-                and value["maxElapsedMs"] > 0
-                and value["maxAllocatedBytesPerMessage"] > 0
-                and value["maxAllocatedBytesTotal"] > 0
-                and isinstance(min_messages, (int, float))
-                and math.isfinite(min_messages)
-                and min_messages >= 0
-            )
-
         values_valid = all(valid_threshold(data["scenarios"][name]) for name in required_scenarios)
         mode_values_valid = all(
-            valid_threshold(data["modes"][mode]["scenarios"][name])
+            valid_threshold(mode_scenarios[mode][name])
             for mode in ("quick", "full")
             for name in required_scenarios
         )
