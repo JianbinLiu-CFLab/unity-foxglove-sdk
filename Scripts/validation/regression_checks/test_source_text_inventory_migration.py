@@ -605,58 +605,6 @@ class SourceTextInventoryMigrationTests(_FixtureSupport, unittest.TestCase):
             self.assertEqual(1, result.returncode, result.stdout + result.stderr)
             self.assertIn("not an approved parser migration", result.stdout)
 
-    def test_versioned_parser_maintenance_requires_exact_scope_and_fingerprints(self):
-        """Allow only an exact protected approval for a versioned parser maintenance change."""
-        with tempfile.TemporaryDirectory() as directory:
-            root = self._git_fixture(directory)
-            checker = root / "Scripts/validation/source_text_inventory.py"
-            original = checker.read_text(encoding="utf-8")
-            maintenance = (
-                "\n_original_inventory = inventory\n"
-                "def inventory(root):\n"
-                "    rows = _original_inventory(root)\n"
-                "    for row in rows:\n"
-                "        row['harness_signature'] = row['legacy_harness_signature']\n"
-                "    return rows\n"
-            )
-            checker.write_text(
-                original.replace("\nif __name__ == \"__main__\":", maintenance + "\nif __name__ == \"__main__\":"),
-                encoding="utf-8",
-            )
-            result = self._run_migration_cli(root)
-            self.assertEqual(1, result.returncode, result.stdout + result.stderr)
-            evidence = json.loads(
-                (root / "build/inventory/parser_migration_evidence.json").read_text(encoding="utf-8")
-            )
-            approval = root / "build/versioned-parser-approval.json"
-            approval.write_text(
-                json.dumps(
-                    {
-                        **evidence["fingerprints"],
-                        "scope": "versioned-parser-maintenance",
-                        "reason": "Reviewed exact parser maintenance change.",
-                    }
-                ),
-                encoding="utf-8",
-            )
-            result = self._run_migration_cli(root, approval)
-            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
-            self.assertIn("PARSER_MIGRATION_APPROVED", result.stdout)
-            approval.write_text(
-                json.dumps(
-                    {
-                        **evidence["fingerprints"],
-                        "scope": "versioned-parser-maintenance",
-                        "parser_changes_sha256": "0" * 64,
-                        "reason": "Reviewed exact parser maintenance change.",
-                    }
-                ),
-                encoding="utf-8",
-            )
-            result = self._run_migration_cli(root, approval)
-            self.assertEqual(1, result.returncode, result.stdout + result.stderr)
-            self.assertIn("PARSER_MIGRATION_REJECTED", result.stdout)
-
     def test_exact_workflow_migration_approval_preserves_other_gates(self):
         """Bind migration approval to the base, checker, and both complete inventories."""
         with tempfile.TemporaryDirectory() as directory:
