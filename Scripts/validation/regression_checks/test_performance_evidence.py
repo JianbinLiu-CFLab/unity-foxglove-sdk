@@ -39,6 +39,7 @@ class PerformanceEvidenceTests(unittest.TestCase):
         """Return a failed audit when a required threshold record is null."""
         data = performance_evidence._load_thresholds()
         data["scenarios"]["FoxRunStreamIngest"] = None
+        performance_evidence.audit_lib.BUILD_ROOT.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(dir=performance_evidence.audit_lib.BUILD_ROOT) as directory:
             with patch.object(performance_evidence, "OUTPUT", Path(directory)):
                 with patch.object(performance_evidence, "_load_thresholds", return_value=data):
@@ -50,6 +51,7 @@ class PerformanceEvidenceTests(unittest.TestCase):
         data = performance_evidence._load_thresholds()
         data["defaults"]["maxAllocatedBytesTotal"] = True
         data["scenarios"]["LargePayloadFanout"]["maxGen2Collections"] = True
+        performance_evidence.audit_lib.BUILD_ROOT.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(dir=performance_evidence.audit_lib.BUILD_ROOT) as directory:
             with patch.object(performance_evidence, "OUTPUT", Path(directory)):
                 with patch.object(performance_evidence, "_load_thresholds", return_value=data):
@@ -60,6 +62,7 @@ class PerformanceEvidenceTests(unittest.TestCase):
         """Fail cleanly when a required top-level threshold record is null."""
         data = performance_evidence._load_thresholds()
         data["modes"]["quick"]["scenarios"]["LargePayloadFanout"] = None
+        performance_evidence.audit_lib.BUILD_ROOT.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(dir=performance_evidence.audit_lib.BUILD_ROOT) as directory:
             with patch.object(performance_evidence, "OUTPUT", Path(directory)):
                 with patch.object(performance_evidence, "_load_thresholds", return_value=data):
