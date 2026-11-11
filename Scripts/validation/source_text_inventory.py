@@ -405,6 +405,7 @@ def scan_file(
     comment_cache: dict[str, tuple[str, str]] | None = None,
     partial_harness_signature: str | None = None,
     external_helpers: _ExternalHelperIndex | None = None,
+    partial_termination_barriers: dict[str, str] | None = None,
 ) -> list[dict[str, object]]:
     """Collect source-text assertions from one validation file."""
     lines = path.read_text(encoding="utf-8").splitlines()
@@ -436,6 +437,23 @@ def scan_file(
         receiver_calls + derived_calls + assertion_calls + harness_calls,
         argument_definitions,
     )
+    local_method_names = {method.name for method in method_infos}
+    for method in method_infos:
+        for name, open_index in _flow_module._call_sites(source_text, masked_file, method):
+            terminal = name.rsplit(".", 1)[-1].rsplit("::", 1)[-1]
+            digest = (partial_termination_barriers or {}).get(terminal)
+            if digest is None or terminal in local_method_names:
+                continue
+            end = _flow_module._balanced_call_end(masked_file, open_index)
+            if end is None:
+                continue
+            descriptor = f"before:terminate-partial:{terminal}:helper({digest})"
+            for position in list(reachability):
+                if position <= end or _flow_module._method_for_offset(method_infos, position) is not method:
+                    continue
+                reachability[position] = "|".join(
+                    value for value in (reachability[position], descriptor) if value
+                )
     _, call_paths = _flow_module._call_path_index(
         source_text,
         masked_file,
@@ -701,6 +719,7 @@ def inventory(root: Path) -> list[dict[str, object]]:
     scopes = _shared_scope_paths(files)
     external_helpers = _ExternalHelperIndex(root)
     partial_signatures: dict[Path, str] = {}
+    partial_termination_barriers: dict[Path, dict[str, str]] = {}
     partial_groups: dict[tuple[tuple[str, ...], str], list[Path]] = {}
     for path in files:
         unit = external_helpers.units[path]
@@ -719,6 +738,7 @@ def inventory(root: Path) -> list[dict[str, object]]:
         )
         masked = _strip_csharp_comments_and_strings(combined)
         methods = _flow_module._method_infos(combined, masked)
+        barriers = _flow_module._partial_termination_barriers(combined, masked, methods)
         entrypoints = set()
         for path in group_paths:
             _, dispatch = _validation_metadata(root, path.relative_to(root).as_posix())
@@ -729,6 +749,7 @@ def inventory(root: Path) -> list[dict[str, object]]:
         )
         for path in group_paths:
             partial_signatures[path] = signature
+            partial_termination_barriers[path] = barriers
     comment_cache: dict[str, tuple[str, str]] = {}
     for path in files:
         rows.extend(
@@ -740,6 +761,7 @@ def inventory(root: Path) -> list[dict[str, object]]:
                 comment_cache,
                 partial_signatures.get(path),
                 external_helpers,
+                partial_termination_barriers.get(path),
             )
         )
     return rows

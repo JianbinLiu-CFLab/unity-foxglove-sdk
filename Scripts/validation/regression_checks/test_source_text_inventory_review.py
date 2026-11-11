@@ -360,6 +360,41 @@ class SourceTextInventoryReviewTests(_FixtureSupport, unittest.TestCase):
                     assertion = 'Check(source.Contains("Product"));'
                     self._assert_flow_mutation(assertion, assertion, f"{qualifier}.{invocation}; " + assertion, 1)
 
+    def test_partial_sibling_termination_helper_requires_ack(self):
+        """Reject a terminating helper implemented in a sibling partial-class file."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(directory, validation_text=(
+                "public static partial class FixtureValidation {\n"
+                "    public static void Validate() {\n"
+                '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                '        Check(source.Contains("Product"));\n'
+                "    }\n}\n"
+            ))
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            (validation.with_name("FixtureValidation.Part2.cs")).write_text(
+                "public static partial class FixtureValidation {\n"
+                "    private static void ExitSuccessfully() { System.Environment.Exit(0); }\n"
+                "}\n",
+                encoding="utf-8",
+            )
+            subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+            subprocess.run(["git", "-C", str(root), "commit", "-qm", "partial-helper-base"], check=True)
+            baseline = self._run_fixture_gate(root)
+            self.assertEqual(0, baseline[0], baseline[1])
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace(
+                    '        Check(source.Contains("Product"));',
+                    '        ExitSuccessfully();\n        Check(source.Contains("Product"));',
+                ),
+                encoding="utf-8",
+            )
+            (root / "Packages/fixture/Runtime/Product.cs").write_text(
+                "public sealed class Other {}\n", encoding="utf-8"
+            )
+            result = self._run_fixture_gate(root)
+            self.assertEqual(1, result[0], result[1])
+            self.assertIn('field": "reachability"', result[1])
+
     def test_unused_nested_barriers_preserve_outer_assertion(self):
         """Keep uncalled local-function and lambda barriers out of the enclosing method."""
         cases = (

@@ -403,6 +403,40 @@ def _method_call_graph(
         graph, resolved_calls, argument_definitions, set(field_types),
     )
 
+
+def _partial_termination_barriers(
+    text: str, masked: str, methods: list[MethodInfo]
+) -> dict[str, str]:
+    """Return same-class partial helper bodies that can terminate execution."""
+    direct, _ = _symbol_helpers._execution_barriers(
+        text, masked, [(method.body_start, method.body_end) for method in methods]
+    )
+    active = {
+        method.identity
+        for method in methods
+        if any(owner == method.body_start and kind == "terminate" for _, _, owner, kind, _ in direct)
+    }
+    graph = _method_call_graph(text, masked, methods)
+    incoming: dict[str, set[str]] = {}
+    for caller, targets in graph.items():
+        for callee in targets:
+            incoming.setdefault(callee, set()).add(caller)
+    pending = list(active)
+    while pending:
+        for caller in incoming.get(pending.pop(), set()):
+            if caller not in active:
+                active.add(caller)
+                pending.append(caller)
+    result: dict[str, str] = {}
+    for method in methods:
+        if method.identity not in active:
+            continue
+        body = _normalize_csharp_expression(
+            method.signature + " " + text[method.body_start : method.body_end + 1]
+        )
+        result[method.name] = hashlib.sha256(body.encode()).hexdigest()[:16]
+    return result
+
 def _ambiguous_call_bindings(
     text: str, masked: str, methods: list[MethodInfo]
 ) -> dict[str, str]:
