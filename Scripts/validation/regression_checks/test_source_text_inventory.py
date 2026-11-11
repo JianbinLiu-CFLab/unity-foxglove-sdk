@@ -7,7 +7,10 @@ from pathlib import Path
 from Scripts.validation.source_text_inventory import (
     _build_xunit_index,
     _checked_expression_signature,
+    _flow_module,
     _match_base_rows,
+    _repo_file,
+    _reader_expression_signature,
     _validation_harness_signature,
     classify,
     inventory,
@@ -20,15 +23,62 @@ class SourceTextInventoryTests(unittest.TestCase):
 
     def test_classification_distinguishes_boundary_wiring_and_implementation(self):
         """Classify representative target paths."""
-        self.assertEqual("A", classify("Runtime/Core/Foo.cs", "if (!source.Contains(\"UnityEngine\"))"))
-        self.assertEqual("C", classify("Runtime/Core/Foo.cs", 'source.Contains("model.Types.Count != 1")'))
-        self.assertEqual("B", classify(".github/workflows/check.yml", "source.Contains(\"run_ci\")"))
-        self.assertEqual("C", classify("Runtime/Core/Foo.cs", "source.Contains(\"privateField\")"))
+        self.assertEqual(
+            "A", classify("Runtime/Core/Foo.cs", 'if (!source.Contains("UnityEngine"))')
+        )
+        self.assertEqual(
+            "C", classify("Runtime/Core/Foo.cs", 'source.Contains("model.Types.Count != 1")')
+        )
+        self.assertEqual("B", classify(".github/workflows/check.yml", 'source.Contains("run_ci")'))
+        self.assertEqual("C", classify("Runtime/Core/Foo.cs", 'source.Contains("privateField")'))
+
+    def test_reader_signature_tracks_effective_assignments(self):
+        """Track assignment changes while excluding masked and unrelated method text."""
+        declaration = 'var source = ReadRequiredRepoText("Product.cs");\n'
+        cases = (
+            ('source = ReadAgain();', 'source = ReadAgain() + "Product";', True),
+            ('source += "Before";', 'source += "Product";', True),
+            ('source ??= "Before";', 'source ??= "Product";', True),
+            ('source = Same();', 'source += Same();', True),
+            ('var input = ReadAgain(); source = input;', 'var input = ReadAgain() + "Product"; source = input;', True),
+            ('source = Before(); source = source.Trim();', 'source = Product(); source = source.Trim();', True),
+            ('', '// var source = Fake();\n', False),
+            ('', 'var text = @"var source = Fake();";\n', False),
+            ('', 'void Other() { var source = Fake(); }\n', False),
+            ('source += "Before"; source = Last();', 'source += "Product"; source = Last();', True),
+            ('source = Before(); if (flag) source = Last();', 'source = Product(); if (flag) source = Last();', True),
+        )
+        for before, after, changed in cases:
+            with self.subTest(before=before, after=after):
+                signatures = []
+                for assignment in (before, after):
+                    source = 'static void Validate() {\n' + declaration + assignment + '\nCheck(source.Contains("Product"));\n}'
+                    call = {"receiver": "source", "start": source.rfind("source.Contains")}
+                    signatures.append(_reader_expression_signature(source, call))
+                    methods = _flow_module._method_infos(source, _flow_module._strip_csharp_comments_and_strings(source))
+                    self.assertEqual(signatures[-1], _reader_expression_signature(source, call, methods))
+                self.assertEqual(changed, signatures[0] != signatures[1], signatures)
 
     def test_base_matching_ignores_line_shifts_and_legacy_token_shape(self):
         """Match unchanged rows after line insertion and parser token expansion."""
-        base = [{"file": "Validation.cs", "validation_flag": "--phase", "label": "", "target": "Runtime/Foo.cs", "token": 'source.Contains("needle", StringComparison.Ordinal)'}]
-        head = [{"file": "Validation.cs", "validation_flag": "--phase", "label": "", "target": "Runtime/Foo.cs", "token": 'Assert.Contains("needle", source, StringComparison.Ordinal)'}]
+        base = [
+            {
+                "file": "Validation.cs",
+                "validation_flag": "--phase",
+                "label": "",
+                "target": "Runtime/Foo.cs",
+                "token": 'source.Contains("needle", StringComparison.Ordinal)',
+            }
+        ]
+        head = [
+            {
+                "file": "Validation.cs",
+                "validation_flag": "--phase",
+                "label": "",
+                "target": "Runtime/Foo.cs",
+                "token": 'Assert.Contains("needle", source, StringComparison.Ordinal)',
+            }
+        ]
         matches, missing = _match_base_rows(base, head)
         self.assertEqual(1, len(matches))
         self.assertFalse(missing)
@@ -42,7 +92,9 @@ class SourceTextInventoryTests(unittest.TestCase):
             product.write_text("public sealed class Foo {}\n", encoding="utf-8")
             foo_tests = root / "Packages" / "fixture" / "Tests" / "Unit" / "FooTests.cs"
             foo_tests.parent.mkdir(parents=True, exist_ok=True)
-            foo_tests.write_text("public sealed class FooTests { private Foo _foo; }\n", encoding="utf-8")
+            foo_tests.write_text(
+                "public sealed class FooTests { private Foo _foo; }\n", encoding="utf-8"
+            )
             (foo_tests.parent / "CommentOnlyTests.cs").write_text(
                 "// Foo\n/* Foo */\npublic sealed class CommentOnlyTests {}\n",
                 encoding="utf-8",
@@ -69,22 +121,29 @@ class SourceTextInventoryTests(unittest.TestCase):
             )
             shared = source.parent / "PartialValidation.Shared.cs"
             shared.write_text(
-                'public static partial class PartialValidation {\n'
-                '    private const string SharedPath =\n'
+                "public static partial class PartialValidation {\n"
+                "    private const string SharedPath =\n"
                 '        "Runtime/Shared.cs";\n'
-                '}\n',
+                "}\n",
                 encoding="utf-8",
             )
             (source.parent / "PartialValidation.cs").write_text(
-                'public static partial class PartialValidation {\n'
-                '    public static void Validate() {\n'
-                '        var shared = ReadRequiredRepoText(SharedPath);\n'
+                "public static partial class PartialValidation {\n"
+                "    public static void Validate() {\n"
+                "        var shared = ReadRequiredRepoText(SharedPath);\n"
                 '        Assert.Contains("model.Types.Count != 1", shared);\n'
-                '    }\n'
-                '}\n',
+                "    }\n"
+                "}\n",
                 encoding="utf-8",
             )
-            registry = root / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "PhaseValidationRegistry.cs"
+            registry = (
+                root
+                / "Packages"
+                / "dev.unity2foxglove.sdk"
+                / "Tests"
+                / "Runtime"
+                / "PhaseValidationRegistry.cs"
+            )
             registry.parent.mkdir(parents=True, exist_ok=True)
             registry.write_text(
                 'Ci("--phase-fixture",\n'
@@ -94,14 +153,37 @@ class SourceTextInventoryTests(unittest.TestCase):
             rows = inventory(root)
             self.assertEqual(5, len(rows))
             by_file_line = {(row["file"], row["line"]): row for row in rows}
-            self.assertEqual("Runtime/Bar.cs", by_file_line[("Packages/fixture/Tests/Unit/Sample.cs", 2)]["target"])
-            self.assertEqual("Runtime/Second.cs", by_file_line[("Packages/fixture/Tests/Unit/Nearby.cs", 3)]["target"])
-            self.assertFalse(by_file_line[("Packages/fixture/Tests/Unit/Nearby.cs", 5)]["comment_only"])
-            self.assertEqual("Packages/fixture/Runtime/manifest.json", by_file_line[("Packages/fixture/Tests/Unit/Nearby.cs", 9)]["target"])
-            self.assertEqual("Runtime/Shared.cs", by_file_line[("Packages/fixture/Tests/Unit/PartialValidation.cs", 4)]["target"])
-            self.assertEqual("--phase-fixture", by_file_line[("Packages/fixture/Tests/Unit/PartialValidation.cs", 4)]["validation_flag"])
-            self.assertEqual("C", by_file_line[("Packages/fixture/Tests/Unit/PartialValidation.cs", 4)]["class"])
-            self.assertEqual("C", by_file_line[("Packages/fixture/Tests/Unit/Nearby.cs", 5)]["class"])
+            self.assertEqual(
+                "Runtime/Bar.cs",
+                by_file_line[("Packages/fixture/Tests/Unit/Sample.cs", 2)]["target"],
+            )
+            self.assertEqual(
+                "Runtime/Second.cs",
+                by_file_line[("Packages/fixture/Tests/Unit/Nearby.cs", 3)]["target"],
+            )
+            self.assertFalse(
+                by_file_line[("Packages/fixture/Tests/Unit/Nearby.cs", 5)]["comment_only"]
+            )
+            self.assertEqual(
+                "Packages/fixture/Runtime/manifest.json",
+                by_file_line[("Packages/fixture/Tests/Unit/Nearby.cs", 9)]["target"],
+            )
+            self.assertEqual(
+                "Runtime/Shared.cs",
+                by_file_line[("Packages/fixture/Tests/Unit/PartialValidation.cs", 4)]["target"],
+            )
+            self.assertEqual(
+                "--phase-fixture",
+                by_file_line[("Packages/fixture/Tests/Unit/PartialValidation.cs", 4)][
+                    "validation_flag"
+                ],
+            )
+            self.assertEqual(
+                "C", by_file_line[("Packages/fixture/Tests/Unit/PartialValidation.cs", 4)]["class"]
+            )
+            self.assertEqual(
+                "C", by_file_line[("Packages/fixture/Tests/Unit/Nearby.cs", 5)]["class"]
+            )
             self.assertEqual(
                 ["Packages/fixture/Tests/Unit/FooTests.cs"],
                 _build_xunit_index(root).get("Foo"),
@@ -109,7 +191,9 @@ class SourceTextInventoryTests(unittest.TestCase):
             output = root / "build" / "inventory"
             write_report(rows, output)
             self.assertTrue((output / "source_text_inventory.csv").is_file())
-            self.assertIn("Class C implementation: 5", (output / "SUMMARY.md").read_text(encoding="utf-8"))
+            self.assertIn(
+                "Class C implementation: 5", (output / "SUMMARY.md").read_text(encoding="utf-8")
+            )
 
     def test_scope_partial_coverage_and_comment_only_detection(self):
         """Resolve repeated local names, partial product types, and comment-only literals."""
@@ -120,11 +204,17 @@ class SourceTextInventoryTests(unittest.TestCase):
             product = root / "Packages" / "fixture" / "Runtime" / "Foo.Part.cs"
             product.parent.mkdir(parents=True)
             product.write_text("public partial class Foo {}\n", encoding="utf-8")
-            (root / "Packages" / "fixture" / "Runtime" / "Bar.cs").write_text("public sealed class Bar {}\n", encoding="utf-8")
-            (root / "Packages" / "fixture" / "Runtime" / "Comment.cs").write_text("// comment-only marker\npublic sealed class Comment {}\n", encoding="utf-8")
+            (root / "Packages" / "fixture" / "Runtime" / "Bar.cs").write_text(
+                "public sealed class Bar {}\n", encoding="utf-8"
+            )
+            (root / "Packages" / "fixture" / "Runtime" / "Comment.cs").write_text(
+                "// comment-only marker\npublic sealed class Comment {}\n", encoding="utf-8"
+            )
             unit = root / "Packages" / "fixture" / "Tests" / "Unit"
             unit.mkdir(parents=True)
-            (unit / "FooTests.cs").write_text("public sealed class FooTests { private Foo _foo; }\n", encoding="utf-8")
+            (unit / "FooTests.cs").write_text(
+                "public sealed class FooTests { private Foo _foo; }\n", encoding="utf-8"
+            )
             (runtime / "ScopeValidation.cs").write_text(
                 "public static class ScopeValidation {\n"
                 "    public static void Validate() {\n"
@@ -142,11 +232,23 @@ class SourceTextInventoryTests(unittest.TestCase):
                 "}\n",
                 encoding="utf-8",
             )
-            registry = root / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "PhaseValidationRegistry.cs"
+            registry = (
+                root
+                / "Packages"
+                / "dev.unity2foxglove.sdk"
+                / "Tests"
+                / "Runtime"
+                / "PhaseValidationRegistry.cs"
+            )
             registry.parent.mkdir(parents=True, exist_ok=True)
-            registry.write_text('Ci("--phase-scope", "fixture", ScopeValidation.Validate, evidence: ValidationEvidence.Behavior),\n', encoding="utf-8")
+            registry.write_text(
+                'Ci("--phase-scope", "fixture", ScopeValidation.Validate, evidence: ValidationEvidence.Behavior),\n',
+                encoding="utf-8",
+            )
             rows = inventory(root)
-            by_line = {row["line"]: row for row in rows if row["file"].endswith("ScopeValidation.cs")}
+            by_line = {
+                row["line"]: row for row in rows if row["file"].endswith("ScopeValidation.cs")
+            }
             self.assertEqual("Packages/fixture/Runtime/Foo.Part.cs", by_line[4]["target"])
             self.assertEqual("Packages/fixture/Runtime/Bar.cs", by_line[8]["target"])
             self.assertIn("FooTests.cs", by_line[4]["xunit_coverage"])
@@ -159,7 +261,9 @@ class SourceTextInventoryTests(unittest.TestCase):
             root = Path(directory)
             runtime = root / "Packages" / "fixture" / "Tests" / "Runtime"
             runtime.mkdir(parents=True)
-            product = root / "Packages" / "fixture" / "Runtime" / "Sensors" / "LidarModelRegistry.cs"
+            product = (
+                root / "Packages" / "fixture" / "Runtime" / "Sensors" / "LidarModelRegistry.cs"
+            )
             product.parent.mkdir(parents=True)
             product.write_text("public sealed class LidarModelRegistry {}\n", encoding="utf-8")
             (runtime / "FormsValidation.cs").write_text(
@@ -177,7 +281,14 @@ class SourceTextInventoryTests(unittest.TestCase):
                 "}\n",
                 encoding="utf-8",
             )
-            registry = root / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "PhaseValidationRegistry.cs"
+            registry = (
+                root
+                / "Packages"
+                / "dev.unity2foxglove.sdk"
+                / "Tests"
+                / "Runtime"
+                / "PhaseValidationRegistry.cs"
+            )
             registry.parent.mkdir(parents=True, exist_ok=True)
             registry.write_text(
                 'Ci("--phase-forms", "fixture", FormsValidation.Validate, evidence: ValidationEvidence.Behavior),\n',
@@ -187,8 +298,12 @@ class SourceTextInventoryTests(unittest.TestCase):
             self.assertEqual(4, len(rows))
             self.assertEqual({"C", "A"}, {row["class"] for row in rows})
             self.assertTrue(all(row["target"].endswith("LidarModelRegistry.cs") for row in rows))
-            self.assertTrue(any(row["class"] == "A" and "DoesNotContain" in row["token"] for row in rows))
-            self.assertTrue(any(row["class"] == "A" and "forbidden" in row["token"] for row in rows))
+            self.assertTrue(
+                any(row["class"] == "A" and "DoesNotContain" in row["token"] for row in rows)
+            )
+            self.assertTrue(
+                any(row["class"] == "A" and "forbidden" in row["token"] for row in rows)
+            )
             self.assertTrue(any("source.IndexOf" in row["token"] for row in rows))
 
     def test_multiline_loaders_and_unresolved_targets_are_explicit(self):
@@ -224,22 +339,33 @@ class SourceTextInventoryTests(unittest.TestCase):
                 "}\n",
                 encoding="utf-8",
             )
-            registry = root / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "PhaseValidationRegistry.cs"
+            registry = (
+                root
+                / "Packages"
+                / "dev.unity2foxglove.sdk"
+                / "Tests"
+                / "Runtime"
+                / "PhaseValidationRegistry.cs"
+            )
             registry.parent.mkdir(parents=True, exist_ok=True)
             registry.write_text(
                 'Ci("--phase-multiline", "fixture", MultilineValidation.Validate, evidence: ValidationEvidence.Behavior),\n',
                 encoding="utf-8",
             )
             rows = inventory(root)
-            by_line = {row["line"]: row for row in rows if row["file"].endswith("MultilineValidation.cs")}
+            by_line = {
+                row["line"]: row for row in rows if row["file"].endswith("MultilineValidation.cs")
+            }
             self.assertEqual("Packages/fixture/Runtime/First.cs", by_line[7]["target"])
             self.assertEqual("Packages/fixture/Runtime/Second.cs", by_line[8]["target"])
             self.assertEqual("UNRESOLVED", by_line[11]["class"])
             self.assertEqual("<unresolved>", by_line[11]["target"])
             self.assertEqual("UNKNOWN", by_line[14]["class"])
-            self.assertEqual("<directory>", by_line[14]["target"])
-            self.assertEqual("<directory>", by_line[16]["target"])
-            self.assertTrue(any(row["class"] == "UNRESOLVED" and "inline" in str(row["token"]) for row in rows))
+            self.assertTrue(by_line[14]["target"].startswith("<directory>:Packages/fixture/Runtime/DirectoryTarget"))
+            self.assertTrue(by_line[16]["target"].startswith("<directory>:Packages/fixture/Runtime/DirectoryTarget"))
+            self.assertTrue(
+                any(row["class"] == "UNRESOLVED" and "inline" in str(row["token"]) for row in rows)
+            )
 
     def test_scope_and_multiline_receiver_resolution_are_fail_closed(self):
         """Keep local symbols scoped, preserve combined targets, and inspect multiline literals."""
@@ -251,7 +377,9 @@ class SourceTextInventoryTests(unittest.TestCase):
                 product = root / "Packages" / "fixture" / "Runtime" / name
                 product.parent.mkdir(parents=True, exist_ok=True)
                 content = "// comment marker\n" if name == "Comment.cs" else ""
-                product.write_text(content + f"public sealed class {product.stem} {{}}\n", encoding="utf-8")
+                product.write_text(
+                    content + f"public sealed class {product.stem} {{}}\n", encoding="utf-8"
+                )
             (runtime / "ScopeValidation.cs").write_text(
                 "public static class ScopeValidation {\n"
                 "    private string source;\n"
@@ -278,7 +406,14 @@ class SourceTextInventoryTests(unittest.TestCase):
                 "}\n",
                 encoding="utf-8",
             )
-            registry = root / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "PhaseValidationRegistry.cs"
+            registry = (
+                root
+                / "Packages"
+                / "dev.unity2foxglove.sdk"
+                / "Tests"
+                / "Runtime"
+                / "PhaseValidationRegistry.cs"
+            )
             registry.parent.mkdir(parents=True, exist_ok=True)
             registry.write_text(
                 'Ci("--phase-scope-fail-closed", "fixture", ScopeValidation.ValidateFirst, evidence: ValidationEvidence.Behavior),\n',
@@ -294,7 +429,9 @@ class SourceTextInventoryTests(unittest.TestCase):
                 combined["target"],
             )
             self.assertTrue(comment["comment_only"])
-            self.assertTrue(any(row["class"] == "A" for row in rows if "comment marker" in str(row["token"])))
+            self.assertTrue(
+                any(row["class"] == "A" for row in rows if "comment marker" in str(row["token"]))
+            )
             field_rows = [row for row in rows if "field" in str(row["token"])]
             self.assertEqual(1, len(field_rows))
             self.assertEqual("UNRESOLVED", field_rows[0]["class"])
@@ -319,12 +456,19 @@ class SourceTextInventoryTests(unittest.TestCase):
                 '        Check(ReadRequiredRepoText("Packages/fixture/Runtime/B.cs").Contains("B"), "inline");\n'
                 '        var text = "TestSources.Text(\\"Packages/fixture/Runtime/C.cs\\")";\n'
                 '        Assert.Contains("text", text);\n'
-                "        // var fake = TestSources.Text(\"Packages/fixture/Runtime/C.cs\");\n"
+                '        // var fake = TestSources.Text("Packages/fixture/Runtime/C.cs");\n'
                 "    }\n"
                 "}\n",
                 encoding="utf-8",
             )
-            registry = root / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "PhaseValidationRegistry.cs"
+            registry = (
+                root
+                / "Packages"
+                / "dev.unity2foxglove.sdk"
+                / "Tests"
+                / "Runtime"
+                / "PhaseValidationRegistry.cs"
+            )
             registry.parent.mkdir(parents=True, exist_ok=True)
             registry.write_text(
                 'Ci("--phase-derived", "fixture", DerivedValidation.Validate, evidence: ValidationEvidence.Behavior),\n',
@@ -359,7 +503,14 @@ class SourceTextInventoryTests(unittest.TestCase):
                 "}\n",
                 encoding="utf-8",
             )
-            registry = root / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "PhaseValidationRegistry.cs"
+            registry = (
+                root
+                / "Packages"
+                / "dev.unity2foxglove.sdk"
+                / "Tests"
+                / "Runtime"
+                / "PhaseValidationRegistry.cs"
+            )
             registry.parent.mkdir(parents=True, exist_ok=True)
             registry.write_text(
                 'Ci("--phase-multiple", "fixture", MultipleValidation.Validate, evidence: ValidationEvidence.Behavior),\n',
@@ -372,8 +523,12 @@ class SourceTextInventoryTests(unittest.TestCase):
             self.assertTrue(any('Contains("two")' in token for token in tokens))
             self.assertTrue(any('Contains("three")' in token for token in tokens))
             self.assertTrue(any('Contains("four")' in token for token in tokens))
-            self.assertEqual("A", next(row["class"] for row in rows if 'Contains("negative")' in row["token"]))
-            self.assertEqual("C", next(row["class"] for row in rows if 'Contains("positive")' in row["token"]))
+            self.assertEqual(
+                "A", next(row["class"] for row in rows if 'Contains("negative")' in row["token"])
+            )
+            self.assertEqual(
+                "C", next(row["class"] for row in rows if 'Contains("positive")' in row["token"])
+            )
 
     def test_comment_only_ignores_assertion_message_literals(self):
         """Only literals passed to the source assertion are checked against target comments."""
@@ -385,7 +540,7 @@ class SourceTextInventoryTests(unittest.TestCase):
             product.parent.mkdir(parents=True)
             product.write_text(
                 'public sealed class Product { public const string Real = "real"; }\n'
-                '// assertion message only\n',
+                "// assertion message only\n",
                 encoding="utf-8",
             )
             (runtime / "CommentLiteralValidation.cs").write_text(
@@ -397,7 +552,14 @@ class SourceTextInventoryTests(unittest.TestCase):
                 "}\n",
                 encoding="utf-8",
             )
-            registry = root / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "PhaseValidationRegistry.cs"
+            registry = (
+                root
+                / "Packages"
+                / "dev.unity2foxglove.sdk"
+                / "Tests"
+                / "Runtime"
+                / "PhaseValidationRegistry.cs"
+            )
             registry.parent.mkdir(parents=True, exist_ok=True)
             registry.write_text(
                 'Ci("--phase-comment-literal", "fixture", CommentLiteralValidation.Validate, evidence: ValidationEvidence.Behavior),\n',
@@ -406,6 +568,15 @@ class SourceTextInventoryTests(unittest.TestCase):
             rows = inventory(root)
             self.assertEqual(1, len(rows))
             self.assertFalse(rows[0]["comment_only"])
+
+    def test_repo_file_preserves_the_previous_eight_mib_limit(self):
+        """Keep bounded source reads compatible with the previous checker limit."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            target = root / "Packages" / "fixture" / "Runtime" / "Large.cs"
+            target.parent.mkdir(parents=True)
+            target.write_bytes(b"x" * (5 * 1024 * 1024))
+            self.assertEqual(target.resolve(), _repo_file(root, "Packages/fixture/Runtime/Large.cs"))
 
     def test_ambiguous_parameter_targets_fail_closed(self):
         """Do not merge different reader paths under one helper parameter name."""
@@ -420,7 +591,7 @@ class SourceTextInventoryTests(unittest.TestCase):
             (runtime / "ParameterValidation.cs").write_text(
                 "public static class ParameterValidation {\n"
                 '    private static void CheckSource(string source) { Check(source.Contains("marker")); }\n'
-                '    public static void Validate() {\n'
+                "    public static void Validate() {\n"
                 '        var first = ReadRequiredRepoText("Packages/fixture/Runtime/A.cs");\n'
                 '        var second = ReadRequiredRepoText("Packages/fixture/Runtime/B.cs");\n'
                 "        CheckSource(first);\n"
@@ -429,7 +600,14 @@ class SourceTextInventoryTests(unittest.TestCase):
                 "}\n",
                 encoding="utf-8",
             )
-            registry = root / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "PhaseValidationRegistry.cs"
+            registry = (
+                root
+                / "Packages"
+                / "dev.unity2foxglove.sdk"
+                / "Tests"
+                / "Runtime"
+                / "PhaseValidationRegistry.cs"
+            )
             registry.parent.mkdir(parents=True, exist_ok=True)
             registry.write_text(
                 'Ci("--phase-parameter-scope", "fixture", ParameterValidation.Validate, evidence: ValidationEvidence.Behavior),\n',
@@ -474,7 +652,14 @@ class SourceTextInventoryTests(unittest.TestCase):
                 "}\n",
                 encoding="utf-8",
             )
-            registry = root / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "PhaseValidationRegistry.cs"
+            registry = (
+                root
+                / "Packages"
+                / "dev.unity2foxglove.sdk"
+                / "Tests"
+                / "Runtime"
+                / "PhaseValidationRegistry.cs"
+            )
             registry.parent.mkdir(parents=True, exist_ok=True)
             registry.write_text(
                 'Ci("--phase-dispatch", "fixture", DispatchValidation.Validate, includeInDefault: false, evidence: ValidationEvidence.Behavior),\n',
@@ -484,10 +669,20 @@ class SourceTextInventoryTests(unittest.TestCase):
             self.assertEqual(1, len(rows))
             self.assertEqual("Ci|false|Validate", rows[0]["dispatch"])
             source_text = validation.read_text(encoding="utf-8")
-            self.assertEqual(_validation_harness_signature(source_text), rows[0]["harness_signature"])
-            self.assertNotEqual(rows[0]["harness_signature"], _validation_harness_signature(source_text.replace("throw new System.Exception();", "return;")))
+            self.assertEqual(
+                _validation_harness_signature(source_text, entrypoint="Validate"), rows[0]["harness_signature"]
+            )
+            self.assertNotEqual(
+                rows[0]["harness_signature"],
+                _validation_harness_signature(
+                    source_text.replace("throw new System.Exception();", "return;"), entrypoint="Validate"
+                ),
+            )
 
-            self.assertNotEqual(rows[0]["harness_signature"], _validation_harness_signature(source_text.replace("Check(source);", "return;")))
+            self.assertEqual(
+                rows[0]["harness_signature"],
+                _validation_harness_signature(source_text.replace("Check(source);", "return;"), entrypoint="Validate"),
+            )
 
     def test_same_line_source_reassignment_invalidates_reader_target(self):
         """Invalidate a reader target when its declaration and overwrite share a line."""
@@ -504,7 +699,14 @@ class SourceTextInventoryTests(unittest.TestCase):
                 "}\n",
                 encoding="utf-8",
             )
-            registry = root / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "PhaseValidationRegistry.cs"
+            registry = (
+                root
+                / "Packages"
+                / "dev.unity2foxglove.sdk"
+                / "Tests"
+                / "Runtime"
+                / "PhaseValidationRegistry.cs"
+            )
             registry.parent.mkdir(parents=True, exist_ok=True)
             registry.write_text(
                 'Ci("--phase-same-line", "fixture", SameLineValidation.Validate, evidence: ValidationEvidence.Behavior),\n',
@@ -526,7 +728,7 @@ class SourceTextInventoryTests(unittest.TestCase):
             validation = runtime / "ReachabilityValidation.cs"
             validation.write_text(
                 "public static class ReachabilityValidation {\n"
-                '    public static void Validate() {\n'
+                "    public static void Validate() {\n"
                 '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
                 "#if false\n"
                 '        Check(source.Contains("preprocessor"));\n'
@@ -540,7 +742,14 @@ class SourceTextInventoryTests(unittest.TestCase):
                 "}\n",
                 encoding="utf-8",
             )
-            registry = root / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "PhaseValidationRegistry.cs"
+            registry = (
+                root
+                / "Packages"
+                / "dev.unity2foxglove.sdk"
+                / "Tests"
+                / "Runtime"
+                / "PhaseValidationRegistry.cs"
+            )
             registry.parent.mkdir(parents=True, exist_ok=True)
             registry.write_text(
                 'Ci("--phase-reachability", "fixture", ReachabilityValidation.Validate, evidence: ValidationEvidence.Behavior),\n',
@@ -560,6 +769,89 @@ class SourceTextInventoryTests(unittest.TestCase):
             self.assertNotEqual(unbraced["reachability"], live["reachability"])
             self.assertNotEqual(after_exit["reachability"], live["reachability"])
 
+    def test_reachability_tracks_braced_early_returns(self):
+        """Record a return nested in a braced branch before a source assertion."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runtime = root / "Packages" / "fixture" / "Tests" / "Runtime"
+            runtime.mkdir(parents=True)
+            product = root / "Packages" / "fixture" / "Runtime" / "Product.cs"
+            product.parent.mkdir(parents=True)
+            product.write_text("public sealed class Product {}\n", encoding="utf-8")
+            validation = runtime / "BracedReturnValidation.cs"
+            validation.write_text(
+                "public static class BracedReturnValidation {\n"
+                "    public static void Validate() {\n"
+                '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                "        if (source.Length > 0) {\n"
+                "            return;\n"
+                "        }\n"
+                '        Check(source.Contains("Product"));\n'
+                "    }\n"
+                "}\n",
+                encoding="utf-8",
+            )
+            registry = (
+                root
+                / "Packages"
+                / "dev.unity2foxglove.sdk"
+                / "Tests"
+                / "Runtime"
+                / "PhaseValidationRegistry.cs"
+            )
+            registry.parent.mkdir(parents=True, exist_ok=True)
+            registry.write_text(
+                'Ci("--phase-braced-return", "fixture", BracedReturnValidation.Validate, evidence: ValidationEvidence.Behavior),\n',
+                encoding="utf-8",
+            )
+            rows = inventory(root)
+            self.assertEqual(1, len(rows))
+            self.assertIn("exit:return:if(source.Length > 0)", rows[0]["reachability"])
+
+    def test_inventory_caches_reset_between_scans(self):
+        """Do not reuse file metadata after a fixture is changed in place."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runtime = root / "Packages" / "fixture" / "Tests" / "Runtime"
+            unit = root / "Packages" / "fixture" / "Tests" / "Unit"
+            runtime.mkdir(parents=True)
+            unit.mkdir(parents=True)
+            product = root / "Packages" / "fixture" / "Runtime" / "Thing.cs"
+            product.parent.mkdir(parents=True)
+            product.write_text("public sealed class Product {}\n", encoding="utf-8")
+            (unit / "ProductTests.cs").write_text(
+                "public class ProductTests { void Test() { var value = new Product(); } }\n",
+                encoding="utf-8",
+            )
+            validation = runtime / "CacheValidation.cs"
+            validation.write_text(
+                "public static class CacheValidation {\n"
+                "    public static void Validate() {\n"
+                '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Thing.cs");\n'
+                '        Check(source.Contains("Product"));\n'
+                "    }\n"
+                "}\n",
+                encoding="utf-8",
+            )
+            registry = (
+                root
+                / "Packages"
+                / "dev.unity2foxglove.sdk"
+                / "Tests"
+                / "Runtime"
+                / "PhaseValidationRegistry.cs"
+            )
+            registry.parent.mkdir(parents=True, exist_ok=True)
+            registry.write_text(
+                'Ci("--phase-cache", "fixture", CacheValidation.Validate, evidence: ValidationEvidence.Behavior),\n',
+                encoding="utf-8",
+            )
+            first = inventory(root)
+            self.assertIn("ProductTests.cs", first[0]["xunit_coverage"])
+            product.write_text("public sealed class Renamed {}\n", encoding="utf-8")
+            second = inventory(root)
+            self.assertEqual("", second[0]["xunit_coverage"])
+
     def test_reachability_tracks_loop_and_jump_exits(self):
         """Record loop and goto exits that can bypass a later source assertion."""
         with tempfile.TemporaryDirectory() as directory:
@@ -572,25 +864,34 @@ class SourceTextInventoryTests(unittest.TestCase):
             validation = runtime / "JumpValidation.cs"
             validation.write_text(
                 "public static class JumpValidation {\n"
-                '    public static void Validate() {\n'
+                "    public static void Validate() {\n"
                 '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
                 '        while (source.Length > 0) { if (source.Length > 0) continue; Check(source.Contains("after-continue")); }\n'
                 '        while (source.Length > 0) { if (source.Length > 0) break; Check(source.Contains("after-break")); }\n'
-                '        if (source.Length > 0) goto afterGoto;\n'
+                "        if (source.Length > 0) goto afterGoto;\n"
                 '        Check(source.Contains("after-goto"));\n'
-                '        afterGoto: ;\n'
+                "        afterGoto: ;\n"
                 "    }\n"
                 "}\n",
                 encoding="utf-8",
             )
-            registry = root / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "PhaseValidationRegistry.cs"
+            registry = (
+                root
+                / "Packages"
+                / "dev.unity2foxglove.sdk"
+                / "Tests"
+                / "Runtime"
+                / "PhaseValidationRegistry.cs"
+            )
             registry.parent.mkdir(parents=True, exist_ok=True)
             registry.write_text(
                 'Ci("--phase-jumps", "fixture", JumpValidation.Validate, evidence: ValidationEvidence.Behavior),\n',
                 encoding="utf-8",
             )
             rows = {str(row["token"]): row for row in inventory(root)}
-            self.assertIn("exit:continue", rows['source.Contains("after-continue")']["reachability"])
+            self.assertIn(
+                "exit:continue", rows['source.Contains("after-continue")']["reachability"]
+            )
             self.assertIn("exit:break", rows['source.Contains("after-break")']["reachability"])
             self.assertIn("exit:goto", rows['source.Contains("after-goto")']["reachability"])
 
@@ -607,7 +908,14 @@ class SourceTextInventoryTests(unittest.TestCase):
                 "}\n",
                 encoding="utf-8",
             )
-            registry = root / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "PhaseValidationRegistry.cs"
+            registry = (
+                root
+                / "Packages"
+                / "dev.unity2foxglove.sdk"
+                / "Tests"
+                / "Runtime"
+                / "PhaseValidationRegistry.cs"
+            )
             registry.parent.mkdir(parents=True, exist_ok=True)
             registry.write_text(
                 'Ci("--phase-unsafe-reader", "fixture", UnsafeReaderValidation.Validate, evidence: ValidationEvidence.Behavior),\n',
@@ -633,7 +941,14 @@ class SourceTextInventoryTests(unittest.TestCase):
                 "}\n",
                 encoding="utf-8",
             )
-            registry = root / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "PhaseValidationRegistry.cs"
+            registry = (
+                root
+                / "Packages"
+                / "dev.unity2foxglove.sdk"
+                / "Tests"
+                / "Runtime"
+                / "PhaseValidationRegistry.cs"
+            )
             registry.parent.mkdir(parents=True, exist_ok=True)
             registry.write_text(
                 'Ci("--phase-read-text", "fixture", ReadTextValidation.Validate, evidence: ValidationEvidence.Behavior),\n',
@@ -653,7 +968,7 @@ class SourceTextInventoryTests(unittest.TestCase):
             product.write_text("public sealed class Product {}\n", encoding="utf-8")
             (runtime / "ReassignmentValidation.cs").write_text(
                 "public static class ReassignmentValidation {\n"
-                '    public static void Validate() {\n'
+                "    public static void Validate() {\n"
                 '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
                 '        source = "needle";\n'
                 '        Check(source.Contains("needle"));\n'
@@ -661,7 +976,14 @@ class SourceTextInventoryTests(unittest.TestCase):
                 "}\n",
                 encoding="utf-8",
             )
-            registry = root / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "PhaseValidationRegistry.cs"
+            registry = (
+                root
+                / "Packages"
+                / "dev.unity2foxglove.sdk"
+                / "Tests"
+                / "Runtime"
+                / "PhaseValidationRegistry.cs"
+            )
             registry.parent.mkdir(parents=True, exist_ok=True)
             registry.write_text(
                 'Ci("--phase-reassignment", "fixture", ReassignmentValidation.Validate, evidence: ValidationEvidence.Behavior),\n',
@@ -671,6 +993,7 @@ class SourceTextInventoryTests(unittest.TestCase):
             self.assertEqual(1, len(rows))
             self.assertEqual("<unresolved>", rows[0]["target"])
             self.assertEqual("UNRESOLVED", rows[0]["class"])
+
 
 if __name__ == "__main__":
     unittest.main()

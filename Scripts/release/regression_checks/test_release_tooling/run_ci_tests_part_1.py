@@ -329,11 +329,21 @@ class _RunCiTestsPart1:
         start = active_workflow_line_index(workflow, "- name: Run live source-text inventory")
         end = active_workflow_line_index(workflow, "- name: Upload live source-text inventory")
         gate = "\n".join(workflow.splitlines()[start:end])
-        self.assertIn("SOURCE_TEXT_INVENTORY_TRUSTED_REVISION", gate)
+        self.assertIn("SOURCE_TEXT_INVENTORY_BASE_SHA", gate)
+        self.assertIn("trusted_minimum_revision", gate)
+        self.assertIn("fe195f288a3df0c9754056ef2d84c095c2e98cf7", gate)
         self.assertIn("git archive", gate)
         self.assertIn("trusted_checker", gate)
         self.assertIn("--base-ref", gate)
-        self.assertIn("Scripts/validation/source_text_inventory.py", gate)
+        self.assertIn(":(glob)Scripts/validation/source_text_inventory*.py", gate)
+        self.assertIn("--parser-migration-approval", gate)
+        self.assertIn("actual_migration_checker_sha", gate)
+        self.assertIn("expected_migration_checker_sha", gate)
+        self.assertIn("base_inventory_sha256", gate)
+        self.assertIn("current_inventory_sha256", gate)
+        self.assertIn("hashlib.sha256()", gate)
+        self.assertNotIn("16763361a8c6d009eb2bfb4e7dab7af9efb94ca7", gate)
+        self.assertNotIn("using reviewed bootstrap checker", gate)
 
     def test_dotnet_workflow_cannot_waive_validator_initializer_changes(self) -> None:
         """The trusted-base identity result must fail the workflow without a parser waiver."""

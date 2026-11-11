@@ -1,732 +1,423 @@
 """Inventory source-text assertions in runtime and unit validation files."""
+
 from __future__ import annotations
-import argparse, csv, hashlib
-from collections import Counter
+
+import argparse
+import csv
+import hashlib
 import importlib.util
 import re
-import subprocess, tarfile, tempfile
+import subprocess
+import sys
+import tarfile
+import tempfile
+from collections import Counter
+from dataclasses import replace
 from pathlib import Path
-PATH_LITERAL_PATTERN = re.compile(r'"([^"\r\n]+(?:\.cs|\.py|\.md|\.json|\.yml|\.yaml|\.csproj|\.props|\.targets|\.asmdef|\.meta|\.txt|\.xml|\.cpp|\.h|\.dll|\.so))"')
-PATH_LIKE_LITERAL_PATTERN = re.compile(r'"([^"\r\n]*[/\\][^"\r\n]*)"')
-READER_CALL_PATTERN = re.compile(r"\b(?P<reader>ReadRepoText|ReadRequiredRepoText|ReadText|ReadRuntimeSource|ReadPointCloudPublisherSources|ReadCameraPublisherSources|ReadProductPublisherText|ReadRepoDirectoryText|Text|PhaseValidationSourceHelpers\s*\.\s*Read[A-Za-z_]\w*(?:Sources?|SourcePath|Text)|TestSources\s*\.\s*(?:Text|Runtime|ExtractMethod|Slice|SourceGeneratorSources)|RuntimeSource)\s*\(")
-VARIABLE_READER_PATTERN = re.compile(r"(?:var|string)\s+(?P<name>[A-Za-z_]\w*)\s*=\s*(?P<reader>ReadRepoText|ReadRequiredRepoText|PhaseValidationSourceHelpers\.ReadRequiredRepoText|TestSources\.Text)\s*\(\s*(?P<argument>[^)]*?)\)", re.DOTALL)
-ARRAY_PATTERN = re.compile(r"(?:var|string\[\])\s+(?P<name>[A-Za-z_]\w*)\s*=\s*new\[\]\s*\{(?P<body>[^}]*)\}", re.DOTALL)
-CONSTANT_PATH_PATTERN = re.compile(r"(?:const\s+string|private\s+const\s+string)\s+(?P<name>[A-Za-z_]\w*)\s*=\s*\"(?P<path>[^\"]+)\"\s*;?")
-RECEIVER_PATTERN = re.compile(
-    r"(?P<receiver>[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\.(?:Contains|IndexOf|DoesNotContain)\s*\("
-)
-ASSERTION_CALL_PATTERN = re.compile(r"\bAssert\.(?:Contains|DoesNotContain)\s*\(")
-DERIVED_METHOD_PATTERN = re.compile(r"\.(?:Contains|IndexOf|DoesNotContain)\s*\(")
-HARNESS_CALL_PATTERN = re.compile(r"\b(?:Check|Assert\.(?:True|False))\s*\(")
-PHASE_LABEL_PATTERN = re.compile(r"\"(?P<label>\d+[A-Za-z]?[-A-Za-z0-9]*-[A-Za-z0-9]+:[^\"]+)\"")
-def classify(target: str, line: str) -> str:
-    """Classify one source-text assertion as boundary, wiring, or implementation."""
-    if not target or "<unresolved>" in target:
-        return "UNRESOLVED"
-    if "<directory>" in target:
-        return "UNKNOWN"
-    if re.search(r"!\s*(?:[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*\s*\.\s*(?:Contains|IndexOf|DoesNotContain)|Assert\.Contains)\s*\(", line):
-        return "A"
-    if re.search(r"\bAssert\.DoesNotContain\s*\(", line):
-        return "A"
-    if target.startswith(".github/") or target.startswith("Scripts/release/run_ci"):
-        return "B"
-    if target.endswith(".md") or target.endswith("package.json") or target.endswith("/Tests/Runtime/PhaseValidationRegistry.cs"):
-        return "B"
-    return "C"
-def _normalise_path(value: str) -> str:
-    """Normalise a repository-relative path for stable reports."""
-    value = value.strip().strip('"').replace("\\", "/"); return "" if value.startswith("/") or re.match(r"^[A-Za-z]:", value) or ".." in value.split("/") else value
-def _repo_file(root: Path, value: str) -> Path | None:
-    """Return a bounded repository file, rejecting links and oversized inputs."""
-    if not value or value.startswith("<"): return None
-    candidate = (root / value).resolve()
-    try: candidate.relative_to(root.resolve())
-    except ValueError: return None
-    return candidate if candidate.is_file() and candidate.stat().st_size <= 8 * 1024 * 1024 else None
-def _extract_argument_path(argument: str, paths: dict[str, str]) -> str | None:
-    """Resolve a reader argument to a repository path or a documented path set."""
-    argument = argument.strip()
-    literal = PATH_LITERAL_PATTERN.fullmatch(argument)
-    if literal: return _normalise_path(literal.group(1))
-    if argument in paths: return paths[argument]
-    suffix = re.fullmatch(r"(?P<name>[A-Za-z_]\w*)\s*\+\s*\"(?P<suffix>[^\"]*)\"", argument)
-    if suffix and suffix.group("name") in paths:
-        suffix_value = suffix.group("suffix").replace("\\", "/"); return ";".join(value.rstrip("/") + "/" + suffix_value.lstrip("/") for value in paths[suffix.group("name")].split(";"))
-    literal = PATH_LITERAL_PATTERN.search(argument)
-    if literal and argument == literal.group(0):
-        return _normalise_path(literal.group(1))
-    path_like = PATH_LIKE_LITERAL_PATTERN.fullmatch(argument)
-    if path_like: return _normalise_path(path_like.group(1))
-    if "," in argument: return _extract_argument_path(argument.split(",", 1)[1], paths)
-    return None
-def _reader_target(reader: dict[str, object], paths: dict[str, str]) -> str | None:
-    """Resolve a recognized reader while preserving directory-reader first arguments."""
-    argument = str(reader["argument"]); name = str(reader.get("name", ""))
-    if "ReadRepoDirectoryText" in name or "ReadText" not in name: argument = _split_first_argument(argument)
-    return _extract_argument_path(argument, paths)
-def _balanced_call_end(text: str, open_index: int) -> int | None:
-    """Return the closing parenthesis for a call while respecting C# literals."""
-    depth = 0
-    mode = ""
-    index = open_index
-    while index < len(text):
-        char = text[index]
-        next_char = text[index + 1] if index + 1 < len(text) else ""
-        if mode == "line_comment":
-            if char == "\n":
-                mode = ""
-            index += 1
-            continue
-        if mode == "block_comment":
-            if char == "*" and next_char == "/":
-                mode = ""
-                index += 2
-            else:
-                index += 1
-            continue
-        if mode == "verbatim":
-            if char == '"':
-                if next_char == '"':
-                    index += 2
-                    continue
-                mode = ""
-            index += 1
-            continue
-        if mode in {"string", "char"}:
-            if char == "\\":
-                index += 2
-                continue
-            if (mode == "string" and char == '"') or (mode == "char" and char == "'"):
-                mode = ""
-            index += 1
-            continue
-        if char == "/" and next_char == "/":
-            mode = "line_comment"
-            index += 2
-            continue
-        if char == "/" and next_char == "*":
-            mode = "block_comment"
-            index += 2
-            continue
-        if char == "@" and next_char == '"':
-            mode = "verbatim"
-            index += 2
-            continue
-        if char == '"':
-            mode = "string"
-            index += 1
-            continue
-        if char == "'":
-            mode = "char"
-            index += 1
-            continue
-        if char == "(":
-            depth += 1
-        elif char == ")":
-            depth -= 1
-            if depth == 0:
-                return index
-        index += 1
-    return None
-def _line_starts(text: str) -> list[int]:
-    """Return character offsets for each line in a source buffer."""
-    return [0] + [index + 1 for index, char in enumerate(text) if char == "\n"]
-def _line_for_offset(starts: list[int], offset: int) -> int:
-    """Map a character offset to a zero-based line number."""
-    line = 0
-    for index, start in enumerate(starts):
-        if start > offset:
-            break
-        line = index
-    return line
-def _call_spans(lines: list[str], pattern: re.Pattern[str], text: str | None = None, searchable: str | None = None) -> list[dict[str, object]]:
-    """Return balanced call spans for a regular-expression call pattern."""
-    text = text if text is not None else "\n".join(lines)
-    searchable = searchable if searchable is not None else _strip_csharp_comments_and_strings(text)
-    starts = _line_starts(text)
-    calls: list[dict[str, object]] = []
-    for match in pattern.finditer(searchable):
-        open_index = searchable.find("(", match.start(), match.end())
-        close_index = _balanced_call_end(text, open_index)
-        if close_index is None:
-            continue
-        calls.append({"start": match.start(), "end": close_index + 1, "start_line": _line_for_offset(starts, match.start()), "end_line": _line_for_offset(starts, close_index), "name": match.groupdict().get("reader", match.group(0)), "receiver": match.groupdict().get("receiver"), "argument": text[open_index + 1 : close_index], "text": text[match.start() : close_index + 1]})
-    return calls
-def _split_first_argument(argument: str) -> str:
-    """Return the first top-level argument from a C# call."""
-    depth = 0
-    mode = ""
-    index = 0
-    while index < len(argument):
-        char = argument[index]
-        next_char = argument[index + 1] if index + 1 < len(argument) else ""
-        if mode == "verbatim":
-            if char == '"':
-                if next_char == '"':
-                    index += 2; continue
-                mode = ""
-            index += 1; continue
-        if mode in {"string", "char"}:
-            if char == "\\":
-                index += 2; continue
-            if (mode == "string" and char == '"') or (mode == "char" and char == "'"):
-                mode = ""
-            index += 1; continue
-        if char == "@" and next_char == '"':
-            mode = "verbatim"; index += 2; continue
-        if char == '"':
-            mode = "string"
-        elif char == "'":
-            mode = "char"
-        elif char in "([{":
-            depth += 1
-        elif char in ")]}" and depth:
-            depth -= 1
-        elif char == "," and depth == 0:
-            return argument[:index].strip()
-        index += 1
-    return argument.strip()
-def _call_context(lines: list[str], call: dict[str, object]) -> str:
-    """Return the surrounding statement for polarity and source-origin checks."""
-    text = str(call.get("text_file") or "\n".join(lines))
-    start = int(call["start"])
-    end = int(call["end"])
-    masked = str(call.get("masked") or _strip_csharp_comments_and_strings(text))
-    statement_start = max(masked.rfind(";", 0, start), masked.rfind("{", 0, start), masked.rfind("}", 0, start), masked.rfind("&&", 0, start) + 1, masked.rfind("||", 0, start) + 1) + 1
-    return text[statement_start:end]
-def _balanced_brace_end(text: str, open_index: int) -> int | None:
-    """Return the matching closing brace in masked source text."""
-    depth = 0
-    for index in range(open_index, len(text)):
-        depth += (text[index] == "{") - (text[index] == "}")
-        if depth == 0: return index
-    return None
-def _reachability_signatures(lines: list[str], calls: list[dict[str, object]], text: str, masked: str) -> dict[int, str]:
-    """Return preprocessor and enclosing control-flow state for calls in one file."""
-    states: list[str] = []; directives: list[str] = []
-    for line in lines:
-        directive = line.strip()
-        states.append("|".join(directives))
-        if directive.startswith("#if"): directives.append("if:" + re.sub(r"\s+", " ", directive[3:].strip()))
-        elif directive.startswith("#elif") and directives: directives[-1] = "elif:" + re.sub(r"\s+", " ", directive[5:].strip())
-        elif directive.startswith("#else") and directives: directives[-1] = "else"
-        elif directive.startswith("#endif") and directives: directives.pop()
-    intervals: list[tuple[int, int, str]] = []
-    for match in re.finditer(r"\b(?P<kind>if|else\s+if|while|foreach|for|switch|catch)\s*\(", masked):
-        open_index = masked.find("(", match.start(), match.end()); close_index = _balanced_call_end(masked, open_index)
-        if close_index is None: continue
-        cursor = close_index + 1
-        while cursor < len(masked) and masked[cursor].isspace(): cursor += 1
-        condition = re.sub(r"\s+", " ", text[open_index + 1 : close_index].strip())
-        end = _balanced_brace_end(masked, cursor) if cursor < len(masked) and masked[cursor] == "{" else masked.find(";", cursor)
-        if end is not None and end >= cursor: intervals.append((cursor, end, f"{match.group('kind')}({condition})"))
-    exits = [(match.start(), match.end(), "exit:" + match.group("kind")) for match in re.finditer(r"\b(?P<kind>return|throw|continue|break|goto)\b[^;]*;", masked)]; result: dict[int, str] = {}
-    for call in calls:
-        start = int(call["start"]); line = int(call["start_line"]); block_start = max(masked.rfind("{", 0, start), masked.rfind("}", 0, start)); active = [value for begin, end, value in intervals if begin <= start <= end]; active.extend(value for begin, end, value in exits if block_start < begin and end < start)
-        result[start] = "|".join(([states[line]] if line < len(states) and states[line] else []) + active)
-    return result
-def _source_targets(lines: list[str], include_variables: bool = True) -> dict[str, str]:
-    """Build a local symbol-to-source-path map from reader calls and path arrays."""
-    paths: dict[str, str] = {}
-    text = "\n".join(lines)
-    for match in ARRAY_PATTERN.finditer(text):
-        values = [_normalise_path(value) for value in PATH_LITERAL_PATTERN.findall(match.group("body"))]
-        if values:
-            paths[match.group("name")] = ";".join(values)
-    for match in CONSTANT_PATH_PATTERN.finditer(text):
-        value = _normalise_path(match.group("path"))
-        if "/" in value or "\\" in value:
-            paths[match.group("name")] = value
-    if not include_variables:
-        for _ in range(3):
-            changed = False
-            for match in re.finditer(r"const\s+string\s+(?P<name>[A-Za-z_]\w*)\s*=\s*(?P<expression>[^;]+)", text):
-                expression = match.group("expression")
-                targets: list[str] = []
-                for name, base_value in paths.items():
-                    if not re.search(rf"\b{re.escape(name)}\b", expression):
-                        continue
-                    suffix_match = re.search(rf"\b{re.escape(name)}\s*\+\s*\"([^\"]*)\"", expression)
-                    if suffix_match:
-                        suffix = suffix_match.group(1).replace("\\", "/")
-                        targets.extend(item.rstrip("/") + "/" + suffix.lstrip("/") for item in base_value.split(";"))
-                    else:
-                        targets.extend(base_value.split(";"))
-                if targets and paths.get(match.group("name")) != ";".join(dict.fromkeys(targets)):
-                    paths[match.group("name")] = ";".join(dict.fromkeys(targets))
-                    changed = True
-            if not changed:
-                break
-        return paths
-    for _ in range(3):
-        changed = False
-        for match in VARIABLE_READER_PATTERN.finditer(text):
-            target = _extract_argument_path(match.group("argument"), paths)
-            target = target or "<unresolved>"
-            if paths.get(match.group("name")) != target:
-                paths[match.group("name")] = target
-                changed = True
-        for match in re.finditer(r"(?:var|string)\s+(?P<name>[A-Za-z_]\w*)\s*=\s*(?P<expression>[^;]+)", text):
-            expression = match.group("expression")
-            expression_without_literals = re.sub(r'@?"(?:""|\\.|[^"\\])*"', '""', expression)
-            referenced = re.findall(r"\b[A-Za-z_]\w*\b", expression_without_literals)
-            targets = []
-            for name in referenced:
-                if name not in paths:
-                    continue
-                suffix_match = re.search(rf"\b{re.escape(name)}\s*\+\s*\"([^\"]*)\"", expression)
-                if suffix_match:
-                    suffix = suffix_match.group(1).replace("\\", "/")
-                    targets.extend(
-                        value.rstrip("/") + "/" + suffix.lstrip("/")
-                        for value in paths[name].split(";")
-                    )
-                else:
-                    targets.extend(paths[name].split(";"))
-            target = ";".join(dict.fromkeys(";".join(targets).split(";"))) if targets else None
-            if target and paths.get(match.group("name")) != target:
-                paths[match.group("name")] = target
-                changed = True
-        if not changed:
-            break
-    return paths
-def _brace_paths(lines: list[str]) -> list[tuple[int, ...]]:
-    """Return a lexical brace scope for each source line."""
-    scopes: list[tuple[int, ...]] = []
-    stack: list[int] = []
-    next_id = 0
-    mode = ""
-    block_comment = False
-    for line in lines:
-        scopes.append(tuple(stack))
-        index = 0
-        while index < len(line):
-            char = line[index]
-            next_char = line[index + 1] if index + 1 < len(line) else ""
-            if block_comment:
-                if char == "*" and next_char == "/":
-                    block_comment = False
-                    index += 2
-                else:
-                    index += 1
-                continue
-            if mode:
-                if mode == "verbatim" and char == '"':
-                    if next_char == '"':
-                        index += 2
-                        continue
-                    mode = ""
-                elif mode in {"normal", "char"} and char == "\\":
-                    index += 2
-                    continue
-                elif (mode == "normal" and char == '"') or (mode == "char" and char == "'"):
-                    mode = ""
-                index += 1
-                continue
-            if char == "/" and next_char == "/":
-                break
-            if char == "/" and next_char == "*":
-                block_comment = True
-                index += 2
-                continue
-            if char == "@" and next_char == '"':
-                mode = "verbatim"
-                index += 2
-                continue
-            if char == '"':
-                mode = "normal"
-                index += 1
-                continue
-            if char == "'":
-                mode = "char"
-                index += 1
-                continue
-            if char == "{":
-                stack.append(next_id)
-                next_id += 1
-            elif char == "}" and stack:
-                stack.pop()
-            index += 1
-    return scopes
-def _scoped_source_symbols(lines: list[str], shared_paths: dict[str, str]) -> list[tuple[int, tuple[int, ...], str, str]]:
-    """Collect reader symbols with method and block scope boundaries."""
-    scopes = _brace_paths(lines)
-    symbols: list[tuple[int, tuple[int, ...], str, str]] = [(-1, (), name, target) for name, target in shared_paths.items()]
-    text = "\n".join(lines)
-    line_starts = _line_starts(text)
-    local_paths = dict(shared_paths)
-    definitions: list[tuple[int, tuple[int, ...], str, str]] = []
-    reader_assignment_starts: set[tuple[int, str, int]] = set()
-    for call in _call_spans(lines, READER_CALL_PATTERN):
-        start = int(call["start"])
-        line = int(call["start_line"])
-        prefix = text[max(0, start - 256) : start]
-        assignment = re.search(r"(?:var|string)\s+(?P<name>[A-Za-z_]\w*)\s*=\s*$", prefix)
-        if not assignment: continue
-        assignment_start = start - len(prefix) + assignment.start("name")
-        target = _reader_target(call, local_paths) or "<unresolved>"
-        definition = (line, scopes[line], assignment.group("name"), target)
-        definitions.append(definition); local_paths[assignment.group("name")] = target
-        reader_assignment_starts.add((line, assignment.group("name"), assignment_start))
-    foreach_pattern = r"foreach\s*\(\s*var\s+(?P<name>[A-Za-z_]\w*)\s+in\s+(?P<expression>[^)]*)\)"
-    for match in re.finditer(foreach_pattern, text, re.DOTALL):
-        line = _line_for_offset(line_starts, match.start())
-        scope = scopes[line]
-        targets: list[str] = []
-        for reference in re.findall(r"\b[A-Za-z_]\w*\b", _strip_csharp_comments_and_strings(match.group("expression"))):
-            target = next((value for definition_line, definition_scope, name, value in reversed(definitions) if name == reference and definition_line < line and len(definition_scope) <= len(scope) and tuple(scope[:len(definition_scope)]) == definition_scope), None)
-            if target and target != "<unresolved>": targets.extend(target.split(";"))
-        if targets: definitions.append((line, scope, match.group("name"), ";".join(dict.fromkeys(targets))))
-    assignment_pattern = re.compile(r"(?:var|string)\s+(?P<name>[A-Za-z_]\w*)\s*=\s*(?P<expression>[^;]+);", re.DOTALL)
-    assignment_expressions: list[tuple[int, str, int, str]] = []; direct_keys: set[tuple[int, str, int]] = set()
-    for match in assignment_pattern.finditer(text):
-        line = _line_for_offset(line_starts, match.start())
-        assignment_expressions.append((line, match.group("name"), match.start("name"), match.group("expression")))
-        if (line, match.group("name"), match.start("name")) in reader_assignment_starts: direct_keys.add((line, match.group("name"), match.start("name")))
-    assignments = sorted(assignment_expressions, key=lambda item: item[0]); known_names = {name for _, _, name, _ in definitions}
-    for match in re.finditer(r"(?<![=!<>])\b(?P<name>[A-Za-z_]\w*)\s*=\s*(?P<expression>[^;]+);", text, re.DOTALL):
-        name = match.group("name")
-        if name not in known_names:
-            continue
-        line = _line_for_offset(line_starts, match.start())
-        if any(key[0] == line and key[1] == name and key[2] == match.start("name") for key in direct_keys): continue
-        expression = match.group("expression"); target = next((value for value in (_reader_target(reader, local_paths) for reader in _call_spans(expression.splitlines(), READER_CALL_PATTERN)) if value), None)
-        definitions.append((line, scopes[line], name, target or "<unresolved>")); definitions.sort(key=lambda item: item[0])
-    indexed: dict[str, list[tuple[int, tuple[int, ...], str]]] = {}
-    for line, scope, name, target in definitions:
-        indexed.setdefault(name, []).append((line, scope, target))
-    def lookup(name: str, line: int, scope: tuple[int, ...]) -> str | None:
-        """Resolve a symbol to the nearest definition in the active scope."""
-        for definition_line, definition_scope, target in reversed(indexed.get(name, [])):
-            if definition_line < line and len(definition_scope) <= len(scope) and tuple(scope[:len(definition_scope)]) == definition_scope:
-                return target
-        return None
-    for line, name, assignment_start, expression in assignments:
-        if (line, name, assignment_start) in direct_keys:
-            continue
-        scope = scopes[line]
-        references = re.findall(r"\b[A-Za-z_]\w*\b", expression)
-        targets: list[str] = []
-        for reference in references:
-            reference_target = lookup(reference, line, scope)
-            if reference_target:
-                targets.extend(reference_target.split(";"))
-        unresolved_reader = False
-        for reader in _call_spans(expression.splitlines(), READER_CALL_PATTERN):
-            reader_target = _reader_target(reader, local_paths)
-            if reader_target:
-                targets.extend(reader_target.split(";"))
-            else:
-                unresolved_reader = True
-        if targets or unresolved_reader:
-            target = ";".join(dict.fromkeys(targets)) or "<unresolved>"
-            definitions.append((line, scope, name, target))
-            indexed.setdefault(name, []).append((line, scope, target))
-    invalidated = {(line, name) for line, _, name, target in definitions if target == "<unresolved>"}; definitions = [definition for definition in definitions if (definition[0], definition[2]) not in invalidated or definition[3] == "<unresolved>"]
-    symbols.extend(definitions)
-    return symbols
-def _lookup_symbol(symbols: list[tuple[int, tuple[int, ...], str, str]], name: str, line: int, scope: tuple[int, ...]) -> str | None:
-    """Resolve the nearest symbol visible from a source line."""
-    candidates = [
-        (definition_line, definition_scope, target)
-        for definition_line, definition_scope, symbol_name, target in symbols
-        if symbol_name == name
-        and definition_line <= line
-        and len(definition_scope) <= len(scope)
-        and tuple(scope[:len(definition_scope)]) == definition_scope
-    ]
-    if not candidates:
-        return None
-    _, _, target = max(candidates, key=lambda value: (len(value[1]), value[0]))
-    return target
-def _resolve_assertion_target(
-    call: dict[str, object],
-    paths: dict[str, str],
-    symbols: list[tuple[int, tuple[int, ...], str, str]],
-    scopes: list[tuple[int, ...]],
-) -> str | None:
-    """Resolve a source-text variable used as an assertion argument."""
-    line = int(call["start_line"])
-    scope = scopes[line]
-    call_text = str(call["text"])
-    code = _strip_csharp_comments_and_strings(call_text)
-    names = {name for _, _, name, _ in symbols if name != "__last_reader__"}
-    names.update(name for name in paths if name != "__last_reader__")
-    targets: list[str] = []
-    for name in names:
-        if not re.search(rf"\b{re.escape(name)}\b", code):
-            continue
-        target = _lookup_symbol(symbols, name, line, scope)
-        if target:
-            targets.extend(target.split(";"))
-    if targets:
-        return ";".join(dict.fromkeys(targets))
-    reader_targets: list[str] = []
-    reader_seen = False
-    for reader in _call_spans(call_text.splitlines(), READER_CALL_PATTERN):
-        reader_seen = True; target = _reader_target(reader, paths)
-        if target:
-            reader_targets.extend(target.split(";"))
-    return ";".join(dict.fromkeys(reader_targets)) or ("<unresolved>" if reader_seen else None)
-def _receiver_expression_start(masked: str, start: int) -> int:
-    """Return the start of one receiver expression, excluding sibling operands."""
-    cursor = start - 1; depth = 0
-    while cursor >= 0:
-        char = masked[cursor]
-        if char == ")": depth += 1
-        elif char == "(" and depth: depth -= 1
-        elif char == "(": return cursor + 1
-        elif depth == 0 and (char in ";{}," or masked[cursor:cursor + 2] in ("&&", "||")): return cursor + 1
-        cursor -= 1
-    return 0
-def _resolve_derived_target(
-    lines: list[str],
-    call: dict[str, object],
-    paths: dict[str, str],
-    symbols: list[tuple[int, tuple[int, ...], str, str]],
-    scopes: list[tuple[int, ...]],
-) -> str | None:
-    """Resolve source origins for receiver expressions that contain method calls."""
-    line = int(call["start_line"])
-    text = str(call.get("text_file") or "\n".join(lines))
-    start = int(call["start"])
-    masked = str(call.get("masked") or _strip_csharp_comments_and_strings(text))
-    statement_start = _receiver_expression_start(masked, start)
-    expression = text[statement_start:start]
-    code = _strip_csharp_comments_and_strings(expression)
-    targets: list[str] = []
-    unresolved = False
-    names = {name for _, _, name, _ in symbols if name != "__last_reader__"}
-    for name in names:
-        if not re.search(rf"\b{re.escape(name)}\b", code):
-            continue
-        target = _lookup_symbol(symbols, name, line, scopes[line])
-        if target:
-            targets.extend(target.split(";"))
-        else:
-            unresolved = True
-    for reader in _call_spans(expression.splitlines(), READER_CALL_PATTERN):
-        target = _reader_target(reader, paths)
-        if target:
-            targets.extend(target.split(";"))
-        else:
-            unresolved = True
-    if targets:
-        return ";".join(dict.fromkeys(targets))
-    return "<unresolved>" if unresolved else None
-def _shared_scope_paths(files: list[Path]) -> dict[Path, dict[str, str]]:
-    """Build shared const and reader symbols for partial validation classes."""
-    groups: dict[str, list[Path]] = {}
-    class_pattern = re.compile(r"\b(?:partial\s+)?(?:class|struct)\s+([A-Za-z_]\w*)")
-    for path in files:
-        text = path.read_text(encoding="utf-8", errors="replace")
-        names = class_pattern.findall(text)
-        key = names[0] if names else path.stem
-        groups.setdefault(key, []).append(path)
-    result: dict[Path, dict[str, str]] = {}
-    for group in groups.values():
-        lines = []
-        for path in group:
-            lines.extend(path.read_text(encoding="utf-8", errors="replace").splitlines())
-        shared = _source_targets(lines, include_variables=False)
-        local_symbols = {
-            path: _scoped_source_symbols(path.read_text(encoding="utf-8", errors="replace").splitlines(), shared)
-            for path in group
+
+MODULE_DIR = Path(__file__).resolve().parent
+PARSER_SEMANTICS_VERSION = "2"
+_VALIDATION_METADATA_CACHE: dict[tuple[str, str], tuple[str, str]] = {}
+if str(MODULE_DIR) not in sys.path:
+    sys.path.insert(0, str(MODULE_DIR))
+
+try:
+    from . import source_text_inventory_ratchet as _ratchet_module
+    from . import source_text_inventory_report as _report_module
+    from . import source_text_inventory_text as _text_module
+    from . import source_text_inventory_flow as _flow_module
+    from . import source_text_inventory_symbols as _symbols_module
+    from .source_text_inventory_text import *
+    from .source_text_inventory_symbols import *
+    from .source_text_inventory_flow import *
+    from .source_text_inventory_ratchet import *
+    from .source_text_inventory_report import *
+except ImportError:
+    import source_text_inventory_ratchet as _ratchet_module
+    import source_text_inventory_report as _report_module
+    import source_text_inventory_text as _text_module
+    import source_text_inventory_flow as _flow_module
+    import source_text_inventory_symbols as _symbols_module
+    from source_text_inventory_text import *
+    from source_text_inventory_symbols import *
+    from source_text_inventory_flow import *
+    from source_text_inventory_ratchet import *
+    from source_text_inventory_report import *
+
+for _module in (_text_module, _symbols_module, _flow_module, _ratchet_module, _report_module):
+    globals().update(
+        {
+            _name: getattr(_module, _name)
+            for _name in dir(_module)
+            if _name.startswith("_") and not _name.startswith("__")
         }
-        caller_texts = {path: path.read_text(encoding="utf-8", errors="replace") for path in group}
-        caller_lines = {path: text.splitlines() for path, text in caller_texts.items()}
-        caller_scopes = {path: _brace_paths(lines) for path, lines in caller_lines.items()}
-        parameter_targets: dict[str, set[str]] = {}
-        declaration_pattern = re.compile(r"\b(?P<name>[A-Za-z_]\w*)\s*\((?P<parameters>[^)]*)\)\s*\{")
-        relevant: list[tuple[str, list[str]]] = []
-        for callee_path in group:
-            callee_text = caller_texts[callee_path]
-            for declaration in declaration_pattern.finditer(callee_text):
-                parameters = [
-                    match.group(1)
-                    for match in re.finditer(r"\b[A-Za-z_]\w*\s+([A-Za-z_]\w*)\s*(?:,|$)", declaration.group("parameters"))
-                ]
-                if not parameters: continue
-                callee_masked = _strip_csharp_comments_and_strings(callee_text); body_start = callee_masked.find("{", declaration.end() - 1); body_end = _balanced_brace_end(callee_masked, body_start) if body_start >= 0 else None; body = callee_masked[body_start:body_end] if body_end is not None else ""
-                parameters = [parameter for parameter in parameters if re.search(rf"\b{re.escape(parameter)}\b", body) and re.search(r"\b(?:Contains|IndexOf|DoesNotContain)\s*\(", body)]
-                if not parameters: continue
-                relevant.append((declaration.group("name"), parameters))
-        call_index: dict[str, list[tuple[Path, re.Match[str]]]] = {}
-        relevant_names = {name for name, _ in relevant}
-        for caller_path in group:
-            caller_text = caller_texts[caller_path]
-            for call in re.finditer(r"\b(?P<name>[A-Za-z_]\w*)\s*\((?P<arguments>[^)]*)\)", caller_text):
-                if call.group("name") in relevant_names: call_index.setdefault(call.group("name"), []).append((caller_path, call))
-        for callee_name, parameters in relevant:
-            for caller_path, call in call_index.get(callee_name, ()):
-                caller_text = caller_texts[caller_path]; arguments = [item.strip() for item in call.group("arguments").split(",")]; line = caller_text.count("\n", 0, call.start()); scope = caller_scopes[caller_path][line]
-                for parameter, argument in zip(parameters, arguments):
-                    target = _lookup_symbol(local_symbols[caller_path], argument, line, scope) if re.fullmatch(r"[A-Za-z_]\w*", argument) else None
-                    reader = READER_CALL_PATTERN.search(argument) if target is None else None
-                    if reader:
-                        reader_argument = argument[argument.find("(", reader.start()) + 1 :]; first = _split_first_argument(reader_argument); target = _extract_argument_path(reader_argument, shared) or _lookup_symbol(local_symbols[caller_path], first, line, scope)
-                    if target and target != "<unresolved>": parameter_targets.setdefault(parameter, set()).update(target.split(";"))
-        for name, targets in parameter_targets.items():
-            if name not in shared: shared[name] = next(iter(targets)) if len(targets) == 1 else "<unresolved>"
-        for path in group:
-            result[path] = shared
-    return result
-def _build_xunit_index(root: Path) -> dict[str, list[str]]:
-    """Index unit-test files by the type names they reference."""
-    index: dict[str, list[str]] = {}
-    unit_files = sorted(root.glob("Packages/*/Tests/Unit/**/*.cs"))
-    texts = [(path, _strip_csharp_comments_and_strings(path.read_text(encoding="utf-8", errors="replace"))) for path in unit_files]
-    product_types: set[str] = set()
-    declaration = re.compile(r"\b(?:class|struct|record|interface|enum)\s+([A-Za-z_]\w*)")
-    for path in root.glob("Packages/**/*.cs"):
-        if "\\Tests\\" in str(path) or "/Tests/" in path.as_posix():
-            continue
-        text = path.read_text(encoding="utf-8", errors="replace")
-        product_types.update(declaration.findall(text))
-    for path, text in texts:
-        referenced = set(re.findall(r"\b[A-Za-z_]\w*\b", text)) & product_types
-        for stem in referenced:
-            index.setdefault(stem, []).append(path.relative_to(root).as_posix())
-    return index
-def _strip_csharp_comments_and_strings(text: str) -> str:
-    """Remove C# comments and string literals before symbol matching."""
-    output: list[str] = []
-    index = 0
-    mode = ""
-    while index < len(text):
-        char = text[index]
-        next_char = text[index + 1] if index + 1 < len(text) else ""
-        if mode == "line":
-            output.append(char if char == "\n" else " "); mode = "" if char == "\n" else mode; index += 1; continue
-        if mode == "block":
-            if char == "*" and next_char == "/":
-                output.extend((" ", " ")); index += 2; mode = ""
-            else:
-                output.append("\n" if char == "\n" else " "); index += 1
-            continue
-        if mode in {"string", "verbatim", "char"}:
-            if mode == "verbatim" and char == '"':
-                if next_char == '"':
-                    output.extend((" ", " ")); index += 2
-                    continue
-                mode = ""
-            elif mode in {"string", "char"} and char == "\\":
-                output.extend((" ", " ")); index += 2
-                continue
-            elif (mode == "string" and char == '"') or (mode == "char" and char == "'"):
-                mode = ""
-            output.append("\n" if char == "\n" else " "); index += 1
-            continue
-        if char == "/" and next_char == "/":
-            output.extend((" ", " ")); index += 2; mode = "line"
-            continue
-        if char == "/" and next_char == "*":
-            output.extend((" ", " ")); index += 2; mode = "block"
-            continue
-        if char == '@' and next_char == '"':
-            output.extend((" ", " ")); index += 2; mode = "verbatim"
-            continue
-        if char == '"':
-            output.append(" "); index += 1; mode = "string"
-            continue
-        if char == "'":
-            output.append(" "); index += 1; mode = "char"
-            continue
-        output.append(char); index += 1
-    return "".join(output)
-def _csharp_comment_text(text: str) -> str:
-    """Return C# line and block comment text while ignoring strings and chars."""
-    output: list[str] = []
-    index = 0
-    mode = ""
-    while index < len(text):
-        char = text[index]
-        next_char = text[index + 1] if index + 1 < len(text) else ""
-        if mode == "line":
-            if char == "\n":
-                output.append(char); mode = ""
-            else:
-                output.append(char)
-            index += 1; continue
-        if mode == "block":
-            if char == "*" and next_char == "/":
-                output.extend(("*", "/")); index += 2; mode = ""
-            else:
-                output.append(char)
-                index += 1
-            continue
-        if mode in {"string", "verbatim", "char"}:
-            if mode == "verbatim" and char == '"':
-                if next_char == '"':
-                    index += 2; continue
-                mode = ""
-            elif mode in {"string", "char"} and char == "\\":
-                index += 2; continue
-            elif (mode == "string" and char == '"') or (mode == "char" and char == "'"):
-                mode = ""
-            index += 1; continue
-        if char == "/" and next_char == "/":
-            output.extend(("/", "/")); index += 2; mode = "line"
-            continue
-        if char == "/" and next_char == "*":
-            output.extend(("/", "*")); index += 2; mode = "block"
-            continue
-        if char == "@" and next_char == '"':
-            index += 2; mode = "verbatim"
-            continue
-        if char == '"':
-            index += 1; mode = "string"
-            continue
-        if char == "'":
-            index += 1; mode = "char"
-            continue
-        index += 1
-    return "".join(output)
-def _target_comment_only(target: str, token: str, root: Path, cache: dict[str, tuple[str, str]]) -> bool:
-    """Return whether a checked literal exists only in target-file comments."""
-    literals = [
-        match.group(1)
-        for match in re.finditer(
-            r"(?:\b[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*\.)?(?:Contains|IndexOf|DoesNotContain)\s*\(\s*\"((?:\\.|[^\"\\])*)\"",
-            token,
+    )
+
+
+class _ExternalHelperIndex:
+    """Bind selected package helper methods across namespaces and partial files."""
+
+    def __init__(self, root: Path):
+        """Index type identities once and defer parsing methods until referenced."""
+        self.root = root
+        self.units = {}
+        self.types = {}
+        self.methods = {}
+        self.closures = {}
+        self.node_work_cache = {}
+        self.signature_cache = {}
+        self.fields = {}
+        self.receivers = {}
+        self.clr_builder_receivers = {}
+        self.fallbacks = {}
+        self.type_candidates_cache = {}
+        self.declaration_files = None
+        for path in sorted(root.glob("Packages/*/**/*.cs")):
+            source = path.read_text(encoding="utf-8", errors="replace")
+            masked = _strip_csharp_comments_and_strings(source)
+            regions = _source_type_regions(masked)
+            imports = re.findall(
+                r"\busing\s+(?:(static)\s+)?(?:([A-Za-z_]\w*)\s*=\s*)?((?:global::)?[\w.]+)\s*;", masked
+            )
+            self.units[path] = {"text": source, "masked": masked, "regions": regions, "imports": imports}
+            for begin, end, name in regions:
+                self.types.setdefault(name, []).append((path, begin, end))
+
+    def _load(self, path: Path):
+        """Cache method bodies and class initializer definitions for one source file."""
+        unit = self.units[path]
+        if unit.get("indexed"):
+            return
+        methods = unit.get("methods")
+        if methods is None:
+            methods = _flow_module._method_infos(unit["text"], unit["masked"])
+        regions = unit["regions"]
+        unit["fields"] = _symbols_module._argument_definition_index(
+            unit["text"], unit["masked"],
+            [(begin, end) for begin, end, _ in regions] + [(method.body_start, method.body_end) for method in methods],
         )
-    ]
-    if not literals:
-        return False
-    files: list[str] = []
-    for value in target.split(";"):
-        path = _repo_file(root, value)
-        if path is None: continue
-        key = path.as_posix(); files.append(key)
-        if key not in cache:
-            text = path.read_text(encoding="utf-8", errors="replace")
-            cache[key] = (_csharp_comment_text(text), _strip_csharp_comments_and_strings(text))
-    for literal in literals:
-        if files and all(literal in cache[key][0] and literal not in cache[key][1] for key in files):
-            return True
-    return False
-def _xunit_coverage(target: str, root: Path, xunit_index: dict[str, list[str]]) -> str:
-    """Return indexed unit-test files whose text references the target type name."""
-    targets = [value for value in target.split(";") if value]
-    names: set[str] = set()
-    for value in targets:
-        names.add(Path(value).stem)
-        product = _repo_file(root, value)
-        if product is not None: names.update(re.findall(r"\b(?:class|struct|record|interface|enum)\s+([A-Za-z_]\w*)", product.read_text(encoding="utf-8", errors="replace")))
-        names.add(value)
-    matches = sorted({match for name in names for match in xunit_index.get(name, [])})
-    return ";".join(matches)
-def scan_file(path: Path, root: Path, xunit_index: dict[str, list[str]], shared_paths: dict[str, str] | None = None, comment_cache: dict[str, tuple[str, str]] | None = None) -> list[dict[str, object]]:
+        for method in methods:
+            if _flow_module._method_for_offset(methods, method.start) is not None:
+                continue
+            owner = min(
+                (region for region in regions if region[0] < method.body_start < region[1]),
+                key=lambda region: region[1] - region[0], default=None,
+            )
+            if owner is not None:
+                self.methods.setdefault((owner[2], method.name), []).append((path, owner, method))
+        unit.update(methods=methods, indexed=True)
+
+    def _package(self, path: Path) -> tuple[str, ...]:
+        """Return the package identity of one indexed source file."""
+        return path.relative_to(self.root).parts[:2]
+
+    def _fragments(self, owner: str, path: Path):
+        """Prefer the caller package's type fragments while retaining external-only types."""
+        fragments = self.types.get(owner, [])
+        package = self._package(path)
+        local = [fragment for fragment in fragments if self._package(fragment[0]) == package]
+        return local or fragments
+
+    def _method_records(self, owner: str, name: str, path: Path):
+        """Select package-local method records even when foreign namesakes are loaded."""
+        fragments = self._fragments(owner, path)
+        paths = {fragment[0] for fragment in fragments}
+        for candidate_path, _, _ in fragments:
+            self._load(candidate_path)
+        return [record for record in self.methods.get((owner, name), []) if record[0] in paths]
+
+    def _type_candidates(self, reference: str, path: Path, owner: str) -> list[str]:
+        """Cache positive and negative type lookups within this immutable source index."""
+        key = (path, owner, reference)
+        if key not in self.type_candidates_cache:
+            self.type_candidates_cache[key] = tuple(self._lookup_type_candidates(reference, path, owner))
+        return list(self.type_candidates_cache[key])
+
+    def _lookup_type_candidates(self, reference: str, path: Path, owner: str) -> list[str]:
+        """Resolve lexical namespaces and imports before conservative same-name candidates."""
+        unit = self.units[path]
+        aliases = {alias: target for static, alias, target in unit["imports"] if alias}
+        head, separator, tail = reference.partition(".")
+        reference = aliases.get(head, head) + (separator + tail if separator else "")
+        if reference.startswith("global::"):
+            return [reference[8:]] if reference[8:] in self.types else []
+        if reference in {"this", "base"}:
+            return [owner]
+        scope = owner.split(".")[:-1]
+        for size in range(len(scope), -1, -1):
+            candidate = ".".join(scope[:size] + [reference])
+            if candidate in self.types:
+                return [candidate]
+        imported = sorted({
+            target + "." + reference for static, alias, target in unit["imports"]
+            if not static and not alias and target + "." + reference in self.types
+        })
+        return imported or sorted(name for name in self.types if name.endswith("." + reference))
+
+    def _receiver_types(self, path: Path, owner: str, method):
+        """Cache declared and constructor receiver types without losing helper return types."""
+        if method is None:
+            return {}
+        key = (path, method.start)
+        if key not in self.receivers:
+            unit = self.units[path]
+            local_types = _flow_module._local_types(unit["text"], method)
+            self.receivers[key] = local_types
+            masked_body = unit["masked"][method.body_start : method.body_end]
+            trusted_method = replace(method, signature=unit["masked"][method.start : method.body_start])
+            trusted_types = _flow_module._local_types(unit["masked"], trusted_method)
+            declarations = [match for match in re.finditer(
+                r"\bvar\s+([A-Za-z_]\w*)\s*=\s*([^;]+);", unit["text"][method.body_start : method.body_end]
+            ) if masked_body[match.start() : match.start() + 3] == "var"]
+            for declaration in declarations:
+                constructor = re.match(
+                    r"new\s+((?:global::)?[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*\(",
+                    masked_body[declaration.start(2) : declaration.end(2)].strip(),
+                )
+                if constructor:
+                    local_types[declaration.group(1)] = trusted_types[declaration.group(1)] = constructor.group(1)
+            writes = Counter(match.group(1) for match in re.finditer(
+                r"(?<![\w.])([A-Za-z_]\w*)\s*(?:\?\?=|>>>?=|<<=|[-+*/%&|^]=|=(?!=|>)|\+\+|--)", masked_body
+            ))
+            parameters = trusted_method.signature.split("(", 1)[1].rsplit(")", 1)[0]
+            writes.update(
+                parameter.split("=", 1)[0].strip().split()[-1]
+                for parameter in _split_arguments(parameters) if parameter.strip()
+            )
+            self.clr_builder_receivers[key] = {
+                name for name, reference in trusted_types.items()
+                if writes[name] <= 1 and self._is_clr_builder(reference, path) and not self._type_candidates(reference, path, owner)
+            }
+            changed = True
+            while changed:
+                changed = False
+                for declaration in declarations:
+                    name, value = declaration.groups()
+                    if local_types.get(name):
+                        continue
+                    inferred = local_types.get(value.strip(), "")
+                    call = re.match(r"((?:global::)?[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*\(", value.strip())
+                    if call:
+                        returns = {record[2].return_type for record in self._resolve(call.group(1), path, owner, method)}
+                        inferred = next(iter(returns)) if len(returns) == 1 else ""
+                    if inferred:
+                        local_types[name] = inferred
+                        changed = True
+        return self.receivers[key]
+
+    def _unresolved_candidates(self, name: str):
+        """Retain repository candidates when an instance receiver cannot be proved."""
+        if name not in self.fallbacks:
+            if self.declaration_files is None:
+                self.declaration_files = {}
+                declaration = re.compile(r"(?=\b(?P<name>[A-Za-z_]\w*)\s*\([^;{}]*\)\s*(?:\{|=>))")
+                for path, unit in self.units.items():
+                    names = {match.group("name") for match in declaration.finditer(unit["masked"])}
+                    for candidate in names:
+                        self.declaration_files.setdefault(candidate, []).append(path)
+            for path in self.declaration_files.get(name, []):
+                self._load(path)
+            self.fallbacks[name] = [record for (_, terminal), records in self.methods.items() if terminal == name for record in records]
+        return self.fallbacks[name]
+
+    def _is_clr_builder(self, reference: str, path: Path) -> bool:
+        """Recognize the sealed CLR builder only through qualified or imported type evidence."""
+        imports = self.units[path]["imports"]
+        aliases = {alias: target for static, alias, target in imports if alias}
+        head, separator, tail = reference.partition(".")
+        reference = aliases.get(head, head) + (separator + tail if separator else "")
+        reference = reference.removeprefix("global::")
+        return reference == "System.Text.StringBuilder" or (
+            reference == "StringBuilder"
+            and any(not static and not alias and target == "System.Text" for static, alias, target in imports)
+        )
+
+    def _resolve(self, name: str, path: Path, owner: str, method=None):
+        """Resolve referenced methods while retaining every plausible overload."""
+        qualifier, separator, terminal = name.rpartition(".")
+        local_types = self._receiver_types(path, owner, method)
+        receiver = qualifier.removeprefix("global::").split(".", 1)[0]
+        instance = receiver in local_types
+        declared = local_types.get(qualifier, "")
+        reference = declared if instance else qualifier
+        types = self._type_candidates(reference, path, owner) if separator and reference else ([] if separator else [owner])
+        if not separator:
+            if not self._method_records(owner, terminal, path):
+                types = []
+                for static, alias, target in self.units[path]["imports"]:
+                    if static:
+                        types.extend(self._type_candidates(target, path, owner))
+        candidates = []
+        for candidate in types:
+            candidates.extend(self._method_records(candidate, terminal, path))
+        primitives = {"string", "bool", "char", "int", "long", "float", "double", "decimal"}
+        framework = receiver in {
+            "System", "Microsoft", "UnityEngine", "File", "Directory", "Path", "Array", "Math", "Console",
+            "String", "Enumerable", "Task", "Regex", "Encoding", "StringBuilder", "Environment",
+        }
+        if not candidates and separator and (instance or not framework):
+            if declared not in primitives and qualifier not in primitives:
+                candidates = self._unresolved_candidates(terminal)
+                if instance and not types and qualifier in self.clr_builder_receivers.get((path, method.start), ()):
+                    candidates = [record for record in candidates if re.search(r"\bstatic\b", record[2].signature)]
+        return candidates
+
+    def _fields(self, owner: str, path: Path):
+        """Merge partial initializer definitions with their declaring source imports."""
+        key = (self._package(path), owner)
+        if key not in self.fields:
+            definitions = []
+            origins = {}
+            fragments = [fragment for fragment in self.types.get(owner, []) if self._package(fragment[0]) == key[0]]
+            for source, begin, _ in sorted(fragments, key=lambda item: item[0].relative_to(self.root).as_posix()):
+                self._load(source)
+                for definition in self.units[source]["fields"].get(begin, []):
+                    definitions.append(definition)
+                    origins[id(definition)] = source
+            self.fields[key] = (definitions, origins)
+        return self.fields[key]
+
+    def _calls(self, expression: str, path: Path, owner: str, method=None):
+        """Yield method records selected by calls in an actual dependency expression."""
+        masked = _strip_csharp_comments_and_strings(expression)
+        pattern = re.compile(r"(?<![\w.])(?:global\s*::\s*)?(?:[A-Za-z_]\w*\s*\.\s*)*[A-Za-z_]\w*\s*\(")
+        for match in pattern.finditer(masked):
+            name = re.sub(r"\s+", "", masked[match.start() : match.end() - 1])
+            if name in _flow_module.CONTROL_KEYWORDS:
+                continue
+            end = _balanced_call_end(masked, match.end() - 1)
+            if end is not None:
+                yield from self._resolve(name, path, owner, method)
+
+    def _node_work(self, record):
+        """Memoize one immutable node's piece, ordered field origins, and direct callees."""
+        key = (record[0], record[2].start)
+        if key not in self.node_work_cache:
+            path, owner, method = record
+            unit = self.units[path]
+            body = unit["text"][method.start : method.body_end + 1]
+            definitions, origins = self._fields(owner[2], path)
+            limit = max((definition[0] for definition in definitions), default=0) + 1
+            fields = _dependency_definitions(body, limit, definitions, {})
+            state = "\n".join(definition[2] for definition in fields)
+            piece = owner[2] + ":" + _normalize_csharp_expression(body) + "|state:" + state
+            outgoing = list(self._calls(body, path, owner[2], method))
+            selected_origins = []
+            for definition in fields:
+                origin = origins[id(definition)]
+                selected_origins.append(origin)
+                outgoing.extend(self._calls(definition[2], origin, owner[2]))
+            self.node_work_cache[key] = (piece, tuple(selected_origins), tuple(outgoing))
+        return self.node_work_cache[key]
+
+    def _closure(self, record):
+        """Hash transitive helper bodies and referenced class initializer dependencies."""
+        key = (record[0], record[2].start)
+        if key in self.closures:
+            return self.closures[key]
+        pending = [record]
+        visited = set()
+        pieces = set()
+        paths = set()
+        while pending:
+            path, owner, method = pending.pop()
+            identity = (path, method.start)
+            if identity in visited:
+                continue
+            visited.add(identity)
+            paths.add(path)
+            piece, origins, outgoing = self._node_work((path, owner, method))
+            pieces.add(piece)
+            paths.update(origins)
+            pending.extend(outgoing)
+        result = (pieces, paths)
+        self.closures[key] = result
+        return result
+
+    def signature(self, path: Path, method, expression: str) -> str:
+        """Sign only external helper dependencies of one source assertion."""
+        if method is None:
+            return ""
+        unit = self.units[path]
+        owner = min(
+            (region for region in unit["regions"] if region[0] < method.body_start < region[1]),
+            key=lambda region: region[1] - region[0], default=None,
+        )
+        if owner is None:
+            return ""
+        selected_closures = []
+        roots = set()
+        for record in self._calls(expression, path, owner[2], method):
+            selected_closures.append(self._closure(record))
+            roots.add((record[0], record[2].start))
+        key = (path, frozenset(roots))
+        if key in self.signature_cache:
+            return self.signature_cache[key]
+        pieces = set()
+        paths = set()
+        for selected, selected_paths in selected_closures:
+            pieces.update(selected)
+            paths.update(selected_paths)
+        result = hashlib.sha256("\n".join(sorted(pieces)).encode()).hexdigest() if paths - {path} else ""
+        self.signature_cache[key] = result
+        return result
+
+
+def _unresolved_reason(
+    call: dict[str, object],
+    target: str,
+    source_text: str,
+    masked: str,
+    method_infos: list[object] | None = None,
+) -> str:
+    """Explain why a source assertion target could not be resolved."""
+    if "<directory>" in target:
+        return "directory_target"
+    if "<unresolved>" not in target:
+        return ""
+    call_text = str(call.get("text", ""))
+    if ".ToFullString" in call_text:
+        return "roslyn_syntax"
+    if re.search(r'"(?:/|[A-Za-z]:[\\/]|[^"\\r\\n]*\.\.[\\/])', call_text):
+        return "outside_root"
+    receiver = str(call.get("receiver") or "")
+    start = int(call.get("start", 0))
+    if receiver:
+        methods = method_infos or _flow_module._method_infos(source_text, masked)
+        method = _flow_module._method_for_offset(methods, start)
+        if method is not None:
+            signature = source_text[method.start : method.body_start]
+            if re.search(rf"\b{re.escape(receiver.split('.', 1)[0])}\b", signature):
+                return "parameter_without_caller"
+        prefix = masked[:start]
+        if re.search(rf"\b{re.escape(receiver.split('.', 1)[0])}\s*=", prefix):
+            return "reassigned"
+    if READER_CALL_PATTERN.search(call_text):
+        return "dynamic_path"
+    return "unsupported_reader"
+
+
+def scan_file(
+    path: Path,
+    root: Path,
+    xunit_index: dict[str, list[str]],
+    shared_paths: dict[str, str] | None = None,
+    comment_cache: dict[str, tuple[str, str]] | None = None,
+    partial_harness_signature: str | None = None,
+    external_helpers: _ExternalHelperIndex | None = None,
+    partial_termination_barriers: dict[str, str] | None = None,
+) -> list[dict[str, object]]:
     """Collect source-text assertions from one validation file."""
     lines = path.read_text(encoding="utf-8").splitlines()
-    paths = dict(shared_paths or {})
+    paths = _source_targets(lines, include_variables=False)
+    paths.update(shared_paths or {})
     local_symbols = _scoped_source_symbols(lines, paths)
     scopes = _brace_paths(lines)
     comment_cache = comment_cache if comment_cache is not None else {}
     for _, _, name, target in local_symbols:
         paths[name] = target
-    source_text = "\n".join(lines); masked_file = _strip_csharp_comments_and_strings(source_text)
+    source_text = "\n".join(lines)
+    masked_file = _strip_csharp_comments_and_strings(source_text)
     assertion_calls = _call_spans(lines, ASSERTION_CALL_PATTERN, source_text, masked_file)
     receiver_calls = _call_spans(lines, RECEIVER_PATTERN, source_text, masked_file)
     derived_calls = _call_spans(lines, DERIVED_METHOD_PATTERN, source_text, masked_file)
@@ -734,8 +425,57 @@ def scan_file(path: Path, root: Path, xunit_index: dict[str, list[str]], shared_
     for call in receiver_calls + derived_calls + assertion_calls:
         call.update(text_file=source_text, masked=masked_file)
     validation_flag, dispatch = _validation_metadata(root, path.relative_to(root).as_posix())
-    harness_signature = _validation_harness_signature(source_text)
-    reachability = _reachability_signatures(lines, receiver_calls + derived_calls + assertion_calls, source_text, masked_file)
+    entrypoint = dispatch.rsplit("|", 1)[-1] if dispatch else ""
+    method_infos = _flow_module._method_infos(source_text, masked_file)
+    if external_helpers is not None:
+        external_helpers.units[path]["methods"] = method_infos
+    argument_definitions = _flow_module._argument_definition_index(source_text, masked_file, method_infos)
+    reachability = _flow_module._method_call_contexts(
+        source_text,
+        masked_file,
+        method_infos,
+        receiver_calls + derived_calls + assertion_calls + harness_calls,
+        argument_definitions,
+    )
+    local_method_names = {method.name for method in method_infos}
+    for method in method_infos:
+        for name, open_index in _flow_module._call_sites(source_text, masked_file, method):
+            terminal = name.rsplit(".", 1)[-1].rsplit("::", 1)[-1]
+            digest = (partial_termination_barriers or {}).get(terminal)
+            if digest is None or terminal in local_method_names:
+                continue
+            end = _flow_module._balanced_call_end(masked_file, open_index)
+            if end is None:
+                continue
+            descriptor = f"before:terminate-partial:{terminal}:helper({digest})"
+            for position in list(reachability):
+                if position <= end or _flow_module._method_for_offset(method_infos, position) is not method:
+                    continue
+                reachability[position] = "|".join(
+                    value for value in (reachability[position], descriptor) if value
+                )
+    _, call_paths = _flow_module._call_path_index(
+        source_text,
+        masked_file,
+        entrypoint,
+        reachability,
+        method_infos,
+        argument_definitions,
+    )
+    call_bindings = _flow_module._ambiguous_call_bindings(source_text, masked_file, method_infos)
+    harness_signature = _validation_harness_signature(
+        source_text,
+        masked_file,
+        method_infos,
+        entrypoint,
+        argument_definitions,
+        reachability,
+    )
+    if partial_harness_signature:
+        harness_signature = partial_harness_signature
+    legacy_harness_signature = _legacy_validation_harness_signature(
+        source_text, masked_file
+    )
     receiver_ends = {int(call["end"]) for call in receiver_calls}
     candidates: list[tuple[int, dict[str, object], str]] = []
     for call in receiver_calls:
@@ -768,12 +508,69 @@ def scan_file(path: Path, root: Path, xunit_index: dict[str, list[str]], shared_
         for part in target.split(";"):
             candidate = (root / part).resolve() if part and part != "<unresolved>" else None
             if candidate is not None and candidate.is_dir():
-                target_parts.append("<directory>")
+                target_parts.append(f"<directory>:{part}")
             elif part:
                 target_parts.append(part)
         target = ";".join(dict.fromkeys(target_parts)) or "<unresolved>"
+        unresolved_reason = _unresolved_reason(
+            call,
+            target,
+            source_text,
+            masked_file,
+            method_infos,
+        )
+        containing_method = _flow_module._method_for_offset(
+            method_infos,
+            int(call["start"]),
+        )
+        call_path = (
+            call_paths.get(containing_method.identity, "UNKNOWN")
+            if containing_method is not None
+            else "UNKNOWN"
+        )
+        reader_signature = _reader_expression_signature(
+            source_text, call, method_infos, argument_definitions, reachability
+        )
         label_match = PHASE_LABEL_PATTERN.search("".join(lines[max(0, index - 5) : index + 1]))
-        containing_harness = min((candidate for candidate in harness_calls if int(candidate["start"]) <= int(call["start"]) < int(candidate["end"])), key=lambda candidate: int(candidate["end"]) - int(candidate["start"]), default=None)
+        containing_harness = min(
+            (
+                candidate
+                for candidate in harness_calls
+                if int(candidate["start"]) <= int(call["start"]) < int(candidate["end"])
+            ),
+            key=lambda candidate: int(candidate["end"]) - int(candidate["start"]),
+            default=None,
+        )
+        checked_expression = _checked_expression_signature(
+            token_text, str(containing_harness["text"]) if containing_harness else None
+        )
+        row_harness_signature = harness_signature
+        if external_helpers is not None:
+            helper_expression = _external_dependency_expression(
+                source_text, masked_file, call, containing_method, method_infos, checked_expression,
+                containing_harness, harness_calls, argument_definitions, reachability, call_path,
+            )
+            external_signature = external_helpers.signature(path, containing_method, helper_expression)
+            if external_signature:
+                row_harness_signature = hashlib.sha256(
+                    f"{harness_signature}|external:{external_signature}".encode()
+                ).hexdigest()
+        assertion_signature = _normalize_csharp_expression(token_text)
+        if containing_method is not None:
+            control_signature = _local_dependency_signature(
+                checked_expression,
+                int(call["start"]),
+                argument_definitions.get(containing_method.body_start, []),
+                reachability,
+            )
+            if control_signature:
+                assertion_signature += f"|control:{control_signature}"
+        if containing_harness is None:
+            consumer_signature = _predicate_consumer_signature(
+                source_text, masked_file, call, method_infos, reachability, argument_definitions
+            )
+            if consumer_signature:
+                assertion_signature += f"|consumer:{consumer_signature}"
         rows.append(
             {
                 "file": path.relative_to(root).as_posix(),
@@ -781,210 +578,367 @@ def scan_file(path: Path, root: Path, xunit_index: dict[str, list[str]], shared_
                 "label": label_match.group("label") if label_match else "",
                 "validation_flag": validation_flag,
                 "dispatch": dispatch,
+                "parser_version": PARSER_SEMANTICS_VERSION,
                 "class": classify(target, classification_text),
                 "target": target,
+                "unresolved_reason": unresolved_reason,
                 "xunit_coverage": _xunit_coverage(target, root, xunit_index),
                 "token": token_text,
+                "assertion_signature": assertion_signature,
+                "reader_signature": reader_signature,
                 "comment_only": _target_comment_only(target, token_text, root, comment_cache),
-                "checked_expression": _checked_expression_signature(token_text, str(containing_harness["text"]) if containing_harness else None),
-                "harness_signature": harness_signature,
+                "checked_expression": checked_expression,
+                "assertion_context": _assertion_context(
+                    token_text, str(containing_harness["text"]) if containing_harness else None
+                ),
+                "assertion_literal": _assertion_literal(token_text),
+                "assertion_polarity": _assertion_polarity(
+                    token_text, str(containing_harness["text"]) if containing_harness else None
+                ),
+                "harness_signature": row_harness_signature,
+                "legacy_harness_signature": legacy_harness_signature,
                 "reachability": reachability.get(int(call["start"]), ""),
+                "call_path": call_path,
+                "call_binding": (
+                    call_bindings.get(containing_method.identity, "")
+                    if containing_method is not None
+                    else ""
+                ),
             }
         )
     return rows
+
+
+def _external_dependency_expression(
+    text: str, masked: str, call: dict[str, object], method, methods: list[object], checked: str,
+    harness, harness_calls: list[dict[str, object]], definitions: dict[int, list[tuple[int, str, str, str]]],
+    contexts: dict[int, str], call_path: str,
+) -> str:
+    """Select reader definitions and actual assertion consumers for external binding."""
+    if method is None:
+        return ""
+    offset = int(call["start"])
+    receiver = str(call.get("receiver") or "").split(".", 1)[0]
+    local_definitions = definitions.get(method.body_start, [])
+    selected = _dependency_definitions(checked + " " + receiver, offset, local_definitions, contexts)
+    expressions = [checked, call_path] + [definition[2] for definition in selected]
+    consumers = [harness] if harness else []
+    if not harness:
+        begin = max(masked.rfind(";", method.body_start, offset), masked.rfind("{", method.body_start, offset)) + 1
+        assignment = re.search(r"([A-Za-z_]\w*)\s*=(?!=)\s*$", masked[begin:offset])
+        if assignment:
+            names = {assignment.group(1)}
+            for position, name, _, references in local_definitions:
+                if position > offset and names.intersection(re.findall(r"\b[A-Za-z_]\w*\b", references)):
+                    names.add(name)
+            consumers.extend(
+                candidate for candidate in harness_calls
+                if int(candidate["start"]) > offset
+                and _flow_module._method_for_offset(methods, int(candidate["start"])) is method
+                and names.intersection(re.findall(r"\b[A-Za-z_]\w*\b", _strip_csharp_comments_and_strings(str(candidate["text"]))))
+            )
+    for consumer in consumers:
+        start = int(consumer["start"])
+        qualifier = re.search(r"(?:global\s*::\s*)?(?:[A-Za-z_]\w*\s*\.\s*)+$", masked[method.body_start:start])
+        if qualifier:
+            start = method.body_start + qualifier.start()
+        expressions.append(text[start : int(consumer["end"])])
+    return "\n".join(expressions)
+
+
+def _predicate_consumer_signature(
+    text: str,
+    masked: str,
+    call: dict[str, object],
+    methods: list[object],
+    contexts: dict[int, str],
+    argument_definitions: dict[int, list[tuple[int, str, str, str]]],
+) -> str:
+    """Bind a stored source predicate to subsequent uses and assertion consumers."""
+    start = int(call["start"])
+    method = _flow_module._method_for_offset(methods, start)
+    if method is None:
+        return ""
+    statement_start = max(
+        masked.rfind(";", method.body_start, start),
+        masked.rfind("{", method.body_start, start),
+    ) + 1
+    assignment = re.search(
+        r"(?<![\w.])(?P<name>[A-Za-z_]\w*)\s*=(?!=)\s*[^;{}]*$",
+        masked[statement_start:start],
+    )
+    statement_end = masked.find(";", int(call["end"]), method.body_end)
+    if assignment is None or statement_end < 0:
+        return ""
+    names = {assignment.group("name")}
+    pieces = [text[statement_start : statement_end + 1]]
+    cursor = statement_end + 1
+    for statement in re.finditer(r"[^;]+;", masked[cursor : method.body_end]):
+        begin = cursor + statement.start()
+        end = cursor + statement.end()
+        references = re.search(
+            r"\b(?:" + "|".join(re.escape(name) for name in sorted(names)) + r")\b",
+            statement.group(),
+        )
+        if references is None or _flow_module._method_for_offset(
+            methods, begin + references.start()
+        ) is not method:
+            continue
+        prefix_length = re.match(r"[\s}]*", statement.group()).end()
+        pieces.append(text[begin + prefix_length : end])
+        forwarded = re.search(r"(?<![\w.])([A-Za-z_]\w*)\s*=(?!=)", statement.group())
+        if forwarded:
+            names.add(forwarded.group(1))
+        for position in contexts:
+            if not begin <= position < end:
+                continue
+            pieces.append(contexts.get(position, ""))
+            pieces.append(
+                _local_dependency_signature(
+                    text[begin:end], position, argument_definitions.get(method.body_start, []), contexts
+                )
+            )
+    normalized = _normalize_csharp_expression("\n".join(pieces))
+    return hashlib.sha256(normalized.encode()).hexdigest()
+
+
 def inventory(root: Path) -> list[dict[str, object]]:
     """Scan runtime and unit C# validation files under every package."""
+    _text_module._clear_text_caches()
+    _symbols_module._clear_symbol_caches()
+    _VALIDATION_METADATA_CACHE.clear()
     rows: list[dict[str, object]] = []
     xunit_index = _build_xunit_index(root)
-    files = sorted({path for pattern in ("Packages/*/Tests/Runtime/**/*.cs", "Packages/*/Tests/Unit/**/*.cs") for path in root.glob(pattern)})
+    files = sorted(
+        {
+            path
+            for pattern in ("Packages/*/Tests/Runtime/**/*.cs", "Packages/*/Tests/Unit/**/*.cs")
+            for path in root.glob(pattern)
+        }
+    )
     scopes = _shared_scope_paths(files)
+    external_helpers = _ExternalHelperIndex(root)
+    partial_signatures: dict[Path, str] = {}
+    partial_termination_barriers: dict[Path, dict[str, str]] = {}
+    partial_groups: dict[tuple[tuple[str, ...], str], list[Path]] = {}
+    for path in files:
+        unit = external_helpers.units[path]
+        source = unit["masked"]
+        package_key = tuple(path.parts[: path.parts.index("Tests")]) if "Tests" in path.parts else ()
+        for match in re.finditer(r"\bpartial\s+class\s+(?P<name>[A-Za-z_]\w*)", source):
+            body_start = source.find("{", match.end())
+            qualified = next((name for begin, _, name in unit["regions"] if begin == body_start), match.group("name"))
+            partial_groups.setdefault((package_key, qualified), []).append(path)
+    for group_paths in partial_groups.values():
+        if len(group_paths) < 2:
+            continue
+        combined = "\n".join(
+            path.read_text(encoding="utf-8", errors="replace")
+            for path in sorted(set(group_paths), key=lambda item: item.relative_to(root).as_posix())
+        )
+        masked = _strip_csharp_comments_and_strings(combined)
+        methods = _flow_module._method_infos(combined, masked)
+        barriers = _flow_module._partial_termination_barriers(combined, masked, methods)
+        entrypoints = set()
+        for path in group_paths:
+            _, dispatch = _validation_metadata(root, path.relative_to(root).as_posix())
+            if dispatch:
+                entrypoints.update(dispatch.rsplit("|", 1)[-1].split(";"))
+        signature = _validation_harness_signature(
+            combined, masked, methods, ";".join(sorted(entrypoints))
+        )
+        for path in group_paths:
+            partial_signatures[path] = signature
+            partial_termination_barriers[path] = barriers
     comment_cache: dict[str, tuple[str, str]] = {}
     for path in files:
-        rows.extend(scan_file(path, root, xunit_index, scopes.get(path), comment_cache))
-    return rows
-def _inventory_at_revision(root: Path, revision: str, use_current_parser: bool = False) -> list[dict[str, object]]:
-    """Materialize a Git revision under build/ and scan it with the current inventory rules."""
-    build_root = root / "build" / "review"
-    build_root.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="source-text-inventory-base-", dir=build_root) as directory:
-        process = subprocess.Popen(
-            ["git", "archive", revision],
-            cwd=root,
-            stdout=subprocess.PIPE,
+        rows.extend(
+            scan_file(
+                path,
+                root,
+                xunit_index,
+                scopes.get(path),
+                comment_cache,
+                partial_signatures.get(path),
+                external_helpers,
+                partial_termination_barriers.get(path),
+            )
         )
-        assert process.stdout is not None
-        with tarfile.open(fileobj=process.stdout, mode="r|") as archive:
-            archive.extractall(directory)
-        if process.wait() != 0:
-            raise RuntimeError(f"git archive failed for {revision}")
-        script_path = Path(directory) / "Scripts" / "validation" / "source_text_inventory.py"
-        spec = importlib.util.spec_from_file_location("source_text_inventory_base", script_path)
-        if spec is None or spec.loader is None:
-            raise RuntimeError(f"base inventory script is missing at {script_path}")
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        return inventory(Path(directory)) if use_current_parser else module.inventory(Path(directory))
-def _token_signatures(token: str) -> set[tuple[str, str]]:
-    """Return method/literal anchors that survive line and parser changes."""
-    signatures: set[tuple[str, str]] = set()
-    for match in re.finditer(r"\.(Contains|IndexOf|DoesNotContain)\s*\(", token):
-        literal = re.match(r"\s*\"((?:\\.|[^\"\\])*)\"", token[match.end() :])
-        signatures.add((match.group(1), literal.group(1) if literal else ""))
-    nonempty = {item for item in signatures if item[1]}
-    return nonempty or signatures or {("", re.sub(r"\s+", " ", token).strip())}
-def _checked_expression_signature(token: str, harness: str | None = None) -> str:
-    """Return the normalized expression whose value is checked by an assertion."""
-    if harness:
-        match = re.search(r"\bCheck\s*\(|\bAssert\.(?:True|False)\s*\(", harness)
-        if match:
-            open_index = harness.find("(", match.start(), match.end()); close_index = _balanced_call_end(harness, open_index)
-            if close_index is not None:
-                return re.sub(r"\s+", " ", _split_first_argument(harness[open_index + 1 : close_index]).strip())
-    match = re.search(r"\bAssert\.(?:Contains|DoesNotContain)\s*\(", token)
-    if match:
-        open_index = token.find("(", match.start(), match.end()); close_index = _balanced_call_end(token, open_index)
-        if close_index is not None:
-            arguments = token[open_index + 1 : close_index]
-            first = _split_first_argument(arguments); first_offset = arguments.find(first); comma = arguments.find(",", first_offset + len(first)) if first_offset >= 0 else -1
-            if comma >= 0:
-                second = _split_first_argument(arguments[comma + 1 :])
-                return re.sub(r"\s+", " ", second.strip())
-    return re.sub(r"\s+", " ", token.strip())
-def _validation_harness_signature(text: str) -> str:
+    return rows
+
+
+def _validation_harness_signature(
+    text: str,
+    masked: str | None = None,
+    methods: list[object] | None = None,
+    entrypoint: str = "",
+    argument_definitions: dict[int, list[tuple[int, str, str, str]]] | None = None,
+    call_contexts: dict[int, str] | None = None,
+) -> str:
     """Hash local assertion and source-reader helper implementations."""
-    masked = _strip_csharp_comments_and_strings(text); pattern = re.compile(r"\b(?:Check|Read[A-Za-z_]\w*|Source[A-Za-z_]\w*|Validate(?:[A-Za-z_]\w*)?)\s*\([^;{}]*\)\s*\{"); pieces: list[str] = []
-    for match in pattern.finditer(masked):
-        brace = masked.find("{", match.start(), match.end()); end = _balanced_brace_end(masked, brace)
-        if end is not None: pieces.append(text[match.start() : end + 1])
-    return hashlib.sha256("\n".join(pieces).encode()).hexdigest() if pieces else ""
-def _row_prefix(row: dict[str, object]) -> tuple[str, str]:
-    """Return the file and validation flag portion of a row identity."""
-    return str(row["file"]), str(row["validation_flag"])
-def _signatures_overlap(base: set[tuple[str, str]], head: set[tuple[str, str]]) -> bool:
-    """Match multiline base tokens whose literal is on a continuation line."""
-    return any(
-        base_method == head_method and (not base_literal or not head_literal or base_literal == head_literal)
-        for base_method, base_literal in base
-        for head_method, head_literal in head
+    return _flow_module._validation_harness_signature(
+        text, masked, methods, entrypoint, argument_definitions, call_contexts
     )
-def _targets_overlap(base: dict[str, object], head: dict[str, object]) -> bool:
-    """Match legacy rows whose token shape changed but target stayed stable."""
-    base_targets = {value for value in str(base["target"]).split(";") if value and value != "<unresolved>"}
-    head_targets = {value for value in str(head["target"]).split(";") if value and value != "<unresolved>"}
-    return bool(base_targets and base_targets & head_targets)
-def _match_base_rows(
-    base_rows: list[dict[str, object]], head_rows: list[dict[str, object]], strict: bool = False
-) -> tuple[list[tuple[dict[str, object], dict[str, object]]], list[dict[str, object]]]:
-    """Match base rows to head rows without relying on physical line numbers."""
-    available = set(range(len(head_rows)))
-    matches: list[tuple[dict[str, object], dict[str, object]]] = []
-    pending = list(base_rows)
-    for mode in range(3):
-        next_pending: list[dict[str, object]] = []
-        for base in pending:
-            base_signatures = _token_signatures(str(base["token"]))
-            base_token = re.sub(r"\s+", " ", str(base["token"]).strip())
-            if mode == 0:
-                candidate = next((index for index in sorted(available) if str(base["file"]) == str(head_rows[index]["file"]) and base_token == re.sub(r"\s+", " ", str(head_rows[index]["token"]).strip())), None)
-            elif mode == 1:
-                candidate = next((index for index in sorted(available) if _row_prefix(base) == _row_prefix(head_rows[index]) and _signatures_overlap(base_signatures, _token_signatures(str(head_rows[index]["token"])))), None)
-            else:
-                candidate = next((index for index in sorted(available) if _row_prefix(base) == _row_prefix(head_rows[index]) and _targets_overlap(base, head_rows[index])), None)
-            if candidate is None:
-                next_pending.append(base)
-            else:
-                available.remove(candidate)
-                matches.append((base, head_rows[candidate]))
-        pending = next_pending
-    missing = pending
-    base_counts, head_counts = Counter(_row_prefix(row) for row in base_rows), Counter(_row_prefix(row) for row in head_rows)
-    return matches, missing if strict else [row for row in missing if str(row["target"]) != "<unresolved>" and head_counts[_row_prefix(row)] < base_counts[_row_prefix(row)] and not re.search(r"\b(?:warning|logLines)\b", str(row["token"]))]
-def _verify_base_inventory(root: Path, rows: list[dict[str, object]], revision: str) -> int:
-    """Reject silent row loss or new unresolved targets relative to a trusted base."""
-    base_rows = _inventory_at_revision(root, revision)
-    base_status_rows = _inventory_at_revision(root, revision, use_current_parser=True)
-    status_matches, status_missing = _match_base_rows(base_status_rows, rows, strict=True)
-    missing = status_missing
-    fields = ("target", "class", "comment_only", "xunit_coverage", "reachability", "checked_expression", "dispatch", "harness_signature")
-    metadata_changed = [_row_prefix(base) for base, head in status_matches if (tuple(str(base.get(field, "")) for field in fields) + (str(_token_signatures(str(base["token"]))),)) != (tuple(str(head.get(field, "")) for field in fields) + (str(_token_signatures(str(head["token"]))),))]
-    base_unresolved = sum(row["class"] == "UNRESOLVED" for row in base_status_rows)
-    head_unresolved = sum(row["class"] == "UNRESOLVED" for row in rows)
-    base_unknown = sum(row["class"] == "UNKNOWN" for row in base_status_rows)
-    head_unknown = sum(row["class"] == "UNKNOWN" for row in rows)
-    print(f"SOURCE_TEXT_INVENTORY_BASE_OK base_rows={len(base_rows)} head_rows={len(rows)} missing={len(missing)} base_unresolved={base_unresolved} head_unresolved={head_unresolved} base_unknown={base_unknown} head_unknown={head_unknown} metadata_changed={len(metadata_changed)}")
-    if missing or status_missing or metadata_changed or head_unresolved > base_unresolved or head_unknown > base_unknown:
-        if missing:
-            print(f"SOURCE_TEXT_INVENTORY_BASE_MISSING sample={[(row['file'], row['line'], row['label']) for row in missing[:5]]}")
-        if metadata_changed: print(f"SOURCE_TEXT_INVENTORY_METADATA_CHANGED sample={metadata_changed[:5]}")
-        if status_missing: print(f"SOURCE_TEXT_INVENTORY_STATUS_MISSING sample={[(row['file'], row['line']) for row in status_missing[:5]]}")
-        return 1
-    return 0
+
+
+def _legacy_validation_harness_signature(
+    text: str, masked: str | None = None
+) -> str:
+    """Hash harness bodies with the pre-migration parser semantics."""
+    masked = masked if masked is not None else _strip_csharp_comments_and_strings(text)
+    pattern = re.compile(
+        r"\b(?:Check|Read[A-Za-z_]\w*|Source[A-Za-z_]\w*|Validate(?:[A-Za-z_]\w*)?)\s*"
+        r"\([^;{}]*\)\s*\{"
+    )
+    pieces: list[str] = []
+    for match in pattern.finditer(masked):
+        brace = masked.find("{", match.start(), match.end())
+        end = _balanced_brace_end(masked, brace)
+        if end is not None:
+            pieces.append(text[match.start() : end + 1])
+    return hashlib.sha256("\n".join(pieces).encode()).hexdigest() if pieces else ""
+
+
 def _validation_metadata(root: Path, source_file: str) -> tuple[str, str]:
     """Resolve a validation file to its registry flag and dispatch metadata."""
+    cache_key = (str(root.resolve()), source_file)
+    cached = _VALIDATION_METADATA_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
     stem = Path(source_file).stem
-    registry = root / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "PhaseValidationRegistry.cs"
-    if not registry.is_file(): return "", ""
-    text = registry.read_text(encoding="utf-8", errors="replace")
-    entry_start = re.compile(r"^\s*(?P<kind>Ci|Local|DefaultOnly)\(\"(?P<flag>--[A-Za-z0-9-]+)\"", re.MULTILINE)
-    matches = list(entry_start.finditer(text))
-    for index, match in enumerate(matches):
-        end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
-        block = text[match.start() : end]
-        entrypoint = re.search(rf"\b{re.escape(stem)}\.(?P<entry>Validate\w*)\b", block)
-        if entrypoint:
-            default = "false" if re.search(r"\bincludeInDefault\s*:\s*false\b", block) else "true"
-            return match.group("flag"), f"{match.group('kind')}|{default}|{entrypoint.group('entry')}"
-    return "", ""
-def write_report(rows: list[dict[str, object]], output: Path) -> None:
-    """Write CSV and Markdown summary files for the inventory."""
-    output.mkdir(parents=True, exist_ok=True)
-    csv_path = output / "source_text_inventory.csv"
-    with csv_path.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=("file", "line", "label", "validation_flag", "dispatch", "class", "target", "xunit_coverage", "token", "checked_expression", "harness_signature", "comment_only", "reachability"))
-        writer.writeheader()
-        writer.writerows(rows)
-    counts = {label: sum(row["class"] == label for row in rows) for label in ("A", "B", "C", "UNKNOWN", "UNRESOLVED")}
-    comments = sum(bool(row["comment_only"]) for row in rows)
-    by_flag: dict[str, dict[str, int]] = {}
-    for row in rows:
-        flag = str(row["validation_flag"] or "<unregistered>")
-        summary = by_flag.setdefault(flag, {"total": 0, "class_c": 0, "comment_only": 0, "covered": 0})
-        summary["total"] += 1
-        summary["class_c"] += int(row["class"] == "C")
-        summary["comment_only"] += int(bool(row["comment_only"]))
-        summary["covered"] += int(bool(row["xunit_coverage"]))
-    ranking = "\n## Validation ranking\n\n| Flag | Tokens | Class C | xUnit-covered targets | Comment-only |\n|---|---:|---:|---:|---:|\n"
-    for flag, summary in sorted(by_flag.items(), key=lambda item: (-item[1]["class_c"], item[0])):
-        ranking += f"| `{flag}` | {summary['total']} | {summary['class_c']} | {summary['covered']} | {summary['comment_only']} |\n"
-    file_targets = sum(
-        bool(row["target"])
-        and "<directory>" not in str(row["target"])
-        and "<unresolved>" not in str(row["target"])
-        for row in rows
+    registry = (
+        root
+        / "Packages"
+        / "dev.unity2foxglove.sdk"
+        / "Tests"
+        / "Runtime"
+        / "PhaseValidationRegistry.cs"
     )
-    directory_targets = sum("<directory>" in str(row["target"]) for row in rows)
-    unresolved_targets = sum("<unresolved>" in str(row["target"]) for row in rows)
-    (output / "SUMMARY.md").write_text(
-        "# Source-text assertion inventory\n\n"
-        f"- Total tokens: {len(rows)}\n"
-        f"- Class A boundary: {counts['A']}\n"
-        f"- Class B wiring: {counts['B']}\n"
-        f"- Class C implementation: {counts['C']}\n"
-        f"- Unknown targets: {counts['UNKNOWN']}\n"
-        f"- Unresolved targets: {counts['UNRESOLVED']}\n"
-        f"- Comment-only tokens: {comments}\n"
-        f"- File targets: {file_targets} / {len(rows)}\n"
-        f"- Directory targets: {directory_targets}\n"
-        + ranking,
-        encoding="utf-8",
+    if registry.is_file():
+        text = registry.read_text(encoding="utf-8", errors="replace")
+        entry_start = re.compile(
+            r"^\s*(?P<kind>Ci|Local|DefaultOnly)\(\"(?P<flag>--[A-Za-z0-9-]+)\"", re.MULTILINE
+        )
+        matches = list(entry_start.finditer(text))
+        for index, match in enumerate(matches):
+            end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+            block = text[match.start() : end]
+            entrypoint = re.search(rf"\b{re.escape(stem)}\.(?P<entry>Validate\w*)\b", block)
+            if entrypoint:
+                default = "false" if re.search(r"\bincludeInDefault\s*:\s*false\b", block) else "true"
+                result = (
+                    match.group("flag"),
+                    f"{match.group('kind')}|{default}|{entrypoint.group('entry')}",
+                )
+                _VALIDATION_METADATA_CACHE[cache_key] = result
+                return result
+    source_path = root / source_file
+    if source_path.is_file():
+        source = source_path.read_text(encoding="utf-8", errors="replace")
+        test_entries: list[str] = []
+        source_lines = source.splitlines()
+        test_attribute = re.compile(r"\[(?:Fact|Theory|Test|TestCase|UnityTest)\b")
+        method_pattern = re.compile(r"\b(?P<entry>[A-Za-z_]\w*)\s*\([^;{}]*\)\s*\{")
+        index = 0
+        while index < len(source_lines):
+            attribute_block = False
+            inline_entry = ""
+            cursor = index
+            while cursor < len(source_lines):
+                stripped = source_lines[cursor].strip()
+                if not stripped or stripped.startswith("["):
+                    attribute_block = attribute_block or bool(test_attribute.search(stripped))
+                    if attribute_block:
+                        inline_match = method_pattern.search(stripped)
+                        if inline_match:
+                            inline_entry = inline_match.group("entry")
+                            cursor += 1
+                            break
+                    cursor += 1
+                    continue
+                break
+            if inline_entry:
+                test_entries.append(inline_entry)
+                index = max(index + 1, cursor)
+                continue
+            if attribute_block:
+                for candidate_line in source_lines[cursor : min(cursor + 8, len(source_lines))]:
+                    match = method_pattern.search(candidate_line)
+                    if match:
+                        test_entries.append(match.group("entry"))
+                        break
+            index = max(index + 1, cursor)
+        if test_entries:
+            result = "<unit>", f"Unit|true|{';'.join(dict.fromkeys(test_entries))}"
+            _VALIDATION_METADATA_CACHE[cache_key] = result
+            return result
+    result = "", ""
+    _VALIDATION_METADATA_CACHE[cache_key] = result
+    return result
+
+
+def _reader_expression_signature(
+    text: str,
+    call: dict[str, object],
+    methods: list[object] | None = None,
+    argument_definitions: dict[int, list[tuple[int, str, str, str]]] | None = None,
+    call_contexts: dict[int, str] | None = None,
+) -> str:
+    """Return preceding source assignments and their recursive local dependencies."""
+    receiver = str(call.get("receiver") or "").split(".", 1)[0]
+    if not receiver:
+        return ""
+    offset = int(call["start"])
+    masked = str(call.get("masked") or _strip_csharp_comments_and_strings(text))
+    methods = methods if methods is not None else _flow_module._method_infos(text, masked)
+    method = _flow_module._method_for_offset(methods, offset)
+    start = method.body_start + 1 if method is not None else 0
+    assignments = re.compile(
+        rf"(?<![\w.]){re.escape(receiver)}\s*"
+        r"(?P<operator>\?\?=|>>>?=|<<=|[-+*/%&|^]=|=(?!=|>))(?P<expression>[^;]*);",
+        re.DOTALL,
     )
-def main() -> int:
+    expressions: list[str] = []
+    for match in assignments.finditer(masked, start, offset):
+        if _flow_module._method_for_offset(methods, match.start()) != method:
+            continue
+        expression = _normalize_csharp_expression(
+            text[match.start("expression") : match.end("expression")]
+        )
+        operator = match.group("operator")
+        if operator == "=" and not expressions:
+            expressions.append(expression)
+        else:
+            expressions.append(f"{operator} {expression}")
+    if method is not None:
+        if argument_definitions is None:
+            argument_definitions = _flow_module._argument_definition_index(text, masked, methods)
+        if call_contexts is None:
+            call_contexts = _flow_module._method_call_contexts(
+                text,
+                masked,
+                methods,
+                [{"start": offset, "start_line": text.count("\n", 0, offset)}],
+                argument_definitions,
+            )
+        dependency = _local_dependency_signature(
+            receiver, offset, argument_definitions.get(method.body_start, []), call_contexts
+        )
+        if dependency:
+            expressions.append(f"upstream:{dependency}")
+    return "; ".join(expressions)
+
+
+def main(argv: list[str] | None = None) -> int:
     """Run the source-text inventory command."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument("--output", type=Path, default=Path("build/review/source-text-inventory"))
     parser.add_argument("--base-ref")
-    args = parser.parse_args()
+    parser.add_argument("--parser-migration-approval", type=Path)
+    args = parser.parse_args(argv)
+    if args.parser_migration_approval and not args.base_ref:
+        parser.error("--parser-migration-approval requires --base-ref")
     root = args.root.resolve()
     rows = inventory(root)
     write_report(rows, args.output)
@@ -994,7 +948,16 @@ def main() -> int:
         f"unresolved={sum(row['class'] == 'UNRESOLVED' for row in rows)}"
     )
     if args.base_ref:
-        return _verify_base_inventory(root, rows, args.base_ref)
+        return _verify_base_inventory(
+            root,
+            rows,
+            args.base_ref,
+            inventory_callback=inventory,
+            migration_approval=args.parser_migration_approval,
+            output=args.output,
+        )
     return 0
+
+
 if __name__ == "__main__":
     raise SystemExit(main())

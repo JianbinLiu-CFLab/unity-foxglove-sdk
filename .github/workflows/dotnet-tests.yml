@@ -268,6 +268,7 @@ jobs:
 
       - name: Run live source-text inventory
         if: always()
+        timeout-minutes: 15
         env:
           SOURCE_TEXT_INVENTORY_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
@@ -276,26 +277,61 @@ jobs:
           rm -rf "$trusted_root"
           mkdir -p "$trusted_root"
           trusted_revision="$SOURCE_TEXT_INVENTORY_BASE_SHA"
+          trusted_minimum_revision="fe195f288a3df0c9754056ef2d84c095c2e98cf7"
+          if ! git merge-base --is-ancestor "$trusted_minimum_revision" "$trusted_revision"; then
+            echo "Trusted source-text inventory base predates the --base-ref checker minimum" >&2
+            exit 1
+          fi
           if ! git cat-file -e "$trusted_revision:Scripts/validation/source_text_inventory.py" 2>/dev/null; then
             echo "Trusted source-text inventory checker is missing from the PR base" >&2
             exit 1
           fi
-          git archive "$trusted_revision" -- Scripts/validation/source_text_inventory.py | tar -x -C "$trusted_root"
+          git archive "$trusted_revision" -- ':(glob)Scripts/validation/source_text_inventory*.py' | tar -x -C "$trusted_root"
           trusted_checker="$trusted_root/Scripts/validation/source_text_inventory.py"
-          if ! python3 "$trusted_checker" --help 2>&1 | grep -q -- "--base-ref"; then
-            trusted_revision="16763361a8c6d009eb2bfb4e7dab7af9efb94ca7"
-            echo "SOURCE_TEXT_INVENTORY_TRUSTED_REVISION: using reviewed bootstrap checker $trusted_revision"
-            git cat-file -e "$trusted_revision:Scripts/validation/source_text_inventory.py"
-            rm -rf "$trusted_root/Scripts"
-            git archive "$trusted_revision" -- Scripts/validation/source_text_inventory.py | tar -x -C "$trusted_root"
-            trusted_checker="$trusted_root/Scripts/validation/source_text_inventory.py"
-          fi
-          if ! python3 "$trusted_checker" --help 2>&1 | grep -q -- "--base-ref"; then
+          if ! python3 -I "$trusted_checker" --help 2>&1 | grep -q -- "--base-ref"; then
             echo "Trusted source-text inventory checker lacks --base-ref" >&2
             exit 1
           fi
-          python3 -B "$trusted_checker" --root . --base-ref "$SOURCE_TEXT_INVENTORY_BASE_SHA" --output build/review/source-text-inventory-trusted
-          python3 -B Scripts/validation/source_text_inventory.py --root . --base-ref "$SOURCE_TEXT_INVENTORY_BASE_SHA" --output build/review/source-text-inventory
+          reviewed_checker_root=$(mktemp -d "$RUNNER_TEMP/source-text-inventory-reviewed-head.XXXXXX")
+          actual_migration_checker_sha=$(python3 -I -B - "$reviewed_checker_root" <<'MIGRATION_CHECKER'
+          import hashlib
+          import sys
+          from pathlib import Path
+
+          root = Path.cwd()
+          destination = Path(sys.argv[1])
+          destination.mkdir(parents=True, exist_ok=True)
+          digest = hashlib.sha256()
+          for path in sorted(root.glob("Scripts/validation/source_text_inventory*.py")):
+              data = path.read_bytes()
+              digest.update(path.relative_to(root).as_posix().encode("utf-8"))
+              digest.update(b"\0")
+              digest.update(data.replace(b"\r\n", b"\n"))
+              (destination / path.name).write_bytes(data)
+          print(digest.hexdigest())
+          MIGRATION_CHECKER
+          )
+          migration_args=()
+          if [ "$trusted_revision" = "$trusted_minimum_revision" ]; then
+            migration_approval_file="$RUNNER_TEMP/source-text-parser-migration-approval.json"
+            cat > "$migration_approval_file" <<'MIGRATION_APPROVAL'
+          {
+            "base_revision": "fe195f288a3df0c9754056ef2d84c095c2e98cf7",
+            "checker_sha256": "d7a5056a52eb3c378d8404fe23e9ad1cf788c438d62e35f3abc528513c76213e",
+            "base_inventory_sha256": "ae5e9f418ef6d23fb65485a2ba756ba7aeeb27632cd040735d0ed111540856cc",
+            "current_inventory_sha256": "85209891da4e0dfdcc1cce12661dad018cbac0a4a0014bd7bcda18ccd82e50df",
+            "reason": "User approved this exact legacy-to-v2 parser migration through the reviewed workflow on 2026-11-10."
+          }
+          MIGRATION_APPROVAL
+            expected_migration_checker_sha=$(python3 -I -B -c 'import json,sys; print(json.load(open(sys.argv[1]))["checker_sha256"])' "$migration_approval_file")
+            if [ "$actual_migration_checker_sha" != "$expected_migration_checker_sha" ]; then
+              echo "Reviewed parser migration checker SHA-256 does not match" >&2
+              exit 1
+            fi
+            migration_args=(--parser-migration-approval "$migration_approval_file")
+          fi
+          python3 -I -B "$trusted_checker" --root . --base-ref "$SOURCE_TEXT_INVENTORY_BASE_SHA" --output build/review/source-text-inventory-trusted
+          python3 -I -B "$reviewed_checker_root/source_text_inventory.py" --root . --base-ref "$SOURCE_TEXT_INVENTORY_BASE_SHA" --output build/review/source-text-inventory "${migration_args[@]}"
 
       - name: Upload live source-text inventory
         if: always()

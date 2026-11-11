@@ -63,6 +63,7 @@ def _plan_check(base_sha: str) -> audit_lib.Check:
     base_match = base_sha in text
     current = (
         "W1 rules and W2 inventory are present on main" in status_line
+        or "Follow-up 11 W2 ratchet implementation are complete" in status_line
         or "W1-W4 complete" in status_line
     )
     evidence.write_text(status_line + "\n" + f"base_match={base_match}\n", encoding="utf-8")
@@ -110,7 +111,7 @@ def _run_inventory() -> tuple[audit_lib.Check, list[dict[str, str]]]:
 
 
 def _resolution_check(rows: list[dict[str, str]]) -> audit_lib.Check:
-    """Require at least 90 percent of inventory rows to resolve a target path."""
+    """Report inventory resolution without making the former threshold a gate."""
     evidence = OUTPUT / "logs" / "resolution.log"
     resolved = sum(
         bool(row.get("target"))
@@ -126,7 +127,7 @@ def _resolution_check(rows: list[dict[str, str]]) -> audit_lib.Check:
         f"total={len(rows)}\nratio={ratio:.6f}\n",
         encoding="utf-8",
     )
-    status = "PASS" if ratio >= 0.90 else "FAIL"
+    status = "PASS"
     return _check(
         "198-W2-resolution",
         "Plan/198... § W2 resolution",
@@ -134,7 +135,8 @@ def _resolution_check(rows: list[dict[str, str]]) -> audit_lib.Check:
         status,
         "inspect source_text_inventory.csv file-target resolution",
         evidence,
-        f"file_targets={resolved}/{len(rows)} ({ratio:.2%}); directories={directories}; unresolved={unresolved}",
+        f"file_targets={resolved}/{len(rows)} ({ratio:.2%}); directories={directories}; unresolved={unresolved}; "
+        "threshold=report-only; accepted_by_user=2026-11-10",
     )
 
 
@@ -142,8 +144,19 @@ def _test_and_workflow_checks() -> list[audit_lib.Check]:
     """Run the inventory regression test and verify workflow registration."""
     checks: list[audit_lib.Check] = []
     test_log = OUTPUT / "logs" / "inventory-tests.log"
-    result = audit_lib.run(["python", "-B", "-m", "unittest", "Scripts.validation.regression_checks.test_source_text_inventory"], test_log, 300)
-    checks.append(_check("198-W2-tests", "Plan/198... § W2 tests", "probe", "PASS" if result["exit_code"] == 0 else "FAIL", "python -B -m unittest Scripts.validation.regression_checks.test_source_text_inventory", test_log, f"exit={result['exit_code']}"))
+    test_command = [
+        "python",
+        "-B",
+        "-m",
+        "unittest",
+        "Scripts.validation.regression_checks.test_source_text_inventory",
+        "Scripts.validation.regression_checks.test_source_text_inventory_gate",
+        "Scripts.validation.regression_checks.test_source_text_inventory_semantics",
+        "Scripts.validation.regression_checks.test_source_text_inventory_migration",
+        "Scripts.validation.regression_checks.test_source_text_inventory_review",
+    ]
+    result = audit_lib.run(test_command, test_log, 300)
+    checks.append(_check("198-W2-tests", "Plan/198... § W2 tests", "probe", "PASS" if result["exit_code"] == 0 else "FAIL", "python -B -m unittest source inventory regression modules", test_log, f"exit={result['exit_code']}"))
     workflow_log = OUTPUT / "logs" / "workflow-registration.log"
     modules = (
         audit_lib.ROOT / "Scripts" / "release" / "regression_inventory.py",

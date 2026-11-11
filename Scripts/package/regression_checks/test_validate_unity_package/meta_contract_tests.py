@@ -505,6 +505,28 @@ class PackageMetaContractTests:
 
         self.assertTrue(results[-1].ok)
 
+    def test_sdk_meta_guid_uniqueness_allows_generated_test_build_sidecars(self) -> None:
+        """Generated test build folders remain valid optional package metadata."""
+        with tempfile.TemporaryDirectory() as temp:
+            package = Path(temp) / "dev.unity2foxglove.sdk"
+            paths = (
+                package / "Tests" / "McapConformance" / "build.meta",
+                package / "Tests" / "Performance" / "build.meta",
+                package / "Tests" / "Performance" / "Regression" / "build.meta",
+            )
+            for index, optional in enumerate(paths, start=1):
+                optional.parent.mkdir(parents=True, exist_ok=True)
+                optional.write_text(
+                    "fileFormatVersion: 2\n"
+                    f"guid: {index:032d}\n"
+                    "folderAsset: yes\n",
+                    encoding="utf-8",
+                )
+            results = []
+            self.validator.check_sdk_meta_guid_uniqueness(results, package)
+
+        self.assertTrue(results[-1].ok)
+
     def test_sdk_meta_guid_uniqueness_checks_optional_folder_guid_collisions(self) -> None:
         """Allowed missing folder sidecars must still participate in GUID checks."""
         with tempfile.TemporaryDirectory() as temp:
