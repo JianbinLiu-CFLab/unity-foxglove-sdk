@@ -362,6 +362,7 @@ def _method_call_graph(
         call_sites_by_method[method.identity] = call_sites
     argument_definitions = argument_definitions if argument_definitions is not None else _argument_definition_index(text, masked, methods)
     contexts = call_contexts if call_contexts is not None else _method_call_contexts(text, masked, methods, argument_definitions=argument_definitions)
+    resolved_calls: dict[str, list[tuple[str, int, str, str]]] = {method.identity: [] for method in methods}
     for method in methods:
         local_types: dict[str, str] | None = None
         for name, open_index in call_sites_by_method[method.identity]:
@@ -396,7 +397,11 @@ def _method_call_graph(
                 if dependencies:
                     context = "|".join(value for value in (context, f"locals({dependencies})") if value)
                 graph[method.identity].setdefault(target.identity, set()).add(context)
-    return graph
+                resolved_calls[method.identity].append((target.identity, open_index, arguments, context))
+    return _symbol_helpers._bind_state_writer_calls(
+        text, masked, {method.identity: (method.body_start, method.body_end, method.signature) for method in methods},
+        graph, resolved_calls, argument_definitions, set(field_types),
+    )
 
 def _ambiguous_call_bindings(
     text: str, masked: str, methods: list[MethodInfo]
@@ -661,22 +666,6 @@ def _delegate_binding_signature(
             pieces.append(f"call:{call_name}({normalized})")
     return hashlib.sha256("\n".join(sorted(pieces)).encode()).hexdigest() if pieces else ""
 
-def _catch_descriptor(text: str, masked: str, header: str, body_start: int, body_end: int) -> str:
-    """Describe catch type, filter text, and whether its body rethrows."""
-    header = _normalize_csharp_expression(header)
-    body = masked[body_start + 1 : body_end]
-    behavior = "rethrow" if re.search(r"\bthrow\b", body) else "swallow"
-    normalized_body = _normalize_csharp_expression(text[body_start + 1 : body_end])
-    body_hash = hashlib.sha256(normalized_body.encode()).hexdigest()[:16]
-    return f"catch({header}):{behavior}:{body_hash}"
-
-def _finally_descriptor(text: str, masked: str, body_start: int, body_end: int) -> str:
-    """Describe finally-body exits and normalized body content."""
-    body = masked[body_start + 1 : body_end]
-    behavior = "exit" if re.search(r"\b(?:return|throw|goto)\b", body) else "normal"
-    normalized_body = _normalize_csharp_expression(text[body_start + 1 : body_end])
-    body_hash = hashlib.sha256(normalized_body.encode()).hexdigest()[:16]
-    return f"finally:{behavior}:{body_hash}"
 
 def _lambda_binding_signature(
     text: str, masked: str, methods: list[MethodInfo] | None = None
@@ -819,6 +808,25 @@ def _reachability_signatures(
     methods = methods if methods is not None else _method_infos(text, masked)
     argument_definitions = argument_definitions if argument_definitions is not None else _argument_definition_index(text, masked, methods)
     barriers, lambda_regions = _symbol_helpers._execution_barriers(text, masked, [(method.body_start, method.body_end) for method in methods])
+    if any(kind == "terminate" for _, _, _, kind, _ in barriers):
+        methods_by_name: dict[str, list[MethodInfo]] = {}
+        for method in methods:
+            methods_by_name.setdefault(method.name, []).append(method)
+        helper_calls = []
+        for method in methods:
+            for name, position in _call_sites(text, masked, method, set(methods_by_name)):
+                if _method_for_offset(methods, position) is not method or any(begin <= position <= end for begin, end in lambda_regions):
+                    continue
+                end = _balanced_call_end(masked, position)
+                if end is not None:
+                    expression = name + "(" + text[position + 1 : end] + ")"
+                    helper_calls.extend(
+                        (method.body_start, target.body_start, position, end, _normalize_csharp_expression(expression))
+                        for target in methods_by_name[name]
+                    )
+        barriers.extend(_symbol_helpers._helper_execution_barriers(
+            text, {method.body_start: (method.body_end, method.signature) for method in methods}, helper_calls, barriers
+        ))
     calls = list(calls)
     positions = {int(call["start"]) for call in calls}
     line_starts = _line_starts(text)
@@ -900,43 +908,7 @@ def _reachability_signatures(
                 condition = f"{condition}={selector}"
             intervals.append((cursor, end, f"do({condition})"))
             control_intervals.append((cursor, end, "do"))
-    for match in re.finditer(r"\btry\s*\{", masked):
-        open_index = masked.find("{", match.start(), match.end())
-        end = _balanced_brace_end(masked, open_index)
-        if end is None:
-            continue
-        cursor = end + 1
-        descriptors: list[str] = []
-        while True:
-            catch_match = re.match(
-                r"\s*catch(?P<header>[^{}]*?)\{", masked[cursor:], re.DOTALL
-            )
-            if catch_match is None:
-                break
-            catch_open = cursor + catch_match.end() - 1
-            catch_end = _balanced_brace_end(masked, catch_open)
-            if catch_end is None:
-                break
-            header = text[cursor + catch_match.start("header") : cursor + catch_match.end("header")]
-            descriptor = _catch_descriptor(text, masked, header, catch_open, catch_end)
-            descriptors.append(descriptor)
-            intervals.append((catch_open + 1, catch_end, "|".join(descriptors)))
-            cursor = catch_end + 1
-        finally_match = re.match(r"\s*finally\s*\{", masked[cursor:], re.DOTALL)
-        finally_descriptor = ""
-        if finally_match:
-            finally_open = cursor + finally_match.end() - 1
-            finally_end = _balanced_brace_end(masked, finally_open)
-            if finally_end is not None:
-                finally_descriptor = _finally_descriptor(text, masked, finally_open, finally_end)
-                intervals.append((finally_open + 1, finally_end, finally_descriptor))
-        if descriptors:
-            value = "try-catch[" + "|".join(descriptors) + "]"
-        else:
-            value = "try"
-        if finally_descriptor:
-            value += f"|{finally_descriptor}"
-        intervals.append((open_index + 1, end, value))
+    intervals.extend(_symbol_helpers._exception_intervals(text, masked))
     exits: list[tuple[int, int, str, str]] = []
     for match in re.finditer(
         r"\b(?P<kind>return|throw|continue|break|goto)\b[^;]*;|\byield\s+break\s*;",

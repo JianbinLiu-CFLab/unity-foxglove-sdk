@@ -65,6 +65,7 @@ class _ExternalHelperIndex:
         self.methods = {}
         self.closures = {}
         self.node_work_cache = {}
+        self.signature_cache = {}
         self.fields = {}
         self.receivers = {}
         self.clr_builder_receivers = {}
@@ -344,13 +345,22 @@ class _ExternalHelperIndex:
         )
         if owner is None:
             return ""
+        selected_closures = []
+        roots = set()
+        for record in self._calls(expression, path, owner[2], method):
+            selected_closures.append(self._closure(record))
+            roots.add((record[0], record[2].start))
+        key = (path, frozenset(roots))
+        if key in self.signature_cache:
+            return self.signature_cache[key]
         pieces = set()
         paths = set()
-        for record in self._calls(expression, path, owner[2], method):
-            selected, selected_paths = self._closure(record)
+        for selected, selected_paths in selected_closures:
             pieces.update(selected)
             paths.update(selected_paths)
-        return hashlib.sha256("\n".join(sorted(pieces)).encode()).hexdigest() if paths - {path} else ""
+        result = hashlib.sha256("\n".join(sorted(pieces)).encode()).hexdigest() if paths - {path} else ""
+        self.signature_cache[key] = result
+        return result
 
 
 def _unresolved_reason(

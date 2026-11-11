@@ -29,6 +29,42 @@ from .test_source_text_inventory_semantics import _FixtureSupport
 class SourceTextInventoryMigrationTests(_FixtureSupport, unittest.TestCase):
     """Verify additive legacy metadata and reject parser semantic rewrites."""
 
+    def test_same_file_termination_helper_call_requires_ack(self):
+        """Reject direct and transitive exit helpers while allowing unrelated calls."""
+        scratch = Path(__file__).resolve().parents[3] / "build/tmp/scratch"
+        scratch.mkdir(parents=True, exist_ok=True)
+        exit_helper = "private static void ExitSuccessfully() { System.Environment.Exit(0); }\n"
+        cases = (
+            ("direct", "ExitSuccessfully();", exit_helper, 1),
+            ("expression", "ExitSuccessfully();", "private static void ExitSuccessfully() => System.Environment.Exit(0);\n", 1),
+            ("transitive", "ExitSuccessfully();", "private static void ExitSuccessfully() { Finish(); }\n"
+             + "private static void Finish() { System.Environment.Exit(0); }\n", 1),
+            ("unrelated", "Log();", exit_helper + 'private static void Log() { System.Console.WriteLine("log"); }\n', 0),
+        )
+        for name, invocation, helpers, expected in cases:
+            with self.subTest(name=name), tempfile.TemporaryDirectory(dir=scratch) as directory:
+                assertion = 'Check(source.Contains("Product"));'
+                root = self._git_fixture(directory, validation_text=(
+                    "public static class FixtureValidation { public static void Validate() {\n"
+                    'var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                    + assertion + "\n}\n" + helpers
+                    + "private static string ReadRequiredRepoText(string path) => System.IO.File.ReadAllText(path);\n"
+                    + "private static void Check(bool ok) { if (!ok) throw new System.Exception(); }\n}\n"
+                ))
+                baseline = self._run_migration_cli(root)
+                self.assertEqual(0, baseline.returncode, baseline.stdout + baseline.stderr)
+                self.assertIn("SOURCE_TEXT_INVENTORY_OK rows=1 ", baseline.stdout)
+                validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+                validation.write_text(validation.read_text(encoding="utf-8").replace(
+                    assertion, invocation + " " + assertion
+                ), encoding="utf-8")
+                if expected:
+                    (root / "Packages/fixture/Runtime/Product.cs").write_text("public sealed class Other {}\n", encoding="utf-8")
+                result = self._run_migration_cli(root)
+                self.assertEqual(expected, result.returncode, result.stdout + result.stderr)
+                if expected:
+                    self.assertIn("SOURCE_TEXT_INVENTORY_UNACKNOWLEDGED", result.stdout)
+
     def test_complete_inventory_hash_is_independent_of_row_order(self):
         """Preserve all values and duplicate rows while normalizing platform sorting."""
         rows = [{"file": "a.cs", "line": 1, "token": "first"}, {"file": "B.cs", "line": 2, "token": "second"}]

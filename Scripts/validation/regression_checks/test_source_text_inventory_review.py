@@ -14,6 +14,45 @@ from .test_source_text_inventory_semantics import _FixtureSupport
 class SourceTextInventoryReviewTests(_FixtureSupport, unittest.TestCase):
     """Keep helper arguments and branch exits bound to existing inventory rows."""
 
+    def test_signature_cache_isolates_callers_and_resolved_roots(self):
+        """Keep result reuse scoped to caller paths, actual candidates, and source indexes."""
+        from types import SimpleNamespace
+        from unittest.mock import Mock, patch
+        from Scripts.validation.source_text_inventory import _ExternalHelperIndex
+
+        root = Path.cwd() / "build/tmp/signature-memory"
+        local, other = root / "A.cs", root / "B.cs"
+        method = SimpleNamespace(body_start=1)
+        records = [(local, (), SimpleNamespace(start=1)), (local, (), SimpleNamespace(start=2)),
+                   (other, (), SimpleNamespace(start=1))]
+        closures = {(local, 1): ({"first"}, {local}), (local, 2): ({"second"}, {local}),
+                    (other, 1): ({"other"}, {other})}
+        with patch.object(Path, "glob", return_value=()):
+            first, fresh = (_ExternalHelperIndex(root) for _ in range(2))
+        for index in (first, fresh):
+            index.units = {path: {"regions": [(0, 2, "Checks")]} for path in (local, other)}
+            index._calls = Mock()
+            index._closure = Mock(side_effect=lambda record: closures[(record[0], record[2].start)])
+        requests = (
+            (local, (records[0],)), (other, (records[0],)), (other, (records[1],)),
+            (other, (records[0],)), (other, (records[0], records[1])),
+            (other, (records[1], records[0], records[1])), (other, (records[2],)), (other, ()),
+        )
+        signatures = []
+        for caller, selected in requests:
+            first._calls.return_value = selected
+            signatures.append(first.signature(caller, method, "same-expression"))
+        self.assertEqual("", signatures[0])
+        self.assertTrue(signatures[1])
+        self.assertNotEqual(signatures[1], signatures[2])
+        self.assertEqual(signatures[1], signatures[3])
+        self.assertEqual(signatures[4], signatures[5])
+        self.assertEqual(["", ""], signatures[6:])
+        self.assertEqual(len(requests), first._calls.call_count)
+        closures[(local, 1)] = ({"changed"}, {local})
+        fresh._calls.return_value = (records[0],)
+        self.assertNotEqual(signatures[1], fresh.signature(other, method, "same-expression"))
+
     def test_clr_builder_binding_preserves_repository_helpers(self):
         """Separate CLR instance members while retaining repository types and extensions."""
         scratch = Path(__file__).resolve().parents[3] / "build/tmp/scratch"
@@ -192,6 +231,51 @@ class SourceTextInventoryReviewTests(_FixtureSupport, unittest.TestCase):
                 self.assertEqual(1 if remove_call else 0, code, output)
                 if remove_call:
                     self.assertIn('field": "call_path"', output)
+
+    def test_catch_assertion_retains_protected_try_body(self):
+        """Reject removing the exception that reaches an existing catch assertion."""
+        body = 'try { int.Parse("invalid"); } catch (System.FormatException) { Check(source.Contains("Product")); }'
+        self._assert_flow_mutation(body, '"invalid"', '"123"', 1, remove_product=True)
+        for replacement in ('/* same exception */ int.Parse("invalid");', 'int.Parse("invalid"); // same exception\n'):
+            with self.subTest(replacement=replacement):
+                self._assert_flow_mutation(body, 'int.Parse("invalid");', replacement, 0)
+
+    def test_state_writer_call_order_controls_assertion_helper(self):
+        """Reject reordered state writes while allowing unrelated calls and comments."""
+        original = "SetEnabled(true); RunChecks(); SetEnabled(false);"
+        cases = (
+            ("enabled", " static", "SetEnabled(true); SetEnabled(false); RunChecks();", 1, False),
+            ("FixtureValidation.enabled", " static", "SetEnabled(true); SetEnabled(false); RunChecks();", 1, False),
+            ("this.enabled", "", "SetEnabled(true); SetEnabled(false); RunChecks();", 1, False),
+            ("enabled", " static", "SetEnabled(true); /* same state */ Check(true); RunChecks(); SetEnabled(false);", 0, False),
+            ("enabled", " static", "Log(); SetEnabled(true); RunChecks(); SetEnabled(false);", 0, False),
+            ("enabled", " static", "SetEnabled(true); Check(true); RunChecks(); SetEnabled(false);", 0, True),
+        )
+        for field, modifier, replacement, expected, counted in cases:
+            with self.subTest(field=field, replacement=replacement, counted=counted), tempfile.TemporaryDirectory() as directory:
+                counter = (
+                    "    private static int checks;\n"
+                    "    private static void Check(bool ok) { checks++; if (!ok) throw new System.Exception(); }\n"
+                ) if counted else ""
+                root = self._git_fixture(directory, validation_text=(
+                    f"public{modifier} class FixtureValidation {{\n"
+                    + counter
+                    + f"    private{modifier} bool enabled;\n"
+                    f"    private{modifier} void SetEnabled(bool value) {{ {field} = value; }}\n"
+                    f"    private{modifier} void Log() {{ System.Console.WriteLine(0); }}\n"
+                    f"    private{modifier} void RunChecks() {{\n"
+                    '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                    '        if (enabled) { Check(source.Contains("Product")); }\n'
+                    "    }\n"
+                    f"    public{modifier} void Validate() {{ {original} }}\n"
+                    "}\n"
+                ))
+                validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+                validation.write_text(validation.read_text(encoding="utf-8").replace(original, replacement), encoding="utf-8")
+                if expected:
+                    (root / "Packages/fixture/Runtime/Product.cs").write_text("public sealed class Other {}\n", encoding="utf-8")
+                code, output = self._run_fixture_gate(root)
+                self.assertEqual(expected, code, output)
 
     def test_later_catch_retains_ordered_preceding_handlers(self):
         """Reject earlier handler changes that can divert a later catch assertion."""

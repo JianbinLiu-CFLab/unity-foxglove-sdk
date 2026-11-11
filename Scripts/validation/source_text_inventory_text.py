@@ -664,3 +664,80 @@ def _xunit_coverage(target: str, root: Path, xunit_index: dict[str, list[str]]) 
         names.add(value)
     matches = sorted({match for name in names for match in xunit_index.get(name, [])})
     return ";".join(matches)
+
+
+def _split_arguments(text: str) -> list[str]:
+    """Split a masked C# argument or parameter list at top-level commas."""
+    parts: list[str] = []
+    start = 0
+    depth = 0
+    for index, character in enumerate(text):
+        if character in "(<[{":
+            depth += 1
+        elif character in ")>]}" and depth:
+            depth -= 1
+        elif character == "," and depth == 0:
+            parts.append(text[start:index].strip())
+            start = index + 1
+    tail = text[start:].strip()
+    if tail:
+        parts.append(tail)
+    return parts
+
+
+def _normalize_type(value: str) -> str:
+    """Normalize common C# aliases for lightweight overload matching."""
+    normalized = re.sub(r"\s+", "", value).replace("global::", "").rstrip("?")
+    aliases = {
+        "System.String": "string",
+        "System.Int32": "int",
+        "System.Boolean": "bool",
+        "System.Object": "object",
+    }
+    return aliases.get(normalized, normalized)
+
+
+def _parameter_types(parameter_text: str) -> tuple[str, ...]:
+    """Return normalized parameter types from a method declaration."""
+    result: list[str] = []
+    for parameter in _split_arguments(parameter_text):
+        parameter = re.sub(r"\s*=.*$", "", parameter).strip()
+        parameter = re.sub(r"\[[^\]]*\]\s*", "", parameter)
+        tokens = parameter.split()
+        tokens = [token for token in tokens if token not in {"this", "ref", "out", "in", "params"}]
+        if len(tokens) >= 2:
+            result.append(_normalize_type(" ".join(tokens[:-1])))
+        elif tokens:
+            result.append(_normalize_type(tokens[0]))
+    return tuple(result)
+
+
+def _method_parameter_types(masked: str, start: int, body_start: int) -> tuple[str, ...]:
+    """Extract a method's parameter types from its declaration span."""
+    open_index = masked.find("(", start, body_start)
+    close_index = masked.rfind(")", start, body_start)
+    if open_index < 0 or close_index < open_index:
+        return ()
+    return _parameter_types(masked[open_index + 1 : close_index])
+
+
+def _method_return_type(signature: str, name: str) -> str:
+    """Extract a simple declared return type from a method signature."""
+    match = re.search(
+        rf"(?P<return>[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)?(?:<[^>]+>)?(?:\[\])?)\s+"
+        rf"{re.escape(name)}\s*\(",
+        signature,
+    )
+    return _normalize_type(match.group("return")) if match else ""
+
+
+def _constant_values(text: str, masked: str) -> dict[str, str]:
+    """Collect simple boolean, integer, and string initializers for branch selectors."""
+    values: dict[str, str] = {}
+    for match in re.finditer(
+        r"\b(?:(?:bool|int|string|var)\s+)?(?P<name>[A-Za-z_]\w*)\s*=\s*"
+        r"(?P<value>true|false|-?\d+|\"(?:\\.|[^\"\\])*\")\s*;",
+        masked,
+    ):
+        values[match.group("name")] = _normalize_csharp_expression(text[match.start("value") : match.end("value")])
+    return values

@@ -31,81 +31,6 @@ globals().update(
 )
 
 
-def _split_arguments(text: str) -> list[str]:
-    """Split a masked C# argument or parameter list at top-level commas."""
-    parts: list[str] = []
-    start = 0
-    depth = 0
-    for index, character in enumerate(text):
-        if character in "(<[{":
-            depth += 1
-        elif character in ")>]}" and depth:
-            depth -= 1
-        elif character == "," and depth == 0:
-            parts.append(text[start:index].strip())
-            start = index + 1
-    tail = text[start:].strip()
-    if tail:
-        parts.append(tail)
-    return parts
-
-
-def _normalize_type(value: str) -> str:
-    """Normalize common C# aliases for lightweight overload matching."""
-    normalized = re.sub(r"\s+", "", value).replace("global::", "").rstrip("?")
-    aliases = {
-        "System.String": "string",
-        "System.Int32": "int",
-        "System.Boolean": "bool",
-        "System.Object": "object",
-    }
-    return aliases.get(normalized, normalized)
-
-
-def _parameter_types(parameter_text: str) -> tuple[str, ...]:
-    """Return normalized parameter types from a method declaration."""
-    result: list[str] = []
-    for parameter in _split_arguments(parameter_text):
-        parameter = re.sub(r"\s*=.*$", "", parameter).strip()
-        parameter = re.sub(r"\[[^\]]*\]\s*", "", parameter)
-        tokens = parameter.split()
-        tokens = [token for token in tokens if token not in {"this", "ref", "out", "in", "params"}]
-        if len(tokens) >= 2:
-            result.append(_normalize_type(" ".join(tokens[:-1])))
-        elif tokens:
-            result.append(_normalize_type(tokens[0]))
-    return tuple(result)
-
-
-def _method_parameter_types(masked: str, start: int, body_start: int) -> tuple[str, ...]:
-    """Extract a method's parameter types from its declaration span."""
-    open_index = masked.find("(", start, body_start)
-    close_index = masked.rfind(")", start, body_start)
-    if open_index < 0 or close_index < open_index:
-        return ()
-    return _parameter_types(masked[open_index + 1 : close_index])
-
-
-def _method_return_type(signature: str, name: str) -> str:
-    """Extract a simple declared return type from a method signature."""
-    match = re.search(
-        rf"(?P<return>[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)?(?:<[^>]+>)?(?:\[\])?)\s+"
-        rf"{re.escape(name)}\s*\(",
-        signature,
-    )
-    return _normalize_type(match.group("return")) if match else ""
-
-
-def _constant_values(text: str, masked: str) -> dict[str, str]:
-    """Collect simple boolean, integer, and string initializers for branch selectors."""
-    values: dict[str, str] = {}
-    for match in re.finditer(
-        r"\b(?:(?:bool|int|string|var)\s+)?(?P<name>[A-Za-z_]\w*)\s*=\s*"
-        r"(?P<value>true|false|-?\d+|\"(?:\\.|[^\"\\])*\")\s*;",
-        masked,
-    ):
-        values[match.group("name")] = _normalize_csharp_expression(text[match.start("value") : match.end("value")])
-    return values
 
 
 def _argument_definition_index(
@@ -334,6 +259,69 @@ def _conditional_branch_intervals(
     return intervals
 
 
+def _catch_descriptor(text: str, masked: str, header: str, body_start: int, body_end: int) -> str:
+    """Describe catch type, filter text, and whether its body rethrows."""
+    header = _normalize_csharp_expression(header)
+    body = masked[body_start + 1 : body_end]
+    behavior = "rethrow" if re.search(r"\bthrow\b", body) else "swallow"
+    normalized_body = _normalize_csharp_expression(text[body_start + 1 : body_end])
+    body_hash = hashlib.sha256(normalized_body.encode()).hexdigest()[:16]
+    return f"catch({header}):{behavior}:{body_hash}"
+
+def _finally_descriptor(text: str, masked: str, body_start: int, body_end: int) -> str:
+    """Describe finally-body exits and normalized body content."""
+    body = masked[body_start + 1 : body_end]
+    behavior = "exit" if re.search(r"\b(?:return|throw|goto)\b", body) else "normal"
+    normalized_body = _normalize_csharp_expression(text[body_start + 1 : body_end])
+    body_hash = hashlib.sha256(normalized_body.encode()).hexdigest()[:16]
+    return f"finally:{behavior}:{body_hash}"
+
+
+def _exception_intervals(text: str, masked: str) -> list[tuple[int, int, str]]:
+    """Bind each exception handler to its protected body and ordered predecessors."""
+    intervals: list[tuple[int, int, str]] = []
+    for match in re.finditer(r"\btry\s*\{", masked):
+        open_index = masked.find("{", match.start(), match.end())
+        end = _balanced_brace_end(masked, open_index)
+        if end is None:
+            continue
+        cursor = end + 1
+        protected = _normalize_csharp_expression(text[open_index + 1 : end])
+        protected_hash = hashlib.sha256(protected.encode()).hexdigest()[:16]
+        descriptors: list[str] = []
+        while True:
+            catch_match = re.match(
+                r"\s*catch(?P<header>[^{}]*?)\{", masked[cursor:], re.DOTALL
+            )
+            if catch_match is None:
+                break
+            catch_open = cursor + catch_match.end() - 1
+            catch_end = _balanced_brace_end(masked, catch_open)
+            if catch_end is None:
+                break
+            header = text[cursor + catch_match.start("header") : cursor + catch_match.end("header")]
+            descriptor = _catch_descriptor(text, masked, header, catch_open, catch_end)
+            descriptors.append(descriptor)
+            intervals.append((catch_open + 1, catch_end, f"try-body({protected_hash})|" + "|".join(descriptors)))
+            cursor = catch_end + 1
+        finally_match = re.match(r"\s*finally\s*\{", masked[cursor:], re.DOTALL)
+        finally_descriptor = ""
+        if finally_match:
+            finally_open = cursor + finally_match.end() - 1
+            finally_end = _balanced_brace_end(masked, finally_open)
+            if finally_end is not None:
+                finally_descriptor = _finally_descriptor(text, masked, finally_open, finally_end)
+                intervals.append((finally_open + 1, finally_end, finally_descriptor))
+        if descriptors:
+            value = "try-catch[" + "|".join(descriptors) + "]"
+        else:
+            value = "try"
+        if finally_descriptor:
+            value += f"|{finally_descriptor}"
+        intervals.append((open_index + 1, end, value))
+    return intervals
+
+
 def _execution_barriers(
     text: str, masked: str, method_regions: list[tuple[int, int]]
 ) -> tuple[list[tuple[int, int, int, str, str]], list[tuple[int, int]]]:
@@ -375,7 +363,7 @@ def _execution_barriers(
         if any(begin <= match.start() <= end for begin, end in lambda_regions):
             continue
         owner = min(
-            ((begin, end) for begin, end in method_regions if begin < match.start() < end),
+            ((begin, end) for begin, end in method_regions if begin <= match.start() < end),
             key=lambda region: region[1] - region[0],
             default=None,
         )
@@ -413,6 +401,114 @@ def _bind_execution_barriers(
         preceding = [descriptor for end, descriptor in grouped.get(owners.get(position), []) if end < position]
         result[position] = "|".join(value for value in [context, *preceding] if value)
     return result
+
+
+def _helper_execution_barriers(text, methods, calls, direct_barriers):
+    """Propagate direct termination through bounded same-frame local helper chains."""
+    active = {owner for _, _, owner, kind, _ in direct_barriers if kind == "terminate"}
+    incoming: dict[int, set[int]] = {}
+    outgoing: dict[int, set[int]] = {}
+    for owner, target, _, _, _ in calls:
+        incoming.setdefault(target, set()).add(owner)
+        outgoing.setdefault(owner, set()).add(target)
+    pending = list(active)
+    while pending:
+        for owner in incoming.get(pending.pop(), set()):
+            if owner not in active:
+                active.add(owner)
+                pending.append(owner)
+    summaries: dict[int, str] = {}
+    for target in active:
+        pending = [target]
+        visited: set[int] = set()
+        pieces: list[str] = []
+        while pending:
+            owner = pending.pop()
+            if owner in visited:
+                continue
+            visited.add(owner)
+            end, signature = methods[owner]
+            pieces.append(_normalize_csharp_expression(signature + " " + text[owner : end + 1]))
+            pending.extend(outgoing.get(owner, set()) & active)
+        summaries[target] = hashlib.sha256("\n".join(sorted(pieces)).encode()).hexdigest()
+    return [
+        (position, end, owner, "terminate-helper", f"{expression}:helper({summaries[target]})")
+        for owner, target, position, end, expression in calls if target in active
+    ]
+
+
+def _bind_state_writer_calls(text, masked, methods, graph, calls, definitions, field_names):
+    """Bind ordered prior local helper writes to fields read by a target's call graph."""
+    reads: dict[str, set[str]] = {}
+    writes = {
+        identity: {name for _, name, _, _ in definitions.get(begin, [])} & field_names
+        for identity, (begin, _, _) in methods.items()
+    }
+    write_pattern = re.compile(
+        r"(?<![\w.])(?:[A-Za-z_]\w*\s*\.\s*)*(?P<name>[A-Za-z_]\w*)\s*"
+        r"(?P<op>\?\?=|>>>?=|<<=|[-+*/%&|^]=|=(?!=|>)|\+\+|--)"
+    )
+    for identity, (begin, end, _) in methods.items():
+        body = masked[begin:end]
+        references = []
+        cursor = 0
+        for match in write_pattern.finditer(body):
+            if match.group("name") not in field_names:
+                continue
+            writes[identity].add(match.group("name"))
+            statement_start = max(body.rfind(delimiter, 0, match.start()) + 1 for delimiter in ";{}")
+            if match.group("op") == "=" or not body[statement_start : match.start()].strip():
+                references.append(body[cursor : match.start("name")])
+                cursor = match.end("name")
+        reads[identity] = set(re.findall(r"\b[A-Za-z_]\w*\b", "".join(references) + body[cursor:])) & field_names
+    if not any(writes.values()):
+        return graph
+    changed = True
+    while changed:
+        changed = False
+        for identity, targets in graph.items():
+            for target in targets:
+                for values in (reads, writes):
+                    previous = len(values[identity])
+                    values[identity].update(values[target])
+                    changed |= previous != len(values[identity])
+    _, lambdas = _execution_barriers(text, masked, [(begin, end) for begin, end, _ in methods.values()])
+    normalized_bodies = {
+        identity: _normalize_csharp_expression(signature + " " + text[begin : end + 1])
+        for identity, (begin, end, signature) in methods.items() if writes[identity]
+    }
+    bodies = {}
+    for target in normalized_bodies:
+        pending = [target]
+        visited = set()
+        pieces = []
+        while pending:
+            current = pending.pop()
+            if current in visited:
+                continue
+            visited.add(current)
+            pieces.append(normalized_bodies[current])
+            pending.extend(callee for callee in graph[current] if writes[callee] & writes[target])
+        bodies[target] = hashlib.sha256("\n".join(sorted(pieces)).encode()).hexdigest()
+    for identity, sites in calls.items():
+        begin, end, _ = methods[identity]
+        owned = [
+            site for site in sites
+            if not any(start <= site[1] <= stop for start, stop in lambdas)
+            and not any(begin < start < site[1] < stop < end for start, stop, _ in methods.values())
+        ]
+        graph[identity] = {}
+        for target, position, arguments, context in sites:
+            preceding = [
+                f"{bodies[writer]}:args({_normalize_csharp_expression(args)})@{state}"
+                for writer, offset, args, state in owned
+                if offset < position and writes[writer] & reads[target]
+            ]
+            if preceding and (target, position, arguments, context) in owned:
+                digest = hashlib.sha256("\n".join(preceding).encode()).hexdigest()
+                context = "|".join(value for value in (context, f"state-before({digest})") if value)
+            graph[identity].setdefault(target, set()).add(context)
+    return graph
 
 
 def _source_targets(lines: list[str], include_variables: bool = True) -> dict[str, str]:
