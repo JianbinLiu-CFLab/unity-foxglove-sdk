@@ -5,6 +5,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using Foxglove;
+using Google.Protobuf;
 using Newtonsoft.Json;
 using Unity.FoxgloveSDK.Performance;
 using Xunit;
@@ -96,10 +98,13 @@ namespace Unity.FoxgloveSDK.Performance.Tests
             Assert.All(result.frameEvidence, item =>
             {
                 Assert.True(item.droppedDataFrames > 0);
+                Assert.Equal(5, item.droppedDataFrames);
+                Assert.Equal(item.droppedDataFrames, item.droppedDataFramesSnapshot);
                 Assert.True(item.queuedBytes <= item.sizeBytes * 2L);
                 Assert.True(item.controlDequeuedFirst);
                 Assert.True(item.acceptedBytes > 0);
                 Assert.True(item.droppedBytes > 0);
+                Assert.Equal(item.droppedDataFrames * item.sizeBytes, item.droppedBytes);
                 Assert.True(item.queuedBytesHighWater <= item.sizeBytes * 2L);
                 Assert.InRange(item.dropRatio, 0, 1);
             });
@@ -110,7 +115,7 @@ namespace Unity.FoxgloveSDK.Performance.Tests
         }
 
         [Fact]
-        public void FoxRunPublishPayloadReportsGeneratedHelperComponents()
+        public void FoxRunPublishPayloadReportsHelperComponents()
         {
             var runnerType = typeof(PerformanceRunner).Assembly
                 .GetType("Unity.FoxgloveSDK.Performance.HighBandwidthScenarioRunner");
@@ -126,9 +131,35 @@ namespace Unity.FoxgloveSDK.Performance.Tests
             Assert.Contains(result.components, item => item.name == "FoxRunPublishPayload.Json.1");
             Assert.Contains(result.components, item => item.name == "FoxRunPublishPayload.Protobuf.1");
             Assert.Contains(result.components, item => item.name == "FoxRunPublishPayload.MessagePack.1");
-            Assert.Contains("generatedJsonWriter=__WriteFoxRunJson_*", result.components[0].notes);
-            Assert.Contains("generatedProtoWriter=FoxRunProtobufWire", result.components[2].notes);
+            Assert.Contains("FoxRunJsonStringBuilderShape", result.components[0].helperProvenance);
+            Assert.Contains("FoxgloveFrameTransformProtobufShape", result.components[2].helperProvenance);
+            Assert.Contains("generated-member-read=not-run", result.components[0].notes);
             Assert.All(result.components, item => Assert.True(item.bytesPerSecond >= 0));
+            var jsonOne = Assert.Single(result.components, item => item.name == "FoxRunPublishPayload.Json.1");
+            var jsonFour = Assert.Single(result.components, item => item.name == "FoxRunPublishPayload.Json.4");
+            Assert.True(jsonFour.egressBytes > jsonOne.egressBytes);
+            Assert.True(jsonFour.publishBytesPerSecond > 0);
+        }
+
+        [Fact]
+        public void FrameTransformPayloadRoundTripsSchema()
+        {
+            var runnerType = typeof(PerformanceRunner).Assembly
+                .GetType("Unity.FoxgloveSDK.Performance.HighBandwidthScenarioRunner");
+            var method = runnerType.GetMethod("BuildFrameTransformPayload", BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.NotNull(method);
+
+            var payload = (byte[])method.Invoke(null, new object[] { 2, 7 });
+            var decoded = FrameTransform.Parser.ParseFrom(payload);
+
+            Assert.Equal(1, decoded.Timestamp.Seconds);
+            Assert.Equal(7, decoded.Timestamp.Nanos);
+            Assert.Equal("parent-2", decoded.ParentFrameId);
+            Assert.Equal("child", decoded.ChildFrameId);
+            Assert.Equal(2, decoded.Translation.X);
+            Assert.Equal(1, decoded.Translation.Y);
+            Assert.Equal(2, decoded.Translation.Z);
+            Assert.Equal(1, decoded.Rotation.W);
         }
 
         [Fact]
@@ -148,6 +179,67 @@ namespace Unity.FoxgloveSDK.Performance.Tests
             Assert.Contains(result.components, item => item.name == "LargePayloadFanout.WebSocket.4");
             Assert.Contains(result.components, item => item.name == "LargePayloadFanout.Mcap");
             Assert.All(result.components, item => Assert.True(item.bytesPerSecond > 0));
+            var oneClient = Assert.Single(result.components, item => item.name == "LargePayloadFanout.WebSocket.1");
+            var fourClients = Assert.Single(result.components, item => item.name == "LargePayloadFanout.WebSocket.4");
+            Assert.True(fourClients.egressBytes > oneClient.egressBytes);
+        }
+
+        [Fact]
+        public void LargePayloadFanoutAppliesComponentThresholds()
+        {
+            var runnerType = typeof(PerformanceRunner).Assembly
+                .GetType("Unity.FoxgloveSDK.Performance.HighBandwidthScenarioRunner");
+            var method = runnerType.GetMethod("RunLargePayloadFanout", BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.NotNull(method);
+            var thresholds = new PerformanceThresholdConfig
+            {
+                enabled = true,
+                scenarios = new Dictionary<string, PerformanceScenarioThreshold>
+                {
+                    ["LargePayloadFanout.WebSocket.4"] = new PerformanceScenarioThreshold
+                    {
+                        maxAllocatedBytesPerMessage = 1,
+                        maxAllocatedBytesTotal = 1
+                    }
+                }
+            };
+
+            var result = (PerformanceScenarioResult)method.Invoke(null, new object[] { 1, 2, thresholds });
+
+            Assert.False(result.passed);
+            var component = Assert.Single(result.components, item => item.name == "LargePayloadFanout.WebSocket.4");
+            Assert.False(component.passed);
+            Assert.Contains("allocatedBytesPerMessage", component.thresholdNotes);
+        }
+
+        [Fact]
+        public void FoxRunPublishPayloadAppliesComponentThresholds()
+        {
+            var runnerType = typeof(PerformanceRunner).Assembly
+                .GetType("Unity.FoxgloveSDK.Performance.HighBandwidthScenarioRunner");
+            var method = runnerType.GetMethod("RunFoxRunPublishPayload", BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.NotNull(method);
+            var thresholds = new PerformanceThresholdConfig
+            {
+                enabled = true,
+                scenarios = new Dictionary<string, PerformanceScenarioThreshold>
+                {
+                    ["FoxRunPublishPayload.Json.4"] = new PerformanceScenarioThreshold
+                    {
+                        maxAllocatedBytesPerMessage = 1,
+                        maxAllocatedBytesTotal = 1
+                    }
+                }
+            };
+
+            var result = (PerformanceScenarioResult)method.Invoke(
+                null,
+                new object[] { 1, 2, 2, thresholds });
+
+            Assert.False(result.passed);
+            var component = Assert.Single(result.components, item => item.name == "FoxRunPublishPayload.Json.4");
+            Assert.False(component.passed);
+            Assert.Contains("allocatedBytesPerMessage", component.thresholdNotes);
         }
 
         [Fact]

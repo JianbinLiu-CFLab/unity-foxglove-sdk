@@ -33,8 +33,11 @@ namespace Unity.FoxgloveSDK.Performance
         public int warmupMessageCount { get; set; }
         public int messageCount { get; set; }
         public long elapsedMs { get; set; }
+        public double elapsedSeconds { get; set; }
         public double messagesPerSecond { get; set; }
         public double bytesPerSecond { get; set; }
+        public double publishBytesPerSecond { get; set; }
+        public long egressBytes { get; set; }
         public long allocatedBytesTotal { get; set; }
         public long allocatedBytesCurrentThread { get; set; }
         public double allocatedBytesPerMessage { get; set; }
@@ -43,6 +46,8 @@ namespace Unity.FoxgloveSDK.Performance
         public int gen2Collections { get; set; }
         public string allocationNotes { get; set; }
         public long outputBytes { get; set; }
+        public int clientCount { get; set; }
+        public string helperProvenance { get; set; }
         public long acceptedBytes { get; set; }
         public long droppedBytes { get; set; }
         public long queuedBytesHighWater { get; set; }
@@ -70,6 +75,7 @@ namespace Unity.FoxgloveSDK.Performance
     {
         public int sizeBytes { get; set; }
         public long droppedDataFrames { get; set; }
+        public long droppedDataFramesSnapshot { get; set; }
         public long queuedBytes { get; set; }
         public bool controlDequeuedFirst { get; set; }
         public long acceptedBytes { get; set; }
@@ -83,12 +89,23 @@ namespace Unity.FoxgloveSDK.Performance
         public string name { get; set; }
         public int messageCount { get; set; }
         public long elapsedMs { get; set; }
+        public double elapsedSeconds { get; set; }
         public double messagesPerSecond { get; set; }
         public double bytesPerSecond { get; set; }
+        public double publishBytesPerSecond { get; set; }
+        public long egressBytes { get; set; }
         public long allocatedBytesTotal { get; set; }
         public double allocatedBytesPerMessage { get; set; }
+        public long outputBytes { get; set; }
+        public long acceptedBytes { get; set; }
+        public long droppedBytes { get; set; }
+        public int clientCount { get; set; }
+        public bool thresholdsEvaluated { get; set; }
+        public string thresholdNotes { get; set; }
+        public bool passed { get; set; }
         public double dropRatio { get; set; }
         public long queuedBytesHighWater { get; set; }
         public string notes { get; set; }
+        public string helperProvenance { get; set; }
     }
 }

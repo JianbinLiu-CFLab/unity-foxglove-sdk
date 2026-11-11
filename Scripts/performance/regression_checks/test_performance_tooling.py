@@ -136,6 +136,7 @@ class PerformanceToolingTests(unittest.TestCase):
             ("string-status", {"name": "bad", "passed": "false"}),
             ("null-entry", None),
             ("non-finite", {"name": "bad", "passed": True, "messagesPerSecond": float("nan")}),
+            ("bad-component", {"name": "bad", "passed": True, "components": [{"name": "component", "dropRatio": 2}]}),
         )
         for case, scenario in cases:
             with self.subTest(case=case):
@@ -233,6 +234,8 @@ class PerformanceToolingTests(unittest.TestCase):
         self.assertIn("upload-artifact", workflow)
         self.assertIn("Runtime/Core/**", workflow)
         self.assertIn("Runtime/Components/Manager/**", workflow)
+        self.assertIn("Editor/Shared/FoxgloveSourceEmitter/**", workflow)
+        self.assertIn("Editor/SourceGenerators/**", workflow)
         self.assertIn("permissions:", workflow)
         self.assertIn("contents: read", workflow)
         self.assertIn("persist-credentials: false", workflow)
@@ -244,6 +247,17 @@ class PerformanceToolingTests(unittest.TestCase):
             "FoxRunPublishPayload",
             "WsSendQueueLargeFrame",
             "LargePayloadFanout",
+            "FoxRunStreamIngest.Default",
+            "FoxRunStreamIngest.Unbounded",
+            "FoxRunPublishPayload.Json.1",
+            "FoxRunPublishPayload.Json.4",
+            "FoxRunPublishPayload.Protobuf.1",
+            "FoxRunPublishPayload.Protobuf.4",
+            "FoxRunPublishPayload.MessagePack.1",
+            "FoxRunPublishPayload.MessagePack.4",
+            "LargePayloadFanout.WebSocket.1",
+            "LargePayloadFanout.WebSocket.4",
+            "LargePayloadFanout.Mcap",
         }
         for filename in ("performance-thresholds.json", "performance-thresholds.ci.json"):
             data = json.loads((ROOT / "Packages/dev.unity2foxglove.sdk/Tests/Performance" / filename).read_text(encoding="utf-8"))

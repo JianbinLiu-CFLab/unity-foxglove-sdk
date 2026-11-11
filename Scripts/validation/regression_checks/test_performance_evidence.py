@@ -12,7 +12,7 @@ class PerformanceEvidenceTests(unittest.TestCase):
 
     def test_workflow_pin_rejects_removed_quick_mode(self) -> None:
         """Removing quick mode must fail the fixed-lane contract."""
-        text = "workflow_dispatch:\npull_request:\nPackages/dev.unity2foxglove.sdk/Runtime/Components/Manager/**\nPackages/dev.unity2foxglove.sdk/Runtime/Core/**\nPackages/dev.unity2foxglove.sdk/Tests/Performance/**\nScripts/performance/**\n--quick --thresholds performance-thresholds.ci.json\npermissions:\ncontents: read\npersist-credentials: false\n"
+        text = "workflow_dispatch:\npull_request:\nPackages/dev.unity2foxglove.sdk/Runtime/Components/Manager/**\nPackages/dev.unity2foxglove.sdk/Runtime/Core/**\nPackages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/**\nPackages/dev.unity2foxglove.sdk/Editor/SourceGenerators/**\nPackages/dev.unity2foxglove.sdk/Tests/Performance/**\nScripts/performance/**\n--quick --thresholds performance-thresholds.ci.json\npermissions:\ncontents: read\npersist-credentials: false\n"
         self.assertTrue(performance_evidence._workflow_contract(text))
         self.assertFalse(performance_evidence._workflow_contract(text.replace("--quick ", "", 1)))
 

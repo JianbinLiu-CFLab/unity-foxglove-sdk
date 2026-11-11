@@ -6,6 +6,7 @@ import json
 import contextlib
 import importlib.util
 import io
+import math
 import re
 import tempfile
 import unittest
@@ -67,13 +68,29 @@ def _threshold_check() -> audit_lib.Check:
             "FoxRunPublishPayload",
             "WsSendQueueLargeFrame",
             "LargePayloadFanout",
+            "FoxRunStreamIngest.Default",
+            "FoxRunStreamIngest.Unbounded",
+            "FoxRunPublishPayload.Json.1",
+            "FoxRunPublishPayload.Json.4",
+            "FoxRunPublishPayload.Protobuf.1",
+            "FoxRunPublishPayload.Protobuf.4",
+            "FoxRunPublishPayload.MessagePack.1",
+            "FoxRunPublishPayload.MessagePack.4",
+            "LargePayloadFanout.WebSocket.1",
+            "LargePayloadFanout.WebSocket.4",
+            "LargePayloadFanout.Mcap",
         }
         explicit_modes = all(
             required_scenarios.issubset(data.get("modes", {}).get(mode, {}).get("scenarios", {}))
             for mode in ("quick", "full")
         )
         explicit_scenarios = required_scenarios.issubset(data.get("scenarios", {}))
-        finite = all(isinstance(defaults.get(key), (int, float)) and defaults[key] < 10_000_000_000 for key in ("maxAllocatedBytesPerMessage", "maxAllocatedBytesTotal"))
+        finite = all(
+            isinstance(defaults.get(key), (int, float))
+            and math.isfinite(defaults[key])
+            and defaults[key] < 10_000_000_000
+            for key in ("maxAllocatedBytesPerMessage", "maxAllocatedBytesTotal")
+        )
         large_bounded = (
             0 < large.get("maxAllocatedBytesPerMessage", 0) <= 4 * 1024 * 1024
             and 0 < large.get("maxAllocatedBytesTotal", 0) <= 16 * 1024 * 1024 * 1024
@@ -86,8 +103,40 @@ def _threshold_check() -> audit_lib.Check:
                 "maxGen2Collections",
             ))
         )
-        detail = f"defaults={defaults}; large={large}; quick_large={quick_large}; finite_defaults={finite}; bounded_large={large_bounded}; explicit_scenarios={explicit_scenarios}; explicit_modes={explicit_modes}"
-        status = "PASS" if finite and large_bounded and explicit_scenarios and explicit_modes else "FAIL"
+        def valid_threshold(value: dict[str, object]) -> bool:
+            numeric = (
+                "maxElapsedMs",
+                "maxAllocatedBytesPerMessage",
+                "maxAllocatedBytesTotal",
+                "maxGen0Collections",
+                "maxGen1Collections",
+                "maxGen2Collections",
+            )
+            finite_nonnegative = all(
+                isinstance(value.get(key), (int, float))
+                and math.isfinite(value[key])
+                and value[key] >= 0
+                for key in numeric
+            )
+            min_messages = value.get("minMessagesPerSecond", 0)
+            return (
+                finite_nonnegative
+                and value["maxElapsedMs"] > 0
+                and value["maxAllocatedBytesPerMessage"] > 0
+                and value["maxAllocatedBytesTotal"] > 0
+                and isinstance(min_messages, (int, float))
+                and math.isfinite(min_messages)
+                and min_messages >= 0
+            )
+
+        values_valid = all(valid_threshold(data["scenarios"][name]) for name in required_scenarios)
+        mode_values_valid = all(
+            valid_threshold(data["modes"][mode]["scenarios"][name])
+            for mode in ("quick", "full")
+            for name in required_scenarios
+        )
+        detail = f"defaults={defaults}; large={large}; quick_large={quick_large}; finite_defaults={finite}; bounded_large={large_bounded}; explicit_scenarios={explicit_scenarios}; explicit_modes={explicit_modes}; values_valid={values_valid}; mode_values_valid={mode_values_valid}"
+        status = "PASS" if finite and large_bounded and explicit_scenarios and explicit_modes and values_valid and mode_values_valid else "FAIL"
     except (OSError, KeyError, TypeError, json.JSONDecodeError) as exc:
         detail = str(exc)
         status = "FAIL"
@@ -141,6 +190,8 @@ def _workflow_contract(text: str) -> bool:
         "pull_request:",
         "Packages/dev.unity2foxglove.sdk/Runtime/Core/**",
         "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/**",
+        "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/**",
+        "Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/**",
         "Packages/dev.unity2foxglove.sdk/Tests/Performance/**",
         "Scripts/performance/**",
         "--quick",
