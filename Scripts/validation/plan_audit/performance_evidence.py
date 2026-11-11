@@ -62,6 +62,17 @@ def _threshold_check() -> audit_lib.Check:
         defaults = data["defaults"]
         large = data["scenarios"]["LargePayloadFanout"]
         quick_large = data["modes"]["quick"]["scenarios"]["LargePayloadFanout"]
+        required_scenarios = {
+            "FoxRunStreamIngest",
+            "FoxRunPublishPayload",
+            "WsSendQueueLargeFrame",
+            "LargePayloadFanout",
+        }
+        explicit_modes = all(
+            required_scenarios.issubset(data.get("modes", {}).get(mode, {}).get("scenarios", {}))
+            for mode in ("quick", "full")
+        )
+        explicit_scenarios = required_scenarios.issubset(data.get("scenarios", {}))
         finite = all(isinstance(defaults.get(key), (int, float)) and defaults[key] < 10_000_000_000 for key in ("maxAllocatedBytesPerMessage", "maxAllocatedBytesTotal"))
         large_bounded = (
             0 < large.get("maxAllocatedBytesPerMessage", 0) <= 4 * 1024 * 1024
@@ -75,8 +86,8 @@ def _threshold_check() -> audit_lib.Check:
                 "maxGen2Collections",
             ))
         )
-        detail = f"defaults={defaults}; large={large}; quick_large={quick_large}; finite_defaults={finite}; bounded_large={large_bounded}"
-        status = "PASS" if finite and large_bounded else "FAIL"
+        detail = f"defaults={defaults}; large={large}; quick_large={quick_large}; finite_defaults={finite}; bounded_large={large_bounded}; explicit_scenarios={explicit_scenarios}; explicit_modes={explicit_modes}"
+        status = "PASS" if finite and large_bounded and explicit_scenarios and explicit_modes else "FAIL"
     except (OSError, KeyError, TypeError, json.JSONDecodeError) as exc:
         detail = str(exc)
         status = "FAIL"
@@ -125,7 +136,19 @@ def _red_alloc_check() -> audit_lib.Check:
 
 def _workflow_contract(text: str) -> bool:
     """Return whether the fixed CI lane remains quick and path-pinned."""
-    required = ("workflow_dispatch:", "pull_request:", "Packages/dev.unity2foxglove.sdk/Tests/Performance/**", "Scripts/performance/**", "--quick", "performance-thresholds.ci.json")
+    required = (
+        "workflow_dispatch:",
+        "pull_request:",
+        "Packages/dev.unity2foxglove.sdk/Runtime/Core/**",
+        "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/**",
+        "Packages/dev.unity2foxglove.sdk/Tests/Performance/**",
+        "Scripts/performance/**",
+        "--quick",
+        "performance-thresholds.ci.json",
+        "permissions:",
+        "contents: read",
+        "persist-credentials: false",
+    )
     return all(token in text for token in required)
 
 

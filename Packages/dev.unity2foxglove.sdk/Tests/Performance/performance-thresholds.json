@@ -36,6 +36,33 @@
       "maxGen0Collections": 2000,
       "maxGen1Collections": 2000,
       "maxGen2Collections": 2000
+    },
+    "FoxRunStreamIngest": {
+      "maxElapsedMs": 120000,
+      "minMessagesPerSecond": 0.0,
+      "maxAllocatedBytesPerMessage": 8388608,
+      "maxAllocatedBytesTotal": 268435456,
+      "maxGen0Collections": 100,
+      "maxGen1Collections": 20,
+      "maxGen2Collections": 10
+    },
+    "FoxRunPublishPayload": {
+      "maxElapsedMs": 120000,
+      "minMessagesPerSecond": 0.0,
+      "maxAllocatedBytesPerMessage": 8388608,
+      "maxAllocatedBytesTotal": 268435456,
+      "maxGen0Collections": 100,
+      "maxGen1Collections": 20,
+      "maxGen2Collections": 10
+    },
+    "WsSendQueueLargeFrame": {
+      "maxElapsedMs": 120000,
+      "minMessagesPerSecond": 0.0,
+      "maxAllocatedBytesPerMessage": 8388608,
+      "maxAllocatedBytesTotal": 268435456,
+      "maxGen0Collections": 100,
+      "maxGen1Collections": 20,
+      "maxGen2Collections": 10
     }
   },
   "modes": {
@@ -74,6 +101,33 @@
           "maxGen0Collections": 2000,
           "maxGen1Collections": 2000,
           "maxGen2Collections": 2000
+        },
+        "FoxRunStreamIngest": {
+          "maxElapsedMs": 600000,
+          "minMessagesPerSecond": 0.0,
+          "maxAllocatedBytesPerMessage": 8388608,
+          "maxAllocatedBytesTotal": 268435456,
+          "maxGen0Collections": 100,
+          "maxGen1Collections": 20,
+          "maxGen2Collections": 50
+        },
+        "FoxRunPublishPayload": {
+          "maxElapsedMs": 600000,
+          "minMessagesPerSecond": 0.0,
+          "maxAllocatedBytesPerMessage": 8388608,
+          "maxAllocatedBytesTotal": 268435456,
+          "maxGen0Collections": 100,
+          "maxGen1Collections": 20,
+          "maxGen2Collections": 50
+        },
+        "WsSendQueueLargeFrame": {
+          "maxElapsedMs": 600000,
+          "minMessagesPerSecond": 0.0,
+          "maxAllocatedBytesPerMessage": 8388608,
+          "maxAllocatedBytesTotal": 268435456,
+          "maxGen0Collections": 100,
+          "maxGen1Collections": 20,
+          "maxGen2Collections": 50
         }
       }
     },
@@ -90,6 +144,33 @@
           "maxGen0Collections": 2000,
           "maxGen1Collections": 2000,
           "maxGen2Collections": 2000
+        },
+        "FoxRunStreamIngest": {
+          "maxElapsedMs": 120000,
+          "minMessagesPerSecond": 0.0,
+          "maxAllocatedBytesPerMessage": 8388608,
+          "maxAllocatedBytesTotal": 268435456,
+          "maxGen0Collections": 100,
+          "maxGen1Collections": 20,
+          "maxGen2Collections": 10
+        },
+        "FoxRunPublishPayload": {
+          "maxElapsedMs": 120000,
+          "minMessagesPerSecond": 0.0,
+          "maxAllocatedBytesPerMessage": 8388608,
+          "maxAllocatedBytesTotal": 268435456,
+          "maxGen0Collections": 100,
+          "maxGen1Collections": 20,
+          "maxGen2Collections": 10
+        },
+        "WsSendQueueLargeFrame": {
+          "maxElapsedMs": 120000,
+          "minMessagesPerSecond": 0.0,
+          "maxAllocatedBytesPerMessage": 8388608,
+          "maxAllocatedBytesTotal": 268435456,
+          "maxGen0Collections": 100,
+          "maxGen1Collections": 20,
+          "maxGen2Collections": 10
         }
       }
     }

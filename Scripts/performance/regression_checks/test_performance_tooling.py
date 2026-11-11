@@ -231,6 +231,25 @@ class PerformanceToolingTests(unittest.TestCase):
         self.assertIn("Scripts/performance/run_baseline.py --quick", workflow)
         self.assertIn("performance-thresholds.ci.json", workflow)
         self.assertIn("upload-artifact", workflow)
+        self.assertIn("Runtime/Core/**", workflow)
+        self.assertIn("Runtime/Components/Manager/**", workflow)
+        self.assertIn("permissions:", workflow)
+        self.assertIn("contents: read", workflow)
+        self.assertIn("persist-credentials: false", workflow)
+
+    def test_all_plan199_scenarios_have_explicit_quick_and_full_thresholds(self) -> None:
+        """Keep every high-bandwidth scenario explicitly bounded in both modes."""
+        expected = {
+            "FoxRunStreamIngest",
+            "FoxRunPublishPayload",
+            "WsSendQueueLargeFrame",
+            "LargePayloadFanout",
+        }
+        for filename in ("performance-thresholds.json", "performance-thresholds.ci.json"):
+            data = json.loads((ROOT / "Packages/dev.unity2foxglove.sdk/Tests/Performance" / filename).read_text(encoding="utf-8"))
+            self.assertTrue(expected.issubset(data["scenarios"]))
+            for mode in ("quick", "full"):
+                self.assertTrue(expected.issubset(data["modes"][mode]["scenarios"]))
 
 
 if __name__ == "__main__":

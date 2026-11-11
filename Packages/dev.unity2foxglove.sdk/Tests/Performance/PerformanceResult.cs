@@ -34,6 +34,7 @@ namespace Unity.FoxgloveSDK.Performance
         public int messageCount { get; set; }
         public long elapsedMs { get; set; }
         public double messagesPerSecond { get; set; }
+        public double bytesPerSecond { get; set; }
         public long allocatedBytesTotal { get; set; }
         public long allocatedBytesCurrentThread { get; set; }
         public double allocatedBytesPerMessage { get; set; }
@@ -42,6 +43,10 @@ namespace Unity.FoxgloveSDK.Performance
         public int gen2Collections { get; set; }
         public string allocationNotes { get; set; }
         public long outputBytes { get; set; }
+        public long acceptedBytes { get; set; }
+        public long droppedBytes { get; set; }
+        public long queuedBytesHighWater { get; set; }
+        public double dropRatio { get; set; }
         public string fixtureKind { get; set; }
         public string fixturePath { get; set; }
         public int channelCount { get; set; }
@@ -57,6 +62,7 @@ namespace Unity.FoxgloveSDK.Performance
         public string thresholdNotes { get; set; }
         public string notes { get; set; }
         public System.Collections.Generic.List<PerformanceFrameEvidence> frameEvidence { get; set; }
+        public System.Collections.Generic.List<PerformanceComponentEvidence> components { get; set; }
         public bool passed { get; set; }
     }
 
@@ -66,5 +72,23 @@ namespace Unity.FoxgloveSDK.Performance
         public long droppedDataFrames { get; set; }
         public long queuedBytes { get; set; }
         public bool controlDequeuedFirst { get; set; }
+        public long acceptedBytes { get; set; }
+        public long droppedBytes { get; set; }
+        public long queuedBytesHighWater { get; set; }
+        public double dropRatio { get; set; }
+    }
+
+    public sealed class PerformanceComponentEvidence
+    {
+        public string name { get; set; }
+        public int messageCount { get; set; }
+        public long elapsedMs { get; set; }
+        public double messagesPerSecond { get; set; }
+        public double bytesPerSecond { get; set; }
+        public long allocatedBytesTotal { get; set; }
+        public double allocatedBytesPerMessage { get; set; }
+        public double dropRatio { get; set; }
+        public long queuedBytesHighWater { get; set; }
+        public string notes { get; set; }
     }
 }

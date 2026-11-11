@@ -98,7 +98,56 @@ namespace Unity.FoxgloveSDK.Performance.Tests
                 Assert.True(item.droppedDataFrames > 0);
                 Assert.True(item.queuedBytes <= item.sizeBytes * 2L);
                 Assert.True(item.controlDequeuedFirst);
+                Assert.True(item.acceptedBytes > 0);
+                Assert.True(item.droppedBytes > 0);
+                Assert.True(item.queuedBytesHighWater <= item.sizeBytes * 2L);
+                Assert.InRange(item.dropRatio, 0, 1);
             });
+            Assert.True(result.bytesPerSecond > 0);
+            Assert.True(result.acceptedBytes > 0);
+            Assert.True(result.droppedBytes > 0);
+            Assert.True(result.queuedBytesHighWater > 0);
+        }
+
+        [Fact]
+        public void FoxRunPublishPayloadReportsGeneratedHelperComponents()
+        {
+            var runnerType = typeof(PerformanceRunner).Assembly
+                .GetType("Unity.FoxgloveSDK.Performance.HighBandwidthScenarioRunner");
+            var method = runnerType.GetMethod("RunFoxRunPublishPayload", BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.NotNull(method);
+
+            var result = (PerformanceScenarioResult)method.Invoke(
+                null,
+                new object[] { 1, 2, 2, new PerformanceThresholdConfig { enabled = false } });
+
+            Assert.NotNull(result.components);
+            Assert.Equal(6, result.components.Count);
+            Assert.Contains(result.components, item => item.name == "FoxRunPublishPayload.Json.1");
+            Assert.Contains(result.components, item => item.name == "FoxRunPublishPayload.Protobuf.1");
+            Assert.Contains(result.components, item => item.name == "FoxRunPublishPayload.MessagePack.1");
+            Assert.Contains("generatedJsonWriter=__WriteFoxRunJson_*", result.components[0].notes);
+            Assert.Contains("generatedProtoWriter=FoxRunProtobufWire", result.components[2].notes);
+            Assert.All(result.components, item => Assert.True(item.bytesPerSecond >= 0));
+        }
+
+        [Fact]
+        public void LargePayloadFanoutReportsEachSinkSeparately()
+        {
+            var runnerType = typeof(PerformanceRunner).Assembly
+                .GetType("Unity.FoxgloveSDK.Performance.HighBandwidthScenarioRunner");
+            var method = runnerType.GetMethod("RunLargePayloadFanout", BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.NotNull(method);
+
+            var result = (PerformanceScenarioResult)method.Invoke(
+                null,
+                new object[] { 1, 2, new PerformanceThresholdConfig { enabled = false } });
+
+            Assert.Equal(3, result.components.Count);
+            Assert.Contains(result.components, item => item.name == "LargePayloadFanout.WebSocket.1");
+            Assert.Contains(result.components, item => item.name == "LargePayloadFanout.WebSocket.4");
+            Assert.Contains(result.components, item => item.name == "LargePayloadFanout.Mcap");
+            Assert.All(result.components, item => Assert.True(item.bytesPerSecond > 0));
         }
 
         [Fact]
