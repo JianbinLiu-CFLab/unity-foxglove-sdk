@@ -346,6 +346,8 @@ class _RunCiTestsPart1:
         self.assertIn(":(glob)Scripts/validation/source_text_inventory*.py", gate)
         self.assertIn("--parser-migration-approval", gate)
         self.assertIn("actual_migration_checker_sha", gate)
+        self.assertIn("trusted_checker_sha", gate)
+        self.assertIn("immutable base checker", gate)
         self.assertIn("expected_migration_checker_sha", gate)
         self.assertIn("base_inventory_sha256", gate)
         self.assertIn("current_inventory_sha256", gate)

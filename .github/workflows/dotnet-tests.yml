@@ -320,6 +320,27 @@ jobs:
           print(digest.hexdigest())
           MIGRATION_CHECKER
           )
+          trusted_checker_sha=$(python3 -I -B - "$trusted_root" <<'TRUSTED_CHECKER'
+          import hashlib
+          import sys
+          from pathlib import Path
+
+          root = Path(sys.argv[1])
+          digest = hashlib.sha256()
+          for path in sorted(root.glob("Scripts/validation/source_text_inventory*.py")):
+              data = path.read_bytes()
+              digest.update(path.relative_to(root).as_posix().encode("utf-8"))
+              digest.update(b"\0")
+              digest.update(data.replace(b"\r\n", b"\n"))
+          print(digest.hexdigest())
+          TRUSTED_CHECKER
+          )
+          if [ "$trusted_revision" != "$trusted_minimum_revision" ] && [ "$trusted_revision" != "69d645a31940054eccd776c17b175378f11d6dca" ]; then
+            if [ "$actual_migration_checker_sha" != "$trusted_checker_sha" ]; then
+              echo "Current checker differs from immutable base checker without a reviewed migration approval" >&2
+              exit 1
+            fi
+          fi
           migration_args=()
           if [ "$trusted_revision" = "$trusted_minimum_revision" ]; then
             migration_approval_file="$RUNNER_TEMP/source-text-parser-migration-approval.json"
