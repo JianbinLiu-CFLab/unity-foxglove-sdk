@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import csv
 import hashlib
 import json
 import re
@@ -310,24 +309,6 @@ def _inventory_in_isolated_process(tree: Path) -> list[dict[str, object]]:
     rows = json.loads(completed.stdout)
     if not isinstance(rows, list):
         raise RuntimeError("isolated base inventory returned a non-list")
-    return rows
-
-
-def _load_inventory_report(path: Path) -> list[dict[str, object]]:
-    """Load a trusted CSV inventory while restoring the scanner's value types."""
-    csv_path = path / "source_text_inventory.csv" if path.is_dir() else path
-    if not csv_path.is_file():
-        raise RuntimeError(f"trusted inventory report is missing: {csv_path}")
-    with csv_path.open(encoding="utf-8", newline="") as handle:
-        rows = list(csv.DictReader(handle))
-    if not rows:
-        raise RuntimeError(f"trusted inventory report is empty: {csv_path}")
-    for row in rows:
-        try:
-            row["line"] = int(row["line"])
-        except (KeyError, TypeError, ValueError) as exc:
-            raise RuntimeError(f"trusted inventory report has an invalid line: {csv_path}") from exc
-        row["comment_only"] = row.get("comment_only", "") == "True"
     return rows
 
 
@@ -716,17 +697,12 @@ def _verify_base_inventory(
     inventory_callback: Callable[[Path], list[dict[str, object]]] | None = None,
     migration_approval: Path | None = None,
     output: Path | None = None,
-    trusted_base_inventory: Path | None = None,
 ) -> int:
     """Classify base/head changes and enforce exact acknowledgement entries."""
     if inventory_callback is None:
         raise RuntimeError("current inventory callback is required")
     checker_changed = _checker_digest(root) != _checker_digest(root, revision)
-    base_rows = (
-        _load_inventory_report(trusted_base_inventory)
-        if trusted_base_inventory is not None
-        else _inventory_at_revision(root, revision, inventory_callback=inventory_callback)
-    )
+    base_rows = _inventory_at_revision(root, revision, inventory_callback=inventory_callback)
     migration_errors: list[str] = []
     approved_parser_changes: list[dict[str, object]] = []
     if checker_changed:

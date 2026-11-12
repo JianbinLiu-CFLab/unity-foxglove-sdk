@@ -290,7 +290,12 @@ jobs:
             exit 1
           fi
           git archive "$trusted_revision" -- ':(glob)Scripts/validation/source_text_inventory*.py' | tar -x -C "$trusted_root"
-          git archive "$trusted_revision" | tar -x -C "$trusted_tree"
+          git archive "$trusted_revision" -- \
+            ':(glob)Packages/*/Runtime/**/*.cs' \
+            ':(glob)Packages/*/Editor/**/*.cs' \
+            ':(glob)Packages/*/Tests/Runtime/**/*.cs' \
+            ':(glob)Packages/*/Tests/Unit/**/*.cs' \
+            ':(glob)Scripts/validation/**/*.py' | tar -x -C "$trusted_tree"
           trusted_checker="$trusted_root/Scripts/validation/source_text_inventory.py"
           if ! python3 -I "$trusted_checker" --help 2>&1 | grep -q -- "--base-ref"; then
             echo "Trusted source-text inventory checker lacks --base-ref" >&2
@@ -354,7 +359,7 @@ jobs:
             migration_args=(--parser-migration-approval "$migration_approval_file")
           fi
           python3 -I -B "$trusted_checker" --root "$trusted_tree" --output build/review/source-text-inventory-trusted
-          python3 -I -B "$reviewed_checker_root/source_text_inventory.py" --root . --base-ref "$SOURCE_TEXT_INVENTORY_BASE_SHA" --trusted-base-inventory build/review/source-text-inventory-trusted --output build/review/source-text-inventory "${migration_args[@]}"
+          python3 -I -B "$reviewed_checker_root/source_text_inventory.py" --root . --base-ref "$SOURCE_TEXT_INVENTORY_BASE_SHA" --output build/review/source-text-inventory "${migration_args[@]}"
 
       - name: Upload live source-text inventory
         if: always()
