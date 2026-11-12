@@ -342,6 +342,7 @@ class _RunCiTestsPart1:
         self.assertIn("Scripts/validation/**/*.py", gate)
         self.assertIn('--root "$trusted_tree" --output build/review/source-text-inventory-trusted', gate)
         self.assertIn("--base-ref", gate)
+        self.assertIn("--trusted-base-inventory build/review/source-text-inventory-trusted", gate)
         self.assertIn(":(glob)Scripts/validation/source_text_inventory*.py", gate)
         self.assertIn("--parser-migration-approval", gate)
         self.assertIn("actual_migration_checker_sha", gate)
@@ -351,6 +352,8 @@ class _RunCiTestsPart1:
         self.assertIn("hashlib.sha256()", gate)
         self.assertNotIn("16763361a8c6d009eb2bfb4e7dab7af9efb94ca7", gate)
         self.assertNotIn("using reviewed bootstrap checker", gate)
+        self.assertIn("build/review/source-text-inventory/", workflow)
+        self.assertIn("build/review/source-text-inventory-trusted/", workflow)
 
     def test_dotnet_workflow_cannot_waive_validator_initializer_changes(self) -> None:
         """The trusted-base identity result must fail the workflow without a parser waiver."""

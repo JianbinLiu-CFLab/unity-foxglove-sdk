@@ -95,6 +95,36 @@ def _threshold_check() -> audit_lib.Check:
             and min_messages >= 0
         )
 
+    def merged_threshold(base: object, override: object) -> bool:
+        """Validate a mode override after merging it with top-level defaults."""
+        if not isinstance(base, dict) or not isinstance(override, dict):
+            return False
+        merged = dict(base)
+        merged.update(override)
+        return valid_threshold(merged)
+
+    def bounded_large(value: object, reference: dict[str, object] | None = None) -> bool:
+        """Validate the configured allocation and GC ceiling for LargePayloadFanout."""
+        if not isinstance(value, dict) or not valid_threshold(value):
+            return False
+        bounded = (
+            value["maxAllocatedBytesPerMessage"] <= 4 * 1024 * 1024
+            and value["maxAllocatedBytesTotal"] <= 16 * 1024 * 1024 * 1024
+            and value["maxGen1Collections"] <= 2000
+            and value["maxGen2Collections"] <= 2000
+        )
+        if reference is None:
+            return bounded
+        return bounded and all(
+            value[key] <= reference[key]
+            for key in (
+                "maxAllocatedBytesPerMessage",
+                "maxAllocatedBytesTotal",
+                "maxGen1Collections",
+                "maxGen2Collections",
+            )
+        )
+
     try:
         data = _load_thresholds()
         if not isinstance(data, dict):
@@ -103,13 +133,20 @@ def _threshold_check() -> audit_lib.Check:
         modes = data.get("modes")
         defaults = data.get("defaults")
         quick_mode = modes.get("quick") if isinstance(modes, dict) else None
+        full_mode = modes.get("full") if isinstance(modes, dict) else None
         quick_scenarios = quick_mode.get("scenarios") if isinstance(quick_mode, dict) else None
+        full_scenarios = full_mode.get("scenarios") if isinstance(full_mode, dict) else None
+        quick_defaults = quick_mode.get("defaults") if isinstance(quick_mode, dict) else None
+        full_defaults = full_mode.get("defaults") if isinstance(full_mode, dict) else None
         large = scenarios.get("LargePayloadFanout") if isinstance(scenarios, dict) else None
         quick_large = quick_scenarios.get("LargePayloadFanout") if isinstance(quick_scenarios, dict) else None
+        full_large = full_scenarios.get("LargePayloadFanout") if isinstance(full_scenarios, dict) else None
         if not isinstance(defaults, dict) or not isinstance(scenarios, dict) or not isinstance(modes, dict):
             raise TypeError("defaults, scenarios, and modes must be objects")
         if not isinstance(large, dict) or not isinstance(quick_large, dict):
             raise TypeError("LargePayloadFanout threshold records must be objects")
+        if not isinstance(full_large, dict):
+            raise TypeError("full LargePayloadFanout threshold record must be an object")
         required_scenarios = {
             "FoxRunStreamIngest",
             "FoxRunPublishPayload",
@@ -137,32 +174,25 @@ def _threshold_check() -> audit_lib.Check:
             if isinstance(scenarios_for_mode, dict):
                 explicit_modes = explicit_modes and required_scenarios.issubset(scenarios_for_mode)
         explicit_scenarios = required_scenarios.issubset(data.get("scenarios", {}))
+        mode_defaults_valid = valid_threshold(quick_defaults) and valid_threshold(full_defaults)
+        merged_mode_defaults_valid = merged_threshold(defaults, quick_defaults) and merged_threshold(defaults, full_defaults)
         finite = all(
             finite_number(defaults.get(key))
             and defaults[key] < 10_000_000_000
             for key in ("maxAllocatedBytesPerMessage", "maxAllocatedBytesTotal")
         )
         defaults_valid = valid_threshold(defaults)
-        large_bounded = (
-            0 < large.get("maxAllocatedBytesPerMessage", 0) <= 4 * 1024 * 1024
-            and 0 < large.get("maxAllocatedBytesTotal", 0) <= 16 * 1024 * 1024 * 1024
-            and 0 <= large.get("maxGen1Collections", 0) <= 2000
-            and 0 <= large.get("maxGen2Collections", 0) <= 2000
-            and all(quick_large.get(key, 0) <= large.get(key, 0) for key in (
-                "maxAllocatedBytesPerMessage",
-                "maxAllocatedBytesTotal",
-                "maxGen1Collections",
-                "maxGen2Collections",
-            ))
-        )
+        large_bounded = bounded_large(large)
+        quick_large_bounded = bounded_large(quick_large, large)
+        full_large_bounded = bounded_large(full_large, large)
         values_valid = all(valid_threshold(data["scenarios"][name]) for name in required_scenarios)
         mode_values_valid = all(
             valid_threshold(mode_scenarios[mode][name])
             for mode in ("quick", "full")
             for name in required_scenarios
         )
-        detail = f"defaults={defaults}; large={large}; quick_large={quick_large}; finite_defaults={finite}; defaults_valid={defaults_valid}; bounded_large={large_bounded}; explicit_scenarios={explicit_scenarios}; explicit_modes={explicit_modes}; values_valid={values_valid}; mode_values_valid={mode_values_valid}"
-        status = "PASS" if finite and defaults_valid and large_bounded and explicit_scenarios and explicit_modes and values_valid and mode_values_valid else "FAIL"
+        detail = f"defaults={defaults}; large={large}; quick_large={quick_large}; full_large={full_large}; finite_defaults={finite}; defaults_valid={defaults_valid}; mode_defaults_valid={mode_defaults_valid}; merged_mode_defaults_valid={merged_mode_defaults_valid}; bounded_large={large_bounded}; quick_large_bounded={quick_large_bounded}; full_large_bounded={full_large_bounded}; explicit_scenarios={explicit_scenarios}; explicit_modes={explicit_modes}; values_valid={values_valid}; mode_values_valid={mode_values_valid}"
+        status = "PASS" if finite and defaults_valid and mode_defaults_valid and merged_mode_defaults_valid and large_bounded and quick_large_bounded and full_large_bounded and explicit_scenarios and explicit_modes and values_valid and mode_values_valid else "FAIL"
     except (OSError, KeyError, TypeError, json.JSONDecodeError) as exc:
         detail = str(exc)
         status = "FAIL"

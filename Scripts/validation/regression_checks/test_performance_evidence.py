@@ -69,6 +69,24 @@ class PerformanceEvidenceTests(unittest.TestCase):
                     result = performance_evidence._threshold_check()
         self.assertEqual("FAIL", result.status)
 
+    def test_threshold_check_rejects_invalid_mode_defaults_and_full_large_payload(self) -> None:
+        """Reject invalid mode defaults and an over-broad full large-payload ceiling."""
+        for mutation in (
+            lambda data: data["modes"]["full"]["defaults"].__setitem__("maxGen2Collections", True),
+            lambda data: data["modes"]["full"]["scenarios"]["LargePayloadFanout"].__setitem__(
+                "maxAllocatedBytesTotal", 16 * 1024 * 1024 * 1024 + 1
+            ),
+        ):
+            with self.subTest(mutation=mutation):
+                data = performance_evidence._load_thresholds()
+                mutation(data)
+                performance_evidence.audit_lib.BUILD_ROOT.mkdir(parents=True, exist_ok=True)
+                with tempfile.TemporaryDirectory(dir=performance_evidence.audit_lib.BUILD_ROOT) as directory:
+                    with patch.object(performance_evidence, "OUTPUT", Path(directory)):
+                        with patch.object(performance_evidence, "_load_thresholds", return_value=data):
+                            result = performance_evidence._threshold_check()
+                self.assertEqual("FAIL", result.status)
+
     def test_threshold_check_rejects_oversized_integer_values(self) -> None:
         """Fail cleanly when a threshold integer cannot convert to a float."""
         data = performance_evidence._load_thresholds()

@@ -343,10 +343,10 @@ jobs:
             cat > "$migration_approval_file" <<'MIGRATION_APPROVAL'
           {
             "base_revision": "69d645a31940054eccd776c17b175378f11d6dca",
-            "checker_sha256": "b8a6d4ba9efbbbef5dff3e1aeff2c6225679f62265bf70b06ca11262da67852f",
-            "base_inventory_sha256": "85209891da4e0dfdcc1cce12661dad018cbac0a4a0014bd7bcda18ccd82e50df",
+            "checker_sha256": "31961d428a9897bcb2e3f55055c0c90a5928a9b18edac9eb134cc172d9f8a693",
+            "base_inventory_sha256": "97420087aa3bd1bfd8ff3aa74b7d6fe3de21a1057ec259519babc48ca55ee9f0",
             "current_inventory_sha256": "5635d87016b5d964abc02594a777c7a0a2ff4eb205555f8683081721f3f2dad7",
-            "parser_changes_sha256": "42180ca17e05d51e31c94c7c176e69280357f5b4d04df383ebbc2d4a1db1443e",
+            "parser_changes_sha256": "ede78e7466075185021dd214ee6a0272c28334b57edcbe425af193c2a6ec650a",
             "scope": "versioned-parser-maintenance",
             "reason": "Reviewed exact parser maintenance required to isolate unrelated performance sources from validation helper resolution."
           }
@@ -359,14 +359,16 @@ jobs:
             migration_args=(--parser-migration-approval "$migration_approval_file")
           fi
           python3 -I -B "$trusted_checker" --root "$trusted_tree" --output build/review/source-text-inventory-trusted
-          python3 -I -B "$reviewed_checker_root/source_text_inventory.py" --root . --base-ref "$SOURCE_TEXT_INVENTORY_BASE_SHA" --output build/review/source-text-inventory "${migration_args[@]}"
+          python3 -I -B "$reviewed_checker_root/source_text_inventory.py" --root . --base-ref "$SOURCE_TEXT_INVENTORY_BASE_SHA" --trusted-base-inventory build/review/source-text-inventory-trusted --output build/review/source-text-inventory "${migration_args[@]}"
 
       - name: Upload live source-text inventory
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: source-text-inventory-${{ github.run_id }}
-          path: build/review/source-text-inventory*
+          path: |
+            build/review/source-text-inventory/
+            build/review/source-text-inventory-trusted/
           if-no-files-found: error
 
   linux-identity-gate:
