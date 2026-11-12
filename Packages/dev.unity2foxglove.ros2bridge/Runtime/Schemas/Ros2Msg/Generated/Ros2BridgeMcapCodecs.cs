@@ -140,6 +140,14 @@ namespace Unity2Foxglove.Ros2Bridge
 
         public IMcapMessageDecoder TryCreate(McapSchema schema, McapChannel channel)
         {
+            return TryCreateKnownSchema(schema, channel, McapRos2CdrTypedDecoderFactory.SchemaContentMatches(schema));
+        }
+
+        internal IMcapMessageDecoder TryCreateKnownSchema(
+            McapSchema schema,
+            McapChannel channel,
+            bool schemaKnown)
+        {
             if (!string.Equals(
                     channel?.MessageEncoding,
                     Ros2BridgeMcapCodecs.MessageEncoding,
@@ -154,7 +162,7 @@ namespace Unity2Foxglove.Ros2Bridge
             {
                 return null;
             }
-            return new Decoder(schema, schema?.Name ?? string.Empty);
+            return new Decoder(schema?.Name ?? string.Empty, schemaKnown);
         }
 
         private sealed class Decoder : IMcapMessageDecoder
@@ -162,10 +170,10 @@ namespace Unity2Foxglove.Ros2Bridge
             private readonly string _schemaName;
             private readonly bool _schemaKnown;
 
-            internal Decoder(McapSchema schema, string schemaName)
+            internal Decoder(string schemaName, bool schemaKnown)
             {
                 _schemaName = schemaName ?? string.Empty;
-                _schemaKnown = McapRos2CdrTypedDecoderFactory.SchemaContentMatches(schema);
+                _schemaKnown = schemaKnown;
             }
 
             public McapDecodedPayload Decode(McapDataLoaderMessage message)
