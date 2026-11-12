@@ -218,6 +218,7 @@ class _ExternalHelperIndex:
     def _unresolved_candidates(self, name: str):
         """Retain repository candidates when an instance receiver cannot be proved."""
         def is_validation_source(path: Path) -> bool:
+            """Return whether a fallback candidate belongs to a validation test package."""
             parts = path.relative_to(self.root).parts
             return len(parts) >= 4 and parts[0] == "Packages" and parts[2] == "Tests" and parts[3] in {
                 "Runtime", "Unit"
