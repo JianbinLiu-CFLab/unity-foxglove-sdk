@@ -32,13 +32,13 @@ def parse_entries(text: str) -> tuple[list[str], list[str]]:
     return entries, duplicates
 
 
-def parse_reviewed_replacements(text: str) -> set[tuple[str, str]]:
+def parse_reviewed_replacements(text: str) -> list[tuple[str, str]]:
     """Return explicit one-for-one baseline replacement approvals."""
-    replacements: set[tuple[str, str]] = set()
+    replacements: list[tuple[str, str]] = []
     for raw in (text or "").replace("\r\n", "\n").splitlines():
         match = REVIEWED_REPLACEMENT_PATTERN.match(raw)
         if match:
-            replacements.add((match.group(1), match.group(2)))
+            replacements.append((match.group(1), match.group(2)))
     return replacements
 
 
@@ -57,13 +57,20 @@ def baseline_problems(base_text: str, head_text: str) -> list[str]:
             f"baseline entry added without reviewed replacement: {entry}"
             for entry in sorted(added - removed)
         )
-    elif added and len(added) == len(removed):
-        approved_removed = {old for old, new in reviewed_replacements if old in removed and new in added}
-        approved_added = {new for old, new in reviewed_replacements if old in removed and new in added}
-        for entry in sorted(removed - approved_removed):
-            problems.append(f"baseline replacement missing explicit approval for removed entry: {entry}")
-        for entry in sorted(added - approved_added):
-            problems.append(f"baseline replacement missing explicit approval for added entry: {entry}")
+    elif added:
+        valid_pairs = [
+            (old, new)
+            for old, new in reviewed_replacements
+            if old in removed and new in added
+        ]
+        for entry in sorted(added):
+            pairs = [pair for pair in valid_pairs if pair[1] == entry]
+            if len(pairs) != 1:
+                problems.append(f"baseline replacement requires exactly one approval for added entry: {entry}")
+        for entry in sorted(removed):
+            pairs = [pair for pair in valid_pairs if pair[0] == entry]
+            if len(pairs) > 1 or (len(added) == len(removed) and len(pairs) != 1):
+                problems.append(f"baseline replacement requires one-to-one approval for removed entry: {entry}")
     problems.extend(f"duplicate baseline entry in base: {entry}" for entry in base_duplicates)
     return problems
 

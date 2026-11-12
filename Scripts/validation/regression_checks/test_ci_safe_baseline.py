@@ -43,10 +43,36 @@ class CiSafeBaselineTests(unittest.TestCase):
         """Reject a one-for-one replacement without an explicit approval marker."""
         self.assertEqual(
             [
-                "baseline replacement missing explicit approval for removed entry: --old",
-                "baseline replacement missing explicit approval for added entry: --new",
+                "baseline replacement requires exactly one approval for added entry: --new",
+                "baseline replacement requires one-to-one approval for removed entry: --old",
             ],
             baseline_problems("--old\n", "--new\n"),
+        )
+
+    def test_baseline_problems_rejects_unapproved_net_removal_addition(self):
+        """Reject an added failure hidden beside removals."""
+        self.assertEqual(
+            ["baseline replacement requires exactly one approval for added entry: --new"],
+            baseline_problems("--old\n--fixed\n", "--new\n"),
+        )
+
+    def test_baseline_problems_requires_bijective_replacement_pairs(self):
+        """Reject approvals that reuse one old or new entry across multiple pairs."""
+        head = "\n".join(
+            [
+                "# reviewed replacement: --old1 -> --new1",
+                "# reviewed replacement: --old2 -> --new1",
+                "# reviewed replacement: --old2 -> --new2",
+                "--new1",
+                "--new2",
+            ]
+        ) + "\n"
+        self.assertEqual(
+            [
+                "baseline replacement requires exactly one approval for added entry: --new1",
+                "baseline replacement requires one-to-one approval for removed entry: --old2",
+            ],
+            baseline_problems("--old1\n--old2\n", head),
         )
 
 
