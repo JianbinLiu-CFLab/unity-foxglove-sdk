@@ -101,7 +101,7 @@ public sealed class Ros2PointCloud2InboundSample : MonoBehaviour
         var found = false;
         var pointCount = frame.ValidCount;
         var maximumPoints = Mathf.Max(1, maxBoundsPoints);
-        var stride = Mathf.Max(1, (pointCount + maximumPoints - 1) / maximumPoints);
+        var stride = (int)(((long)pointCount + maximumPoints - 1L) / maximumPoints);
         for (var index = 0; index < pointCount; index += stride)
         {
             if (frame.PointStep > int.MaxValue
