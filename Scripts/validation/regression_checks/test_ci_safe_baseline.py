@@ -1,6 +1,7 @@
 """Regression tests for CI-safe known-failure baseline governance."""
 
 import unittest
+from pathlib import Path
 
 from Scripts.validation.ci_safe_baseline import baseline_problems, parse_entries
 
@@ -74,6 +75,19 @@ class CiSafeBaselineTests(unittest.TestCase):
             ],
             baseline_problems("--old1\n--old2\n", head),
         )
+
+    def test_phase163_health_reload_guard_keeps_cancellation(self):
+        """Keep assembly reload cleanup coupled to the health-check cancellation path."""
+        root = Path(__file__).resolve().parents[3]
+        phase = (root / "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase163_25Validation.cs").read_text(
+            encoding="utf-8"
+        )
+        drawer = (root / "Packages/dev.unity2foxglove.ros2bridge/Editor/Ros2Bridge/Ros2BridgeHealthDrawer.cs").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("AssemblyReloadEvents.beforeAssemblyReload += BeforeAssemblyReload", phase)
+        self.assertIn("private void BeforeAssemblyReload()", drawer)
+        self.assertIn("CancelHealthCheck();", drawer)
 
 
 if __name__ == "__main__":
