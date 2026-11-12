@@ -220,6 +220,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 return;
             }
 
+            if (data.Length > _maxFrameBytes)
+            {
+                _slot.RecordRejected("CompressedImage data exceeds the configured frame limit");
+                return;
+            }
+
             if (_ingressBudget == null)
                 _ingressBudget = new CompressedImageInboundBudget(_maxFramesPerSecond, _maxBytesPerSecond);
             if (!_ingressBudget.TryAdmit(data.Length, Stopwatch.GetTimestamp()))

@@ -303,8 +303,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     }
                     PointCloudPackedByteBufferPool.Return(pooled);
                     pooled = compacted;
-                    message.Row_step = checked((uint)packedRowStep);
                 }
+
+                var mappedRowStep = checked((uint)packedRowStep);
 
                 var fields = new List<PointCloud2InboundField>(message.Fields?.Length ?? 0);
                 if (message.Fields != null)
@@ -320,7 +321,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     message.Width,
                     fields,
                     message.Point_step,
-                    message.Row_step,
+                    mappedRowStep,
                     pooled,
                     message.Is_bigendian,
                     message.Is_dense);

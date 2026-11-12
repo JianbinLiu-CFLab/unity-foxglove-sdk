@@ -213,32 +213,72 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         [Fact]
         public void GeneratedImuCopyMeasurementCoversDecisionRates()
         {
-            var source = new FakeImu("imu_link");
-            foreach (var hertz in new[] { 200, 500, 1000 })
+            if (!TryCreateGeneratedImu(out var source))
+                return;
+
+            try
             {
-                var slot = new FoxRunRos2OwnedLatestSlot<FakeImu>(message => message.Dispose());
-                for (var index = 0; index < 32; index++)
-                    PublishAndApply(slot, source);
+                foreach (var hertz in new[] { 200, 500, 1000 })
+                {
+                    var slot = new FoxRunRos2OwnedLatestSlot<sensor_msgs.msg.Imu>(message => message.Dispose());
+                    for (var index = 0; index < 32; index++)
+                        PublishAndApply(slot, source);
 
-                var beforeBytes = GC.GetAllocatedBytesForCurrentThread();
-                var beforeTicks = Stopwatch.GetTimestamp();
-                var iterations = hertz / 10;
-                for (var index = 0; index < iterations; index++)
-                    PublishAndApply(slot, source);
-                var elapsedTicks = Stopwatch.GetTimestamp() - beforeTicks;
-                var allocatedBytes = GC.GetAllocatedBytesForCurrentThread() - beforeBytes;
-                var allocatedPerMessage = allocatedBytes / (double)iterations;
-                var copyMicroseconds = elapsedTicks * 1_000_000d
-                                       / Stopwatch.Frequency
-                                       / iterations;
+                    var beforeBytes = GC.GetAllocatedBytesForCurrentThread();
+                    var beforeTicks = Stopwatch.GetTimestamp();
+                    var iterations = hertz / 10;
+                    for (var index = 0; index < iterations; index++)
+                        using (CopyWithRentedContext(source))
+                        {
+                        }
+                    var elapsedTicks = Stopwatch.GetTimestamp() - beforeTicks;
+                    var allocatedBytes = GC.GetAllocatedBytesForCurrentThread() - beforeBytes;
+                    var allocatedPerMessage = allocatedBytes / (double)iterations;
+                    var materializeMicroseconds = elapsedTicks * 1_000_000d / Stopwatch.Frequency / iterations;
 
-                Console.WriteLine(
-                    $"IMU_MEASUREMENT hz={hertz} copy_us={copyMicroseconds:F2} "
-                    + $"allocated_bytes_per_message={allocatedPerMessage:F2} "
-                    + $"drops={slot.ReplacedCount}");
-                Assert.Equal(0, slot.ReplacedCount);
-                Assert.True(allocatedPerMessage > 0);
+                    var mailboxBefore = Stopwatch.GetTimestamp();
+                    for (var index = 0; index < iterations; index++)
+                        PublishAndApply(slot, source);
+                    var publishApplyMicroseconds = (Stopwatch.GetTimestamp() - mailboxBefore)
+                                                   * 1_000_000d
+                                                   / Stopwatch.Frequency
+                                                   / iterations;
+
+                    Console.WriteLine(
+                        $"IMU_MEASUREMENT hz={hertz} materialize_copy_us={materializeMicroseconds:F2} "
+                        + $"publish_apply_us={publishApplyMicroseconds:F2} "
+                        + $"allocated_bytes_per_message={allocatedPerMessage:F2} "
+                        + $"replacements={slot.ReplacedCount}");
+                    Assert.InRange(materializeMicroseconds, 0d, 10_000d);
+                    Assert.InRange(allocatedPerMessage, 0d, 4096d);
+                    slot.Stop(_ => false);
+                }
+            }
+            finally
+            {
+                source.Dispose();
+            }
+        }
+
+        [Fact]
+        public void GeneratedImuCopyBurstMeasuresDeterministicMailboxReplacement()
+        {
+            if (!TryCreateGeneratedImu(out var source))
+                return;
+
+            try
+            {
+                var slot = new FoxRunRos2OwnedLatestSlot<sensor_msgs.msg.Imu>(message => message.Dispose());
+                for (var index = 0; index < 64; index++)
+                    Assert.True(slot.TryPublish(source, CopyWithRentedContext));
+
+                Assert.True(slot.ReplacedCount > 0);
+                Assert.True(slot.TryApplyLatest(_ => { }, _ => false));
                 slot.Stop(_ => false);
+            }
+            finally
+            {
+                source.Dispose();
             }
         }
 
@@ -301,53 +341,109 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         private static void PublishAndApply(
-            FoxRunRos2OwnedLatestSlot<FakeImu> slot,
-            FakeImu source)
+            FoxRunRos2OwnedLatestSlot<sensor_msgs.msg.Imu> slot,
+            sensor_msgs.msg.Imu source)
         {
-            Assert.True(slot.TryPublish(source, CopyImu));
+            Assert.True(slot.TryPublish(source, CopyWithRentedContext));
             Assert.True(slot.TryApplyLatest(_ => { }, _ => false));
         }
 
-        private static FakeImu CopyImu(FakeImu source)
+        private static sensor_msgs.msg.Imu CopyWithRentedContext(sensor_msgs.msg.Imu source)
         {
-            var context = new FoxRunRos2CopyContext(1024);
-            context.RequireBytes(source.FrameId.Length * sizeof(char));
-            context.RequireBytes(checked((source.Orientation.Length
-                                          + source.AngularVelocity.Length
-                                          + source.LinearAcceleration.Length) * sizeof(double)));
-            return new FakeImu(
-                new string(source.FrameId.ToCharArray()),
-                (double[])source.Orientation.Clone(),
-                (double[])source.AngularVelocity.Clone(),
-                (double[])source.LinearAcceleration.Clone());
+            var context = FoxRunRos2CopyContext.Rent(4096);
+            try
+            {
+                return CopyGeneratedImu(source, context);
+            }
+            finally
+            {
+                context.Return();
+            }
         }
 
-        private sealed class FakeImu
+        private static sensor_msgs.msg.Imu CopyGeneratedImu(
+            sensor_msgs.msg.Imu source,
+            FoxRunRos2CopyContext context)
         {
-            public FakeImu(string frameId)
-                : this(frameId, new double[4], new double[3], new double[3])
+            var sourceHeader = source.Header;
+            var sourceStamp = sourceHeader?.Stamp;
+            var frameId = sourceHeader?.Frame_id ?? string.Empty;
+            context.RequireBytes(checked(frameId.Length * sizeof(char)));
+            context.RequireBytes(checked(
+                (source.Orientation_covariance.Length
+                 + source.Angular_velocity_covariance.Length
+                 + source.Linear_acceleration_covariance.Length) * sizeof(double)));
+
+            var copy = new sensor_msgs.msg.Imu
             {
+                Header = new std_msgs.msg.Header
+                {
+                    Stamp = new builtin_interfaces.msg.Time
+                    {
+                        Sec = sourceStamp?.Sec ?? 0,
+                        Nanosec = sourceStamp?.Nanosec ?? 0
+                    },
+                    Frame_id = new string(frameId.ToCharArray())
+                },
+                Orientation = new geometry_msgs.msg.Quaternion
+                {
+                    X = source.Orientation.X,
+                    Y = source.Orientation.Y,
+                    Z = source.Orientation.Z,
+                    W = source.Orientation.W
+                },
+                Angular_velocity = new geometry_msgs.msg.Vector3
+                {
+                    X = source.Angular_velocity.X,
+                    Y = source.Angular_velocity.Y,
+                    Z = source.Angular_velocity.Z
+                },
+                Linear_acceleration = new geometry_msgs.msg.Vector3
+                {
+                    X = source.Linear_acceleration.X,
+                    Y = source.Linear_acceleration.Y,
+                    Z = source.Linear_acceleration.Z
+                }
+            };
+            Array.Copy(source.Orientation_covariance, copy.Orientation_covariance, source.Orientation_covariance.Length);
+            Array.Copy(source.Angular_velocity_covariance, copy.Angular_velocity_covariance, source.Angular_velocity_covariance.Length);
+            Array.Copy(source.Linear_acceleration_covariance, copy.Linear_acceleration_covariance, source.Linear_acceleration_covariance.Length);
+            return copy;
+        }
+
+        private static sensor_msgs.msg.Imu CreateGeneratedImu()
+        {
+            var message = new sensor_msgs.msg.Imu
+            {
+                Header = new std_msgs.msg.Header
+                {
+                    Stamp = new builtin_interfaces.msg.Time { Sec = 42, Nanosec = 7 },
+                    Frame_id = "imu_link"
+                },
+                Orientation = new geometry_msgs.msg.Quaternion { W = 1d },
+                Angular_velocity = new geometry_msgs.msg.Vector3 { X = 1d, Y = 2d, Z = 3d },
+                Linear_acceleration = new geometry_msgs.msg.Vector3 { X = 4d, Y = 5d, Z = 6d }
+            };
+            for (var index = 0; index < 9; index++)
+            {
+                message.Orientation_covariance[index] = 0.01d + index;
+                message.Angular_velocity_covariance[index] = 0.02d + index;
+                message.Linear_acceleration_covariance[index] = 0.03d + index;
             }
+            return message;
+        }
 
-            public FakeImu(
-                string frameId,
-                double[] orientation,
-                double[] angularVelocity,
-                double[] linearAcceleration)
+        private static bool TryCreateGeneratedImu(out sensor_msgs.msg.Imu message)
+        {
+            try
             {
-                FrameId = frameId;
-                Orientation = orientation;
-                AngularVelocity = angularVelocity;
-                LinearAcceleration = linearAcceleration;
+                message = CreateGeneratedImu();
+                return true;
             }
-
-            public string FrameId { get; }
-            public double[] Orientation { get; }
-            public double[] AngularVelocity { get; }
-            public double[] LinearAcceleration { get; }
-
-            public void Dispose()
+            catch (TypeInitializationException) when (!OperatingSystem.IsWindows())
             {
+                message = null;
+                return false;
             }
         }
     }

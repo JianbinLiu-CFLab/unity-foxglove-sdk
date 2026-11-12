@@ -133,7 +133,11 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
             return true;
         }
 
-        /// <summary>Maps a message while transferring ownership of its data buffer to the frame.</summary>
+        /// <summary>
+        /// Maps a compact message while transferring ownership of its data buffer to the frame.
+        /// The data buffer must come from <see cref="PointCloudPackedByteBufferPool.Rent(int)"/>
+        /// and the returned frame must be disposed exactly once.
+        /// </summary>
         public static bool TryMapOwned(
             PointCloud2InboundMessage message,
             long maxBytes,

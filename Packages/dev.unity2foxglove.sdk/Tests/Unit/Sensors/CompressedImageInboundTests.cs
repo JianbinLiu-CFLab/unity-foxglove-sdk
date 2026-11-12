@@ -23,6 +23,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.Sensors
         [Theory]
         [InlineData("webp", "format")]
         [InlineData("bgr8; tiff compressed bgr8", "format")]
+        [InlineData("bgr8; jpeg", "format")]
         [InlineData("jpeg", "maxBytes")]
         public void MapperRejectsUnsupportedOrOversizedFrames(string format, string expected)
         {

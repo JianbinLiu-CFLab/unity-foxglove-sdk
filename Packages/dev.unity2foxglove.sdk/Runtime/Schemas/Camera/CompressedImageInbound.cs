@@ -59,23 +59,38 @@ namespace Unity.FoxgloveSDK.Schemas.Camera
             if (string.IsNullOrWhiteSpace(format))
                 return false;
 
-            var tokens = format.ToLowerInvariant().Split(
-                new[] { ' ', '\t', '\r', '\n', ';', ',' },
-                StringSplitOptions.RemoveEmptyEntries);
-            foreach (var token in tokens)
+            var clauses = format.ToLowerInvariant().Split(';');
+            if (clauses.Length == 1)
             {
-                if (token == "jpeg" || token == "jpg")
-                {
-                    normalized = "jpeg";
-                    return true;
-                }
-                if (token == "png")
-                {
-                    normalized = "png";
-                    return true;
-                }
+                return TryNormalizeCodec(clauses[0], out normalized);
             }
+            if (clauses.Length != 2)
+                return false;
 
+            var compressionTokens = clauses[1].Split(
+                new[] { ' ', '\t', '\r', '\n', ',' },
+                StringSplitOptions.RemoveEmptyEntries);
+            if (compressionTokens.Length < 2
+                || !string.Equals(compressionTokens[1], "compressed", StringComparison.Ordinal))
+                return false;
+
+            return TryNormalizeCodec(compressionTokens[0], out normalized);
+        }
+
+        private static bool TryNormalizeCodec(string value, out string normalized)
+        {
+            normalized = string.Empty;
+            var codec = value.Trim();
+            if (codec == "jpeg" || codec == "jpg")
+            {
+                normalized = "jpeg";
+                return true;
+            }
+            if (codec == "png")
+            {
+                normalized = "png";
+                return true;
+            }
             return false;
         }
 
