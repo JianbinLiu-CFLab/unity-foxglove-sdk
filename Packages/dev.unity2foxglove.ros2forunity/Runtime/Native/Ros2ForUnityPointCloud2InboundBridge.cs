@@ -256,6 +256,21 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 }
             }
 
+            if (!PointCloud2InboundMapper.TryGetCompactByteCount(
+                    message.Height,
+                    message.Width,
+                    message.Point_step,
+                    message.Row_step,
+                    data.Length,
+                    _maxFrameBytes,
+                    out var packedRowStep,
+                    out var compactBytes,
+                    out var dimensionError))
+            {
+                _slot.RecordRejected(dimensionError);
+                return;
+            }
+
             var pooled = PointCloudPackedByteBufferPool.Rent(data.Length);
             var ownsPooled = true;
             try
@@ -276,21 +291,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     return;
                 }
 
-                ulong packedRowStep;
-                try
-                {
-                    packedRowStep = checked((ulong)message.Width * message.Point_step);
-                    _ = checked((ulong)message.Row_step * message.Height);
-                }
-                catch (OverflowException)
-                {
-                    _slot.RecordRejected("PointCloud2 row dimensions overflow");
-                    return;
-                }
-
                 if (message.Row_step > packedRowStep)
                 {
-                    var compactBytes = checked((int)(packedRowStep * message.Height));
                     var compacted = PointCloudPackedByteBufferPool.Rent(compactBytes);
                     for (var row = 0; row < message.Height; row++)
                     {

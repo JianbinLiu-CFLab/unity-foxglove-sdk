@@ -178,6 +178,23 @@ namespace Unity.FoxgloveSDK.Tests.Unit.Sensors
             Assert.Contains("metadata", error, StringComparison.OrdinalIgnoreCase);
         }
 
+        [Fact]
+        public void DimensionGuardRejectsOversizedCompactFrameBeforeRent()
+        {
+            Assert.False(
+                PointCloud2InboundMapper.TryGetCompactByteCount(
+                    5_000_000,
+                    1,
+                    1,
+                    1,
+                    5_000_000,
+                    4 * 1024 * 1024,
+                    out _,
+                    out _,
+                    out var error));
+            Assert.Contains("maxBytes", error, StringComparison.OrdinalIgnoreCase);
+        }
+
         private static PackedPointCloudFrame CreateFrame(ulong timestamp)
             => new PackedPointCloudFrame(
                 timestamp,
