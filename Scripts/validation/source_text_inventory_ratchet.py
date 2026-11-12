@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import csv
 import hashlib
 import json
 import re
@@ -309,6 +310,26 @@ def _inventory_in_isolated_process(tree: Path) -> list[dict[str, object]]:
     rows = json.loads(completed.stdout)
     if not isinstance(rows, list):
         raise RuntimeError("isolated base inventory returned a non-list")
+    return rows
+
+
+def _load_inventory_report(path: Path) -> list[dict[str, object]]:
+    """Load a trusted CSV inventory while restoring the scanner's value types."""
+    csv_path = path / "source_text_inventory.csv" if path.is_dir() else path
+    if not csv_path.is_file():
+        raise RuntimeError(f"trusted inventory report is missing: {csv_path}")
+    with csv_path.open(encoding="utf-8", newline="") as handle:
+        rows = list(csv.DictReader(handle))
+    if not rows:
+        raise RuntimeError(f"trusted inventory report is empty: {csv_path}")
+    for row in rows:
+        try:
+            row["line"] = int(row["line"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise RuntimeError(f"trusted inventory report has an invalid line: {csv_path}") from exc
+        row["comment_only"] = row.get("comment_only", "") == "True"
+        if not row.get("parser_version"):
+            row.pop("parser_version", None)
     return rows
 
 
@@ -664,11 +685,17 @@ def _inventory_fingerprint(rows: list[dict[str, object]]) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+def _parser_change_fingerprint(changes: list[dict[str, object]]) -> str:
+    """Hash the complete parser-change record set for exact maintenance approval."""
+    return _inventory_fingerprint(changes)
+
+
 def _migration_fingerprints(
     root: Path,
     revision: str,
     base_rows: list[dict[str, object]],
     current_rows: list[dict[str, object]],
+    parser_changes: list[dict[str, object]],
 ) -> dict[str, str]:
     """Bind migration evidence to one base commit, checker, and pair of full scans."""
     base_revision = subprocess.run(
@@ -680,6 +707,7 @@ def _migration_fingerprints(
         "checker_sha256": _checker_digest(root),
         "base_inventory_sha256": _inventory_fingerprint(base_rows),
         "current_inventory_sha256": _inventory_fingerprint(current_rows),
+        "parser_changes_sha256": _parser_change_fingerprint(parser_changes),
     }
 
 
@@ -690,12 +718,17 @@ def _verify_base_inventory(
     inventory_callback: Callable[[Path], list[dict[str, object]]] | None = None,
     migration_approval: Path | None = None,
     output: Path | None = None,
+    trusted_base_inventory: Path | None = None,
 ) -> int:
     """Classify base/head changes and enforce exact acknowledgement entries."""
     if inventory_callback is None:
         raise RuntimeError("current inventory callback is required")
     checker_changed = _checker_digest(root) != _checker_digest(root, revision)
-    base_rows = _inventory_at_revision(root, revision, inventory_callback=inventory_callback)
+    base_rows = (
+        _load_inventory_report(trusted_base_inventory)
+        if trusted_base_inventory is not None
+        else _inventory_at_revision(root, revision, inventory_callback=inventory_callback)
+    )
     migration_errors: list[str] = []
     approved_parser_changes: list[dict[str, object]] = []
     if checker_changed:
@@ -706,7 +739,9 @@ def _verify_base_inventory(
             inventory_callback=inventory_callback,
         )
         parser_changes, parser_strengthened = _parser_semantic_changes(base_rows, base_status_rows)
-        fingerprints = _migration_fingerprints(root, revision, base_rows, base_status_rows)
+        fingerprints = _migration_fingerprints(
+            root, revision, base_rows, base_status_rows, parser_changes
+        )
         if output is not None:
             evidence = {
                 "fingerprints": fingerprints,
@@ -726,17 +761,41 @@ def _verify_base_inventory(
             ]
             if not isinstance(approval.get("reason"), str) or not approval["reason"].strip():
                 migration_errors.append("reason")
-            current_versions = {row.get("parser_version") for row in base_status_rows}
-            if any("parser_version" in row for row in base_rows) or len(current_versions) != 1:
-                migration_errors.append("not a legacy-to-versioned migration")
+            base_versions = {
+                str(row.get("parser_version", ""))
+                for row in base_rows
+                if row.get("parser_version")
+            }
+            current_versions = {
+                str(row.get("parser_version", ""))
+                for row in base_status_rows
+                if row.get("parser_version")
+            }
+            scope = approval.get("scope")
+            legacy_migration = (
+                not any("parser_version" in row for row in base_rows)
+                and len(current_versions) == 1
+                and scope in (None, "legacy-to-versioned")
+            )
+            versioned_maintenance = (
+                bool(base_versions)
+                and base_versions == current_versions
+                and scope == "versioned-parser-maintenance"
+            )
+            if not (legacy_migration or versioned_maintenance):
+                migration_errors.append("not an approved parser migration")
             if not migration_errors:
-                approved_fields = {f"parser_{field}" for field in PARSER_COMPARE_FIELDS}
-                approved_parser_changes = [
-                    change for change in parser_changes if change["field"] in approved_fields
-                ]
-                parser_changes = [
-                    change for change in parser_changes if change["field"] not in approved_fields
-                ]
+                if legacy_migration:
+                    approved_fields = {f"parser_{field}" for field in PARSER_COMPARE_FIELDS}
+                    approved_parser_changes = [
+                        change for change in parser_changes if change["field"] in approved_fields
+                    ]
+                    parser_changes = [
+                        change for change in parser_changes if change["field"] not in approved_fields
+                    ]
+                else:
+                    approved_parser_changes = list(parser_changes)
+                    parser_changes = []
     else:
         base_status_rows = base_rows
         parser_changes = []

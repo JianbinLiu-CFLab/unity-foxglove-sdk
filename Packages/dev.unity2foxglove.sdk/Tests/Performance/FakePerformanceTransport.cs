@@ -19,6 +19,7 @@ namespace Unity.FoxgloveSDK.Performance
 
         public int BinaryCount { get; private set; }
         public int DataBinaryCount { get; private set; }
+        public long DataBinaryBytes { get; private set; }
 
         public void Start(string host, int port) { }
         public void Stop() { }
@@ -26,8 +27,8 @@ namespace Unity.FoxgloveSDK.Performance
         public void BroadcastText(string json) { }
         public void SendBinary(uint clientId, byte[] data) { BinaryCount++; }
         public void BroadcastBinary(byte[] data) { BinaryCount++; }
-        public void SendDataBinary(uint clientId, byte[] data) { DataBinaryCount++; }
-        public void BroadcastDataBinary(byte[] data) { DataBinaryCount++; }
+        public void SendDataBinary(uint clientId, byte[] data) { DataBinaryCount++; DataBinaryBytes += data?.LongLength ?? 0; }
+        public void BroadcastDataBinary(byte[] data) { DataBinaryCount++; DataBinaryBytes += data?.LongLength ?? 0; }
         public void Dispose() { }
 
         public void SimulateConnect(uint clientId, string subProtocol = "foxglove.sdk.v1")
@@ -45,6 +46,7 @@ namespace Unity.FoxgloveSDK.Performance
         {
             BinaryCount = 0;
             DataBinaryCount = 0;
+            DataBinaryBytes = 0;
         }
     }
 }

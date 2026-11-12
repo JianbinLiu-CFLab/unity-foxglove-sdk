@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import json
 from pathlib import Path
 
 from .test_source_text_inventory_semantics import _FixtureSupport
@@ -13,6 +14,101 @@ from .test_source_text_inventory_semantics import _FixtureSupport
 
 class SourceTextInventoryReviewTests(_FixtureSupport, unittest.TestCase):
     """Keep helper arguments and branch exits bound to existing inventory rows."""
+
+    def _run_migration_cli(self, root, approval=None, trusted_base=None):
+        """Run the proposed checker with an optional workflow migration approval."""
+        args = [
+            sys.executable,
+            "-B",
+            str(root / "Scripts/validation/source_text_inventory.py"),
+            "--root",
+            str(root),
+            "--base-ref",
+            "HEAD",
+            "--output",
+            str(root / "build/inventory"),
+        ]
+        if approval is not None:
+            args.extend(["--parser-migration-approval", str(approval)])
+        if trusted_base is not None:
+            args.extend(["--trusted-base-inventory", str(trusted_base)])
+        return subprocess.run(args, capture_output=True, text=True, check=False)
+
+    def test_versioned_parser_maintenance_requires_exact_scope_and_fingerprints(self):
+        """Allow only an exact protected approval for a versioned parser maintenance change."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(directory)
+            checker = root / "Scripts/validation/source_text_inventory.py"
+            original = checker.read_text(encoding="utf-8")
+            maintenance = (
+                "\n_original_inventory = inventory\n"
+                "def inventory(root):\n"
+                "    rows = _original_inventory(root)\n"
+                "    for row in rows:\n"
+                "        row['harness_signature'] = row['legacy_harness_signature']\n"
+                "    return rows\n"
+            )
+            checker.write_text(
+                original.replace("\nif __name__ == \"__main__\":", maintenance + "\nif __name__ == \"__main__\":"),
+                encoding="utf-8",
+            )
+            result = self._run_migration_cli(root)
+            self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+            evidence = json.loads(
+                (root / "build/inventory/parser_migration_evidence.json").read_text(encoding="utf-8")
+            )
+            approval = root / "build/versioned-parser-approval.json"
+            approval.write_text(
+                json.dumps({
+                    **evidence["fingerprints"],
+                    "scope": "versioned-parser-maintenance",
+                    "reason": "Reviewed exact parser maintenance change.",
+                }),
+                encoding="utf-8",
+            )
+            result = self._run_migration_cli(root, approval)
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            self.assertIn("PARSER_MIGRATION_APPROVED", result.stdout)
+            approval.write_text(
+                json.dumps({
+                    **evidence["fingerprints"],
+                    "scope": "versioned-parser-maintenance",
+                    "parser_changes_sha256": "0" * 64,
+                    "reason": "Reviewed exact parser maintenance change.",
+                }),
+                encoding="utf-8",
+            )
+            result = self._run_migration_cli(root, approval)
+            self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+            self.assertIn("PARSER_MIGRATION_REJECTED", result.stdout)
+
+    def test_external_helper_index_ignores_unscanned_performance_sources(self):
+        """Keep unrelated performance sources out of validation helper resolution."""
+        from Scripts.validation.source_text_inventory import _ExternalHelperIndex
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runtime = root / "Packages" / "fixture" / "Tests" / "Runtime"
+            runtime.mkdir(parents=True)
+            performance = root / "Packages" / "fixture" / "Tests" / "Performance"
+            performance.mkdir(parents=True)
+            performance_file = performance / "Unrelated.cs"
+            performance_file.write_text("public sealed class Unrelated {}\n", encoding="utf-8")
+            index = _ExternalHelperIndex(root)
+            self.assertNotIn(performance_file, index.units)
+
+    def test_cli_reuses_trusted_base_inventory_report(self):
+        """Allow the workflow's trusted base report to replace a duplicate base scan."""
+        from Scripts.validation.source_text_inventory import inventory
+        from Scripts.validation.source_text_inventory_report import write_report
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(directory)
+            trusted = root / "build" / "trusted-inventory"
+            write_report(inventory(root), trusted)
+            result = self._run_migration_cli(root, trusted_base=trusted)
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            self.assertIn("SOURCE_TEXT_INVENTORY_BASE_OK", result.stdout)
 
     def test_signature_cache_isolates_callers_and_resolved_roots(self):
         """Keep result reuse scoped to caller paths, actual candidates, and source indexes."""

@@ -254,21 +254,80 @@ def main() -> int:
         print("[perf-baseline] No scenarios produced in result JSON.")
         return EXIT_FAILURE
 
+    def validate_metric_record(record, label):
+        """Validate one scenario or component record and return an error string."""
+        def finite_metric(value):
+            """Return whether a report metric is finite without overflowing."""
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                return False
+            try:
+                return math.isfinite(value)
+            except OverflowError:
+                return False
+
+        if not isinstance(record, dict):
+            return f"{label}: expected an object"
+        if "passed" in record and type(record["passed"]) is not bool:
+            return f"{label}: passed must be boolean"
+        optional_numeric_fields = {"queryStartTimeNs", "queryEndTimeNs"}
+        numeric_fields = (
+            "warmupMessageCount", "messageCount", "elapsedMs", "elapsedSeconds", "messagesPerSecond", "bytesPerSecond", "publishBytesPerSecond", "egressBytes",
+            "allocatedBytesPerMessage", "allocatedBytesTotal", "allocatedBytesCurrentThread",
+            "gen0Collections", "gen1Collections", "gen2Collections", "outputBytes",
+            "acceptedBytes", "droppedBytes", "queuedBytesHighWater", "dropRatio", "clientCount",
+            "droppedDataFrames", "droppedDataFramesSnapshot",
+            "sizeBytes", "queuedBytes", "channelCount", "schemaCount", "selectedChannelCount",
+            "selectedTopicCount", "returnedMessageCount", "backfillHitCount", "fixtureBytes",
+            "queryStartTimeNs", "queryEndTimeNs",
+        )
+        for metric in numeric_fields:
+            if metric not in record:
+                continue
+            value = record[metric]
+            if value is None and metric in optional_numeric_fields:
+                continue
+            if not finite_metric(value):
+                return f"{label}: {metric} must be finite numeric"
+        if "dropRatio" in record and not 0 <= record["dropRatio"] <= 1:
+            return f"{label}: dropRatio must be between 0 and 1"
+        for metric in ("warmupMessageCount", "messageCount", "elapsedMs", "elapsedSeconds", "messagesPerSecond", "bytesPerSecond", "publishBytesPerSecond", "egressBytes", "allocatedBytesPerMessage", "allocatedBytesTotal", "allocatedBytesCurrentThread", "outputBytes", "acceptedBytes", "droppedBytes", "queuedBytesHighWater", "clientCount", "droppedDataFrames", "droppedDataFramesSnapshot", "gen0Collections", "gen1Collections", "gen2Collections", "sizeBytes", "queuedBytes", "channelCount", "schemaCount", "selectedChannelCount", "selectedTopicCount", "returnedMessageCount", "backfillHitCount", "fixtureBytes", "queryStartTimeNs", "queryEndTimeNs"):
+            if metric not in record or (record[metric] is None and metric in optional_numeric_fields):
+                continue
+            if record[metric] < 0:
+                return f"{label}: {metric} must be non-negative"
+        for metric in ("warmupMessageCount", "messageCount", "elapsedMs", "egressBytes", "allocatedBytesTotal", "allocatedBytesCurrentThread", "gen0Collections", "gen1Collections", "gen2Collections", "outputBytes", "acceptedBytes", "droppedBytes", "queuedBytesHighWater", "clientCount", "droppedDataFrames", "droppedDataFramesSnapshot", "sizeBytes", "queuedBytes", "channelCount", "schemaCount", "selectedChannelCount", "selectedTopicCount", "returnedMessageCount", "backfillHitCount", "fixtureBytes", "queryStartTimeNs", "queryEndTimeNs"):
+            if metric not in record or (record[metric] is None and metric in optional_numeric_fields):
+                continue
+            if type(record[metric]) is not int:
+                return f"{label}: {metric} must be an integer"
+        if "sizeBytes" in record and record["sizeBytes"] <= 0:
+            return f"{label}: sizeBytes must be positive"
+        if "controlDequeuedFirst" in record and type(record["controlDequeuedFirst"]) is not bool:
+            return f"{label}: controlDequeuedFirst must be boolean"
+        components = record.get("components", [])
+        if components is not None:
+            if not isinstance(components, list):
+                return f"{label}: components must be a list"
+            for component_index, component in enumerate(components):
+                error = validate_metric_record(component, f"{label}.components[{component_index}]")
+                if error:
+                    return error
+        frames = record.get("frameEvidence", [])
+        if frames is not None:
+            if not isinstance(frames, list):
+                return f"{label}: frameEvidence must be a list"
+            for frame_index, frame in enumerate(frames):
+                error = validate_metric_record(frame, f"{label}.frameEvidence[{frame_index}]")
+                if error:
+                    return error
+        return None
+
     all_passed = True
     for index, s in enumerate(scenarios):
-        if not isinstance(s, dict):
-            print(f"[perf-baseline] invalid scenario at index {index}: expected an object")
+        validation_error = validate_metric_record(s, f"scenario[{index}]")
+        if validation_error:
+            print(f"[perf-baseline] invalid scenario: {validation_error}")
             return EXIT_FAILURE
-        if "passed" in s and type(s["passed"]) is not bool:
-            print(f"[perf-baseline] invalid scenario at index {index}: passed must be boolean")
-            return EXIT_FAILURE
-        for metric in ("messageCount", "elapsedMs", "messagesPerSecond", "allocatedBytesPerMessage"):
-            if metric not in s:
-                continue
-            value = s[metric]
-            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
-                print(f"[perf-baseline] invalid scenario at index {index}: {metric} must be finite numeric")
-                return EXIT_FAILURE
         status = "PASS" if s.get("passed") else "FAIL"
         name = s.get("name", "?")
         msg = s.get("messageCount", MISSING_METRIC_DEFAULT)

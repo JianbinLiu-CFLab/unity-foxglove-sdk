@@ -5,6 +5,11 @@ on:
     paths:
       - 'Packages/dev.unity2foxglove.sdk/Runtime/Transport/**'
       - 'Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/**'
+      - 'Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/**'
+      - 'Packages/dev.unity2foxglove.sdk/Runtime/Core/**'
+      - 'Packages/dev.unity2foxglove.sdk/Runtime/Protocol/**'
+      - 'Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/**'
+      - 'Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/**'
       - 'Packages/dev.unity2foxglove.sdk/Runtime/Schemas/**'
       - 'Packages/dev.unity2foxglove.sdk/Runtime/IO/**'
       - 'Packages/dev.unity2foxglove.sdk/Tests/Performance/**'
@@ -17,11 +22,14 @@ on:
 jobs:
   performance:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           fetch-depth: 1
+          persist-credentials: false
       - name: Setup .NET
         uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9
         with:
@@ -41,8 +49,18 @@ jobs:
           from pathlib import Path
           report = sorted(Path('build/performance-ci').glob('*.json'))[-1]
           data = json.loads(report.read_text(encoding='utf-8'))
-          print('| Scenario | Messages/s | Allocated bytes/message |')
-          print('| --- | ---: | ---: |')
+          print('| Scenario | Messages/s | Publish MB/s | Egress MB/s | Allocated bytes/message | Drop ratio | Queued high-water |')
+          print('| --- | ---: | ---: | ---: | ---: | ---: | ---: |')
           for row in data.get('scenarios', []):
-              print(f"| {row.get('name', '?')} | {row.get('messagesPerSecond', 0):.0f} | {row.get('allocatedBytesPerMessage', 0):.1f} |")
+              components = row.get('components') or [row]
+              for component in components:
+                  print(
+                      f"| {component.get('name', row.get('name', '?'))} | "
+                      f"{component.get('messagesPerSecond', 0):.0f} | "
+                      f"{component.get('publishBytesPerSecond', 0) / 1_000_000:.3f} | "
+                      f"{component.get('bytesPerSecond', 0) / 1_000_000:.3f} | "
+                      f"{component.get('allocatedBytesPerMessage', 0):.1f} | "
+                      f"{component.get('dropRatio', row.get('dropRatio', 0)):.3f} | "
+                      f"{component.get('queuedBytesHighWater', row.get('queuedBytesHighWater', 0))} |"
+                  )
           PY

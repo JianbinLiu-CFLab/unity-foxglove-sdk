@@ -268,7 +268,7 @@ jobs:
 
       - name: Run live source-text inventory
         if: always()
-        timeout-minutes: 15
+        timeout-minutes: 20
         env:
           SOURCE_TEXT_INVENTORY_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
@@ -276,6 +276,9 @@ jobs:
           trusted_root="$RUNNER_TEMP/source-text-inventory-trusted-base"
           rm -rf "$trusted_root"
           mkdir -p "$trusted_root"
+          trusted_tree="$RUNNER_TEMP/source-text-inventory-trusted-tree"
+          rm -rf "$trusted_tree"
+          mkdir -p "$trusted_tree"
           trusted_revision="$SOURCE_TEXT_INVENTORY_BASE_SHA"
           trusted_minimum_revision="fe195f288a3df0c9754056ef2d84c095c2e98cf7"
           if ! git merge-base --is-ancestor "$trusted_minimum_revision" "$trusted_revision"; then
@@ -287,6 +290,12 @@ jobs:
             exit 1
           fi
           git archive "$trusted_revision" -- ':(glob)Scripts/validation/source_text_inventory*.py' | tar -x -C "$trusted_root"
+          git archive "$trusted_revision" -- \
+            ':(glob)Packages/*/Runtime/**/*.cs' \
+            ':(glob)Packages/*/Editor/**/*.cs' \
+            ':(glob)Packages/*/Tests/Runtime/**/*.cs' \
+            ':(glob)Packages/*/Tests/Unit/**/*.cs' \
+            ':(glob)Scripts/validation/**/*.py' | tar -x -C "$trusted_tree"
           trusted_checker="$trusted_root/Scripts/validation/source_text_inventory.py"
           if ! python3 -I "$trusted_checker" --help 2>&1 | grep -q -- "--base-ref"; then
             echo "Trusted source-text inventory checker lacks --base-ref" >&2
@@ -311,6 +320,27 @@ jobs:
           print(digest.hexdigest())
           MIGRATION_CHECKER
           )
+          trusted_checker_sha=$(python3 -I -B - "$trusted_root" <<'TRUSTED_CHECKER'
+          import hashlib
+          import sys
+          from pathlib import Path
+
+          root = Path(sys.argv[1])
+          digest = hashlib.sha256()
+          for path in sorted(root.glob("Scripts/validation/source_text_inventory*.py")):
+              data = path.read_bytes()
+              digest.update(path.relative_to(root).as_posix().encode("utf-8"))
+              digest.update(b"\0")
+              digest.update(data.replace(b"\r\n", b"\n"))
+          print(digest.hexdigest())
+          TRUSTED_CHECKER
+          )
+          if [ "$trusted_revision" != "$trusted_minimum_revision" ] && [ "$trusted_revision" != "69d645a31940054eccd776c17b175378f11d6dca" ]; then
+            if [ "$actual_migration_checker_sha" != "$trusted_checker_sha" ]; then
+              echo "Current checker differs from immutable base checker without a reviewed migration approval" >&2
+              exit 1
+            fi
+          fi
           migration_args=()
           if [ "$trusted_revision" = "$trusted_minimum_revision" ]; then
             migration_approval_file="$RUNNER_TEMP/source-text-parser-migration-approval.json"
@@ -329,16 +359,37 @@ jobs:
               exit 1
             fi
             migration_args=(--parser-migration-approval "$migration_approval_file")
+          elif [ "$trusted_revision" = "69d645a31940054eccd776c17b175378f11d6dca" ]; then
+            migration_approval_file="$RUNNER_TEMP/source-text-parser-maintenance-approval.json"
+            cat > "$migration_approval_file" <<'MIGRATION_APPROVAL'
+          {
+            "base_revision": "69d645a31940054eccd776c17b175378f11d6dca",
+            "checker_sha256": "38c38ab571a46ec8b4fda77c4c5d15ee8d815675a3cf1dbf17d9d465672adb66",
+            "base_inventory_sha256": "97420087aa3bd1bfd8ff3aa74b7d6fe3de21a1057ec259519babc48ca55ee9f0",
+            "current_inventory_sha256": "5635d87016b5d964abc02594a777c7a0a2ff4eb205555f8683081721f3f2dad7",
+            "parser_changes_sha256": "ede78e7466075185021dd214ee6a0272c28334b57edcbe425af193c2a6ec650a",
+            "scope": "versioned-parser-maintenance",
+            "reason": "Reviewed exact parser maintenance required to isolate unrelated performance sources from validation helper resolution."
+          }
+          MIGRATION_APPROVAL
+            expected_migration_checker_sha=$(python3 -I -B -c 'import json,sys; print(json.load(open(sys.argv[1]))["checker_sha256"])' "$migration_approval_file")
+            if [ "$actual_migration_checker_sha" != "$expected_migration_checker_sha" ]; then
+              echo "Reviewed parser maintenance checker SHA-256 does not match" >&2
+              exit 1
+            fi
+            migration_args=(--parser-migration-approval "$migration_approval_file")
           fi
-          python3 -I -B "$trusted_checker" --root . --base-ref "$SOURCE_TEXT_INVENTORY_BASE_SHA" --output build/review/source-text-inventory-trusted
-          python3 -I -B "$reviewed_checker_root/source_text_inventory.py" --root . --base-ref "$SOURCE_TEXT_INVENTORY_BASE_SHA" --output build/review/source-text-inventory "${migration_args[@]}"
+          python3 -I -B "$trusted_checker" --root "$trusted_tree" --output build/review/source-text-inventory-trusted
+          python3 -I -B "$reviewed_checker_root/source_text_inventory.py" --root . --base-ref "$SOURCE_TEXT_INVENTORY_BASE_SHA" --trusted-base-inventory build/review/source-text-inventory-trusted --output build/review/source-text-inventory "${migration_args[@]}"
 
       - name: Upload live source-text inventory
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: source-text-inventory-${{ github.run_id }}
-          path: build/review/source-text-inventory*
+          path: |
+            build/review/source-text-inventory/
+            build/review/source-text-inventory-trusted/
           if-no-files-found: error
 
   linux-identity-gate:

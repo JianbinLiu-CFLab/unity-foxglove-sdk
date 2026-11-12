@@ -72,7 +72,17 @@ class _ExternalHelperIndex:
         self.fallbacks = {}
         self.type_candidates_cache = {}
         self.declaration_files = None
-        for path in sorted(root.glob("Packages/*/**/*.cs")):
+        source_files = {
+            path
+            for pattern in (
+                "Packages/*/Runtime/**/*.cs",
+                "Packages/*/Editor/**/*.cs",
+                "Packages/*/Tests/Runtime/**/*.cs",
+                "Packages/*/Tests/Unit/**/*.cs",
+            )
+            for path in root.glob(pattern)
+        }
+        for path in sorted(source_files):
             source = path.read_text(encoding="utf-8", errors="replace")
             masked = _strip_csharp_comments_and_strings(source)
             regions = _source_type_regions(masked)
@@ -936,9 +946,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output", type=Path, default=Path("build/review/source-text-inventory"))
     parser.add_argument("--base-ref")
     parser.add_argument("--parser-migration-approval", type=Path)
+    parser.add_argument("--trusted-base-inventory", type=Path)
     args = parser.parse_args(argv)
     if args.parser_migration_approval and not args.base_ref:
         parser.error("--parser-migration-approval requires --base-ref")
+    if args.trusted_base_inventory and not args.base_ref:
+        parser.error("--trusted-base-inventory requires --base-ref")
     root = args.root.resolve()
     rows = inventory(root)
     write_report(rows, args.output)
@@ -955,6 +968,7 @@ def main(argv: list[str] | None = None) -> int:
             inventory_callback=inventory,
             migration_approval=args.parser_migration_approval,
             output=args.output,
+            trusted_base_inventory=args.trusted_base_inventory,
         )
     return 0
 

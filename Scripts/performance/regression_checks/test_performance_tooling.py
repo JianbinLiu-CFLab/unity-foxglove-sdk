@@ -17,6 +17,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from Scripts.validation.plan_audit import performance_evidence
+
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -136,6 +138,32 @@ class PerformanceToolingTests(unittest.TestCase):
             ("string-status", {"name": "bad", "passed": "false"}),
             ("null-entry", None),
             ("non-finite", {"name": "bad", "passed": True, "messagesPerSecond": float("nan")}),
+            ("oversized", {"name": "bad", "passed": True, "messagesPerSecond": 10**400}),
+            ("negative-throughput", {"name": "bad", "passed": True, "messagesPerSecond": -1}),
+            ("negative-collections", {"name": "bad", "passed": True, "gen0Collections": -1}),
+            ("bad-component", {"name": "bad", "passed": True, "components": [{"name": "component", "dropRatio": 2}]}),
+            (
+                "bad-frame-evidence",
+                {
+                    "name": "WsSendQueueLargeFrame",
+                    "passed": True,
+                    "frameEvidence": [
+                        {
+                            "sizeBytes": "bad",
+                            "queuedBytes": -1,
+                            "controlDequeuedFirst": "yes",
+                            "droppedDataFrames": 0,
+                            "droppedDataFramesSnapshot": 0,
+                            "dropRatio": 0,
+                        }
+                    ],
+                },
+            ),
+            ("query-timestamp-string", {"name": "bad", "queryStartTimeNs": "1"}),
+            ("query-timestamp-float", {"name": "bad", "queryStartTimeNs": 1.5}),
+            ("query-timestamp-negative", {"name": "bad", "queryStartTimeNs": -1}),
+            ("query-timestamp-oversized", {"name": "bad", "queryStartTimeNs": 10**400}),
+            ("query-timestamp-non-finite", {"name": "bad", "queryStartTimeNs": float("nan")}),
         )
         for case, scenario in cases:
             with self.subTest(case=case):
@@ -163,6 +191,54 @@ class PerformanceToolingTests(unittest.TestCase):
 
                 self.assertEqual(module.EXIT_FAILURE, result)
                 self.assertIn("invalid scenario", stdout.getvalue())
+
+    def test_performance_runner_accepts_nullable_query_timestamps(self) -> None:
+        """Accept scenarios that serialize absent query windows as null timestamps."""
+        module = load_module(
+            "performance_runner_nullable_query_timestamps",
+            "Scripts/performance/run_baseline.py",
+        )
+        with tempfile.TemporaryDirectory() as temp:
+            output = Path(temp)
+            result_path = output / "phase35_performance_current.json"
+            argv = [
+                "run_baseline.py",
+                "--quick",
+                "--output",
+                str(output),
+                "--timeout-minutes",
+                "0",
+            ]
+
+            def fake_run(cmd, **kwargs):
+                """Write a valid queryless scenario with nullable timestamps."""
+                result_path.write_text(
+                    json.dumps(
+                        {
+                            "scenarios": [
+                                {
+                                    "name": "queryless",
+                                    "passed": True,
+                                    "queryStartTimeNs": None,
+                                    "queryEndTimeNs": None,
+                                }
+                            ]
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+                return subprocess.CompletedProcess(cmd, 0)
+
+            stdout = io.StringIO()
+            with mock.patch.object(module.sys, "argv", argv), mock.patch.object(
+                module, "_free_disk_bytes", return_value=10 * module.BYTES_PER_GIB
+            ), mock.patch.object(module, "_setup_nuget_cache", return_value={}), mock.patch.object(
+                module, "_run_owned", side_effect=fake_run
+            ), contextlib.redirect_stdout(stdout):
+                result = module.main()
+
+        self.assertEqual(module.EXIT_SUCCESS, result)
+        self.assertIn("Performance baseline complete", stdout.getvalue())
 
     def test_performance_runner_ignores_stale_lexicographically_later_json(self) -> None:
         """Summary selection must use output from the current invocation only."""
@@ -231,6 +307,53 @@ class PerformanceToolingTests(unittest.TestCase):
         self.assertIn("Scripts/performance/run_baseline.py --quick", workflow)
         self.assertIn("performance-thresholds.ci.json", workflow)
         self.assertIn("upload-artifact", workflow)
+        self.assertIn("Runtime/Transport/**", workflow)
+        self.assertIn("Runtime/Components/FoxRun/**", workflow)
+        self.assertIn("Runtime/Core/**", workflow)
+        self.assertIn("Runtime/Components/Manager/**", workflow)
+        self.assertIn("Runtime/Protocol/**", workflow)
+        self.assertIn("Runtime/Schemas/**", workflow)
+        self.assertIn("Runtime/IO/**", workflow)
+        self.assertIn("Editor/Shared/FoxgloveSourceEmitter/**", workflow)
+        self.assertIn("Editor/SourceGenerators/**", workflow)
+        self.assertIn("permissions:", workflow)
+        self.assertIn("contents: read", workflow)
+        self.assertIn("persist-credentials: false", workflow)
+
+    def test_plan_audit_requires_protocol_trigger_path(self) -> None:
+        """The audit must fail if a benchmark-relevant workflow path is removed."""
+        workflow = (ROOT / ".github" / "workflows" / "performance.yml").read_text(encoding="utf-8")
+        self.assertTrue(performance_evidence._workflow_contract(workflow))
+        mutated = workflow.replace(
+            "      - 'Packages/dev.unity2foxglove.sdk/Runtime/Protocol/**'\n",
+            "",
+        )
+        self.assertFalse(performance_evidence._workflow_contract(mutated))
+
+    def test_all_plan199_scenarios_have_explicit_quick_and_full_thresholds(self) -> None:
+        """Keep every high-bandwidth scenario explicitly bounded in both modes."""
+        expected = {
+            "FoxRunStreamIngest",
+            "FoxRunPublishPayload",
+            "WsSendQueueLargeFrame",
+            "LargePayloadFanout",
+            "FoxRunStreamIngest.Default",
+            "FoxRunStreamIngest.Unbounded",
+            "FoxRunPublishPayload.Json.1",
+            "FoxRunPublishPayload.Json.4",
+            "FoxRunPublishPayload.Protobuf.1",
+            "FoxRunPublishPayload.Protobuf.4",
+            "FoxRunPublishPayload.MessagePack.1",
+            "FoxRunPublishPayload.MessagePack.4",
+            "LargePayloadFanout.WebSocket.1",
+            "LargePayloadFanout.WebSocket.4",
+            "LargePayloadFanout.Mcap",
+        }
+        for filename in ("performance-thresholds.json", "performance-thresholds.ci.json"):
+            data = json.loads((ROOT / "Packages/dev.unity2foxglove.sdk/Tests/Performance" / filename).read_text(encoding="utf-8"))
+            self.assertTrue(expected.issubset(data["scenarios"]))
+            for mode in ("quick", "full"):
+                self.assertTrue(expected.issubset(data["modes"][mode]["scenarios"]))
 
 
 if __name__ == "__main__":

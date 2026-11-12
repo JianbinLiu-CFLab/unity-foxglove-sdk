@@ -281,8 +281,14 @@ class SourceTextInventoryMigrationTests(_FixtureSupport, unittest.TestCase):
     def test_workflow_hashes_checker_without_trusting_checker_code(self):
         """Detect checker mutations even when the checker forges its own digest."""
         workflow = Path(__file__).resolve().parents[3] / ".github/workflows/dotnet-tests.yml"
+        workflow_text = workflow.read_text(encoding="utf-8")
+        self.assertIn(
+            "--trusted-base-inventory build/review/source-text-inventory-trusted",
+            workflow_text,
+        )
+        self.assertIn("build/review/source-text-inventory-trusted/", workflow_text)
         match = re.search(
-            r"<<'MIGRATION_CHECKER'\n(.*?)\n\s*MIGRATION_CHECKER", workflow.read_text(encoding="utf-8"), re.S
+            r"<<'MIGRATION_CHECKER'\n(.*?)\n\s*MIGRATION_CHECKER", workflow_text, re.S
         )
         self.assertIsNotNone(match, "Workflow must independently hash the proposed checker")
         program = textwrap.dedent(match.group(1))
@@ -603,7 +609,7 @@ class SourceTextInventoryMigrationTests(_FixtureSupport, unittest.TestCase):
             )
             result = self._run_migration_cli(root, approval)
             self.assertEqual(1, result.returncode, result.stdout + result.stderr)
-            self.assertIn("not a legacy-to-versioned migration", result.stdout)
+            self.assertIn("not an approved parser migration", result.stdout)
 
     def test_exact_workflow_migration_approval_preserves_other_gates(self):
         """Bind migration approval to the base, checker, and both complete inventories."""

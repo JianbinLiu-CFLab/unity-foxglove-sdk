@@ -6,6 +6,7 @@ import json
 import contextlib
 import importlib.util
 import io
+import math
 import re
 import tempfile
 import unittest
@@ -57,26 +58,141 @@ def _load_thresholds() -> dict[str, object]:
 def _threshold_check() -> audit_lib.Check:
     """Require finite default and large-payload allocation/GC ceilings."""
     evidence = OUTPUT / "logs" / "thresholds.log"
-    try:
-        data = _load_thresholds()
-        defaults = data["defaults"]
-        large = data["scenarios"]["LargePayloadFanout"]
-        quick_large = data["modes"]["quick"]["scenarios"]["LargePayloadFanout"]
-        finite = all(isinstance(defaults.get(key), (int, float)) and defaults[key] < 10_000_000_000 for key in ("maxAllocatedBytesPerMessage", "maxAllocatedBytesTotal"))
-        large_bounded = (
-            0 < large.get("maxAllocatedBytesPerMessage", 0) <= 4 * 1024 * 1024
-            and 0 < large.get("maxAllocatedBytesTotal", 0) <= 16 * 1024 * 1024 * 1024
-            and 0 <= large.get("maxGen1Collections", 0) <= 2000
-            and 0 <= large.get("maxGen2Collections", 0) <= 2000
-            and all(quick_large.get(key, 0) <= large.get(key, 0) for key in (
+    evidence.parent.mkdir(parents=True, exist_ok=True)
+
+    def finite_number(value: object) -> bool:
+        """Return whether a value is a finite numeric threshold."""
+        if not isinstance(value, (int, float)) or isinstance(value, bool):
+            return False
+        try:
+            return math.isfinite(value)
+        except OverflowError:
+            return False
+
+    def valid_threshold(value: object) -> bool:
+        """Validate one scenario threshold map."""
+        if not isinstance(value, dict):
+            return False
+        numeric = (
+            "maxElapsedMs",
+            "maxAllocatedBytesPerMessage",
+            "maxAllocatedBytesTotal",
+            "maxGen0Collections",
+            "maxGen1Collections",
+            "maxGen2Collections",
+        )
+        finite_nonnegative = all(
+            finite_number(value.get(key)) and value[key] >= 0
+            for key in numeric
+        )
+        min_messages = value.get("minMessagesPerSecond", 0)
+        return (
+            finite_nonnegative
+            and value["maxElapsedMs"] > 0
+            and value["maxAllocatedBytesPerMessage"] > 0
+            and value["maxAllocatedBytesTotal"] > 0
+            and finite_number(min_messages)
+            and min_messages >= 0
+        )
+
+    def merged_threshold(base: object, override: object) -> bool:
+        """Validate a mode override after merging it with top-level defaults."""
+        if not isinstance(base, dict) or not isinstance(override, dict):
+            return False
+        merged = dict(base)
+        merged.update(override)
+        return valid_threshold(merged)
+
+    def bounded_large(value: object, reference: dict[str, object] | None = None) -> bool:
+        """Validate the configured allocation and GC ceiling for LargePayloadFanout."""
+        if not isinstance(value, dict) or not valid_threshold(value):
+            return False
+        bounded = (
+            value["maxAllocatedBytesPerMessage"] <= 4 * 1024 * 1024
+            and value["maxAllocatedBytesTotal"] <= 16 * 1024 * 1024 * 1024
+            and value["maxGen1Collections"] <= 2000
+            and value["maxGen2Collections"] <= 2000
+        )
+        if reference is None:
+            return bounded
+        return bounded and all(
+            value[key] <= reference[key]
+            for key in (
                 "maxAllocatedBytesPerMessage",
                 "maxAllocatedBytesTotal",
                 "maxGen1Collections",
                 "maxGen2Collections",
-            ))
+            )
         )
-        detail = f"defaults={defaults}; large={large}; quick_large={quick_large}; finite_defaults={finite}; bounded_large={large_bounded}"
-        status = "PASS" if finite and large_bounded else "FAIL"
+
+    try:
+        data = _load_thresholds()
+        if not isinstance(data, dict):
+            raise TypeError("threshold configuration must be an object")
+        scenarios = data.get("scenarios")
+        modes = data.get("modes")
+        defaults = data.get("defaults")
+        quick_mode = modes.get("quick") if isinstance(modes, dict) else None
+        full_mode = modes.get("full") if isinstance(modes, dict) else None
+        quick_scenarios = quick_mode.get("scenarios") if isinstance(quick_mode, dict) else None
+        full_scenarios = full_mode.get("scenarios") if isinstance(full_mode, dict) else None
+        quick_defaults = quick_mode.get("defaults") if isinstance(quick_mode, dict) else None
+        full_defaults = full_mode.get("defaults") if isinstance(full_mode, dict) else None
+        large = scenarios.get("LargePayloadFanout") if isinstance(scenarios, dict) else None
+        quick_large = quick_scenarios.get("LargePayloadFanout") if isinstance(quick_scenarios, dict) else None
+        full_large = full_scenarios.get("LargePayloadFanout") if isinstance(full_scenarios, dict) else None
+        if not isinstance(defaults, dict) or not isinstance(scenarios, dict) or not isinstance(modes, dict):
+            raise TypeError("defaults, scenarios, and modes must be objects")
+        if not isinstance(large, dict) or not isinstance(quick_large, dict):
+            raise TypeError("LargePayloadFanout threshold records must be objects")
+        if not isinstance(full_large, dict):
+            raise TypeError("full LargePayloadFanout threshold record must be an object")
+        required_scenarios = {
+            "FoxRunStreamIngest",
+            "FoxRunPublishPayload",
+            "WsSendQueueLargeFrame",
+            "LargePayloadFanout",
+            "FoxRunStreamIngest.Default",
+            "FoxRunStreamIngest.Unbounded",
+            "FoxRunPublishPayload.Json.1",
+            "FoxRunPublishPayload.Json.4",
+            "FoxRunPublishPayload.Protobuf.1",
+            "FoxRunPublishPayload.Protobuf.4",
+            "FoxRunPublishPayload.MessagePack.1",
+            "FoxRunPublishPayload.MessagePack.4",
+            "LargePayloadFanout.WebSocket.1",
+            "LargePayloadFanout.WebSocket.4",
+            "LargePayloadFanout.Mcap",
+        }
+        mode_scenarios = {}
+        explicit_modes = True
+        for mode in ("quick", "full"):
+            mode_config = modes.get(mode)
+            scenarios_for_mode = mode_config.get("scenarios") if isinstance(mode_config, dict) else None
+            mode_scenarios[mode] = scenarios_for_mode
+            explicit_modes = explicit_modes and isinstance(scenarios_for_mode, dict)
+            if isinstance(scenarios_for_mode, dict):
+                explicit_modes = explicit_modes and required_scenarios.issubset(scenarios_for_mode)
+        explicit_scenarios = required_scenarios.issubset(data.get("scenarios", {}))
+        mode_defaults_valid = valid_threshold(quick_defaults) and valid_threshold(full_defaults)
+        merged_mode_defaults_valid = merged_threshold(defaults, quick_defaults) and merged_threshold(defaults, full_defaults)
+        finite = all(
+            finite_number(defaults.get(key))
+            and defaults[key] < 10_000_000_000
+            for key in ("maxAllocatedBytesPerMessage", "maxAllocatedBytesTotal")
+        )
+        defaults_valid = valid_threshold(defaults)
+        large_bounded = bounded_large(large)
+        quick_large_bounded = bounded_large(quick_large, large)
+        full_large_bounded = bounded_large(full_large, large)
+        values_valid = all(valid_threshold(data["scenarios"][name]) for name in required_scenarios)
+        mode_values_valid = all(
+            valid_threshold(mode_scenarios[mode][name])
+            for mode in ("quick", "full")
+            for name in required_scenarios
+        )
+        detail = f"defaults={defaults}; large={large}; quick_large={quick_large}; full_large={full_large}; finite_defaults={finite}; defaults_valid={defaults_valid}; mode_defaults_valid={mode_defaults_valid}; merged_mode_defaults_valid={merged_mode_defaults_valid}; bounded_large={large_bounded}; quick_large_bounded={quick_large_bounded}; full_large_bounded={full_large_bounded}; explicit_scenarios={explicit_scenarios}; explicit_modes={explicit_modes}; values_valid={values_valid}; mode_values_valid={mode_values_valid}"
+        status = "PASS" if finite and defaults_valid and mode_defaults_valid and merged_mode_defaults_valid and large_bounded and quick_large_bounded and full_large_bounded and explicit_scenarios and explicit_modes and values_valid and mode_values_valid else "FAIL"
     except (OSError, KeyError, TypeError, json.JSONDecodeError) as exc:
         detail = str(exc)
         status = "FAIL"
@@ -125,7 +241,27 @@ def _red_alloc_check() -> audit_lib.Check:
 
 def _workflow_contract(text: str) -> bool:
     """Return whether the fixed CI lane remains quick and path-pinned."""
-    required = ("workflow_dispatch:", "pull_request:", "Packages/dev.unity2foxglove.sdk/Tests/Performance/**", "Scripts/performance/**", "--quick", "performance-thresholds.ci.json")
+    required = (
+        "workflow_dispatch:",
+        "pull_request:",
+        "Packages/dev.unity2foxglove.sdk/Runtime/Transport/**",
+        "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/**",
+        "Packages/dev.unity2foxglove.sdk/Runtime/Core/**",
+        "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/**",
+        "Packages/dev.unity2foxglove.sdk/Runtime/Protocol/**",
+        "Packages/dev.unity2foxglove.sdk/Runtime/Schemas/**",
+        "Packages/dev.unity2foxglove.sdk/Runtime/IO/**",
+        "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/**",
+        "Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/**",
+        "Packages/dev.unity2foxglove.sdk/Tests/Performance/**",
+        "Scripts/performance/**",
+        ".github/workflows/performance.yml",
+        "--quick",
+        "performance-thresholds.ci.json",
+        "permissions:",
+        "contents: read",
+        "persist-credentials: false",
+    )
     return all(token in text for token in required)
 
 
