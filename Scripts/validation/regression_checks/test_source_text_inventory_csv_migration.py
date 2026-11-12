@@ -185,6 +185,7 @@ class SourceTextInventoryCsvMigrationTests(_FixtureSupport, unittest.TestCase):
             environment["SOURCE_TEXT_INVENTORY_BASE_SHA"] = base
 
             def run_guard():
+                """Run the extracted workflow guard in the fixture repository."""
                 return subprocess.run(
                     [str(bash_path), "-lc", guard],
                     cwd=fixture,
