@@ -36,7 +36,7 @@ namespace Unity2Foxglove.Ros2Bridge
             if (!SchemaContentMatches(schema))
                 return null;
 
-            return new Decoder(schema.Name, channel.Topic, entry);
+            return new Decoder(schema, channel.Topic, entry);
         }
 
         private static bool SchemaContentEqual(byte[] recorded, string bundled)
@@ -116,13 +116,15 @@ namespace Unity2Foxglove.Ros2Bridge
             IMcapMessageDecoder,
             IMcapMessageDecoderFailureFallback
         {
+            private readonly McapSchema _schema;
             private readonly string _schemaName;
             private readonly string _topic;
             private readonly Ros2CdrDeserializerEntry _entry;
 
-            public Decoder(string schemaName, string topic, Ros2CdrDeserializerEntry entry)
+            public Decoder(McapSchema schema, string topic, Ros2CdrDeserializerEntry entry)
             {
-                _schemaName = schemaName ?? string.Empty;
+                _schema = schema ?? throw new ArgumentNullException(nameof(schema));
+                _schemaName = schema.Name ?? string.Empty;
                 _topic = topic ?? string.Empty;
                 _entry = entry ?? throw new ArgumentNullException(nameof(entry));
             }
@@ -159,11 +161,7 @@ namespace Unity2Foxglove.Ros2Bridge
             {
                 var decoder = new McapRos2CdrDiagnosticDecoderFactory()
                     .TryCreate(
-                        new McapSchema
-                        {
-                            Name = _schemaName,
-                            Encoding = Ros2BridgeMcapCodecs.SchemaEncoding
-                        },
+                        _schema,
                         new McapChannel
                         {
                             Topic = _topic,

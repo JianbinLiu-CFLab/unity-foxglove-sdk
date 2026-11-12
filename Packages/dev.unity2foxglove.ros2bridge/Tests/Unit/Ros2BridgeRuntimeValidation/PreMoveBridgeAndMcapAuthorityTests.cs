@@ -235,6 +235,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Phase186
             Assert.Equal(
                 failureVector.Value<string>("exceptionType"),
                 failure.Problems[0].ExceptionType);
+            Assert.True(
+                Assert.IsType<Ros2CdrDiagnosticPayload>(failure.Payload.Value).SchemaKnown);
             Assert.Equal(malformed, failure.Payload.RawData);
         }
 
