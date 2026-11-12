@@ -109,6 +109,7 @@ namespace Unity.FoxgloveSDK.Schemas.Camera
     /// <summary>Bounds compressed-image callback admission by frames and bytes per second.</summary>
     public sealed class CompressedImageInboundBudget
     {
+        private readonly object _sync = new object();
         private readonly int _maxFramesPerSecond;
         private readonly long _maxBytesPerSecond;
         private long _windowStartTicks;
@@ -127,33 +128,36 @@ namespace Unity.FoxgloveSDK.Schemas.Camera
 
         public bool TryAdmitFrame(int byteCount, int metadataBytes, long timestampTicks)
         {
-            if (byteCount < 0 || metadataBytes < 0)
-                return false;
-            long totalBytes;
-            try
+            lock (_sync)
             {
-                totalBytes = checked((long)byteCount + metadataBytes);
-            }
-            catch (OverflowException)
-            {
-                return false;
-            }
-            if (_windowStartTicks == 0
-                || timestampTicks < _windowStartTicks
-                || timestampTicks - _windowStartTicks >= Stopwatch.Frequency)
-            {
-                _windowStartTicks = timestampTicks;
-                _frames = 0;
-                _bytes = 0;
-            }
+                if (byteCount < 0 || metadataBytes < 0)
+                    return false;
+                long totalBytes;
+                try
+                {
+                    totalBytes = checked((long)byteCount + metadataBytes);
+                }
+                catch (OverflowException)
+                {
+                    return false;
+                }
+                if (_windowStartTicks == 0
+                    || timestampTicks < _windowStartTicks
+                    || timestampTicks - _windowStartTicks >= Stopwatch.Frequency)
+                {
+                    _windowStartTicks = timestampTicks;
+                    _frames = 0;
+                    _bytes = 0;
+                }
 
-            if (_frames >= _maxFramesPerSecond
-                || totalBytes > _maxBytesPerSecond - _bytes)
-                return false;
+                if (_frames >= _maxFramesPerSecond
+                    || totalBytes > _maxBytesPerSecond - _bytes)
+                    return false;
 
-            _frames++;
-            _bytes += totalBytes;
-            return true;
+                _frames++;
+                _bytes += totalBytes;
+                return true;
+            }
         }
     }
 

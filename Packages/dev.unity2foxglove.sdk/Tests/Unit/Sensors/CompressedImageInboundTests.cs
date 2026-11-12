@@ -1,5 +1,7 @@
 using System;
 using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
 using Unity.FoxgloveSDK.Schemas.Camera;
 using Xunit;
 
@@ -67,6 +69,22 @@ namespace Unity.FoxgloveSDK.Tests.Unit.Sensors
             Assert.False(budget.TryAdmitFrame(1, 9, now));
             Assert.False(budget.TryAdmitFrame(3, 7, now));
             Assert.True(budget.TryAdmitFrame(4, 1, now + Stopwatch.Frequency));
+        }
+
+        [Fact]
+        public void IngressBudgetSerializesConcurrentAdmissions()
+        {
+            var budget = new CompressedImageInboundBudget(1, 1024);
+            var now = Stopwatch.GetTimestamp();
+            var admitted = 0;
+
+            Parallel.For(0, 32, _ =>
+            {
+                if (budget.TryAdmitFrame(1, 1, now))
+                    Interlocked.Increment(ref admitted);
+            });
+
+            Assert.Equal(1, admitted);
         }
 
         [Fact]
