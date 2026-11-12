@@ -256,6 +256,15 @@ def main() -> int:
 
     def validate_metric_record(record, label):
         """Validate one scenario or component record and return an error string."""
+        def finite_metric(value):
+            """Return whether a report metric is finite without overflowing."""
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                return False
+            try:
+                return math.isfinite(value)
+            except OverflowError:
+                return False
+
         if not isinstance(record, dict):
             return f"{label}: expected an object"
         if "passed" in record and type(record["passed"]) is not bool:
@@ -271,7 +280,7 @@ def main() -> int:
             if metric not in record:
                 continue
             value = record[metric]
-            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+            if not finite_metric(value):
                 return f"{label}: {metric} must be finite numeric"
         if "dropRatio" in record and not 0 <= record["dropRatio"] <= 1:
             return f"{label}: dropRatio must be between 0 and 1"
