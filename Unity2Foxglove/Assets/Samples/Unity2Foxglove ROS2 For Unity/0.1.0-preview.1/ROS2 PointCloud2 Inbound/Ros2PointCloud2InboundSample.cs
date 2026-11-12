@@ -21,6 +21,7 @@ public sealed class Ros2PointCloud2InboundSample : MonoBehaviour
     [SerializeField] private long _receivedPoints;
     [SerializeField] private long _droppedFrames;
     [SerializeField] private Bounds _latestBounds;
+    [SerializeField, Min(1)] private int _maxBoundsPoints = 65536;
 
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
     [SerializeField] private Ros2ForUnityPointCloud2InboundBridge _bridge;
@@ -67,7 +68,7 @@ public sealed class Ros2PointCloud2InboundSample : MonoBehaviour
     {
         _receivedFrames++;
         _receivedPoints += frame.ValidCount;
-        if (TryCalculateBounds(frame, out var bounds))
+        if (TryCalculateBounds(frame, _maxBoundsPoints, out var bounds))
             _latestBounds = bounds;
 
         var stats = _bridge.Stats;
@@ -89,7 +90,7 @@ public sealed class Ros2PointCloud2InboundSample : MonoBehaviour
         Gizmos.DrawWireCube(_latestBounds.center, _latestBounds.size);
     }
 
-    private static bool TryCalculateBounds(PackedPointCloudFrame frame, out Bounds bounds)
+    private static bool TryCalculateBounds(PackedPointCloudFrame frame, int maxBoundsPoints, out Bounds bounds)
     {
         bounds = default;
         if (!TryFindField(frame, "x", out var x)
@@ -98,12 +99,18 @@ public sealed class Ros2PointCloud2InboundSample : MonoBehaviour
             return false;
 
         var found = false;
-        for (var index = 0; index < frame.ValidCount; index++)
+        var pointCount = frame.ValidCount;
+        var maximumPoints = Mathf.Max(1, maxBoundsPoints);
+        var stride = Mathf.Max(1, (pointCount + maximumPoints - 1) / maximumPoints);
+        for (var index = 0; index < pointCount; index += stride)
         {
-            var baseOffset = checked(index * (int)frame.PointStep);
-            if (!TryReadFloat(frame.Data, baseOffset + (int)x.Offset, out var pointX)
-                || !TryReadFloat(frame.Data, baseOffset + (int)y.Offset, out var pointY)
-                || !TryReadFloat(frame.Data, baseOffset + (int)z.Offset, out var pointZ))
+            if (frame.PointStep > int.MaxValue
+                || index > int.MaxValue / (int)frame.PointStep)
+                continue;
+            var baseOffset = index * (int)frame.PointStep;
+            if (!TryReadNumber(frame.Data, baseOffset, x, out var pointX)
+                || !TryReadNumber(frame.Data, baseOffset, y, out var pointY)
+                || !TryReadNumber(frame.Data, baseOffset, z, out var pointZ))
                 continue;
 
             var point = new Vector3(pointX, pointY, pointZ);
@@ -125,7 +132,9 @@ public sealed class Ros2PointCloud2InboundSample : MonoBehaviour
     {
         foreach (var candidate in frame.Fields)
         {
-            if (candidate.Name == name && candidate.Type == PointCloudPackedNumericType.Float32)
+            if (candidate.Name == name
+                && (candidate.Type == PointCloudPackedNumericType.Float32
+                    || candidate.Type == PointCloudPackedNumericType.Float64))
             {
                 field = candidate;
                 return true;
@@ -136,8 +145,29 @@ public sealed class Ros2PointCloud2InboundSample : MonoBehaviour
         return false;
     }
 
-    private static bool TryReadFloat(byte[] data, int offset, out float value)
+    private static bool TryReadNumber(
+        byte[] data,
+        int baseOffset,
+        PointCloudPackedField field,
+        out float value)
     {
+        var offset = baseOffset + (int)field.Offset;
+        if (field.Type == PointCloudPackedNumericType.Float64)
+        {
+            if (offset < 0 || offset > data.Length - sizeof(double))
+            {
+                value = 0f;
+                return false;
+            }
+
+            var doubleValue = System.BitConverter.ToDouble(data, offset);
+            value = (float)doubleValue;
+            return !double.IsNaN(doubleValue)
+                   && !double.IsInfinity(doubleValue)
+                   && !float.IsNaN(value)
+                   && !float.IsInfinity(value);
+        }
+
         if (offset < 0 || offset > data.Length - sizeof(float))
         {
             value = 0f;
