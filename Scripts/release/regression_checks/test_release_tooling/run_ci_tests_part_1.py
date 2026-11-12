@@ -373,7 +373,9 @@ class _RunCiTestsPart1:
         if not git_path or bash_path is None or not bash_path.is_file():
             self.skipTest("Git and Bash are required for the workflow fixture")
 
-        with tempfile.TemporaryDirectory(dir=ROOT / "build" / "tmp") as directory:
+        scratch = ROOT / "build" / "tmp"
+        scratch.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=scratch) as directory:
             fixture = Path(directory)
             validation = fixture / "Scripts" / "validation"
             validation.mkdir(parents=True)
