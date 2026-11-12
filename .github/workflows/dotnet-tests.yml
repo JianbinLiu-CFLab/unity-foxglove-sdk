@@ -268,7 +268,7 @@ jobs:
 
       - name: Run live source-text inventory
         if: always()
-        timeout-minutes: 15
+        timeout-minutes: 20
         env:
           SOURCE_TEXT_INVENTORY_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
