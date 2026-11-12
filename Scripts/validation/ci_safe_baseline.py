@@ -4,12 +4,16 @@
 from __future__ import annotations
 
 import argparse
+import re
 import subprocess
 import sys
 from pathlib import Path
 
 
 BASELINE_PATH = Path("Scripts/validation/ci_safe_known_failures.txt")
+REVIEWED_REPLACEMENT_PATTERN = re.compile(
+    r"^\s*#\s*reviewed replacement:\s*(\S+)\s*->\s*(\S+)\s*$"
+)
 
 
 def parse_entries(text: str) -> tuple[list[str], list[str]]:
@@ -28,6 +32,16 @@ def parse_entries(text: str) -> tuple[list[str], list[str]]:
     return entries, duplicates
 
 
+def parse_reviewed_replacements(text: str) -> set[tuple[str, str]]:
+    """Return explicit one-for-one baseline replacement approvals."""
+    replacements: set[tuple[str, str]] = set()
+    for raw in (text or "").replace("\r\n", "\n").splitlines():
+        match = REVIEWED_REPLACEMENT_PATTERN.match(raw)
+        if match:
+            replacements.add((match.group(1), match.group(2)))
+    return replacements
+
+
 def baseline_problems(base_text: str, head_text: str) -> list[str]:
     """Return duplicate or unreviewed baseline changes."""
     base_entries, base_duplicates = parse_entries(base_text)
@@ -36,12 +50,20 @@ def baseline_problems(base_text: str, head_text: str) -> list[str]:
     head_set = set(head_entries)
     removed = base_set - head_set
     added = head_set - base_set
+    reviewed_replacements = parse_reviewed_replacements(head_text)
     problems = [f"duplicate baseline entry: {entry}" for entry in head_duplicates]
     if len(added) > len(removed):
         problems.extend(
             f"baseline entry added without reviewed replacement: {entry}"
             for entry in sorted(added - removed)
         )
+    elif added and len(added) == len(removed):
+        approved_removed = {old for old, new in reviewed_replacements if old in removed and new in added}
+        approved_added = {new for old, new in reviewed_replacements if old in removed and new in added}
+        for entry in sorted(removed - approved_removed):
+            problems.append(f"baseline replacement missing explicit approval for removed entry: {entry}")
+        for entry in sorted(added - approved_added):
+            problems.append(f"baseline replacement missing explicit approval for added entry: {entry}")
     problems.extend(f"duplicate baseline entry in base: {entry}" for entry in base_duplicates)
     return problems
 

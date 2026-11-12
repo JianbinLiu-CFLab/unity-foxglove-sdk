@@ -49,7 +49,8 @@ namespace Unity.FoxgloveSDK.Tests
             Check(managerDisable.Contains("_mcapReplayPreflight.Dispose();", StringComparison.Ordinal)
                   && !manager.Contains("_ros2BridgeHealthDrawer", StringComparison.Ordinal)
                   && bridgeProviderDrawer.Contains("private readonly Ros2BridgeHealthDrawer", StringComparison.Ordinal)
-                  && bridgeHealthDrawer.Contains("AssemblyReloadEvents.beforeAssemblyReload += BeforeAssemblyReload", StringComparison.Ordinal),
+                  && bridgeHealthDrawer.Contains("AssemblyReloadEvents.beforeAssemblyReload += BeforeAssemblyReload", StringComparison.Ordinal)
+                  && bridgeHealthDrawer.Contains("CancelHealthCheck();", StringComparison.Ordinal),
                 "163-25A-3: core Manager owns MCAP cleanup while the Bridge package owns health-drawer cleanup");
             Check(drawer.Contains("var sizeBytes = new FileInfo(path).Length;", StringComparison.Ordinal)
                   && drawer.IndexOf("var sizeBytes = new FileInfo(path).Length;", StringComparison.Ordinal)

@@ -30,8 +30,24 @@ class CiSafeBaselineTests(unittest.TestCase):
         self.assertEqual([], baseline_problems("--a\n--b\n", "--a\n"))
 
     def test_baseline_problems_allows_reviewed_renames(self):
-        """Allow one baseline key to be replaced by one renamed key."""
-        self.assertEqual([], baseline_problems("--old\n", "--new\n"))
+        """Allow a one-for-one replacement only with an explicit approval marker."""
+        self.assertEqual(
+            [],
+            baseline_problems(
+                "--old\n",
+                "# reviewed replacement: --old -> --new\n--new\n",
+            ),
+        )
+
+    def test_baseline_problems_rejects_unmarked_renames(self):
+        """Reject a one-for-one replacement without an explicit approval marker."""
+        self.assertEqual(
+            [
+                "baseline replacement missing explicit approval for removed entry: --old",
+                "baseline replacement missing explicit approval for added entry: --new",
+            ],
+            baseline_problems("--old\n", "--new\n"),
+        )
 
 
 if __name__ == "__main__":
