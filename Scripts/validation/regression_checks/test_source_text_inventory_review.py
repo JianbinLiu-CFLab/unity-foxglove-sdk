@@ -110,6 +110,29 @@ class SourceTextInventoryReviewTests(_FixtureSupport, unittest.TestCase):
             self.assertEqual(0, result.returncode, result.stdout + result.stderr)
             self.assertIn("SOURCE_TEXT_INVENTORY_BASE_OK", result.stdout)
 
+    def test_csv_legacy_baseline_preserves_parser_migration_status(self):
+        """Treat an empty CSV parser version as legacy rather than versioned."""
+        from Scripts.validation.source_text_inventory import inventory
+        from Scripts.validation.source_text_inventory_report import write_report
+        from Scripts.validation.source_text_inventory_ratchet import (
+            _load_inventory_report,
+            _parser_semantic_changes,
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(directory)
+            row = inventory(root)[0]
+            row.pop("parser_version", None)
+            report = root / "build" / "trusted-inventory"
+            write_report([row], report)
+            loaded = _load_inventory_report(report)
+            changes, strengthened = _parser_semantic_changes(
+                loaded,
+                [{**row, "parser_version": "2"}],
+            )
+        self.assertEqual([], changes)
+        self.assertIn("parser_schema_added", {item["field"] for item in strengthened})
+
     def test_signature_cache_isolates_callers_and_resolved_roots(self):
         """Keep result reuse scoped to caller paths, actual candidates, and source indexes."""
         from types import SimpleNamespace
