@@ -179,6 +179,25 @@ namespace Unity.FoxgloveSDK.Tests.Unit.Sensors
         }
 
         [Fact]
+        public void MapperRejectsOversizedFieldNameBeforeUtf8Scan()
+        {
+            var message = new PointCloud2InboundMessage(
+                42,
+                "laser",
+                1,
+                1,
+                new[] { new PointCloud2InboundField(new string('x', PointCloud2InboundMapper.MaxFieldNameBytes + 1), 0, 2) },
+                1,
+                1,
+                new byte[1],
+                false,
+                true);
+
+            Assert.False(PointCloud2InboundMapper.TryMap(message, 1024, "/points", out _, out var error));
+            Assert.Contains("name", error, StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
         public void DimensionGuardRejectsOversizedCompactFrameBeforeRent()
         {
             Assert.False(

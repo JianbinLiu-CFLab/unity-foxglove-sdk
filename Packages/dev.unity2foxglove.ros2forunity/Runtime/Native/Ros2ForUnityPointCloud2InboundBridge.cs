@@ -241,7 +241,13 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                         _slot.RecordRejected("PointCloud2 fields must have count 1");
                         return;
                     }
-                    var nameBytes = Encoding.UTF8.GetByteCount(field.Name ?? string.Empty);
+                    var fieldName = field.Name ?? string.Empty;
+                    if (fieldName.Length > PointCloud2InboundMapper.MaxFieldNameBytes)
+                    {
+                        _slot.RecordRejected("PointCloud2 field metadata name exceeds the limit");
+                        return;
+                    }
+                    var nameBytes = Encoding.UTF8.GetByteCount(fieldName);
                     if (nameBytes > PointCloud2InboundMapper.MaxFieldNameBytes)
                     {
                         _slot.RecordRejected("PointCloud2 field metadata name exceeds the limit");

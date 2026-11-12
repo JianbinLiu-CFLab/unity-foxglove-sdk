@@ -253,6 +253,8 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
             {
                 if (field == null || field.Count != 1)
                     return Reject("PointCloud2 fields must have count 1", out error);
+                if ((field.Name ?? string.Empty).Length > MaxFieldNameBytes)
+                    return Reject("PointCloud2 field metadata name exceeds the limit", out error);
                 var nameBytes = Encoding.UTF8.GetByteCount(field.Name ?? string.Empty);
                 if (nameBytes > MaxFieldNameBytes)
                     return Reject("PointCloud2 field metadata name exceeds the limit", out error);
