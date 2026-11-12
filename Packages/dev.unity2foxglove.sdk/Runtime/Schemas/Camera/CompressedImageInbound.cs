@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Text;
 
 namespace Unity.FoxgloveSDK.Schemas.Camera
 {
@@ -26,6 +27,8 @@ namespace Unity.FoxgloveSDK.Schemas.Camera
     /// <summary>Maps compressed ROS image data into the SDK camera frame contract.</summary>
     public static class CompressedImageInboundMapper
     {
+        public const int MaxFormatBytes = 256;
+
         public static bool TryMap(
             CompressedImageInboundMessage message,
             long maxBytes,
@@ -40,6 +43,8 @@ namespace Unity.FoxgloveSDK.Schemas.Camera
                 return Reject("maxBytes must be positive", out error);
             if (message.Data.Length > maxBytes)
                 return Reject("CompressedImage data exceeds maxBytes", out error);
+            if (Encoding.UTF8.GetByteCount(message.Format) > MaxFormatBytes)
+                return Reject("CompressedImage format exceeds the metadata limit", out error);
             if (!TryNormalizeFormat(message.Format, out var normalizedFormat))
                 return Reject("CompressedImage format must be jpeg, jpg, or png", out error);
 
@@ -120,10 +125,19 @@ namespace Unity.FoxgloveSDK.Schemas.Camera
             _maxBytesPerSecond = maxBytesPerSecond;
         }
 
-        public bool TryAdmitFrame(int byteCount, long timestampTicks)
+        public bool TryAdmitFrame(int byteCount, int metadataBytes, long timestampTicks)
         {
-            if (byteCount < 0)
+            if (byteCount < 0 || metadataBytes < 0)
                 return false;
+            long totalBytes;
+            try
+            {
+                totalBytes = checked((long)byteCount + metadataBytes);
+            }
+            catch (OverflowException)
+            {
+                return false;
+            }
             if (_windowStartTicks == 0
                 || timestampTicks < _windowStartTicks
                 || timestampTicks - _windowStartTicks >= Stopwatch.Frequency)
@@ -134,11 +148,11 @@ namespace Unity.FoxgloveSDK.Schemas.Camera
             }
 
             if (_frames >= _maxFramesPerSecond
-                || byteCount > _maxBytesPerSecond - _bytes)
+                || totalBytes > _maxBytesPerSecond - _bytes)
                 return false;
 
             _frames++;
-            _bytes += byteCount;
+            _bytes += totalBytes;
             return true;
         }
     }

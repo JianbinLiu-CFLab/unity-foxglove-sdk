@@ -7,6 +7,7 @@
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
 using System;
 using System.Globalization;
+using System.Text;
 using Stopwatch = System.Diagnostics.Stopwatch;
 using ROS2;
 using Unity.FoxgloveSDK.Schemas.Camera;
@@ -226,9 +227,16 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 return;
             }
 
+            var formatBytes = Encoding.UTF8.GetByteCount(message.Format ?? string.Empty);
+            if (formatBytes > CompressedImageInboundMapper.MaxFormatBytes)
+            {
+                _slot.RecordRejected("CompressedImage format exceeds the metadata limit");
+                return;
+            }
+
             if (_ingressBudget == null)
                 _ingressBudget = new CompressedImageInboundBudget(_maxFramesPerSecond, _maxBytesPerSecond);
-            if (!_ingressBudget.TryAdmitFrame(data.Length, Stopwatch.GetTimestamp()))
+            if (!_ingressBudget.TryAdmitFrame(data.Length, formatBytes, Stopwatch.GetTimestamp()))
             {
                 _slot.RecordRejected("CompressedImage ingress budget exceeded");
                 return;

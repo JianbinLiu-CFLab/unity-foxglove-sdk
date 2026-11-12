@@ -34,6 +34,16 @@ namespace Unity.FoxgloveSDK.Tests.Unit.Sensors
             Assert.Contains(expected, error, StringComparison.OrdinalIgnoreCase);
         }
 
+        [Fact]
+        public void MapperRejectsExcessiveFormatMetadata()
+        {
+            var format = new string('x', CompressedImageInboundMapper.MaxFormatBytes + 1);
+            var message = new CompressedImageInboundMessage(42, "camera", new byte[1], format);
+
+            Assert.False(CompressedImageInboundMapper.TryMap(message, 1024, out _, out var error));
+            Assert.Contains("metadata", error, StringComparison.OrdinalIgnoreCase);
+        }
+
         [Theory]
         [InlineData("bgr8; jpeg compressed bgr8", "jpeg")]
         [InlineData("rgb8; png compressed rgb8", "png")]
@@ -52,11 +62,11 @@ namespace Unity.FoxgloveSDK.Tests.Unit.Sensors
             var budget = new CompressedImageInboundBudget(2, 10);
             var now = Stopwatch.GetTimestamp();
 
-            Assert.True(budget.TryAdmitFrame(4, now));
-            Assert.True(budget.TryAdmitFrame(4, now));
-            Assert.False(budget.TryAdmitFrame(1, now));
-            Assert.False(budget.TryAdmitFrame(3, now));
-            Assert.True(budget.TryAdmitFrame(4, now + Stopwatch.Frequency));
+            Assert.True(budget.TryAdmitFrame(4, 1, now));
+            Assert.True(budget.TryAdmitFrame(4, 1, now));
+            Assert.False(budget.TryAdmitFrame(1, 9, now));
+            Assert.False(budget.TryAdmitFrame(3, 7, now));
+            Assert.True(budget.TryAdmitFrame(4, 1, now + Stopwatch.Frequency));
         }
 
         [Fact]
