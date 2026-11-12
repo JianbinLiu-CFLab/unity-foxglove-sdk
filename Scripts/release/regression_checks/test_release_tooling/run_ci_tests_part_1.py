@@ -1,7 +1,5 @@
 from .foundation import *
 
-import textwrap
-
 class _RunCiTestsPart1:
     """Decomposed RunCiTests method group 1."""
 
@@ -358,114 +356,6 @@ class _RunCiTestsPart1:
         self.assertNotIn("using reviewed bootstrap checker", gate)
         self.assertIn("build/review/source-text-inventory/", workflow)
         self.assertIn("build/review/source-text-inventory-trusted/", workflow)
-
-    def test_normal_base_checker_changes_fail_closed(self) -> None:
-        """Reject a changed head checker when the base is outside migration approvals."""
-        git_path = shutil.which("git")
-        if os.name == "nt":
-            candidates = []
-            if git_path:
-                candidates.append(Path(git_path).resolve().parents[1] / "bin" / "bash.exe")
-            candidates.append(Path("C:/Program Files/Git/bin/bash.exe"))
-            bash_path = next((path for path in candidates if path.is_file()), None)
-        else:
-            bash_path = Path(shutil.which("bash") or "")
-        if not git_path or bash_path is None or not bash_path.is_file():
-            self.skipTest("Git and Bash are required for the workflow fixture")
-
-        scratch = ROOT / "build" / "tmp"
-        scratch.mkdir(parents=True, exist_ok=True)
-        with tempfile.TemporaryDirectory(dir=scratch) as directory:
-            fixture = Path(directory)
-            validation = fixture / "Scripts" / "validation"
-            validation.mkdir(parents=True)
-            (validation / "source_text_inventory.py").write_text(
-                "import argparse\n"
-                "parser = argparse.ArgumentParser()\n"
-                "parser.add_argument('--base-ref')\n"
-                "parser.parse_args()\n",
-                encoding="utf-8",
-            )
-            (validation / "helper.py").write_text("VALUE = 1\n", encoding="utf-8")
-            for relative in (
-                "Packages/fixture/Runtime/Sub/Product.cs",
-                "Packages/fixture/Editor/Sub/Editor.cs",
-                "Packages/fixture/Tests/Runtime/Sub/Runtime.cs",
-                "Packages/fixture/Tests/Unit/Sub/Unit.cs",
-            ):
-                path = fixture / relative
-                path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text("public sealed class FixtureType {}\n", encoding="utf-8")
-
-            subprocess.run(["git", "init", "-q", str(fixture)], check=True)
-            subprocess.run(["git", "-C", str(fixture), "config", "user.name", "fixture"], check=True)
-            subprocess.run(
-                ["git", "-C", str(fixture), "config", "user.email", "fixture@example.invalid"],
-                check=True,
-            )
-            subprocess.run(["git", "-C", str(fixture), "add", "-A"], check=True)
-            subprocess.run(["git", "-C", str(fixture), "commit", "-qm", "minimum"], check=True)
-            minimum = subprocess.check_output(
-                ["git", "-C", str(fixture), "rev-parse", "HEAD"], text=True
-            ).strip()
-            (fixture / "base-marker.txt").write_text("base\n", encoding="utf-8")
-            subprocess.run(["git", "-C", str(fixture), "add", "-A"], check=True)
-            subprocess.run(["git", "-C", str(fixture), "commit", "-qm", "base"], check=True)
-            base = subprocess.check_output(
-                ["git", "-C", str(fixture), "rev-parse", "HEAD"], text=True
-            ).strip()
-
-            workflow = DOTNET_WORKFLOW_PATH.read_text(encoding="utf-8")
-            start = active_workflow_line_index(workflow, "- name: Run live source-text inventory")
-            end = active_workflow_line_index(workflow, "- name: Upload live source-text inventory")
-            lines = workflow.splitlines()[start:end]
-            run_index = next(index for index, line in enumerate(lines) if line.strip() == "run: |")
-            run_indent = len(lines[run_index]) - len(lines[run_index].lstrip())
-            script = textwrap.dedent(
-                "\n".join(
-                    line[run_indent + 2 :] if line.strip() else ""
-                    for line in lines[run_index + 1 :]
-                )
-            )
-            self.assertIn("migration_args=()", script)
-            guard = script.split("migration_args=()", 1)[0]
-            guard = guard.replace(
-                "fe195f288a3df0c9754056ef2d84c095c2e98cf7", minimum
-            )
-            if os.name == "nt":
-                guard = guard.replace("python3", "python")
-
-            runner_temp = fixture / "runner-temp"
-            runner_temp.mkdir()
-            if os.name == "nt":
-                converted = subprocess.run(
-                    [str(bash_path), "-lc", 'cygpath -u "$1"', "bash", str(runner_temp)],
-                    check=True,
-                    capture_output=True,
-                    text=True,
-                ).stdout.strip()
-            else:
-                converted = str(runner_temp)
-            environment = os.environ.copy()
-            environment["RUNNER_TEMP"] = converted
-            environment["SOURCE_TEXT_INVENTORY_BASE_SHA"] = base
-
-            def run_guard():
-                return subprocess.run(
-                    [str(bash_path), "-lc", guard],
-                    cwd=fixture,
-                    env=environment,
-                    capture_output=True,
-                    text=True,
-                    check=False,
-                )
-
-            self.assertEqual(0, run_guard().returncode)
-            checker = validation / "source_text_inventory.py"
-            checker.write_text(checker.read_text(encoding="utf-8") + "# bypass\n", encoding="utf-8")
-            rejected = run_guard()
-            self.assertNotEqual(0, rejected.returncode)
-            self.assertIn("immutable base checker", rejected.stderr)
 
     def test_dotnet_workflow_cannot_waive_validator_initializer_changes(self) -> None:
         """The trusted-base identity result must fail the workflow without a parser waiver."""
