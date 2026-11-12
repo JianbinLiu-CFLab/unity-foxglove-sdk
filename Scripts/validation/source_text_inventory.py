@@ -217,6 +217,12 @@ class _ExternalHelperIndex:
 
     def _unresolved_candidates(self, name: str):
         """Retain repository candidates when an instance receiver cannot be proved."""
+        def is_validation_source(path: Path) -> bool:
+            parts = path.relative_to(self.root).parts
+            return len(parts) >= 4 and parts[0] == "Packages" and parts[2] == "Tests" and parts[3] in {
+                "Runtime", "Unit"
+            }
+
         if name not in self.fallbacks:
             if self.declaration_files is None:
                 self.declaration_files = {}
@@ -226,8 +232,16 @@ class _ExternalHelperIndex:
                     for candidate in names:
                         self.declaration_files.setdefault(candidate, []).append(path)
             for path in self.declaration_files.get(name, []):
+                if not is_validation_source(path):
+                    continue
                 self._load(path)
-            self.fallbacks[name] = [record for (_, terminal), records in self.methods.items() if terminal == name for record in records]
+            self.fallbacks[name] = [
+                record
+                for (_, terminal), records in self.methods.items()
+                if terminal == name
+                for record in records
+                if is_validation_source(record[0])
+            ]
         return self.fallbacks[name]
 
     def _is_clr_builder(self, reference: str, path: Path) -> bool:

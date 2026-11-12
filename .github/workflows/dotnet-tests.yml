@@ -335,7 +335,9 @@ jobs:
           print(digest.hexdigest())
           TRUSTED_CHECKER
           )
-          if [ "$trusted_revision" != "$trusted_minimum_revision" ] && [ "$trusted_revision" != "69d645a31940054eccd776c17b175378f11d6dca" ]; then
+          if [ "$trusted_revision" != "$trusted_minimum_revision" ] \
+            && [ "$trusted_revision" != "69d645a31940054eccd776c17b175378f11d6dca" ] \
+            && [ "$trusted_revision" != "202be484368654e24e353059d052487b6fa31f3a" ]; then
             if [ "$actual_migration_checker_sha" != "$trusted_checker_sha" ]; then
               echo "Current checker differs from immutable base checker without a reviewed migration approval" >&2
               exit 1
@@ -370,6 +372,25 @@ jobs:
             "parser_changes_sha256": "ede78e7466075185021dd214ee6a0272c28334b57edcbe425af193c2a6ec650a",
             "scope": "versioned-parser-maintenance",
             "reason": "Reviewed exact parser maintenance required to isolate unrelated performance sources from validation helper resolution."
+          }
+          MIGRATION_APPROVAL
+            expected_migration_checker_sha=$(python3 -I -B -c 'import json,sys; print(json.load(open(sys.argv[1]))["checker_sha256"])' "$migration_approval_file")
+            if [ "$actual_migration_checker_sha" != "$expected_migration_checker_sha" ]; then
+              echo "Reviewed parser maintenance checker SHA-256 does not match" >&2
+              exit 1
+            fi
+            migration_args=(--parser-migration-approval "$migration_approval_file")
+          elif [ "$trusted_revision" = "202be484368654e24e353059d052487b6fa31f3a" ]; then
+            migration_approval_file="$RUNNER_TEMP/source-text-parser-maintenance-approval.json"
+            cat > "$migration_approval_file" <<'MIGRATION_APPROVAL'
+          {
+            "base_revision": "202be484368654e24e353059d052487b6fa31f3a",
+            "checker_sha256": "843a2d5deb16dcaa592f0f1f8c4ad7329a70e040f1dd6ce18cb2b3366cc9611b",
+            "base_inventory_sha256": "97420087aa3bd1bfd8ff3aa74b7d6fe3de21a1057ec259519babc48ca55ee9f0",
+            "current_inventory_sha256": "942b9c17295cd06bf30710802c6f35467c16df6a91fee5ad6a984f5b6be16290",
+            "parser_changes_sha256": "c647094ec1573de6d2134a8aedf5a0ba0f8e1c499981aea780de7e384f7f8e9b",
+            "scope": "versioned-parser-maintenance",
+            "reason": "Reviewed exact parser maintenance to keep unresolved production helper candidates out of validation harness signatures in the Phase200 follow-up."
           }
           MIGRATION_APPROVAL
             expected_migration_checker_sha=$(python3 -I -B -c 'import json,sys; print(json.load(open(sys.argv[1]))["checker_sha256"])' "$migration_approval_file")

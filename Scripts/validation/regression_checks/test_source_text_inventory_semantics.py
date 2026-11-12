@@ -319,6 +319,38 @@ class SourceTextInventorySemanticTests(_FixtureSupport, unittest.TestCase):
             self.assertEqual(1, code)
             self.assertIn('field": "harness_signature"', output)
 
+    def test_runtime_method_additions_do_not_change_validation_helper_signatures(self):
+        """Ignore unresolved production helper candidates when signing validation harnesses."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(directory, validation_text=(
+                "public static class FixtureValidation {\n"
+                "    public static void Validate() {\n"
+                '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                "        dynamic helper = new RuntimeHelper();\n"
+                '        Check(source.Contains("Product") && helper.TryMap(source));\n'
+                "    }\n"
+                "}\n"
+            ))
+            runtime_helper = root / "Packages/fixture/Runtime/RuntimeHelper.cs"
+            runtime_helper.write_text(
+                "public sealed class RuntimeHelper {\n"
+                "    public bool TryMap(string source) => source.Contains(\"Product\");\n"
+                "}\n",
+                encoding="utf-8",
+            )
+            before = _gate_module.inventory(root)
+            runtime_helper.write_text(
+                "public sealed class RuntimeHelper {\n"
+                "    public bool TryMap(string source) => source.Contains(\"Product\");\n"
+                "}\n"
+                "public sealed class UnrelatedHelper {\n"
+                "    public bool TryMap(string source) => false;\n"
+                "}\n",
+                encoding="utf-8",
+            )
+            after = _gate_module.inventory(root)
+            self.assertEqual(before[0]["harness_signature"], after[0]["harness_signature"])
+
     def test_method_group_delegate_change_requires_ack(self):
         """Reject switching a delegate method group to a no-op method."""
         with tempfile.TemporaryDirectory() as directory:
