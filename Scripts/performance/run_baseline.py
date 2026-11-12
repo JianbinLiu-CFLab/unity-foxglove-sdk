@@ -269,6 +269,7 @@ def main() -> int:
             return f"{label}: expected an object"
         if "passed" in record and type(record["passed"]) is not bool:
             return f"{label}: passed must be boolean"
+        optional_numeric_fields = {"queryStartTimeNs", "queryEndTimeNs"}
         numeric_fields = (
             "warmupMessageCount", "messageCount", "elapsedMs", "elapsedSeconds", "messagesPerSecond", "bytesPerSecond", "publishBytesPerSecond", "egressBytes",
             "allocatedBytesPerMessage", "allocatedBytesTotal", "allocatedBytesCurrentThread",
@@ -283,15 +284,21 @@ def main() -> int:
             if metric not in record:
                 continue
             value = record[metric]
+            if value is None and metric in optional_numeric_fields:
+                continue
             if not finite_metric(value):
                 return f"{label}: {metric} must be finite numeric"
         if "dropRatio" in record and not 0 <= record["dropRatio"] <= 1:
             return f"{label}: dropRatio must be between 0 and 1"
         for metric in ("warmupMessageCount", "messageCount", "elapsedMs", "elapsedSeconds", "messagesPerSecond", "bytesPerSecond", "publishBytesPerSecond", "egressBytes", "allocatedBytesPerMessage", "allocatedBytesTotal", "allocatedBytesCurrentThread", "outputBytes", "acceptedBytes", "droppedBytes", "queuedBytesHighWater", "clientCount", "droppedDataFrames", "droppedDataFramesSnapshot", "gen0Collections", "gen1Collections", "gen2Collections", "sizeBytes", "queuedBytes", "channelCount", "schemaCount", "selectedChannelCount", "selectedTopicCount", "returnedMessageCount", "backfillHitCount", "fixtureBytes", "queryStartTimeNs", "queryEndTimeNs"):
-            if metric in record and record[metric] < 0:
+            if metric not in record or (record[metric] is None and metric in optional_numeric_fields):
+                continue
+            if record[metric] < 0:
                 return f"{label}: {metric} must be non-negative"
         for metric in ("warmupMessageCount", "messageCount", "elapsedMs", "egressBytes", "allocatedBytesTotal", "allocatedBytesCurrentThread", "gen0Collections", "gen1Collections", "gen2Collections", "outputBytes", "acceptedBytes", "droppedBytes", "queuedBytesHighWater", "clientCount", "droppedDataFrames", "droppedDataFramesSnapshot", "sizeBytes", "queuedBytes", "channelCount", "schemaCount", "selectedChannelCount", "selectedTopicCount", "returnedMessageCount", "backfillHitCount", "fixtureBytes", "queryStartTimeNs", "queryEndTimeNs"):
-            if metric in record and type(record[metric]) is not int:
+            if metric not in record or (record[metric] is None and metric in optional_numeric_fields):
+                continue
+            if type(record[metric]) is not int:
                 return f"{label}: {metric} must be an integer"
         if "sizeBytes" in record and record["sizeBytes"] <= 0:
             return f"{label}: sizeBytes must be positive"
