@@ -11,9 +11,6 @@ from pathlib import Path
 
 
 BASELINE_PATH = Path("Scripts/validation/ci_safe_known_failures.txt")
-REVIEWED_REPLACEMENT_PATTERN = re.compile(
-    r"^\s*#\s*reviewed replacement:\s*(\S+)\s*->\s*(\S+)\s*$"
-)
 
 
 def parse_entries(text: str) -> tuple[list[str], list[str]]:
@@ -32,25 +29,19 @@ def parse_entries(text: str) -> tuple[list[str], list[str]]:
     return entries, duplicates
 
 
-def parse_reviewed_replacements(text: str) -> list[tuple[str, str]]:
-    """Return explicit one-for-one baseline replacement approvals."""
-    replacements: list[tuple[str, str]] = []
-    for raw in (text or "").replace("\r\n", "\n").splitlines():
-        match = REVIEWED_REPLACEMENT_PATTERN.match(raw)
-        if match:
-            replacements.append((match.group(1), match.group(2)))
-    return replacements
-
-
 def baseline_problems(base_text: str, head_text: str) -> list[str]:
     """Return duplicate or unreviewed baseline changes."""
+    reviewed_replacements: list[tuple[str, str]] = []
+    for raw in (head_text or "").replace("\r\n", "\n").splitlines():
+        match = re.match(r"^\s*#\s*reviewed replacement:\s*(\S+)\s*->\s*(\S+)\s*$", raw)
+        if match:
+            reviewed_replacements.append((match.group(1), match.group(2)))
     base_entries, base_duplicates = parse_entries(base_text)
     head_entries, head_duplicates = parse_entries(head_text)
     base_set = set(base_entries)
     head_set = set(head_entries)
     removed = base_set - head_set
     added = head_set - base_set
-    reviewed_replacements = parse_reviewed_replacements(head_text)
     problems = [f"duplicate baseline entry: {entry}" for entry in head_duplicates]
     if len(added) > len(removed):
         problems.extend(

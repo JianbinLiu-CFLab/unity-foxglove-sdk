@@ -269,5 +269,17 @@ namespace Unity2Foxglove.Ros2Bridge.Tests.Unit.Phase186
             Assert.DoesNotContain("not yet wired", protocol, StringComparison.Ordinal);
         }
 
+        [Fact]
+        public void HealthDrawerCancelsBeforeAssemblyReload()
+        {
+            var source = File.ReadAllText(PathOf(
+                "Packages/dev.unity2foxglove.ros2bridge/Editor/Ros2Bridge/Ros2BridgeHealthDrawer.cs"));
+            var beforeReload = Slice(
+                source,
+                "private void BeforeAssemblyReload()",
+                "private void RelinquishHealthCheck()");
+            Assert.Contains("CancelHealthCheck();", beforeReload, StringComparison.Ordinal);
+        }
+
     }
 }
