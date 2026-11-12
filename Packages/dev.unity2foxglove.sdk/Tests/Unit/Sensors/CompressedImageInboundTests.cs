@@ -88,6 +88,17 @@ namespace Unity.FoxgloveSDK.Tests.Unit.Sensors
         }
 
         [Fact]
+        public void IngressBudgetIgnoresStaleCallbackTimestamps()
+        {
+            var budget = new CompressedImageInboundBudget(2, 1024);
+            var now = Stopwatch.GetTimestamp();
+
+            Assert.True(budget.TryAdmitFrame(1, 1, now));
+            Assert.True(budget.TryAdmitFrame(1, 1, now + Stopwatch.Frequency / 2));
+            Assert.False(budget.TryAdmitFrame(1, 1, now - Stopwatch.Frequency / 2));
+        }
+
+        [Fact]
         public void SlotDropsOlderFrameAndReportsDelivery()
         {
             using var slot = new SensorCompressedImageFrameSlot();

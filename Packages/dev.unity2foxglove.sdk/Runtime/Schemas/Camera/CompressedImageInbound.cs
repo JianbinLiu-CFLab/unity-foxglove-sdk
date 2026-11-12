@@ -141,9 +141,14 @@ namespace Unity.FoxgloveSDK.Schemas.Camera
                 {
                     return false;
                 }
-                if (_windowStartTicks == 0
-                    || timestampTicks < _windowStartTicks
-                    || timestampTicks - _windowStartTicks >= Stopwatch.Frequency)
+                if (_windowStartTicks == 0)
+                {
+                    _windowStartTicks = timestampTicks;
+                    _frames = 0;
+                    _bytes = 0;
+                }
+                else if (timestampTicks >= _windowStartTicks
+                    && timestampTicks - _windowStartTicks >= Stopwatch.Frequency)
                 {
                     _windowStartTicks = timestampTicks;
                     _frames = 0;
