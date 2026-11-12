@@ -290,12 +290,7 @@ jobs:
             exit 1
           fi
           git archive "$trusted_revision" -- ':(glob)Scripts/validation/source_text_inventory*.py' | tar -x -C "$trusted_root"
-          git archive "$trusted_revision" -- \
-            ':(glob)Packages/*/Runtime/**/*.cs' \
-            ':(glob)Packages/*/Editor/**/*.cs' \
-            ':(glob)Packages/*/Tests/Runtime/**/*.cs' \
-            ':(glob)Packages/*/Tests/Unit/**/*.cs' \
-            ':(glob)Scripts/validation/**/*.py' | tar -x -C "$trusted_tree"
+          git archive "$trusted_revision" | tar -x -C "$trusted_tree"
           trusted_checker="$trusted_root/Scripts/validation/source_text_inventory.py"
           if ! python3 -I "$trusted_checker" --help 2>&1 | grep -q -- "--base-ref"; then
             echo "Trusted source-text inventory checker lacks --base-ref" >&2
