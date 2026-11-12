@@ -58,6 +58,17 @@ class PerformanceEvidenceTests(unittest.TestCase):
                     result = performance_evidence._threshold_check()
         self.assertEqual("FAIL", result.status)
 
+    def test_threshold_check_rejects_malformed_default_threshold_values(self) -> None:
+        """Reject malformed defaults fields used during threshold resolution."""
+        data = performance_evidence._load_thresholds()
+        data["defaults"]["maxElapsedMs"] = True
+        performance_evidence.audit_lib.BUILD_ROOT.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=performance_evidence.audit_lib.BUILD_ROOT) as directory:
+            with patch.object(performance_evidence, "OUTPUT", Path(directory)):
+                with patch.object(performance_evidence, "_load_thresholds", return_value=data):
+                    result = performance_evidence._threshold_check()
+        self.assertEqual("FAIL", result.status)
+
     def test_threshold_check_rejects_oversized_integer_values(self) -> None:
         """Fail cleanly when a threshold integer cannot convert to a float."""
         data = performance_evidence._load_thresholds()

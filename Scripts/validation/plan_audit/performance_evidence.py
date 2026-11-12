@@ -142,6 +142,7 @@ def _threshold_check() -> audit_lib.Check:
             and defaults[key] < 10_000_000_000
             for key in ("maxAllocatedBytesPerMessage", "maxAllocatedBytesTotal")
         )
+        defaults_valid = valid_threshold(defaults)
         large_bounded = (
             0 < large.get("maxAllocatedBytesPerMessage", 0) <= 4 * 1024 * 1024
             and 0 < large.get("maxAllocatedBytesTotal", 0) <= 16 * 1024 * 1024 * 1024
@@ -160,8 +161,8 @@ def _threshold_check() -> audit_lib.Check:
             for mode in ("quick", "full")
             for name in required_scenarios
         )
-        detail = f"defaults={defaults}; large={large}; quick_large={quick_large}; finite_defaults={finite}; bounded_large={large_bounded}; explicit_scenarios={explicit_scenarios}; explicit_modes={explicit_modes}; values_valid={values_valid}; mode_values_valid={mode_values_valid}"
-        status = "PASS" if finite and large_bounded and explicit_scenarios and explicit_modes and values_valid and mode_values_valid else "FAIL"
+        detail = f"defaults={defaults}; large={large}; quick_large={quick_large}; finite_defaults={finite}; defaults_valid={defaults_valid}; bounded_large={large_bounded}; explicit_scenarios={explicit_scenarios}; explicit_modes={explicit_modes}; values_valid={values_valid}; mode_values_valid={mode_values_valid}"
+        status = "PASS" if finite and defaults_valid and large_bounded and explicit_scenarios and explicit_modes and values_valid and mode_values_valid else "FAIL"
     except (OSError, KeyError, TypeError, json.JSONDecodeError) as exc:
         detail = str(exc)
         status = "FAIL"
