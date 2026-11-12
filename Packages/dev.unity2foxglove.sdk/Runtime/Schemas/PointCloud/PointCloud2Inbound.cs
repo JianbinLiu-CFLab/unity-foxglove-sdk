@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Text;
 
 namespace Unity.FoxgloveSDK.Schemas.PointCloud
 {
@@ -65,6 +66,10 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
     /// <summary>Maps a copied PointCloud2 message into the SDK packed frame contract.</summary>
     public static class PointCloud2InboundMapper
     {
+        internal const int MaxFieldCount = 128;
+        internal const int MaxFieldNameBytes = 256;
+        internal const int MaxFieldMetadataBytes = 16 * 1024;
+
         public static bool TryMap(
             PointCloud2InboundMessage message,
             long maxBytes,
@@ -95,25 +100,26 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
                 return Reject("PointCloud2 dimensions overflow", out error);
             }
 
-            if (message.RowStep != expectedRowStep)
-                return Reject("rowStep does not equal width * pointStep", out error);
+            if (message.RowStep < expectedRowStep)
+                return Reject("rowStep is smaller than width * pointStep", out error);
+            try
+            {
+                expectedBytes = checked((ulong)message.RowStep * message.Height);
+            }
+            catch (OverflowException)
+            {
+                return Reject("PointCloud2 row dimensions overflow", out error);
+            }
             if ((ulong)message.Data.Length != expectedBytes)
                 return Reject("data length does not equal height * rowStep", out error);
             if (expectedBytes > (ulong)maxBytes)
                 return Reject("PointCloud2 frame exceeds maxBytes", out error);
 
-            var fields = new List<PointCloudPackedField>(message.Fields.Count);
-            foreach (var field in message.Fields)
-            {
-                if (field == null || field.Count != 1)
-                    return Reject("PointCloud2 fields must have count 1", out error);
-                if (!TryMapDatatype(field.Datatype, out var type))
-                    return Reject("PointCloud2 field has an unknown datatype", out error);
-                fields.Add(new PointCloudPackedField(field.Name, field.Offset, type));
-            }
+            if (!TryMapFields(message, out var fields, out error))
+                return false;
 
-            var copiedData = new byte[message.Data.Length];
-            Buffer.BlockCopy(message.Data, 0, copiedData, 0, copiedData.Length);
+            var copiedData = new byte[checked((int)(expectedRowStep * message.Height))];
+            CopyRows(message.Data, (int)message.RowStep, copiedData, (int)expectedRowStep, (int)message.Height);
             frame = new PackedPointCloudFrame(
                 message.UnixNs,
                 message.FrameId,
@@ -168,22 +174,25 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
                 return Reject("PointCloud2 dimensions overflow", out error);
             }
 
-            if (message.RowStep != expectedRowStep)
-                return Reject("rowStep does not equal width * pointStep", out error);
+            if (message.RowStep < expectedRowStep)
+                return Reject("rowStep is smaller than width * pointStep", out error);
+            try
+            {
+                expectedBytes = checked((ulong)message.RowStep * message.Height);
+            }
+            catch (OverflowException)
+            {
+                return Reject("PointCloud2 row dimensions overflow", out error);
+            }
             if ((ulong)message.Data.Length != expectedBytes)
                 return Reject("data length does not equal height * rowStep", out error);
             if (expectedBytes > (ulong)maxBytes)
                 return Reject("PointCloud2 frame exceeds maxBytes", out error);
+            if (message.RowStep != expectedRowStep)
+                return Reject("owned PointCloud2 data must be compacted before mapping", out error);
 
-            var fields = new List<PointCloudPackedField>(message.Fields.Count);
-            foreach (var field in message.Fields)
-            {
-                if (field == null || field.Count != 1)
-                    return Reject("PointCloud2 fields must have count 1", out error);
-                if (!TryMapDatatype(field.Datatype, out var type))
-                    return Reject("PointCloud2 field has an unknown datatype", out error);
-                fields.Add(new PointCloudPackedField(field.Name, field.Offset, type));
-            }
+            if (!TryMapFields(message, out var fields, out error))
+                return false;
 
             var data = copyData ? new byte[message.Data.Length] : message.Data;
             if (copyData)
@@ -202,14 +211,80 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
             return true;
         }
 
+        private static bool TryMapFields(
+            PointCloud2InboundMessage message,
+            out List<PointCloudPackedField> fields,
+            out string error)
+        {
+            fields = null;
+            error = string.Empty;
+            if (message.Fields.Count > MaxFieldCount)
+                return Reject("PointCloud2 field metadata exceeds the field count limit", out error);
+
+            var metadataBytes = 0;
+            fields = new List<PointCloudPackedField>(message.Fields.Count);
+            foreach (var field in message.Fields)
+            {
+                if (field == null || field.Count != 1)
+                    return Reject("PointCloud2 fields must have count 1", out error);
+                var nameBytes = Encoding.UTF8.GetByteCount(field.Name ?? string.Empty);
+                if (nameBytes > MaxFieldNameBytes)
+                    return Reject("PointCloud2 field metadata name exceeds the limit", out error);
+                try
+                {
+                    metadataBytes = checked(metadataBytes + nameBytes + 16);
+                }
+                catch (OverflowException)
+                {
+                    return Reject("PointCloud2 field metadata exceeds the limit", out error);
+                }
+                if (metadataBytes > MaxFieldMetadataBytes)
+                    return Reject("PointCloud2 field metadata exceeds the limit", out error);
+                if (!TryMapDatatype(field.Datatype, out var type, out var width))
+                    return Reject("PointCloud2 field has an unknown datatype", out error);
+                if ((ulong)field.Offset + width > message.PointStep)
+                    return Reject("PointCloud2 field exceeds pointStep", out error);
+                fields.Add(new PointCloudPackedField(field.Name, field.Offset, type));
+            }
+
+            return true;
+        }
+
+        private static void CopyRows(byte[] source, int sourceRowStep, byte[] destination, int destinationRowStep, int height)
+        {
+            if (sourceRowStep == destinationRowStep)
+            {
+                Buffer.BlockCopy(source, 0, destination, 0, destination.Length);
+                return;
+            }
+
+            for (var row = 0; row < height; row++)
+            {
+                Buffer.BlockCopy(
+                    source,
+                    checked(row * sourceRowStep),
+                    destination,
+                    checked(row * destinationRowStep),
+                    destinationRowStep);
+            }
+        }
+
         private static bool Reject(string message, out string error)
         {
             error = message;
             return false;
         }
 
-        private static bool TryMapDatatype(byte datatype, out PointCloudPackedNumericType type)
+        private static bool TryMapDatatype(byte datatype, out PointCloudPackedNumericType type, out ulong width)
         {
+            width = datatype switch
+            {
+                1 or 2 => 1UL,
+                3 or 4 => 2UL,
+                5 or 6 or 7 => 4UL,
+                8 => 8UL,
+                _ => 0UL
+            };
             type = datatype switch
             {
                 1 => PointCloudPackedNumericType.Int8,

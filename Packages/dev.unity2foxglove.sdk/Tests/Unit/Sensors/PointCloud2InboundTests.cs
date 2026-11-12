@@ -82,6 +82,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.Sensors
         [Fact]
         public void OwnedMapperTransfersBufferUntilFrameDispose()
         {
+            PointCloudPackedByteBufferPool.ClearCachedBuffers();
             var data = PointCloudPackedByteBufferPool.Rent(4);
             var message = new PointCloud2InboundMessage(
                 42,
@@ -97,8 +98,84 @@ namespace Unity.FoxgloveSDK.Tests.Unit.Sensors
 
             Assert.True(PointCloud2InboundMapper.TryMapOwned(message, 1024, "/points", out var frame, out var error));
             Assert.Equal(string.Empty, error);
+            Assert.Same(data, frame.Data);
             frame.Dispose();
-            PointCloudPackedByteBufferPool.Return(PointCloudPackedByteBufferPool.Rent(4));
+            frame.Dispose();
+            var returned = PointCloudPackedByteBufferPool.Rent(4, out var reused);
+            Assert.True(reused);
+            Assert.Same(data, returned);
+            PointCloudPackedByteBufferPool.Return(returned);
+        }
+
+        [Fact]
+        public void MapperCompactsValidRowPadding()
+        {
+            var source = new byte[]
+            {
+                1, 2, 3, 4, 99, 99, 99, 99,
+                5, 6, 7, 8, 88, 88, 88, 88
+            };
+            var message = new PointCloud2InboundMessage(
+                42,
+                "laser",
+                2,
+                1,
+                Array.Empty<PointCloud2InboundField>(),
+                4,
+                8,
+                source,
+                false,
+                true);
+
+            Assert.True(PointCloud2InboundMapper.TryMap(message, 1024, "/points", out var frame, out var error));
+            Assert.Equal(string.Empty, error);
+            Assert.Equal(4U, frame.RowStep);
+            Assert.Equal(new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 }, frame.Data);
+        }
+
+        [Theory]
+        [InlineData(1, 4, "pointStep")]
+        [InlineData(uint.MaxValue, 4, "pointStep")]
+        [InlineData(1, 8, "pointStep")]
+        public void MapperRejectsFieldsOutsidePointStep(uint offset, uint pointStep, string expected)
+        {
+            var message = new PointCloud2InboundMessage(
+                42,
+                "laser",
+                1,
+                1,
+                new[] { new PointCloud2InboundField("x", offset, pointStep == 8 ? (byte)8 : (byte)7) },
+                pointStep,
+                pointStep,
+                new byte[pointStep],
+                false,
+                true);
+
+            Assert.False(PointCloud2InboundMapper.TryMap(message, 1024, "/points", out _, out var error));
+            Assert.Contains(expected, error, StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
+        public void MapperRejectsExcessiveFieldMetadata()
+        {
+            var fields = new List<PointCloud2InboundField>();
+            for (var index = 0; index < 129; index++)
+                fields.Add(new PointCloud2InboundField("field" + index, 0, 2));
+
+            var message = new PointCloud2InboundMessage(
+                42,
+                "laser",
+                1,
+                1,
+                fields,
+                1,
+                1,
+                new byte[1],
+                false,
+                true);
+
+            Assert.False(PointCloud2InboundMapper.TryMap(message, 1024, "/points", out _, out var error));
+            Assert.Contains("metadata", error, StringComparison.OrdinalIgnoreCase);
         }
 
         private static PackedPointCloudFrame CreateFrame(ulong timestamp)
