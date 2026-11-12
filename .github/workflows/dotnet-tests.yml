@@ -376,7 +376,7 @@ jobs:
           MIGRATION_APPROVAL
             expected_migration_checker_sha=$(python3 -I -B -c 'import json,sys; print(json.load(open(sys.argv[1]))["checker_sha256"])' "$migration_approval_file")
             if [ "$actual_migration_checker_sha" != "$expected_migration_checker_sha" ]; then
-              echo "Reviewed parser maintenance checker SHA-256 does not match" >&2
+              echo "Reviewed parser maintenance checker SHA-256 does not match: actual=$actual_migration_checker_sha expected=$expected_migration_checker_sha" >&2
               exit 1
             fi
             migration_args=(--parser-migration-approval "$migration_approval_file")
@@ -395,7 +395,7 @@ jobs:
           MIGRATION_APPROVAL
             expected_migration_checker_sha=$(python3 -I -B -c 'import json,sys; print(json.load(open(sys.argv[1]))["checker_sha256"])' "$migration_approval_file")
             if [ "$actual_migration_checker_sha" != "$expected_migration_checker_sha" ]; then
-              echo "Reviewed parser maintenance checker SHA-256 does not match" >&2
+              echo "Reviewed parser maintenance checker SHA-256 does not match: actual=$actual_migration_checker_sha expected=$expected_migration_checker_sha" >&2
               exit 1
             fi
             migration_args=(--parser-migration-approval "$migration_approval_file")
