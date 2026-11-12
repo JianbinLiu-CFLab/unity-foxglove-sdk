@@ -554,6 +554,27 @@ class VersionBumpTests(unittest.TestCase):
             bump.changes.append(self.bump_module.PlannedChange(planned, "test"))
             self.assertEqual(["new-release-pin.txt"], bump.find_unplanned_release_pins("1.9.7"))
 
+    def test_same_version_dry_run_is_idempotent(self) -> None:
+        """A dry run for the current version succeeds without planned changes."""
+        version = json.loads(
+            (ROOT / "Packages/dev.unity2foxglove.sdk/package.json").read_text(encoding="utf-8")
+        )["version"]
+        bump = self.bump_module.VersionBump(ROOT, version, "2026-11-02", True)
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(0, bump.run())
+        self.assertEqual([], bump.changes)
+
+    def test_same_version_write_run_is_idempotent(self) -> None:
+        """A non-dry run for the current version succeeds without modifying files."""
+        version_path = ROOT / "Packages/dev.unity2foxglove.sdk/package.json"
+        before = version_path.read_bytes()
+        version = json.loads(before.decode("utf-8"))["version"]
+        bump = self.bump_module.VersionBump(ROOT, version, "2026-11-02", False)
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(0, bump.run())
+        self.assertEqual([], bump.changes)
+        self.assertEqual(before, version_path.read_bytes())
+
 VersionBumpTests.__module__ = 'Scripts.release.regression_checks.test_release_tooling'
 
 __all__ = ["VersionBumpTests"]

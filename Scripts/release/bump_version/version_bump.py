@@ -561,11 +561,12 @@ class VersionBump:
             self.update_package_readme(old_version)
             self.update_citation()
             self.update_changelog()
-            unplanned = self.find_unplanned_release_pins(old_version)
-            if unplanned:
-                raise ValueError(
-                    "Unplanned release pins found: " + ", ".join(unplanned)
-                )
+            if old_version != self.version:
+                unplanned = self.find_unplanned_release_pins(old_version)
+                if unplanned:
+                    raise ValueError(
+                        "Unplanned release pins found: " + ", ".join(unplanned)
+                    )
             self.create_release_notes()
         except Exception:
             self._restore_on_failure()
