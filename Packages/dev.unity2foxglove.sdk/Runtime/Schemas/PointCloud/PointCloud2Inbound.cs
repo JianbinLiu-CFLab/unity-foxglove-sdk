@@ -119,7 +119,7 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
                 return false;
 
             var copiedData = new byte[checked((int)(expectedRowStep * message.Height))];
-            CopyRows(message.Data, (int)message.RowStep, copiedData, (int)expectedRowStep, (int)message.Height);
+            CopyPaddedRows(message.Data, (int)message.RowStep, copiedData, (int)expectedRowStep, (int)message.Height);
             frame = new PackedPointCloudFrame(
                 message.UnixNs,
                 message.FrameId,
@@ -254,7 +254,7 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
             return true;
         }
 
-        private static void CopyRows(byte[] source, int sourceRowStep, byte[] destination, int destinationRowStep, int height)
+        private static void CopyPaddedRows(byte[] source, int sourceRowStep, byte[] destination, int destinationRowStep, int height)
         {
             if (sourceRowStep == destinationRowStep)
             {

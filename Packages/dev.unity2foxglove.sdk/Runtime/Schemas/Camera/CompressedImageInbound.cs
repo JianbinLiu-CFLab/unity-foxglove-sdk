@@ -120,7 +120,7 @@ namespace Unity.FoxgloveSDK.Schemas.Camera
             _maxBytesPerSecond = maxBytesPerSecond;
         }
 
-        public bool TryAdmit(int byteCount, long timestampTicks)
+        public bool TryAdmitFrame(int byteCount, long timestampTicks)
         {
             if (byteCount < 0)
                 return false;

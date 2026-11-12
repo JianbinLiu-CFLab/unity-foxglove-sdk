@@ -228,7 +228,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
             if (_ingressBudget == null)
                 _ingressBudget = new CompressedImageInboundBudget(_maxFramesPerSecond, _maxBytesPerSecond);
-            if (!_ingressBudget.TryAdmit(data.Length, Stopwatch.GetTimestamp()))
+            if (!_ingressBudget.TryAdmitFrame(data.Length, Stopwatch.GetTimestamp()))
             {
                 _slot.RecordRejected("CompressedImage ingress budget exceeded");
                 return;

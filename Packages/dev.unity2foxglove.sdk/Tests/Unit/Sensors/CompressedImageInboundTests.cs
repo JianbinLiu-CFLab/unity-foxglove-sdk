@@ -52,11 +52,11 @@ namespace Unity.FoxgloveSDK.Tests.Unit.Sensors
             var budget = new CompressedImageInboundBudget(2, 10);
             var now = Stopwatch.GetTimestamp();
 
-            Assert.True(budget.TryAdmit(4, now));
-            Assert.True(budget.TryAdmit(4, now));
-            Assert.False(budget.TryAdmit(1, now));
-            Assert.False(budget.TryAdmit(3, now));
-            Assert.True(budget.TryAdmit(4, now + Stopwatch.Frequency));
+            Assert.True(budget.TryAdmitFrame(4, now));
+            Assert.True(budget.TryAdmitFrame(4, now));
+            Assert.False(budget.TryAdmitFrame(1, now));
+            Assert.False(budget.TryAdmitFrame(3, now));
+            Assert.True(budget.TryAdmitFrame(4, now + Stopwatch.Frequency));
         }
 
         [Fact]
