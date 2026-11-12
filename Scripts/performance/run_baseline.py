@@ -270,11 +270,14 @@ def main() -> int:
         if "passed" in record and type(record["passed"]) is not bool:
             return f"{label}: passed must be boolean"
         numeric_fields = (
-            "messageCount", "elapsedMs", "elapsedSeconds", "messagesPerSecond", "bytesPerSecond", "publishBytesPerSecond", "egressBytes",
+            "warmupMessageCount", "messageCount", "elapsedMs", "elapsedSeconds", "messagesPerSecond", "bytesPerSecond", "publishBytesPerSecond", "egressBytes",
             "allocatedBytesPerMessage", "allocatedBytesTotal", "allocatedBytesCurrentThread",
             "gen0Collections", "gen1Collections", "gen2Collections", "outputBytes",
             "acceptedBytes", "droppedBytes", "queuedBytesHighWater", "dropRatio", "clientCount",
             "droppedDataFrames", "droppedDataFramesSnapshot",
+            "sizeBytes", "queuedBytes", "channelCount", "schemaCount", "selectedChannelCount",
+            "selectedTopicCount", "returnedMessageCount", "backfillHitCount", "fixtureBytes",
+            "queryStartTimeNs", "queryEndTimeNs",
         )
         for metric in numeric_fields:
             if metric not in record:
@@ -284,9 +287,16 @@ def main() -> int:
                 return f"{label}: {metric} must be finite numeric"
         if "dropRatio" in record and not 0 <= record["dropRatio"] <= 1:
             return f"{label}: dropRatio must be between 0 and 1"
-        for metric in ("messageCount", "elapsedMs", "elapsedSeconds", "messagesPerSecond", "bytesPerSecond", "publishBytesPerSecond", "egressBytes", "allocatedBytesPerMessage", "allocatedBytesTotal", "allocatedBytesCurrentThread", "outputBytes", "acceptedBytes", "droppedBytes", "queuedBytesHighWater", "clientCount", "droppedDataFrames", "droppedDataFramesSnapshot", "gen0Collections", "gen1Collections", "gen2Collections"):
+        for metric in ("warmupMessageCount", "messageCount", "elapsedMs", "elapsedSeconds", "messagesPerSecond", "bytesPerSecond", "publishBytesPerSecond", "egressBytes", "allocatedBytesPerMessage", "allocatedBytesTotal", "allocatedBytesCurrentThread", "outputBytes", "acceptedBytes", "droppedBytes", "queuedBytesHighWater", "clientCount", "droppedDataFrames", "droppedDataFramesSnapshot", "gen0Collections", "gen1Collections", "gen2Collections", "sizeBytes", "queuedBytes", "channelCount", "schemaCount", "selectedChannelCount", "selectedTopicCount", "returnedMessageCount", "backfillHitCount", "fixtureBytes", "queryStartTimeNs", "queryEndTimeNs"):
             if metric in record and record[metric] < 0:
                 return f"{label}: {metric} must be non-negative"
+        for metric in ("warmupMessageCount", "messageCount", "elapsedMs", "egressBytes", "allocatedBytesTotal", "allocatedBytesCurrentThread", "gen0Collections", "gen1Collections", "gen2Collections", "outputBytes", "acceptedBytes", "droppedBytes", "queuedBytesHighWater", "clientCount", "droppedDataFrames", "droppedDataFramesSnapshot", "sizeBytes", "queuedBytes", "channelCount", "schemaCount", "selectedChannelCount", "selectedTopicCount", "returnedMessageCount", "backfillHitCount", "fixtureBytes", "queryStartTimeNs", "queryEndTimeNs"):
+            if metric in record and type(record[metric]) is not int:
+                return f"{label}: {metric} must be an integer"
+        if "sizeBytes" in record and record["sizeBytes"] <= 0:
+            return f"{label}: sizeBytes must be positive"
+        if "controlDequeuedFirst" in record and type(record["controlDequeuedFirst"]) is not bool:
+            return f"{label}: controlDequeuedFirst must be boolean"
         components = record.get("components", [])
         if components is not None:
             if not isinstance(components, list):

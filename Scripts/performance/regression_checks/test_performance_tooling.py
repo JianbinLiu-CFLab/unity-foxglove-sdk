@@ -142,6 +142,23 @@ class PerformanceToolingTests(unittest.TestCase):
             ("negative-throughput", {"name": "bad", "passed": True, "messagesPerSecond": -1}),
             ("negative-collections", {"name": "bad", "passed": True, "gen0Collections": -1}),
             ("bad-component", {"name": "bad", "passed": True, "components": [{"name": "component", "dropRatio": 2}]}),
+            (
+                "bad-frame-evidence",
+                {
+                    "name": "WsSendQueueLargeFrame",
+                    "passed": True,
+                    "frameEvidence": [
+                        {
+                            "sizeBytes": "bad",
+                            "queuedBytes": -1,
+                            "controlDequeuedFirst": "yes",
+                            "droppedDataFrames": 0,
+                            "droppedDataFramesSnapshot": 0,
+                            "dropRatio": 0,
+                        }
+                    ],
+                },
+            ),
         )
         for case, scenario in cases:
             with self.subTest(case=case):
