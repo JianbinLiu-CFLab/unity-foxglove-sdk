@@ -236,11 +236,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 return;
             }
 
-            if (_ingressBudget == null)
-                _ingressBudget = new CompressedImageInboundBudget(_maxFramesPerSecond, _maxBytesPerSecond);
-            if (!_ingressBudget.TryAdmitFrame(data.Length, formatBytes, Stopwatch.GetTimestamp()))
+            if (!CompressedImageInboundMapper.TryNormalizeFormat(message.Format, out var normalizedFormat))
             {
-                _slot.RecordRejected("CompressedImage ingress budget exceeded");
+                _slot.RecordRejected("CompressedImage format must be jpeg, jpg, or png");
                 return;
             }
 
@@ -259,11 +257,23 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 return;
             }
 
+            if (_ingressBudget == null)
+            {
+                _maxFramesPerSecond = Math.Max(1, _maxFramesPerSecond);
+                _maxBytesPerSecond = Math.Max(1L, _maxBytesPerSecond);
+                _ingressBudget = new CompressedImageInboundBudget(_maxFramesPerSecond, _maxBytesPerSecond);
+            }
+            if (!_ingressBudget.TryAdmitFrame(data.Length, formatBytes, Stopwatch.GetTimestamp()))
+            {
+                _slot.RecordRejected("CompressedImage ingress budget exceeded");
+                return;
+            }
+
             var neutral = new CompressedImageInboundMessage(
                 unixNs,
                 header?.Frame_id,
                 data,
-                message.Format);
+                normalizedFormat);
             if (!CompressedImageInboundMapper.TryMap(
                     neutral,
                     _maxFrameBytes,

@@ -58,7 +58,7 @@ namespace Unity.FoxgloveSDK.Schemas.Camera
             return true;
         }
 
-        private static bool TryNormalizeFormat(string format, out string normalized)
+        public static bool TryNormalizeFormat(string format, out string normalized)
         {
             normalized = string.Empty;
             if (string.IsNullOrWhiteSpace(format))
