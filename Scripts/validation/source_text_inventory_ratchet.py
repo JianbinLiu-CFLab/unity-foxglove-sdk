@@ -328,6 +328,8 @@ def _load_inventory_report(path: Path) -> list[dict[str, object]]:
         except (KeyError, TypeError, ValueError) as exc:
             raise RuntimeError(f"trusted inventory report has an invalid line: {csv_path}") from exc
         row["comment_only"] = row.get("comment_only", "") == "True"
+        if not row.get("parser_version"):
+            row.pop("parser_version", None)
     return rows
 
 
@@ -559,7 +561,7 @@ def _parser_semantic_changes(
     current_versions = {
         str(row.get("parser_version", "")) for row in current_rows if row.get("parser_version")
     }
-    base_has_version_field = any(row.get("parser_version") for row in base_rows)
+    base_has_version_field = any("parser_version" in row for row in base_rows)
     legacy_unversioned = not base_has_version_field and len(current_versions) == 1
     if legacy_unversioned:
         strengthened.append(
@@ -771,7 +773,7 @@ def _verify_base_inventory(
             }
             scope = approval.get("scope")
             legacy_migration = (
-                not any(row.get("parser_version") for row in base_rows)
+                not any("parser_version" in row for row in base_rows)
                 and len(current_versions) == 1
                 and scope in (None, "legacy-to-versioned")
             )

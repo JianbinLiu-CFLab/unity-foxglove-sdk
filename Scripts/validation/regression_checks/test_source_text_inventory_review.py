@@ -111,27 +111,54 @@ class SourceTextInventoryReviewTests(_FixtureSupport, unittest.TestCase):
             self.assertIn("SOURCE_TEXT_INVENTORY_BASE_OK", result.stdout)
 
     def test_csv_legacy_baseline_preserves_parser_migration_status(self):
-        """Treat an empty CSV parser version as legacy rather than versioned."""
+        """Accept a trusted CSV whose parser version column is empty for every row."""
         from Scripts.validation.source_text_inventory import inventory
         from Scripts.validation.source_text_inventory_report import write_report
-        from Scripts.validation.source_text_inventory_ratchet import (
-            _load_inventory_report,
-            _parser_semantic_changes,
-        )
 
         with tempfile.TemporaryDirectory() as directory:
             root = self._git_fixture(directory)
+            checker = root / "Scripts/validation/source_text_inventory.py"
+            original = checker.read_text(encoding="utf-8")
+            legacy = (
+                "\n_original_inventory = inventory\n"
+                "def inventory(root):\n"
+                "    rows = _original_inventory(root)\n"
+                "    for row in rows:\n"
+                "        row.pop('parser_version', None)\n"
+                "    return rows\n"
+            )
+            checker.write_text(
+                original.replace("\nif __name__ == \"__main__\":", legacy + "\nif __name__ == \"__main__\":"),
+                encoding="utf-8",
+            )
+            subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+            subprocess.run(["git", "-C", str(root), "commit", "-qm", "legacy-base"], check=True)
+            checker.write_text(original, encoding="utf-8")
+
             row = inventory(root)[0]
             row.pop("parser_version", None)
             report = root / "build" / "trusted-inventory"
             write_report([row], report)
-            loaded = _load_inventory_report(report)
-            changes, strengthened = _parser_semantic_changes(
-                loaded,
-                [{**row, "parser_version": "2"}],
+            baseline = self._run_migration_cli(root, trusted_base=report)
+            self.assertEqual(0, baseline.returncode, baseline.stdout + baseline.stderr)
+            self.assertIn("legacy-unversioned->2 additive_schema", baseline.stdout)
+            evidence = json.loads(
+                (root / "build/inventory/parser_migration_evidence.json").read_text(encoding="utf-8")
             )
-        self.assertEqual([], changes)
-        self.assertIn("parser_schema_added", {item["field"] for item in strengthened})
+            approval = root / "build" / "legacy-parser-approval.json"
+            approval.write_text(
+                json.dumps(
+                    {
+                        **evidence["fingerprints"],
+                        "scope": "legacy-to-versioned",
+                        "reason": "Reviewed trusted CSV legacy parser migration.",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            result = self._run_migration_cli(root, approval=approval, trusted_base=report)
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            self.assertIn("PARSER_MIGRATION_APPROVED", result.stdout)
 
     def test_signature_cache_isolates_callers_and_resolved_roots(self):
         """Keep result reuse scoped to caller paths, actual candidates, and source indexes."""

@@ -159,6 +159,11 @@ class PerformanceToolingTests(unittest.TestCase):
                     ],
                 },
             ),
+            ("query-timestamp-string", {"name": "bad", "queryStartTimeNs": "1"}),
+            ("query-timestamp-float", {"name": "bad", "queryStartTimeNs": 1.5}),
+            ("query-timestamp-negative", {"name": "bad", "queryStartTimeNs": -1}),
+            ("query-timestamp-oversized", {"name": "bad", "queryStartTimeNs": 10**400}),
+            ("query-timestamp-non-finite", {"name": "bad", "queryStartTimeNs": float("nan")}),
         )
         for case, scenario in cases:
             with self.subTest(case=case):
@@ -186,6 +191,54 @@ class PerformanceToolingTests(unittest.TestCase):
 
                 self.assertEqual(module.EXIT_FAILURE, result)
                 self.assertIn("invalid scenario", stdout.getvalue())
+
+    def test_performance_runner_accepts_nullable_query_timestamps(self) -> None:
+        """Accept scenarios that serialize absent query windows as null timestamps."""
+        module = load_module(
+            "performance_runner_nullable_query_timestamps",
+            "Scripts/performance/run_baseline.py",
+        )
+        with tempfile.TemporaryDirectory() as temp:
+            output = Path(temp)
+            result_path = output / "phase35_performance_current.json"
+            argv = [
+                "run_baseline.py",
+                "--quick",
+                "--output",
+                str(output),
+                "--timeout-minutes",
+                "0",
+            ]
+
+            def fake_run(cmd, **kwargs):
+                """Write a valid queryless scenario with nullable timestamps."""
+                result_path.write_text(
+                    json.dumps(
+                        {
+                            "scenarios": [
+                                {
+                                    "name": "queryless",
+                                    "passed": True,
+                                    "queryStartTimeNs": None,
+                                    "queryEndTimeNs": None,
+                                }
+                            ]
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+                return subprocess.CompletedProcess(cmd, 0)
+
+            stdout = io.StringIO()
+            with mock.patch.object(module.sys, "argv", argv), mock.patch.object(
+                module, "_free_disk_bytes", return_value=10 * module.BYTES_PER_GIB
+            ), mock.patch.object(module, "_setup_nuget_cache", return_value={}), mock.patch.object(
+                module, "_run_owned", side_effect=fake_run
+            ), contextlib.redirect_stdout(stdout):
+                result = module.main()
+
+        self.assertEqual(module.EXIT_SUCCESS, result)
+        self.assertIn("Performance baseline complete", stdout.getvalue())
 
     def test_performance_runner_ignores_stale_lexicographically_later_json(self) -> None:
         """Summary selection must use output from the current invocation only."""
