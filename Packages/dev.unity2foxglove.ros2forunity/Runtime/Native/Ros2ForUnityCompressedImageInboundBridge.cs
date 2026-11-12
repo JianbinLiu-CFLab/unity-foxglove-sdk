@@ -72,6 +72,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             _runtimeWasReady = false;
             _cleanupPending = false;
             _subscribedTopic = string.Empty;
+            _maxFramesPerSecond = Math.Max(1, _maxFramesPerSecond);
+            _maxBytesPerSecond = Math.Max(1L, _maxBytesPerSecond);
             _ingressBudget = new CompressedImageInboundBudget(_maxFramesPerSecond, _maxBytesPerSecond);
             _slot?.Dispose();
             _slot = new SensorCompressedImageFrameSlot();

@@ -214,6 +214,24 @@ namespace Unity.FoxgloveSDK.Tests.Unit.Sensors
             Assert.Contains("maxBytes", error, StringComparison.OrdinalIgnoreCase);
         }
 
+        [Fact]
+        public void DimensionGuardRejectsExcessivePaddedRowCopies()
+        {
+            var height = PointCloud2InboundMapper.MaxPaddedRowCopies + 1;
+            Assert.False(
+                PointCloud2InboundMapper.TryGetCompactByteCount(
+                    height,
+                    1,
+                    1,
+                    2,
+                    checked((int)(height * 2U)),
+                    4 * 1024 * 1024,
+                    out _,
+                    out _,
+                    out var error));
+            Assert.Contains("padded row", error, StringComparison.OrdinalIgnoreCase);
+        }
+
         private static PackedPointCloudFrame CreateFrame(ulong timestamp)
             => new PackedPointCloudFrame(
                 timestamp,

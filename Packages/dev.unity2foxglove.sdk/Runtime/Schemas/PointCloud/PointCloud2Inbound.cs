@@ -69,6 +69,7 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
         public const int MaxFieldCount = 128;
         public const int MaxFieldNameBytes = 256;
         public const int MaxFieldMetadataBytes = 16 * 1024;
+        public const uint MaxPaddedRowCopies = 1_048_576;
 
         /// <summary>Validate untrusted dimensions before allocating a compact frame buffer.</summary>
         public static bool TryGetCompactByteCount(
@@ -105,6 +106,8 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
 
             if ((ulong)rowStep < compactRowStep)
                 return Reject("rowStep is smaller than width * pointStep", out error);
+            if ((ulong)rowStep > compactRowStep && height > MaxPaddedRowCopies)
+                return Reject("PointCloud2 padded row count exceeds the compaction limit", out error);
             if ((ulong)dataLength != expectedBytes)
                 return Reject("data length does not equal height * rowStep", out error);
             if (expectedBytes > (ulong)maxBytes)
