@@ -782,6 +782,11 @@ namespace Unity.FoxgloveSDK.Performance
             var gen1 = 0;
             var gen2 = 0;
             var outputBytes = 0L;
+            var egressBytes = 0L;
+            var acceptedBytes = 0L;
+            var droppedBytes = 0L;
+            var queuedBytesHighWater = 0L;
+            var publishBytes = 0d;
             var passed = true;
             foreach (var result in results)
             {
@@ -794,6 +799,11 @@ namespace Unity.FoxgloveSDK.Performance
                 gen1 += result.gen1Collections;
                 gen2 += result.gen2Collections;
                 outputBytes = checked(outputBytes + result.outputBytes);
+                egressBytes = checked(egressBytes + result.egressBytes);
+                acceptedBytes = checked(acceptedBytes + result.acceptedBytes);
+                droppedBytes = checked(droppedBytes + result.droppedBytes);
+                queuedBytesHighWater = Math.Max(queuedBytesHighWater, result.queuedBytesHighWater);
+                publishBytes += result.publishBytesPerSecond * result.elapsedSeconds;
                 passed &= result.passed;
             }
 
@@ -805,6 +815,9 @@ namespace Unity.FoxgloveSDK.Performance
                 elapsedMs = elapsed,
                 elapsedSeconds = elapsedSeconds,
                 messagesPerSecond = elapsedSeconds > 0 ? count / elapsedSeconds : count,
+                bytesPerSecond = elapsedSeconds > 0 ? egressBytes / elapsedSeconds : egressBytes,
+                publishBytesPerSecond = elapsedSeconds > 0 ? publishBytes / elapsedSeconds : publishBytes,
+                egressBytes = egressBytes,
                 allocatedBytesTotal = allocatedTotal,
                 allocatedBytesCurrentThread = allocatedThread,
                 allocatedBytesPerMessage = count > 0 ? (double)allocatedTotal / count : 0,
@@ -812,6 +825,12 @@ namespace Unity.FoxgloveSDK.Performance
                 gen1Collections = gen1,
                 gen2Collections = gen2,
                 outputBytes = outputBytes,
+                acceptedBytes = acceptedBytes,
+                droppedBytes = droppedBytes,
+                queuedBytesHighWater = queuedBytesHighWater,
+                dropRatio = acceptedBytes + droppedBytes > 0
+                    ? (double)droppedBytes / (acceptedBytes + droppedBytes)
+                    : 0,
                 passed = passed,
                 notes = notes
             };

@@ -135,6 +135,9 @@ namespace Unity.FoxgloveSDK.Performance.Tests
             Assert.Contains("FoxgloveFrameTransformProtobufShape", result.components[2].helperProvenance);
             Assert.Contains("generated-member-read=not-run", result.components[0].notes);
             Assert.All(result.components, item => Assert.True(item.bytesPerSecond >= 0));
+            Assert.True(result.bytesPerSecond > 0);
+            Assert.True(result.publishBytesPerSecond > 0);
+            Assert.True(result.egressBytes > 0);
             var jsonOne = Assert.Single(result.components, item => item.name == "FoxRunPublishPayload.Json.1");
             var jsonFour = Assert.Single(result.components, item => item.name == "FoxRunPublishPayload.Json.4");
             Assert.True(jsonFour.egressBytes > jsonOne.egressBytes);
@@ -179,6 +182,8 @@ namespace Unity.FoxgloveSDK.Performance.Tests
             Assert.Contains(result.components, item => item.name == "LargePayloadFanout.WebSocket.4");
             Assert.Contains(result.components, item => item.name == "LargePayloadFanout.Mcap");
             Assert.All(result.components, item => Assert.True(item.bytesPerSecond > 0));
+            Assert.True(result.bytesPerSecond > 0);
+            Assert.True(result.egressBytes > 0);
             var oneClient = Assert.Single(result.components, item => item.name == "LargePayloadFanout.WebSocket.1");
             var fourClients = Assert.Single(result.components, item => item.name == "LargePayloadFanout.WebSocket.4");
             Assert.True(fourClients.egressBytes > oneClient.egressBytes);
