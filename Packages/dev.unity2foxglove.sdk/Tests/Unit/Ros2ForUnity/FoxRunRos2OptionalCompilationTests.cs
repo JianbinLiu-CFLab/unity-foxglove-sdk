@@ -48,6 +48,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             Assert.Contains("/Runtime/Native/**/*.cs", props.Replace('\\', '/'), StringComparison.Ordinal);
             Assert.Contains("/Runtime/Native/FoxRun/**/*.cs", props.Replace('\\', '/'), StringComparison.Ordinal);
             Assert.Contains("Ros2ForUnityNativeBridgeLifecycleGate.cs", props, StringComparison.Ordinal);
+            Assert.Contains("Ros2ForUnityCompressedImageInboundBridge.cs", props, StringComparison.Ordinal);
+            Assert.Contains("Ros2ForUnityPointCloud2InboundBridge.cs", props, StringComparison.Ordinal);
+            Assert.Contains("Ros2ForUnityImuInboundBridge.cs", props, StringComparison.Ordinal);
             Assert.Contains("IFoxRun*.cs", props, StringComparison.Ordinal);
             Assert.Contains("IFoxRun*.cs", runtimeProject, StringComparison.Ordinal);
             Assert.DoesNotContain(

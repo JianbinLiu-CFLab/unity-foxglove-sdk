@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 using System;
+using System.Diagnostics;
 
 namespace Unity.FoxgloveSDK.Schemas.Camera
 {
@@ -39,7 +40,7 @@ namespace Unity.FoxgloveSDK.Schemas.Camera
                 return Reject("maxBytes must be positive", out error);
             if (message.Data.Length > maxBytes)
                 return Reject("CompressedImage data exceeds maxBytes", out error);
-            if (!IsSupportedFormat(message.Format))
+            if (!TryNormalizeFormat(message.Format, out var normalizedFormat))
                 return Reject("CompressedImage format must be jpeg, jpg, or png", out error);
 
             var copiedData = new byte[message.Data.Length];
@@ -48,24 +49,82 @@ namespace Unity.FoxgloveSDK.Schemas.Camera
                 message.UnixNs,
                 message.FrameId,
                 copiedData,
-                NormalizeFormat(message.Format));
+                normalizedFormat);
             return true;
         }
 
-        private static bool IsSupportedFormat(string format)
-            => string.Equals(format, "jpeg", StringComparison.OrdinalIgnoreCase)
-               || string.Equals(format, "jpg", StringComparison.OrdinalIgnoreCase)
-               || string.Equals(format, "png", StringComparison.OrdinalIgnoreCase);
+        private static bool TryNormalizeFormat(string format, out string normalized)
+        {
+            normalized = string.Empty;
+            if (string.IsNullOrWhiteSpace(format))
+                return false;
 
-        private static string NormalizeFormat(string format)
-            => string.Equals(format, "jpg", StringComparison.OrdinalIgnoreCase)
-                ? "jpeg"
-                : format.ToLowerInvariant();
+            var tokens = format.ToLowerInvariant().Split(
+                new[] { ' ', '\t', '\r', '\n', ';', ',' },
+                StringSplitOptions.RemoveEmptyEntries);
+            foreach (var token in tokens)
+            {
+                if (token == "jpeg" || token == "jpg")
+                {
+                    normalized = "jpeg";
+                    return true;
+                }
+                if (token == "png")
+                {
+                    normalized = "png";
+                    return true;
+                }
+            }
+
+            return false;
+        }
 
         private static bool Reject(string message, out string error)
         {
             error = message;
             return false;
+        }
+    }
+
+    /// <summary>Bounds compressed-image callback admission by frames and bytes per second.</summary>
+    public sealed class CompressedImageInboundBudget
+    {
+        private readonly int _maxFramesPerSecond;
+        private readonly long _maxBytesPerSecond;
+        private long _windowStartTicks;
+        private int _frames;
+        private long _bytes;
+
+        public CompressedImageInboundBudget(int maxFramesPerSecond, long maxBytesPerSecond)
+        {
+            if (maxFramesPerSecond <= 0)
+                throw new ArgumentOutOfRangeException(nameof(maxFramesPerSecond));
+            if (maxBytesPerSecond <= 0)
+                throw new ArgumentOutOfRangeException(nameof(maxBytesPerSecond));
+            _maxFramesPerSecond = maxFramesPerSecond;
+            _maxBytesPerSecond = maxBytesPerSecond;
+        }
+
+        public bool TryAdmit(int byteCount, long timestampTicks)
+        {
+            if (byteCount < 0)
+                return false;
+            if (_windowStartTicks == 0
+                || timestampTicks < _windowStartTicks
+                || timestampTicks - _windowStartTicks >= Stopwatch.Frequency)
+            {
+                _windowStartTicks = timestampTicks;
+                _frames = 0;
+                _bytes = 0;
+            }
+
+            if (_frames >= _maxFramesPerSecond
+                || byteCount > _maxBytesPerSecond - _bytes)
+                return false;
+
+            _frames++;
+            _bytes += byteCount;
+            return true;
         }
     }
 

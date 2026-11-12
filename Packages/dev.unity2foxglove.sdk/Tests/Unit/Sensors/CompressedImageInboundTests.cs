@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using Unity.FoxgloveSDK.Schemas.Camera;
 using Xunit;
 
@@ -21,6 +22,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.Sensors
 
         [Theory]
         [InlineData("webp", "format")]
+        [InlineData("bgr8; tiff compressed bgr8", "format")]
         [InlineData("jpeg", "maxBytes")]
         public void MapperRejectsUnsupportedOrOversizedFrames(string format, string expected)
         {
@@ -29,6 +31,31 @@ namespace Unity.FoxgloveSDK.Tests.Unit.Sensors
 
             Assert.False(CompressedImageInboundMapper.TryMap(message, maxBytes, out _, out var error));
             Assert.Contains(expected, error, StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Theory]
+        [InlineData("bgr8; jpeg compressed bgr8", "jpeg")]
+        [InlineData("rgb8; png compressed rgb8", "png")]
+        public void MapperAcceptsStandardRosCompressedImageFormat(string format, string expected)
+        {
+            var message = new CompressedImageInboundMessage(42, "camera", new byte[4], format);
+
+            Assert.True(CompressedImageInboundMapper.TryMap(message, 1024, out var frame, out var error));
+            Assert.Equal(string.Empty, error);
+            Assert.Equal(expected, frame.Format);
+        }
+
+        [Fact]
+        public void IngressBudgetRejectsFramesAfterFrameOrByteLimit()
+        {
+            var budget = new CompressedImageInboundBudget(2, 10);
+            var now = Stopwatch.GetTimestamp();
+
+            Assert.True(budget.TryAdmit(4, now));
+            Assert.True(budget.TryAdmit(4, now));
+            Assert.False(budget.TryAdmit(1, now));
+            Assert.False(budget.TryAdmit(3, now));
+            Assert.True(budget.TryAdmit(4, now + Stopwatch.Frequency));
         }
 
         [Fact]

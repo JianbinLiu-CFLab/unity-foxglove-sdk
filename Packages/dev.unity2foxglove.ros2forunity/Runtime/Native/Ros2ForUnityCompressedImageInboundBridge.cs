@@ -6,6 +6,8 @@
 
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
 using System;
+using System.Globalization;
+using Stopwatch = System.Diagnostics.Stopwatch;
 using ROS2;
 using Unity.FoxgloveSDK.Schemas.Camera;
 using UnityEngine;
@@ -23,14 +25,23 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         [SerializeField]
         private long _maxFrameBytes = 4L * 1024L * 1024L;
 
+        [SerializeField]
+        private int _maxFramesPerSecond = 60;
+
+        [SerializeField]
+        private long _maxBytesPerSecond = 64L * 1024L * 1024L;
+
         private ROS2UnityComponent _ros2Unity;
         private ROS2Node _node;
         private ISubscriptionBase _subscription;
         private SensorCompressedImageFrameSlot _slot;
         private bool _isStopping;
         private bool _runtimeWasReady;
+        private bool _cleanupPending;
         private bool _warnedRuntime;
         private int _failureCount;
+        private string _subscribedTopic = string.Empty;
+        private CompressedImageInboundBudget _ingressBudget;
 
         /// <summary>Raised from Update after the callback-thread copy is queued.</summary>
         public event Action<SensorCompressedImageFrame> FrameReceived;
@@ -58,6 +69,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         {
             _isStopping = false;
             _runtimeWasReady = false;
+            _cleanupPending = false;
+            _subscribedTopic = string.Empty;
+            _ingressBudget = new CompressedImageInboundBudget(_maxFramesPerSecond, _maxBytesPerSecond);
             _slot?.Dispose();
             _slot = new SensorCompressedImageFrameSlot();
             Application.quitting += OnApplicationQuitting;
@@ -84,6 +98,18 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 CleanupNative();
                 DrainOne();
                 return;
+            }
+
+            if (_subscription != null && !string.Equals(_subscribedTopic, Topic, StringComparison.Ordinal))
+                _cleanupPending = true;
+            if (_cleanupPending)
+            {
+                CleanupNative();
+                if (_cleanupPending)
+                {
+                    DrainOne();
+                    return;
+                }
             }
 
             if (!EnsureRuntime())
@@ -136,16 +162,26 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         private void EnsureSubscription()
         {
+            if (_cleanupPending)
+            {
+                CleanupNative();
+                if (_cleanupPending)
+                    return;
+            }
             if (_subscription != null)
                 return;
             if (_node != null)
+            {
                 CleanupNative();
+                if (_cleanupPending)
+                    return;
+            }
             if (_ros2Unity == null || IsShuttingDown)
                 return;
 
             try
             {
-                _node = _ros2Unity.CreateNode("u2f_compressed_image_inbound");
+                _node = _ros2Unity.CreateNode(NodeName);
                 if (_node == null)
                     throw new InvalidOperationException("R2FU returned no CompressedImage inbound node.");
 
@@ -164,6 +200,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
                 if (_subscription == null)
                     throw new InvalidOperationException("R2FU returned no CompressedImage subscription.");
+                _subscribedTopic = Topic;
+                _cleanupPending = false;
                 _failureCount = 0;
             }
             catch (Exception exception)
@@ -179,6 +217,14 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             if (message == null || data == null)
             {
                 _slot.RecordRejected("CompressedImage callback returned no message data");
+                return;
+            }
+
+            if (_ingressBudget == null)
+                _ingressBudget = new CompressedImageInboundBudget(_maxFramesPerSecond, _maxBytesPerSecond);
+            if (!_ingressBudget.TryAdmit(data.Length, Stopwatch.GetTimestamp()))
+            {
+                _slot.RecordRejected("CompressedImage ingress budget exceeded");
                 return;
             }
 
@@ -240,6 +286,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             if (_node == null)
             {
                 _subscription = null;
+                _cleanupPending = false;
                 return;
             }
 
@@ -248,27 +295,40 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 try
                 {
                     if (!_node.RemoveSubscription(_subscription))
+                    {
+                        _cleanupPending = true;
                         return;
+                    }
                     _subscription = null;
                 }
                 catch (Exception exception)
                 {
                     RecordFailure("CompressedImage subscription cleanup failed: " + exception.Message);
+                    _cleanupPending = true;
                     return;
                 }
             }
 
             if (_ros2Unity == null)
+            {
+                _cleanupPending = true;
                 return;
+            }
             try
             {
                 if (!_ros2Unity.TryRemoveNode(_node))
+                {
+                    _cleanupPending = true;
                     return;
+                }
                 _node = null;
+                _subscribedTopic = string.Empty;
+                _cleanupPending = false;
             }
             catch (Exception exception)
             {
                 RecordFailure("CompressedImage node cleanup failed: " + exception.Message);
+                _cleanupPending = true;
             }
         }
 
@@ -292,6 +352,10 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             var value = string.IsNullOrWhiteSpace(topic) ? "/camera/image/compressed" : topic.Trim();
             return value.StartsWith("/", StringComparison.Ordinal) ? value : "/" + value;
         }
+
+        private string NodeName
+            => "u2f_compressed_image_inbound_"
+               + unchecked((uint)GetInstanceID()).ToString(CultureInfo.InvariantCulture);
     }
 }
 #endif
