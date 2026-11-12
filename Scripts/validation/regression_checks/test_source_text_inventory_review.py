@@ -15,7 +15,7 @@ from .test_source_text_inventory_semantics import _FixtureSupport
 class SourceTextInventoryReviewTests(_FixtureSupport, unittest.TestCase):
     """Keep helper arguments and branch exits bound to existing inventory rows."""
 
-    def _run_migration_cli(self, root, approval=None):
+    def _run_migration_cli(self, root, approval=None, trusted_base=None):
         """Run the proposed checker with an optional workflow migration approval."""
         args = [
             sys.executable,
@@ -30,6 +30,8 @@ class SourceTextInventoryReviewTests(_FixtureSupport, unittest.TestCase):
         ]
         if approval is not None:
             args.extend(["--parser-migration-approval", str(approval)])
+        if trusted_base is not None:
+            args.extend(["--trusted-base-inventory", str(trusted_base)])
         return subprocess.run(args, capture_output=True, text=True, check=False)
 
     def test_versioned_parser_maintenance_requires_exact_scope_and_fingerprints(self):
@@ -94,6 +96,19 @@ class SourceTextInventoryReviewTests(_FixtureSupport, unittest.TestCase):
             performance_file.write_text("public sealed class Unrelated {}\n", encoding="utf-8")
             index = _ExternalHelperIndex(root)
             self.assertNotIn(performance_file, index.units)
+
+    def test_cli_reuses_trusted_base_inventory_report(self):
+        """Allow the workflow's trusted base report to replace a duplicate base scan."""
+        from Scripts.validation.source_text_inventory import inventory
+        from Scripts.validation.source_text_inventory_report import write_report
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(directory)
+            trusted = root / "build" / "trusted-inventory"
+            write_report(inventory(root), trusted)
+            result = self._run_migration_cli(root, trusted_base=trusted)
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            self.assertIn("SOURCE_TEXT_INVENTORY_BASE_OK", result.stdout)
 
     def test_signature_cache_isolates_callers_and_resolved_roots(self):
         """Keep result reuse scoped to caller paths, actual candidates, and source indexes."""

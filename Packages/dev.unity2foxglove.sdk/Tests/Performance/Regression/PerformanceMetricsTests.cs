@@ -145,6 +145,40 @@ namespace Unity.FoxgloveSDK.Performance.Tests
         }
 
         [Fact]
+        public void JsonAndProtobufPublishRatesUseMeasuredPayloadBytes()
+        {
+            var runnerType = typeof(PerformanceRunner).Assembly
+                .GetType("Unity.FoxgloveSDK.Performance.HighBandwidthScenarioRunner");
+            var runMethod = runnerType.GetMethod("RunFoxRunPublishPayload", BindingFlags.NonPublic | BindingFlags.Static);
+            var jsonBuilder = runnerType.GetMethod("BuildJsonWriterShapePayload", BindingFlags.NonPublic | BindingFlags.Static);
+            var protobufBuilder = runnerType.GetMethod("BuildFrameTransformPayload", BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.NotNull(runMethod);
+            Assert.NotNull(jsonBuilder);
+            Assert.NotNull(protobufBuilder);
+
+            var result = (PerformanceScenarioResult)runMethod.Invoke(
+                null,
+                new object[] { 1, 2, 2, new PerformanceThresholdConfig { enabled = false } });
+            foreach (var (name, builder) in new[]
+            {
+                ("FoxRunPublishPayload.Json.1", jsonBuilder),
+                ("FoxRunPublishPayload.Json.4", jsonBuilder),
+                ("FoxRunPublishPayload.Protobuf.1", protobufBuilder),
+                ("FoxRunPublishPayload.Protobuf.4", protobufBuilder)
+            })
+            {
+                long expectedBytes = 0;
+                for (var message = 0; message < 2; message++)
+                for (var topic = 0; topic < 2; topic++)
+                    expectedBytes += ((byte[])builder.Invoke(null, new object[] { topic, message })).Length;
+
+                var component = Assert.Single(result.components, item => item.name == name);
+                var measuredBytes = component.publishBytesPerSecond * component.elapsedSeconds;
+                Assert.InRange(Math.Abs(measuredBytes - expectedBytes), 0, 0.001);
+            }
+        }
+
+        [Fact]
         public void FrameTransformPayloadRoundTripsSchema()
         {
             var runnerType = typeof(PerformanceRunner).Assembly

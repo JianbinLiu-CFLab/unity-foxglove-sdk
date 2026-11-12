@@ -17,6 +17,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from Scripts.validation.plan_audit import performance_evidence
+
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -235,13 +237,28 @@ class PerformanceToolingTests(unittest.TestCase):
         self.assertIn("Scripts/performance/run_baseline.py --quick", workflow)
         self.assertIn("performance-thresholds.ci.json", workflow)
         self.assertIn("upload-artifact", workflow)
+        self.assertIn("Runtime/Transport/**", workflow)
+        self.assertIn("Runtime/Components/FoxRun/**", workflow)
         self.assertIn("Runtime/Core/**", workflow)
         self.assertIn("Runtime/Components/Manager/**", workflow)
+        self.assertIn("Runtime/Protocol/**", workflow)
+        self.assertIn("Runtime/Schemas/**", workflow)
+        self.assertIn("Runtime/IO/**", workflow)
         self.assertIn("Editor/Shared/FoxgloveSourceEmitter/**", workflow)
         self.assertIn("Editor/SourceGenerators/**", workflow)
         self.assertIn("permissions:", workflow)
         self.assertIn("contents: read", workflow)
         self.assertIn("persist-credentials: false", workflow)
+
+    def test_plan_audit_requires_protocol_trigger_path(self) -> None:
+        """The audit must fail if a benchmark-relevant workflow path is removed."""
+        workflow = (ROOT / ".github" / "workflows" / "performance.yml").read_text(encoding="utf-8")
+        self.assertTrue(performance_evidence._workflow_contract(workflow))
+        mutated = workflow.replace(
+            "      - 'Packages/dev.unity2foxglove.sdk/Runtime/Protocol/**'\n",
+            "",
+        )
+        self.assertFalse(performance_evidence._workflow_contract(mutated))
 
     def test_all_plan199_scenarios_have_explicit_quick_and_full_thresholds(self) -> None:
         """Keep every high-bandwidth scenario explicitly bounded in both modes."""

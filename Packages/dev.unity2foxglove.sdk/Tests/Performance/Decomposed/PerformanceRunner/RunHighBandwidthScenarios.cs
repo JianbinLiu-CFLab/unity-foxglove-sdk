@@ -56,10 +56,10 @@ namespace Unity.FoxgloveSDK.Performance
             };
         }
 
-        private static double RateBytes(PerformanceScenarioResult result, int bytesPerMessage)
+        private static double RateBytes(PerformanceScenarioResult result, long totalBytes)
         {
             return result.elapsedSeconds > 0
-                ? result.messageCount * (double)bytesPerMessage / result.elapsedSeconds
+                ? totalBytes / result.elapsedSeconds
                 : 0;
         }
 
@@ -392,6 +392,7 @@ namespace Unity.FoxgloveSDK.Performance
             var transport = new FakePerformanceTransport();
             var session = new FoxgloveSession("perf-foxrun-json", transport, schemaRegistry: registry);
             var channelIds = RegisterFanoutChannels(session, transport, topics, clients, "json", "test.FoxRunGeneratedJson", "foxrun-json");
+            long measuredIngressBytes = 0;
             var result = PerformanceRunner.TimedScenario(
                 $"FoxRunPublishPayload.Json.{clients}",
                 warmup * topics,
@@ -401,15 +402,15 @@ namespace Unity.FoxgloveSDK.Performance
                     PublishJsonWriterShape(session, channelIds, warmup);
                     transport.ResetCounters();
                 },
-                count => PublishJsonWriterShape(session, channelIds, count / topics),
+                count => measuredIngressBytes = PublishJsonWriterShape(session, channelIds, count / topics),
                 thresholds);
             result.helperProvenance = "FoxRunJsonStringBuilderShape;source=Editor/Shared/FoxgloveSourceEmitter/Decomposed/PublishDispatchEmitter/PublishDispatchEmitter.Json.cs:163-180;scope=option-A'-building-block";
             result.notes = "benchmarkPath=session.Publish pre-serialized payload;generated-member-read=not-run;manager-helper=not-run;"
-                + $"clients={clients};topics={topics}";
+                + $"clients={clients};topics={topics};measuredIngressBytes={measuredIngressBytes}";
             result.clientCount = clients;
             result.egressBytes = transport.DataBinaryBytes;
             result.bytesPerSecond = result.elapsedSeconds > 0 ? result.egressBytes / result.elapsedSeconds : 0;
-            result.publishBytesPerSecond = RateBytes(result, BuildJsonWriterShapePayload(0, 0).Length);
+            result.publishBytesPerSecond = RateBytes(result, measuredIngressBytes);
             return result;
         }
 
@@ -427,6 +428,7 @@ namespace Unity.FoxgloveSDK.Performance
             var session = new FoxgloveSession("perf-foxrun-proto", transport, schemaRegistry: registry);
             session.EnableProtobuf();
             var channelIds = RegisterFanoutChannels(session, transport, topics, clients, "protobuf", "foxglove.FrameTransform", "foxrun-proto");
+            long measuredIngressBytes = 0;
             var result = PerformanceRunner.TimedScenario(
                 $"FoxRunPublishPayload.Protobuf.{clients}",
                 warmup * topics,
@@ -436,15 +438,15 @@ namespace Unity.FoxgloveSDK.Performance
                     PublishFrameTransform(session, channelIds, warmup);
                     transport.ResetCounters();
                 },
-                count => PublishFrameTransform(session, channelIds, count / topics),
+                count => measuredIngressBytes = PublishFrameTransform(session, channelIds, count / topics),
                 thresholds);
             result.helperProvenance = "FoxgloveFrameTransformProtobufShape;source=Editor/Shared/FoxgloveSourceEmitter/ProtobufPublishDispatchEmitter.cs:264-269;scope=option-A'-building-block";
             result.notes = "benchmarkPath=session.Publish pre-serialized payload;generated-member-read=not-run;manager-helper=not-run;"
-                + $"clients={clients};topics={topics}";
+                + $"clients={clients};topics={topics};measuredIngressBytes={measuredIngressBytes}";
             result.clientCount = clients;
             result.egressBytes = transport.DataBinaryBytes;
             result.bytesPerSecond = result.elapsedSeconds > 0 ? result.egressBytes / result.elapsedSeconds : 0;
-            result.publishBytesPerSecond = RateBytes(result, BuildFrameTransformPayload(0, 0).Length);
+            result.publishBytesPerSecond = RateBytes(result, measuredIngressBytes);
             return result;
         }
 
@@ -477,18 +479,30 @@ namespace Unity.FoxgloveSDK.Performance
             return channelIds;
         }
 
-        private static void PublishJsonWriterShape(FoxgloveSession session, List<uint> channelIds, int messages)
+        private static long PublishJsonWriterShape(FoxgloveSession session, List<uint> channelIds, int messages)
         {
+            long totalBytes = 0;
             for (var message = 0; message < messages; message++)
                 for (var topic = 0; topic < channelIds.Count; topic++)
-                    session.Publish(channelIds[topic], BuildJsonWriterShapePayload(topic, message));
+                {
+                    var payload = BuildJsonWriterShapePayload(topic, message);
+                    totalBytes = checked(totalBytes + payload.Length);
+                    session.Publish(channelIds[topic], payload);
+                }
+            return totalBytes;
         }
 
-        private static void PublishFrameTransform(FoxgloveSession session, List<uint> channelIds, int messages)
+        private static long PublishFrameTransform(FoxgloveSession session, List<uint> channelIds, int messages)
         {
+            long totalBytes = 0;
             for (var message = 0; message < messages; message++)
                 for (var topic = 0; topic < channelIds.Count; topic++)
-                    session.Publish(channelIds[topic], BuildFrameTransformPayload(topic, message));
+                {
+                    var payload = BuildFrameTransformPayload(topic, message);
+                    totalBytes = checked(totalBytes + payload.Length);
+                    session.Publish(channelIds[topic], payload);
+                }
+            return totalBytes;
         }
 
         private static byte[] BuildJsonWriterShapePayload(int topic, int message)
@@ -613,7 +627,7 @@ namespace Unity.FoxgloveSDK.Performance
             result.clientCount = clients;
             result.egressBytes = transport.DataBinaryBytes;
             result.bytesPerSecond = result.elapsedSeconds > 0 ? result.egressBytes / result.elapsedSeconds : 0;
-            result.publishBytesPerSecond = RateBytes(result, payload.Length);
+            result.publishBytesPerSecond = RateBytes(result, (long)result.messageCount * payload.Length);
             result.helperProvenance = "FoxgloveMsgPackWriter;FoxgloveManager.PublishFoxRunMessagePackBytes source shape";
             return result;
         }
@@ -657,7 +671,7 @@ namespace Unity.FoxgloveSDK.Performance
             result.helperProvenance = "FoxgloveSession.Publish with FakePerformanceTransport";
             result.egressBytes = transport.DataBinaryBytes;
             result.bytesPerSecond = result.elapsedSeconds > 0 ? result.egressBytes / result.elapsedSeconds : 0;
-            result.publishBytesPerSecond = RateBytes(result, payload.Length);
+            result.publishBytesPerSecond = RateBytes(result, (long)result.messageCount * payload.Length);
             return result;
         }
 
