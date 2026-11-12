@@ -7,6 +7,8 @@
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
 using System;
 using System.Collections.Generic;
+using System.Globalization;
+using System.Text;
 using ROS2;
 using Unity.FoxgloveSDK.Schemas.PointCloud;
 using UnityEngine;
@@ -34,8 +36,10 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private PackedPointCloudFrameSlot _slot;
         private bool _isStopping;
         private bool _runtimeWasReady;
+        private bool _cleanupPending;
         private bool _warnedRuntime;
         private int _failureCount;
+        private string _subscribedTopic = string.Empty;
 
         /// <summary>Raised from Update after the callback-thread copy is queued.</summary>
         public event Action<PackedPointCloudFrame> FrameReceived;
@@ -63,6 +67,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         {
             _isStopping = false;
             _runtimeWasReady = false;
+            _cleanupPending = false;
+            _subscribedTopic = string.Empty;
             _slot?.Dispose();
             _slot = new PackedPointCloudFrameSlot();
             Application.quitting += OnApplicationQuitting;
@@ -89,6 +95,18 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 CleanupNative();
                 DrainOne();
                 return;
+            }
+
+            if (_subscription != null && !string.Equals(_subscribedTopic, Topic, StringComparison.Ordinal))
+                _cleanupPending = true;
+            if (_cleanupPending)
+            {
+                CleanupNative();
+                if (_cleanupPending)
+                {
+                    DrainOne();
+                    return;
+                }
             }
 
             if (!EnsureRuntime())
@@ -141,17 +159,27 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         private void EnsureSubscription()
         {
+            if (_cleanupPending)
+            {
+                CleanupNative();
+                if (_cleanupPending)
+                    return;
+            }
             if (_subscription != null)
                 return;
 
             if (_node != null)
+            {
                 CleanupNative();
+                if (_cleanupPending)
+                    return;
+            }
             if (_ros2Unity == null || IsShuttingDown)
                 return;
 
             try
             {
-                _node = _ros2Unity.CreateNode("u2f_pointcloud2_inbound");
+                _node = _ros2Unity.CreateNode(NodeName);
                 if (_node == null)
                     throw new InvalidOperationException("R2FU returned no PointCloud2 inbound node.");
 
@@ -172,6 +200,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
                 if (_subscription == null)
                     throw new InvalidOperationException("R2FU returned no PointCloud2 subscription.");
+                _subscribedTopic = Topic;
+                _cleanupPending = false;
                 _failureCount = 0;
             }
             catch (Exception exception)
@@ -196,56 +226,138 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 return;
             }
 
-            var pooled = PointCloudPackedByteBufferPool.Rent(data.Length);
-            Buffer.BlockCopy(data, 0, pooled, 0, data.Length);
-            var header = message.Header;
-            var stamp = header?.Stamp;
-            ulong unixNs;
-            try
+            if (message.Fields != null && message.Fields.Length > PointCloud2InboundMapper.MaxFieldCount)
             {
-                unixNs = stamp == null || stamp.Sec < 0
-                    ? 0UL
-                    : checked((ulong)stamp.Sec * 1_000_000_000UL + stamp.Nanosec);
-            }
-            catch (OverflowException)
-            {
-                PointCloudPackedByteBufferPool.Return(pooled);
-                _slot.RecordRejected("PointCloud2 header timestamp exceeds the supported range");
+                _slot.RecordRejected("PointCloud2 field metadata exceeds the field count limit");
                 return;
             }
-            var fields = new List<PointCloud2InboundField>(message.Fields?.Length ?? 0);
+            var metadataBytes = 0;
             if (message.Fields != null)
             {
                 foreach (var field in message.Fields)
-                    fields.Add(new PointCloud2InboundField(field.Name, field.Offset, field.Datatype, field.Count));
+                {
+                    if (field == null || field.Count != 1)
+                    {
+                        _slot.RecordRejected("PointCloud2 fields must have count 1");
+                        return;
+                    }
+                    var fieldName = field.Name ?? string.Empty;
+                    if (fieldName.Length > PointCloud2InboundMapper.MaxFieldNameBytes)
+                    {
+                        _slot.RecordRejected("PointCloud2 field metadata name exceeds the limit");
+                        return;
+                    }
+                    var nameBytes = Encoding.UTF8.GetByteCount(fieldName);
+                    if (nameBytes > PointCloud2InboundMapper.MaxFieldNameBytes)
+                    {
+                        _slot.RecordRejected("PointCloud2 field metadata name exceeds the limit");
+                        return;
+                    }
+                    metadataBytes = checked(metadataBytes + nameBytes + 16);
+                    if (metadataBytes > PointCloud2InboundMapper.MaxFieldMetadataBytes)
+                    {
+                        _slot.RecordRejected("PointCloud2 field metadata exceeds the limit");
+                        return;
+                    }
+                }
             }
 
-            var neutral = new PointCloud2InboundMessage(
-                unixNs,
-                header?.Frame_id,
-                message.Height,
-                message.Width,
-                fields,
-                message.Point_step,
-                message.Row_step,
-                pooled,
-                message.Is_bigendian,
-                message.Is_dense);
-
-            if (!PointCloud2InboundMapper.TryMapOwned(
-                    neutral,
+            if (!PointCloud2InboundMapper.TryGetCompactByteCount(
+                    message.Height,
+                    message.Width,
+                    message.Point_step,
+                    message.Row_step,
+                    data.Length,
                     _maxFrameBytes,
-                    Topic,
-                    out var frame,
-                    out var error))
+                    out var packedRowStep,
+                    out var compactBytes,
+                    out var dimensionError))
             {
-                PointCloudPackedByteBufferPool.Return(pooled);
-                _slot.RecordRejected(error);
+                _slot.RecordRejected(dimensionError);
                 return;
             }
 
-            if (!_slot.Publish(frame))
-                return;
+            var pooled = PointCloudPackedByteBufferPool.Rent(data.Length);
+            var ownsPooled = true;
+            try
+            {
+                Buffer.BlockCopy(data, 0, pooled, 0, data.Length);
+                var header = message.Header;
+                var stamp = header?.Stamp;
+                ulong unixNs;
+                try
+                {
+                    unixNs = stamp == null || stamp.Sec < 0
+                        ? 0UL
+                        : checked((ulong)stamp.Sec * 1_000_000_000UL + stamp.Nanosec);
+                }
+                catch (OverflowException)
+                {
+                    _slot.RecordRejected("PointCloud2 header timestamp exceeds the supported range");
+                    return;
+                }
+
+                if (message.Row_step > packedRowStep)
+                {
+                    var compacted = PointCloudPackedByteBufferPool.Rent(compactBytes);
+                    for (var row = 0; row < message.Height; row++)
+                    {
+                        Buffer.BlockCopy(
+                            pooled,
+                            checked((int)((ulong)row * message.Row_step)),
+                            compacted,
+                            checked((int)((ulong)row * packedRowStep)),
+                            checked((int)packedRowStep));
+                    }
+                    PointCloudPackedByteBufferPool.Return(pooled);
+                    pooled = compacted;
+                }
+
+                var mappedRowStep = checked((uint)packedRowStep);
+
+                var fields = new List<PointCloud2InboundField>(message.Fields?.Length ?? 0);
+                if (message.Fields != null)
+                {
+                    foreach (var field in message.Fields)
+                        fields.Add(new PointCloud2InboundField(field.Name, field.Offset, field.Datatype, field.Count));
+                }
+
+                var neutral = new PointCloud2InboundMessage(
+                    unixNs,
+                    header?.Frame_id,
+                    message.Height,
+                    message.Width,
+                    fields,
+                    message.Point_step,
+                    mappedRowStep,
+                    pooled,
+                    message.Is_bigendian,
+                    message.Is_dense);
+
+                if (!PointCloud2InboundMapper.TryMapOwned(
+                        neutral,
+                        _maxFrameBytes,
+                        Topic,
+                        out var frame,
+                        out var error))
+                {
+                    _slot.RecordRejected(error);
+                    return;
+                }
+
+                ownsPooled = false;
+                if (!_slot.Publish(frame))
+                    frame.Dispose();
+            }
+            catch (Exception exception)
+            {
+                _slot.RecordRejected("PointCloud2 callback failed: " + exception.Message);
+            }
+            finally
+            {
+                if (ownsPooled)
+                    PointCloudPackedByteBufferPool.Return(pooled);
+            }
         }
 
         private void DrainOne()
@@ -266,9 +378,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             }
             catch (Exception exception)
             {
-                frame.Dispose();
                 _slot.RecordRejected("PointCloud2 frame handler failed: " + exception.Message);
                 RecordFailure("PointCloud2 frame handler failed: " + exception.Message);
+            }
+            finally
+            {
+                frame.Dispose();
             }
         }
 
@@ -277,6 +392,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             if (_node == null)
             {
                 _subscription = null;
+                _cleanupPending = false;
                 return;
             }
 
@@ -285,28 +401,41 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 try
                 {
                     if (!_node.RemoveSubscription(_subscription))
+                    {
+                        _cleanupPending = true;
                         return;
+                    }
                     _subscription = null;
                 }
                 catch (Exception exception)
                 {
                     RecordFailure("PointCloud2 subscription cleanup failed: " + exception.Message);
+                    _cleanupPending = true;
                     return;
                 }
             }
 
             if (_ros2Unity == null)
+            {
+                _cleanupPending = true;
                 return;
+            }
 
             try
             {
                 if (!_ros2Unity.TryRemoveNode(_node))
+                {
+                    _cleanupPending = true;
                     return;
+                }
                 _node = null;
+                _subscribedTopic = string.Empty;
+                _cleanupPending = false;
             }
             catch (Exception exception)
             {
                 RecordFailure("PointCloud2 node cleanup failed: " + exception.Message);
+                _cleanupPending = true;
             }
         }
 
@@ -331,6 +460,10 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             var value = string.IsNullOrWhiteSpace(topic) ? "/points" : topic.Trim();
             return value.StartsWith("/", StringComparison.Ordinal) ? value : "/" + value;
         }
+
+        private string NodeName
+            => "u2f_pointcloud2_inbound_"
+               + unchecked((uint)GetInstanceID()).ToString(CultureInfo.InvariantCulture);
     }
 }
 #endif

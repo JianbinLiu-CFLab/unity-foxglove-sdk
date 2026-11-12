@@ -1,4 +1,7 @@
 using System;
+using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
 using Unity.FoxgloveSDK.Schemas.Camera;
 using Xunit;
 
@@ -21,6 +24,8 @@ namespace Unity.FoxgloveSDK.Tests.Unit.Sensors
 
         [Theory]
         [InlineData("webp", "format")]
+        [InlineData("bgr8; tiff compressed bgr8", "format")]
+        [InlineData("bgr8; jpeg", "format")]
         [InlineData("jpeg", "maxBytes")]
         public void MapperRejectsUnsupportedOrOversizedFrames(string format, string expected)
         {
@@ -29,6 +34,68 @@ namespace Unity.FoxgloveSDK.Tests.Unit.Sensors
 
             Assert.False(CompressedImageInboundMapper.TryMap(message, maxBytes, out _, out var error));
             Assert.Contains(expected, error, StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
+        public void MapperRejectsExcessiveFormatMetadata()
+        {
+            var format = new string('x', CompressedImageInboundMapper.MaxFormatBytes + 1);
+            var message = new CompressedImageInboundMessage(42, "camera", new byte[1], format);
+
+            Assert.False(CompressedImageInboundMapper.TryMap(message, 1024, out _, out var error));
+            Assert.Contains("metadata", error, StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Theory]
+        [InlineData("bgr8; jpeg compressed bgr8", "jpeg")]
+        [InlineData("rgb8; png compressed rgb8", "png")]
+        public void MapperAcceptsStandardRosCompressedImageFormat(string format, string expected)
+        {
+            var message = new CompressedImageInboundMessage(42, "camera", new byte[4], format);
+
+            Assert.True(CompressedImageInboundMapper.TryMap(message, 1024, out var frame, out var error));
+            Assert.Equal(string.Empty, error);
+            Assert.Equal(expected, frame.Format);
+        }
+
+        [Fact]
+        public void IngressBudgetRejectsFramesAfterFrameOrByteLimit()
+        {
+            var budget = new CompressedImageInboundBudget(2, 10);
+            var now = Stopwatch.GetTimestamp();
+
+            Assert.True(budget.TryAdmitFrame(4, 1, now));
+            Assert.True(budget.TryAdmitFrame(4, 1, now));
+            Assert.False(budget.TryAdmitFrame(1, 9, now));
+            Assert.False(budget.TryAdmitFrame(3, 7, now));
+            Assert.True(budget.TryAdmitFrame(4, 1, now + Stopwatch.Frequency));
+        }
+
+        [Fact]
+        public void IngressBudgetSerializesConcurrentAdmissions()
+        {
+            var budget = new CompressedImageInboundBudget(1, 1024);
+            var now = Stopwatch.GetTimestamp();
+            var admitted = 0;
+
+            Parallel.For(0, 32, _ =>
+            {
+                if (budget.TryAdmitFrame(1, 1, now))
+                    Interlocked.Increment(ref admitted);
+            });
+
+            Assert.Equal(1, admitted);
+        }
+
+        [Fact]
+        public void IngressBudgetIgnoresStaleCallbackTimestamps()
+        {
+            var budget = new CompressedImageInboundBudget(2, 1024);
+            var now = Stopwatch.GetTimestamp();
+
+            Assert.True(budget.TryAdmitFrame(1, 1, now));
+            Assert.True(budget.TryAdmitFrame(1, 1, now + Stopwatch.Frequency / 2));
+            Assert.False(budget.TryAdmitFrame(1, 1, now - Stopwatch.Frequency / 2));
         }
 
         [Fact]

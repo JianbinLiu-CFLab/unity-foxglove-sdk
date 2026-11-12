@@ -100,10 +100,6 @@ class SourceTextInventorySemanticTests(_FixtureSupport, unittest.TestCase):
                 code, output = self._run_fixture_gate(root)
                 self.assertEqual(1, code, output)
                 self.assertIn('field": "harness_signature"', output)
-
-
-
-
     def test_parser_row_missing_field_requires_ack(self):
         """Reject a parser row that drops a protected metadata field."""
         with tempfile.TemporaryDirectory() as directory:
@@ -140,7 +136,6 @@ class SourceTextInventorySemanticTests(_FixtureSupport, unittest.TestCase):
             )
             self.assertEqual(1, result.returncode, result.stdout + result.stderr)
             self.assertIn('field": "parser_field_missing"', result.stdout)
-
     def test_else_condition_change_requires_ack(self):
         """Reject changing the condition that selects an existing else assertion."""
         with tempfile.TemporaryDirectory() as directory:
@@ -169,7 +164,6 @@ class SourceTextInventorySemanticTests(_FixtureSupport, unittest.TestCase):
             code, output = self._run_fixture_gate(root)
             self.assertEqual(1, code)
             self.assertIn('field": "reachability"', output)
-
     def test_switch_case_change_requires_ack(self):
         """Reject changing the case that reaches a source assertion."""
         with tempfile.TemporaryDirectory() as directory:
@@ -199,7 +193,6 @@ class SourceTextInventorySemanticTests(_FixtureSupport, unittest.TestCase):
             code, output = self._run_fixture_gate(root)
             self.assertEqual(1, code)
             self.assertIn('field": "reachability"', output)
-
     def test_existing_catch_body_change_requires_ack(self):
         """Reject changing an assertion catch from rethrow to swallow."""
         with tempfile.TemporaryDirectory() as directory:
@@ -318,6 +311,19 @@ class SourceTextInventorySemanticTests(_FixtureSupport, unittest.TestCase):
             code, output = self._run_fixture_gate(root)
             self.assertEqual(1, code)
             self.assertIn('field": "harness_signature"', output)
+
+    def test_runtime_method_additions_do_not_change_validation_helper_signatures(self):
+        """Ignore unresolved production helper candidates when signing validation harnesses."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(directory, validation_text=(
+                'public static class FixtureValidation { public static void Validate() { var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs"); dynamic helper = new RuntimeHelper(); Check(source.Contains("Product") && helper.TryMap(source)); } }\n'
+            ))
+            runtime_helper = root / "Packages/fixture/Runtime/RuntimeHelper.cs"
+            base = 'public sealed class RuntimeHelper { public bool TryMap(string source) => source.Contains("Product"); }\n'
+            runtime_helper.write_text(base, encoding="utf-8")
+            before = _gate_module.inventory(root)
+            runtime_helper.write_text(base + "public sealed class UnrelatedHelper { public bool TryMap(string source) => false; }\n", encoding="utf-8")
+            self.assertEqual(before[0]["harness_signature"], _gate_module.inventory(root)[0]["harness_signature"])
 
     def test_method_group_delegate_change_requires_ack(self):
         """Reject switching a delegate method group to a no-op method."""
