@@ -66,9 +66,9 @@ namespace Unity.FoxgloveSDK.Schemas.PointCloud
     /// <summary>Maps a copied PointCloud2 message into the SDK packed frame contract.</summary>
     public static class PointCloud2InboundMapper
     {
-        internal const int MaxFieldCount = 128;
-        internal const int MaxFieldNameBytes = 256;
-        internal const int MaxFieldMetadataBytes = 16 * 1024;
+        public const int MaxFieldCount = 128;
+        public const int MaxFieldNameBytes = 256;
+        public const int MaxFieldMetadataBytes = 16 * 1024;
 
         public static bool TryMap(
             PointCloud2InboundMessage message,
