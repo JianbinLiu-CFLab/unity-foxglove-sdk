@@ -251,6 +251,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
             self.consumer_aliases: dict[str, str] = {}
             self.producer_aliases: set[str] = set(deferred_producers)
             self.eager_callbacks: set[str] = set()
+            self.eager_callback_defaults: dict[str, tuple[ast.AST, ...]] = {}
         def _check_targets(self, targets: list[ast.AST]) -> None:
             """Check assignment targets for direct environment mutation."""
             if any(
@@ -282,11 +283,8 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
             """Visit annotated assignments with postponed-annotation semantics."""
             self._check_targets([node.target])
             self.visit(node.target)
-            if node.value is not None:
-                self.visit(node.value)
-                self._bind_deferred(node.target, node.value)
-            else:
-                self._discard_deferred(node.target)
+            if node.value is not None: (self.visit(node.value), self._bind_deferred(node.target, node.value))
+            else: self._discard_deferred(node.target)
             if node.annotation is not None and not future_annotations: self.visit(node.annotation)
         def visit_Delete(self, node: ast.Delete) -> None:
             """Visit deleted environment targets."""
@@ -318,6 +316,8 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
                     nested = node.args[0].elts if isinstance(node.args[0], (ast.Tuple, ast.List, ast.Set)) else (node.args[0],)
                     for element in nested: self._visit_consumable(element)
                     return
+                if consumer_kind == "callback" and isinstance(node.func, ast.Name):
+                    for default in self.eager_callback_defaults.get(node.func.id, ()): self._visit_deferred(default)
                 if consumer_kind == "reduce" and node.args: self._visit_deferred(node.args[0])
                 consumed = set(range(len(node.args))) if consumer_kind in {"chain", "callback"} else ({1} if consumer_kind == "reduce" else {0})
                 for index, argument in enumerate(node.args):
@@ -444,8 +444,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
                 for statement in handler.body: self.visit(statement)
                 paths.append(self._state())
             self._restore_state(paths[0])
-            for statement in node.orelse:
-                self.visit(statement)
+            for statement in node.orelse: self.visit(statement)
             paths.append(self._state())
             self._restore_state(baseline)
             self._merge_states(baseline, *paths)
@@ -458,12 +457,10 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
                 for statement in node.body if node.test.value else node.orelse: self.visit(statement)
                 return
             baseline = self._state()
-            for statement in node.body:
-                self.visit(statement)
+            for statement in node.body: self.visit(statement)
             body_state = self._state()
             self._restore_state(baseline)
-            for statement in node.orelse:
-                self.visit(statement)
+            for statement in node.orelse: self.visit(statement)
             self._merge_states(body_state, self._state())
         def visit_ListComp(self, node: ast.ListComp) -> None:
             """Visit list comprehensions, which consume all generator inputs."""
@@ -681,6 +678,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
             parameters = {argument.arg for argument in ast.walk(node.args) if isinstance(argument, ast.arg)}
             nested_ranges = {(child.lineno, child.end_lineno) for child in ast.walk(node) if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)) and child is not node}
             calls = [call for call in ast.walk(node) if isinstance(call, ast.Call) and not any(start <= getattr(call, "lineno", 0) <= end for start, end in nested_ranges)]
+            environment_visitor.eager_callback_defaults[node.name] = tuple(expression for expression in (*node.args.defaults, *node.args.kw_defaults) if expression is not None)
             if any(isinstance(call.func, ast.Name) and call.func.id in parameters for call in calls) or any(isinstance(call.func, ast.Name) and call.func.id in deferred_consumers and any(isinstance(argument, ast.Name) and argument.id in parameters for argument in call.args) for call in calls): environment_visitor.eager_callbacks.add(node.name)
             for decorator in node.decorator_list:
                 record_import_time_environment(
