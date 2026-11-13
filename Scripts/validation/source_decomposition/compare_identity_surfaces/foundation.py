@@ -671,8 +671,12 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
         """Collect signatures while tracking the enclosing definition scope."""
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             parameters = {argument.arg for argument in ast.walk(node.args) if isinstance(argument, ast.arg)}
-            nested_ranges = {(child.lineno, child.end_lineno) for child in ast.walk(node) if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)) and child is not node}
-            calls = [call for call in ast.walk(node) if isinstance(call, ast.Call) and not any(start <= getattr(call, "lineno", 0) <= end for start, end in nested_ranges)]
+            nested_nodes = tuple(child for child in ast.walk(node) if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)) and child is not node)
+            calls = [call for call in ast.walk(node) if isinstance(call, ast.Call) and not any(
+                (call.lineno > child.lineno or (call.lineno == child.lineno and call.col_offset >= child.col_offset))
+                and (call.end_lineno < child.end_lineno or (call.end_lineno == child.end_lineno and call.end_col_offset <= child.end_col_offset))
+                for child in nested_nodes
+            )]
             callback_parameters = {call.func.id for call in calls if isinstance(call.func, ast.Name) and call.func.id in parameters}
             callback_parameters.update(argument.id for call in calls if isinstance(call.func, ast.Name) and call.func.id in deferred_consumers for argument in call.args if isinstance(argument, ast.Name) and argument.id in parameters)
             for decorator in node.decorator_list:
