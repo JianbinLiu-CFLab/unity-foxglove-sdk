@@ -847,6 +847,30 @@ class IdentityGateHardeningTests(unittest.TestCase):
         head = "import os\ndef run(callback=lambda: os.environ.setdefault('FLAG', '1')):\n    return callback()\nrun()\ndef helper():\n    return 1\n__all__ = ['helper']\n"
         self.assertEqual(["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"], self._compatibility_errors(base, head))
 
+    def test_deferred_consumer_explicit_callback_skips_default(self) -> None:
+        """An explicit callback replaces an eager helper's deferred default."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import os\ndef run(callback=lambda: os.environ.setdefault('FLAG', '1')):\n    return callback()\nrun(lambda: None)\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual([], self._compatibility_errors(base, head))
+
+    def test_deferred_consumer_keyword_callback_executes(self) -> None:
+        """A callback supplied by keyword is executed by an eager local helper."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import os\ndef run(callback):\n    return callback()\nrun(callback=lambda: os.environ.setdefault('FLAG', '1'))\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual(["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"], self._compatibility_errors(base, head))
+
+    def test_deferred_consumer_rebinding_clears_eager_classification(self) -> None:
+        """Rebinding an eager helper removes its old callback execution semantics."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import os\ndef run(callback):\n    return callback()\nrun = lambda callback: None\nrun(lambda: os.environ.setdefault('FLAG', '1'))\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual([], self._compatibility_errors(base, head))
+
+    def test_deferred_consumer_empty_key_skips_callback(self) -> None:
+        """An empty iterable never invokes a max/min/sorted key callback."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import os\nsorted([], key=lambda _: os.environ.setdefault('FLAG', '1'))\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual([], self._compatibility_errors(base, head))
+
     def test_deferred_consumer_container_index(self) -> None:
         """A generator nested in a container remains deferred through indexing."""
         base = "def helper():\n    return 1\n__all__ = ['helper']\n"
