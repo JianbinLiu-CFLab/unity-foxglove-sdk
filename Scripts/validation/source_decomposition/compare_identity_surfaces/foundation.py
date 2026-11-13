@@ -232,7 +232,10 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
             consumer_kind = self._consumer_kind(node.func)
             producer_consumed = self.executing_deferred is node and self._is_producer(node)
             if producer_consumed:
-                for argument in (*node.args, *(keyword.value for keyword in node.keywords)): self._visit_consumable(argument)
+                if any(isinstance(argument, (ast.List, ast.Tuple, ast.Set)) and not argument.elts for argument in node.args):
+                    for argument in (*node.args, *(keyword.value for keyword in node.keywords)): self.visit(argument)
+                else:
+                    for argument in (*node.args, *(keyword.value for keyword in node.keywords)): self._visit_consumable(argument)
             elif consumer_kind is not None:
                 if consumer_kind == "chain_from_iterable" and node.args:
                     nested = node.args[0].elts if isinstance(node.args[0], (ast.Tuple, ast.List, ast.Set)) else (node.args[0],)
@@ -248,7 +251,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
                     return
                 if consumer_kind == "callback" and isinstance(node.func, ast.Name):
                     self._visit_callback_defaults(node)
-                if consumer_kind == "reduce" and node.args: self._visit_deferred(node.args[0])
+                if consumer_kind == "reduce" and len(node.args) > 1 and not (isinstance(node.args[1], (ast.List, ast.Tuple, ast.Set)) and len(node.args[1].elts) < 2): self._visit_deferred(node.args[0])
                 if consumer_kind == "callback":
                     consumed = self._callback_consumed_positions(node)
                 else:
@@ -334,12 +337,8 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
             for decorator in node.decorator_list: self.visit(decorator)
             for base in node.bases: self.visit(base)
             for keyword in node.keywords: self.visit(keyword.value)
-            previous_bindings = self.deferred_bindings
-            previous_consumers = self.consumer_aliases
-            previous_producers = self.producer_aliases
-            self.deferred_bindings = dict(previous_bindings)
-            self.consumer_aliases = dict(previous_consumers)
-            self.producer_aliases = set(previous_producers)
+            previous_bindings, previous_consumers, previous_producers = self.deferred_bindings, self.consumer_aliases, self.producer_aliases
+            self.deferred_bindings, self.consumer_aliases, self.producer_aliases = dict(previous_bindings), dict(previous_consumers), set(previous_producers)
             try:
                 for statement in node.body: self.visit(statement)
             finally:
@@ -391,8 +390,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
             for statement in node.body: self.visit(statement)
             normal_state = self._state()
             if len(node.body) == 1 and isinstance(node.body[0], ast.Assign) and all(isinstance(target, ast.Name) for target in node.body[0].targets) and isinstance(node.body[0].value, (ast.Constant, ast.List, ast.Tuple, ast.Set)):
-                for statement in (*node.orelse, *node.finalbody): self.visit(statement)
-                return
+                return tuple(self.visit(statement) for statement in (*node.orelse, *node.finalbody))
             paths = [normal_state]
             for handler in node.handlers:
                 (self._restore_state(baseline), self._merge_states(baseline, normal_state))
@@ -534,7 +532,18 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
                 target = node.func if isinstance(node.func, ast.Lambda) else self._deferred_value(node.func)
                 if isinstance(target, ast.Lambda): return self._deferred_value(target.body)
             if isinstance(node, ast.IfExp): return self._deferred_value(node.body if isinstance(node.test, ast.Constant) and bool(node.test.value) else node.orelse) if isinstance(node.test, ast.Constant) else self._deferred_value(node.body) or self._deferred_value(node.orelse)
-            if isinstance(node, ast.BoolOp): return next((value for value in (self._deferred_value(item) for item in node.values) if value is not None), None)
+            if isinstance(node, ast.BoolOp):
+                for value in node.values:
+                    deferred = self._deferred_value(value)
+                    if isinstance(value, ast.Constant) or isinstance(value, (ast.List, ast.Tuple, ast.Set)):
+                        truth = bool(value.value) if isinstance(value, ast.Constant) else bool(value.elts)
+                        if (isinstance(node.op, ast.And) and not truth) or (isinstance(node.op, ast.Or) and truth): return deferred
+                        continue
+                    if deferred is not None:
+                        if isinstance(node.op, ast.Or): return deferred
+                        continue
+                    return None
+                return None
             if isinstance(node, ast.Subscript):
                 try: index = ast.literal_eval(node.slice)
                 except (TypeError, ValueError, SyntaxError): index = None
@@ -737,12 +746,8 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
                 record_import_time_environment(keyword.value, scope, in_function)
                 visit(keyword.value, scope, in_function)
             class_scope = scope + (node.name,)
-            previous_bindings = environment_visitor.deferred_bindings
-            previous_consumers = environment_visitor.consumer_aliases
-            previous_producers = environment_visitor.producer_aliases
-            environment_visitor.deferred_bindings = dict(previous_bindings)
-            environment_visitor.consumer_aliases = dict(previous_consumers)
-            environment_visitor.producer_aliases = set(previous_producers)
+            previous_bindings, previous_consumers, previous_producers = environment_visitor.deferred_bindings, environment_visitor.consumer_aliases, environment_visitor.producer_aliases
+            environment_visitor.deferred_bindings, environment_visitor.consumer_aliases, environment_visitor.producer_aliases = dict(previous_bindings), dict(previous_consumers), set(previous_producers)
             try:
                 for statement in node.body:
                     if not in_function and not isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -750,9 +755,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
                     visit(statement, class_scope, in_function)
                 class_bindings = dict(environment_visitor.deferred_bindings)
             finally:
-                environment_visitor.deferred_bindings = previous_bindings
-                environment_visitor.consumer_aliases = previous_consumers
-                environment_visitor.producer_aliases = previous_producers
+                environment_visitor.deferred_bindings, environment_visitor.consumer_aliases, environment_visitor.producer_aliases = previous_bindings, previous_consumers, previous_producers
             environment_visitor._discard_name(node.name)
             for key, deferred in class_bindings.items():
                 if key.startswith("name:") and (key not in previous_bindings or previous_bindings[key] is not deferred):
@@ -763,10 +766,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
             return
         if isinstance(node, ast.If) and not in_function:
             visit(node.test, scope, in_function, skip_environment=True)
-            for statement in node.body:
-                visit(statement, scope, in_function, skip_environment=True)
-            for statement in node.orelse:
-                visit(statement, scope, in_function, skip_environment=True)
+            for statement in (*node.body, *node.orelse): visit(statement, scope, in_function, skip_environment=True)
             return
         if (
             isinstance(node, (ast.For, ast.AsyncFor, ast.While)) or isinstance(node, _TRY_TYPES)
