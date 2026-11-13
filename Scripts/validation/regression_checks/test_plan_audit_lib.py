@@ -255,6 +255,7 @@ class PlanAuditLibraryTests(unittest.TestCase):
 
     def test_acceptance_audit_runs_checks_when_trusted_source_changes(self) -> None:
         """A trusted-source mismatch must not silently skip the remaining audit checks."""
+        self.assertIn("Scripts/release/run_unity_tests.py", unity_acceptance.TRUSTED_AUDIT_MODULES)
         audit_lib.BUILD_ROOT.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(dir=audit_lib.BUILD_ROOT) as temp:
             trusted = audit_lib.Check("195-AUDIT-trust", "Plan", "security", "FAIL", "true", "build/trust", "changed")

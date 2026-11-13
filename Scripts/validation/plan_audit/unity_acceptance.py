@@ -21,6 +21,7 @@ TRUSTED_AUDIT_MODULES = (
     "Scripts/validation/plan_audit/unity_acceptance.py",
     "Scripts/validation/plan_audit/unity_coverage.py",
     "Scripts/validation/plan_audit/unity_lane.py",
+    "Scripts/release/run_unity_tests.py",
 )
 
 
