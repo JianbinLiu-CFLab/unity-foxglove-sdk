@@ -124,6 +124,36 @@ namespace Unity2Foxglove.Tests.PlayMode
             }
         }
 
+        [UnityTest]
+        [Category("ManagerAcceptance")]
+        public IEnumerator ManagerDisableAndDestroyInvokeProductionTeardown()
+        {
+            var disabledManager = CreateManager();
+            var destroyedManager = CreateManager();
+            try
+            {
+                disabledManager.StartServer();
+                Assert.That(disabledManager.IsRunning, Is.True);
+                disabledManager.enabled = false;
+                Assert.That(disabledManager.IsRunning, Is.False);
+
+                destroyedManager.StartServer();
+                Assert.That(destroyedManager.IsRunning, Is.True);
+                var onDestroy = typeof(FoxgloveManager).GetMethod(
+                    "OnDestroy",
+                    PrivateInstance);
+                Assert.That(onDestroy, Is.Not.Null);
+                onDestroy.Invoke(destroyedManager, null);
+                Assert.That(destroyedManager.IsRunning, Is.False);
+            }
+            finally
+            {
+                DestroyObjects(disabledManager.gameObject, destroyedManager.gameObject);
+            }
+
+            yield return null;
+        }
+
         private static void RequireGraphicsReadback()
         {
             if (!SystemInfo.supportsAsyncGPUReadback)
