@@ -444,7 +444,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
                 self.visit(statement)
             normal_state = self._state()
             if len(node.body) == 1 and isinstance(node.body[0], ast.Assign) and all(isinstance(target, ast.Name) for target in node.body[0].targets) and isinstance(node.body[0].value, (ast.Constant, ast.List, ast.Tuple, ast.Set)):
-                self._merge_states(normal_state)
+                for statement in (*node.orelse, *node.finalbody): self.visit(statement)
                 return
             paths = [normal_state]
             for handler in node.handlers:
