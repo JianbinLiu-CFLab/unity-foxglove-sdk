@@ -575,6 +575,8 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
                 if isinstance(target, ast.Lambda): return self._deferred_value(target.body)
             if isinstance(node, ast.IfExp): return self._deferred_value(node.body) or self._deferred_value(node.orelse)
             if isinstance(node, ast.BoolOp): return next((value for value in (self._deferred_value(item) for item in node.values) if value is not None), None)
+            if isinstance(node, (ast.Tuple, ast.List, ast.Set)): return next((value for value in (self._deferred_value(item) for item in node.elts) if value is not None), None)
+            if isinstance(node, ast.Subscript): return self._deferred_value(node.value)
             if isinstance(node, (ast.Name, ast.Attribute, ast.Subscript)):
                 return self.deferred_bindings.get(self._target_key(node))
             return None
