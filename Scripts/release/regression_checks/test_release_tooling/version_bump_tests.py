@@ -60,7 +60,9 @@ class VersionBumpTests(unittest.TestCase):
 
     def test_root_readme_links_only_the_package_release(self) -> None:
         """The public README should expose exactly the current package release note."""
-        package = json.loads((ROOT / "Packages/dev.unity2foxglove.sdk/package.json").read_text(encoding="utf-8"))
+        package_path = ROOT / "Packages/dev.unity2foxglove.sdk/package.json"
+        package_bytes = package_path.read_bytes()
+        package = json.loads(package_bytes.decode("utf-8"))
         version = package["version"]
         text = (ROOT / "README.md").read_text(encoding="utf-8")
         links = re.findall(
@@ -70,6 +72,13 @@ class VersionBumpTests(unittest.TestCase):
 
         self.assertEqual(links, [f"docs/releases/RELEASE_NOTES_v{version}.md"])
         self.assertNotIn("[Release notes archive]", text)
+
+        for dry_run in (True, False):
+            bump = self.bump_module.VersionBump(ROOT, version, "2026-11-02", dry_run)
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(0, bump.run())
+            self.assertEqual([], bump.changes)
+            self.assertEqual(package_bytes, package_path.read_bytes())
 
     def test_update_readme_preserves_concise_release_navigation(self) -> None:
         """Update the single inline release link without appending a legacy list."""

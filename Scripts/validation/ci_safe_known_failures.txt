@@ -1,6 +1,7 @@
 # CI-safe runtime validations known to fail on main (one flag per line; text after # is ignored).
 # Used by: dotnet run --project Packages/dev.unity2foxglove.sdk/Tests/Runtime/FoxgloveSdk.Tests.csproj -- --ci-safe-ratchet
 # A new failure must be fixed, not added here. When an entry passes, the ratchet fails until it is removed.
+# One-for-one replacements require a head comment: # reviewed replacement: --old -> --new
 
 --phase137g    # Phase 137G
 --phase146a    # Phase 146A: validation for the project-level R2FU active runtime selector

@@ -140,21 +140,33 @@ namespace Unity2Foxglove.Ros2Bridge
 
         public IMcapMessageDecoder TryCreate(McapSchema schema, McapChannel channel)
         {
-            if (!string.Equals(
-                    channel?.MessageEncoding,
-                    Ros2BridgeMcapCodecs.MessageEncoding,
-                    StringComparison.OrdinalIgnoreCase))
-            {
+            if (!IsCompatible(schema, channel))
                 return null;
-            }
-            if (!string.Equals(
-                    schema?.Encoding,
-                    Ros2BridgeMcapCodecs.SchemaEncoding,
-                    StringComparison.OrdinalIgnoreCase))
-            {
+            return new Decoder(
+                schema?.Name ?? string.Empty,
+                McapRos2CdrTypedDecoderFactory.SchemaContentMatches(schema));
+        }
+
+        internal IMcapMessageDecoder TryCreateKnownSchema(
+            McapSchema schema,
+            McapChannel channel,
+            bool schemaKnown)
+        {
+            if (!IsCompatible(schema, channel))
                 return null;
-            }
-            return new Decoder(schema, schema?.Name ?? string.Empty);
+            return new Decoder(schema?.Name ?? string.Empty, schemaKnown);
+        }
+
+        private static bool IsCompatible(McapSchema schema, McapChannel channel)
+        {
+            return string.Equals(
+                       channel?.MessageEncoding,
+                       Ros2BridgeMcapCodecs.MessageEncoding,
+                       StringComparison.OrdinalIgnoreCase)
+                   && string.Equals(
+                       schema?.Encoding,
+                       Ros2BridgeMcapCodecs.SchemaEncoding,
+                       StringComparison.OrdinalIgnoreCase);
         }
 
         private sealed class Decoder : IMcapMessageDecoder
@@ -162,10 +174,10 @@ namespace Unity2Foxglove.Ros2Bridge
             private readonly string _schemaName;
             private readonly bool _schemaKnown;
 
-            internal Decoder(McapSchema schema, string schemaName)
+            internal Decoder(string schemaName, bool schemaKnown)
             {
                 _schemaName = schemaName ?? string.Empty;
-                _schemaKnown = McapRos2CdrTypedDecoderFactory.SchemaContentMatches(schema);
+                _schemaKnown = schemaKnown;
             }
 
             public McapDecodedPayload Decode(McapDataLoaderMessage message)

@@ -33,10 +33,11 @@ namespace Unity2Foxglove.Ros2Bridge
                 return null;
             if (!Ros2CdrDeserializerRegistry.TryGetBySchemaName(schema?.Name ?? string.Empty, out var entry))
                 return null;
-            if (!SchemaContentMatches(schema))
+            var schemaKnown = SchemaContentMatches(schema);
+            if (!schemaKnown)
                 return null;
 
-            return new Decoder(schema.Name, channel.Topic, entry);
+            return new Decoder(schema, channel.Topic, entry, schemaKnown);
         }
 
         private static bool SchemaContentEqual(byte[] recorded, string bundled)
@@ -116,15 +117,23 @@ namespace Unity2Foxglove.Ros2Bridge
             IMcapMessageDecoder,
             IMcapMessageDecoderFailureFallback
         {
+            private readonly McapSchema _schema;
             private readonly string _schemaName;
             private readonly string _topic;
             private readonly Ros2CdrDeserializerEntry _entry;
+            private readonly bool _schemaKnown;
 
-            public Decoder(string schemaName, string topic, Ros2CdrDeserializerEntry entry)
+            public Decoder(
+                McapSchema schema,
+                string topic,
+                Ros2CdrDeserializerEntry entry,
+                bool schemaKnown)
             {
-                _schemaName = schemaName ?? string.Empty;
+                _schema = schema ?? throw new ArgumentNullException(nameof(schema));
+                _schemaName = schema.Name ?? string.Empty;
                 _topic = topic ?? string.Empty;
                 _entry = entry ?? throw new ArgumentNullException(nameof(entry));
+                _schemaKnown = schemaKnown;
             }
 
             public McapDecodedPayload Decode(McapDataLoaderMessage message)
@@ -158,17 +167,14 @@ namespace Unity2Foxglove.Ros2Bridge
             public McapDecodedPayload DecodeFallback(McapDataLoaderMessage message)
             {
                 var decoder = new McapRos2CdrDiagnosticDecoderFactory()
-                    .TryCreate(
-                        new McapSchema
-                        {
-                            Name = _schemaName,
-                            Encoding = Ros2BridgeMcapCodecs.SchemaEncoding
-                        },
+                    .TryCreateKnownSchema(
+                        _schema,
                         new McapChannel
                         {
                             Topic = _topic,
                             MessageEncoding = Ros2BridgeMcapCodecs.MessageEncoding
-                        });
+                        },
+                        _schemaKnown);
                 return decoder?.Decode(message);
             }
         }

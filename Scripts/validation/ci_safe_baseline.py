@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -30,6 +31,11 @@ def parse_entries(text: str) -> tuple[list[str], list[str]]:
 
 def baseline_problems(base_text: str, head_text: str) -> list[str]:
     """Return duplicate or unreviewed baseline changes."""
+    reviewed_replacements: list[tuple[str, str]] = []
+    for raw in (head_text or "").replace("\r\n", "\n").splitlines():
+        match = re.match(r"^\s*#\s*reviewed replacement:\s*(\S+)\s*->\s*(\S+)\s*$", raw)
+        if match:
+            reviewed_replacements.append((match.group(1), match.group(2)))
     base_entries, base_duplicates = parse_entries(base_text)
     head_entries, head_duplicates = parse_entries(head_text)
     base_set = set(base_entries)
@@ -42,6 +48,20 @@ def baseline_problems(base_text: str, head_text: str) -> list[str]:
             f"baseline entry added without reviewed replacement: {entry}"
             for entry in sorted(added - removed)
         )
+    elif added:
+        valid_pairs = [
+            (old, new)
+            for old, new in reviewed_replacements
+            if old in removed and new in added
+        ]
+        for entry in sorted(added):
+            pairs = [pair for pair in valid_pairs if pair[1] == entry]
+            if len(pairs) != 1:
+                problems.append(f"baseline replacement requires exactly one approval for added entry: {entry}")
+        for entry in sorted(removed):
+            pairs = [pair for pair in valid_pairs if pair[0] == entry]
+            if len(pairs) > 1 or (len(added) == len(removed) and len(pairs) != 1):
+                problems.append(f"baseline replacement requires one-to-one approval for removed entry: {entry}")
     problems.extend(f"duplicate baseline entry in base: {entry}" for entry in base_duplicates)
     return problems
 

@@ -88,6 +88,53 @@ namespace Unity2Foxglove.Ros2Bridge.UnitTests
         }
 
         [Fact]
+        public void TypedFallbackCachesSchemaMatchBeforePayloadFailures()
+        {
+            Assert.True(
+                FoxgloveRos2MsgSchemaCatalog.TryGet(
+                    "foxglove_msgs/msg/Log",
+                    out var catalogEntry));
+            var schema = new McapSchema
+            {
+                Name = catalogEntry.SchemaName,
+                Encoding = FoxgloveRos2MsgSchemaCatalog.SchemaEncoding,
+                Data = Encoding.UTF8.GetBytes(catalogEntry.Content)
+            };
+            var channel = new McapChannel { Topic = "/log", MessageEncoding = "cdr" };
+            var decoder = new McapRos2CdrTypedDecoderFactory().TryCreate(schema, channel);
+            var fallback = Assert.IsAssignableFrom<IMcapMessageDecoderFailureFallback>(decoder);
+
+            schema.Data = Encoding.UTF8.GetBytes(catalogEntry.Content.Replace(
+                "string message",
+                "string changed_message",
+                StringComparison.Ordinal));
+            var recovered = fallback.DecodeFallback(new McapDataLoaderMessage
+            {
+                SchemaId = schema.Id,
+                Topic = channel.Topic,
+                MessageEncoding = channel.MessageEncoding,
+                Data = new byte[] { 0x00, 0x01, 0x00, 0x00 }
+            });
+
+            Assert.True(Assert.IsType<Ros2CdrDiagnosticPayload>(recovered.Value).SchemaKnown);
+        }
+
+        [Fact]
+        public void DiagnosticFactoryRejectsIncompatibleEncodingBeforeSchemaInspection()
+        {
+            var decoder = new McapRos2CdrDiagnosticDecoderFactory().TryCreate(
+                new McapSchema
+                {
+                    Name = "foxglove_msgs/msg/Log",
+                    Encoding = "jsonschema",
+                    Data = new byte[1024 * 1024]
+                },
+                new McapChannel { Topic = "/log", MessageEncoding = "cdr" });
+
+            Assert.Null(decoder);
+        }
+
+        [Fact]
         public void MergedDependencyChangeIsRejectedForTheSameSchemaName()
         {
             Assert.True(
