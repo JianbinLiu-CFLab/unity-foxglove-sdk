@@ -189,6 +189,12 @@ def _discovery_has_exact_test(output: object) -> bool:
 def _local100_impl(output: Path) -> audit_lib.Check:
     """Restore, build once, prove discovery, and execute one test one hundred times."""
     logs = output / "logs"
+    trusted, trust_detail = _trusted_project_revision(output)
+    if not trusted:
+        evidence = logs / "w0-local100-trust.log"
+        evidence.parent.mkdir(parents=True, exist_ok=True)
+        evidence.write_text(trust_detail + "\n", encoding="utf-8")
+        return _check("NOT_RUN", "git diff --quiet <trusted-base>; git status --porcelain", evidence, trust_detail, "security")
     base_sha, source_tree_sha = _cache_identity(output)
     use_wsl, runtime_detail = _linux_sdk()
     prefix, runtime = _runner(use_wsl)
@@ -250,6 +256,30 @@ def _worktree_tree_sha(root: Path) -> str:
         digest.update(len(content).to_bytes(8, "big"))
         digest.update(content)
     return digest.hexdigest()
+
+
+def _trusted_project_revision(output: Path) -> tuple[bool, str]:
+    """Allow maintainer-owned dotnet execution only on the resolved trusted tree."""
+    base_sha = _cache_identity(output)[0]
+    diff = subprocess.run(
+        ["git", "diff", "--quiet", base_sha],
+        cwd=audit_lib.ROOT,
+        env=audit_lib._audit_environment(),
+        capture_output=True,
+        check=False,
+    )
+    status = subprocess.run(
+        ["git", "status", "--porcelain=v1", "--untracked-files=all"],
+        cwd=audit_lib.ROOT,
+        env=audit_lib._audit_environment(),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    dirty = [line for line in status.stdout.splitlines() if not line[3:].replace("\\", "/").startswith("build/")]
+    if diff.returncode != 0 or dirty:
+        return False, f"trusted checkout differs from {base_sha}; dotnet execution refused"
+    return True, f"checkout matches trusted revision {base_sha}"
 
 
 def bridge_checks(output: Path) -> list[audit_lib.Check]:

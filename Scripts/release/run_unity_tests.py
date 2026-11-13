@@ -42,9 +42,20 @@ def parse_nunit_results(results_path: Path) -> tuple[str, list[str], dict[str, i
     summary = root if root.tag == "test-run" else root.find("./test-suite")
     if summary is None:
         return "FAIL", ["Unity results did not contain a test summary"], {}
-    counts = {key: int(summary.attrib.get(key, "0")) for key in ("total", "passed", "failed", "inconclusive", "skipped")}
-    no_passing_tests = counts["passed"] == 0
-    return ("FAIL" if failed or counts["failed"] or no_passing_tests else "PASS"), failed, counts
+    try:
+        counts = {
+            key: int(summary.attrib.get(key, "0"))
+            for key in ("total", "passed", "failed", "inconclusive", "skipped")
+        }
+    except (TypeError, ValueError) as exc:
+        return "FAIL", [f"Unity result summary contains invalid counts: {exc}"], {}
+    no_passing_tests = counts["passed"] <= 0 or counts["total"] <= 0
+    has_non_passing_tests = any(counts[key] > 0 for key in ("failed", "inconclusive", "skipped"))
+    return (
+        "FAIL" if failed or no_passing_tests or has_non_passing_tests else "PASS",
+        failed,
+        counts,
+    )
 
 
 def _active_unity_project(project_path: Path) -> bool:

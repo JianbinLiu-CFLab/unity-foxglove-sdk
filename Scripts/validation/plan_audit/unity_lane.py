@@ -61,6 +61,7 @@ def _runner(revision: str, output: Path, name: str) -> ModuleType | None:
         return _load(audit_lib.ROOT / RUNNER, name)
     tree = output / "probe" / f"tree-{revision[:12]}"
     try:
+        tree.parent.mkdir(parents=True, exist_ok=True)
         if not (tree / RUNNER).is_file():
             audit_lib.temp_git_tree(revision, tree, (RUNNER.as_posix(),))
         return _load(tree / RUNNER, name)
@@ -100,8 +101,10 @@ def _workflow(checks: list[audit_lib.Check], output: Path, base: str) -> None:
     needs_at = required_block.find("\n    needs:")
     needs_block = required_block[needs_at:] if needs_at >= 0 else ""
     needs_block = needs_block.split("\n    if:", 1)[0] if needs_block else ""
-    if required_at < 0 or needs_at < 0 or "unity-tests" in needs_block:
-        missing.append("unity-tests must remain non-required")
+    if required_at < 0 or needs_at < 0 or "unity-tests" not in needs_block:
+        missing.append("unity-tests must be required")
+    if required_at < 0 or needs_at < 0 or "unity_distro_compile" not in needs_block:
+        missing.append("unity_distro_compile must be required")
     evidence = output / "logs" / "w1-workflow.log"
     evidence.parent.mkdir(parents=True, exist_ok=True)
     evidence.write_text(json.dumps({"base_has_workflow": _git_show(base, WORKFLOW) is not None, "missing": missing}, indent=2) + "\n", encoding="utf-8")
@@ -219,8 +222,9 @@ def _preflight() -> tuple[bool, str]:
             capture_output=True,
             text=True,
             check=False,
+            timeout=30,
         )
-    except OSError as exc:
+    except (OSError, subprocess.TimeoutExpired) as exc:
         return False, f"Unity process ownership query unavailable: {exc}"
     if process_query.returncode != 0:
         return False, f"Unity process ownership query failed with exit={process_query.returncode}"

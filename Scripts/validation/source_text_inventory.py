@@ -531,11 +531,23 @@ def scan_file(
         classification_text = _call_context(lines, call)
         target_parts = []
         for part in target.split(";"):
-            candidate = (root / part).resolve() if part and part != "<unresolved>" else None
+            candidate = None
+            if part and part != "<unresolved>":
+                candidates = [root / part]
+                if "Packages" in path.parts:
+                    package_index = path.parts.index("Packages")
+                    package_root = Path(*path.parts[: package_index + 2])
+                    candidates.append(package_root / part)
+                candidate = next(
+                    (item.resolve() for item in candidates if item.exists()),
+                    candidates[0].resolve(),
+                )
             if candidate is not None and candidate.is_dir():
                 target_parts.append(f"<directory>:{part}")
-            elif part:
+            elif candidate is not None and candidate.is_file():
                 target_parts.append(part)
+            elif part:
+                target_parts.append("<unresolved>")
         target = ";".join(dict.fromkeys(target_parts)) or "<unresolved>"
         unresolved_reason = _unresolved_reason(
             call,

@@ -144,6 +144,26 @@ class PlanAuditLibraryTests(unittest.TestCase):
                 checks = source_text_rules._transfer_checks([])
                 self.assertEqual("FAIL", checks[1].status)
 
+    def test_source_text_comment_rows_require_manual_review(self) -> None:
+        """Comment-only inventory rows cannot be reported as an automatic pass."""
+        audit_lib.BUILD_ROOT.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=audit_lib.BUILD_ROOT) as temp:
+            output = Path(temp) / "output"
+            (output / "logs").mkdir(parents=True)
+            with mock.patch.object(source_text_rules, "OUTPUT", output):
+                checks = source_text_rules._transfer_checks([{"comment_only": "True"}])
+        self.assertEqual("MANUAL", checks[-1].status)
+
+    def test_structure_guard_handles_missing_agents_file(self) -> None:
+        """A missing ignored AGENTS.md is a controlled missing audit input."""
+        from Scripts.validation.plan_audit import structure_guard_audit
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            with mock.patch.object(structure_guard_audit.audit_lib, "ROOT", root):
+                check = structure_guard_audit._agents_check()
+        self.assertEqual("MISSING", check.status)
+
     def test_plan_check_rejects_missing_or_unrecognized_status(self) -> None:
         """A plan must declare a recognized delivered status before passing."""
         with tempfile.TemporaryDirectory() as temp:

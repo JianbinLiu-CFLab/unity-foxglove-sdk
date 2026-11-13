@@ -90,6 +90,8 @@ class SourceTextInventoryTests(unittest.TestCase):
             product = root / "Packages" / "fixture" / "Runtime" / "Foo.cs"
             product.parent.mkdir(parents=True)
             product.write_text("public sealed class Foo {}\n", encoding="utf-8")
+            for name in ("Bar.cs", "First.cs", "Second.cs", "String.cs", "Shared.cs", "manifest.json", "Native.cs"):
+                (product.parent / name).write_text(f"// {name}\n", encoding="utf-8")
             foo_tests = root / "Packages" / "fixture" / "Tests" / "Unit" / "FooTests.cs"
             foo_tests.parent.mkdir(parents=True, exist_ok=True)
             foo_tests.write_text(
@@ -366,6 +368,31 @@ class SourceTextInventoryTests(unittest.TestCase):
             self.assertTrue(
                 any(row["class"] == "UNRESOLVED" and "inline" in str(row["token"]) for row in rows)
             )
+
+    def test_missing_file_targets_are_unresolved(self):
+        """A reader path must resolve to an existing repository file."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runtime = root / "Packages" / "fixture" / "Tests" / "Runtime"
+            runtime.mkdir(parents=True)
+            (runtime / "MissingValidation.cs").write_text(
+                "public static class MissingValidation {\n"
+                "    public static void Validate() {\n"
+                '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Missing.cs");\n'
+                '        Check(source.Contains("Missing"));\n'
+                "    }\n"
+                "}\n",
+                encoding="utf-8",
+            )
+            registry = root / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "PhaseValidationRegistry.cs"
+            registry.parent.mkdir(parents=True, exist_ok=True)
+            registry.write_text(
+                'Ci("--phase-missing", "fixture", MissingValidation.Validate, evidence: ValidationEvidence.Behavior),\n',
+                encoding="utf-8",
+            )
+            rows = inventory(root)
+        self.assertEqual("<unresolved>", rows[0]["target"])
+        self.assertEqual("UNRESOLVED", rows[0]["class"])
 
     def test_scope_and_multiline_receiver_resolution_are_fail_closed(self):
         """Keep local symbols scoped, preserve combined targets, and inspect multiline literals."""

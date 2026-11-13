@@ -70,7 +70,7 @@ jobs:
             required=true
           fi
 
-          if printf '%s\n' "$changed" | grep -E '^Packages/dev\.unity2foxglove\.ros2forunity\.runtime\.(humble|lyrical)\.win64/' >/dev/null; then
+          if printf '%s\n' "$changed" | grep -E '^Packages/dev\.unity2foxglove\.(ros2forunity\.runtime|foxrun\.ros2\.interfaces\.typesupport)\.(humble|lyrical)\.win64/' >/dev/null; then
             distro_compile=true
           fi
 
@@ -113,12 +113,12 @@ jobs:
         with:
           fetch-depth: 1
           persist-credentials: false
-          clean: false
+          clean: true
 
 
-      - name: Clean runner workspace while preserving Unity Library
+      - name: Clean runner workspace before Unity compile
         shell: pwsh
-        run: git clean -ffdx -e 'Unity2Foxglove/Library*/'
+        run: git clean -ffdx
 
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
@@ -175,11 +175,11 @@ jobs:
         with:
           fetch-depth: 1
           persist-credentials: false
-          clean: false
+          clean: true
 
-      - name: Clean runner workspace while preserving Unity Library
+      - name: Clean runner workspace before Unity compile
         shell: pwsh
-        run: git clean -ffdx -e 'Unity2Foxglove/Library*/'
+        run: git clean -ffdx
 
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
@@ -284,7 +284,7 @@ jobs:
         with:
           fetch-depth: 1
           persist-credentials: false
-          clean: false
+          clean: true
 
       - name: Select requested distro
         id: select_distro
@@ -298,26 +298,34 @@ jobs:
         if: steps.select_distro.outputs.run_distro == 'true'
         shell: pwsh
         run: |
-          $markers = @(Get-ChildItem -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'build') -Filter 'phase195-distro-swap-*.json' -File -ErrorAction SilentlyContinue)
+          $workspace = [IO.Path]::GetFullPath($env:GITHUB_WORKSPACE)
+          $project = Join-Path $workspace 'Unity2Foxglove'
+          $marker = Join-Path $workspace ("build/phase195-distro-swap-{0}.json" -f $env:DISTRO)
+          $markers = @()
+          if (Test-Path -LiteralPath $marker -PathType Leaf) { $markers = @([IO.FileInfo]$marker) }
           foreach ($markerFile in $markers) {
             $state = Get-Content -LiteralPath $markerFile.FullName -Raw | ConvertFrom-Json
-            $project = Join-Path $env:GITHUB_WORKSPACE 'Unity2Foxglove'
+            if ($state.distro -ne $env:DISTRO) { Remove-Item -LiteralPath $markerFile.FullName -Force; continue }
             $library = Join-Path $project 'Library'
             $jazzy = Join-Path $project 'Library-jazzy'
-            $target = Join-Path $project ("Library-{0}" -f $state.distro)
+            $target = Join-Path $project ("Library-{0}" -f $env:DISTRO)
+            $manifest = Join-Path $project 'Packages/manifest.json'
+            $lock = Join-Path $project 'Packages/packages-lock.json'
+            $manifestBackup = Join-Path $workspace ("build/phase195-manifest-{0}.json" -f $env:DISTRO)
+            $lockBackup = Join-Path $workspace ("build/phase195-lock-{0}.json" -f $env:DISTRO)
             if (-not (Test-Path -LiteralPath $library)) {
               if (Test-Path -LiteralPath $jazzy) { Move-Item -LiteralPath $jazzy -Destination $library }
               elseif (Test-Path -LiteralPath $target) { Move-Item -LiteralPath $target -Destination $library }
             }
-            if (Test-Path -LiteralPath $state.manifest_backup) { Copy-Item -LiteralPath $state.manifest_backup -Destination $state.manifest -Force }
-            if (Test-Path -LiteralPath $state.lock_backup) { Copy-Item -LiteralPath $state.lock_backup -Destination $state.lock -Force }
+            if (Test-Path -LiteralPath $manifestBackup) { Copy-Item -LiteralPath $manifestBackup -Destination $manifest -Force }
+            if (Test-Path -LiteralPath $lockBackup) { Copy-Item -LiteralPath $lockBackup -Destination $lock -Force }
             Remove-Item -LiteralPath $markerFile.FullName -Force
           }
 
-      - name: Clean runner workspace while preserving all Unity Library caches
+      - name: Clean runner workspace before activating distro inputs
         if: steps.select_distro.outputs.run_distro == 'true'
         shell: pwsh
-        run: git clean -ffdx -e 'Unity2Foxglove/Library*/'
+        run: git clean -ffdx
 
       - name: Prepare distro manifest and isolated Library
         if: steps.select_distro.outputs.run_distro == 'true'
@@ -332,7 +340,7 @@ jobs:
           Copy-Item -LiteralPath $manifest -Destination $manifestBackup -Force
           if (Test-Path -LiteralPath $lock) { Copy-Item -LiteralPath $lock -Destination $lockBackup -Force } else { Remove-Item -LiteralPath $lockBackup -Force -ErrorAction SilentlyContinue }
           $marker = Join-Path $env:GITHUB_WORKSPACE ("build/phase195-distro-swap-{0}.json" -f $env:DISTRO)
-          @{ distro = $env:DISTRO; manifest = $manifest; lock = $lock; manifest_backup = $manifestBackup; lock_backup = $lockBackup } | ConvertTo-Json | Set-Content -LiteralPath $marker -Encoding utf8
+          @{ distro = $env:DISTRO } | ConvertTo-Json | Set-Content -LiteralPath $marker -Encoding utf8
 
           $library = Join-Path $project 'Library'
           $jazzy = Join-Path $project 'Library-jazzy'
@@ -385,12 +393,18 @@ jobs:
         if: always() && steps.select_distro.outputs.run_distro == 'true'
         shell: pwsh
         run: |
-          $project = Join-Path $env:GITHUB_WORKSPACE 'Unity2Foxglove'
-          $marker = Join-Path $env:GITHUB_WORKSPACE ("build/phase195-distro-swap-{0}.json" -f $env:DISTRO)
+          $workspace = [IO.Path]::GetFullPath($env:GITHUB_WORKSPACE)
+          $project = Join-Path $workspace 'Unity2Foxglove'
+          $marker = Join-Path $workspace ("build/phase195-distro-swap-{0}.json" -f $env:DISTRO)
           if (Test-Path -LiteralPath $marker) {
             $state = Get-Content -LiteralPath $marker -Raw | ConvertFrom-Json
-            if (Test-Path -LiteralPath $state.manifest_backup) { Copy-Item -LiteralPath $state.manifest_backup -Destination $state.manifest -Force }
-            if (Test-Path -LiteralPath $state.lock_backup) { Copy-Item -LiteralPath $state.lock_backup -Destination $state.lock -Force } else { Remove-Item -LiteralPath $state.lock -Force -ErrorAction SilentlyContinue }
+            if ($state.distro -ne $env:DISTRO) { Remove-Item -LiteralPath $marker -Force; Write-Error 'Distro swap marker does not match the selected distro'; exit 1 }
+            $manifest = Join-Path $project 'Packages/manifest.json'
+            $lock = Join-Path $project 'Packages/packages-lock.json'
+            $manifestBackup = Join-Path $workspace ("build/phase195-manifest-{0}.json" -f $env:DISTRO)
+            $lockBackup = Join-Path $workspace ("build/phase195-lock-{0}.json" -f $env:DISTRO)
+            if (Test-Path -LiteralPath $manifestBackup) { Copy-Item -LiteralPath $manifestBackup -Destination $manifest -Force }
+            if (Test-Path -LiteralPath $lockBackup) { Copy-Item -LiteralPath $lockBackup -Destination $lock -Force } else { Remove-Item -LiteralPath $lock -Force -ErrorAction SilentlyContinue }
             $library = Join-Path $project 'Library'
             $jazzy = Join-Path $project 'Library-jazzy'
             $target = Join-Path $project ("Library-{0}" -f $env:DISTRO)
@@ -404,7 +418,7 @@ jobs:
             if (Test-Path -LiteralPath $jazzy) { Move-Item -LiteralPath $jazzy -Destination $library }
             Remove-Item -LiteralPath $marker -Force
           }
-          git clean -ffdx -e 'Unity2Foxglove/Library*/' -e 'build/unity-batch-compile/'
+          git clean -ffdx -e 'build/unity-batch-compile/'
           $status = @(git status --porcelain)
           $unexpected = @($status | Where-Object {
             $_ -notmatch '^\?\? Unity2Foxglove/Library(?:-[A-Za-z0-9._-]+)?/$'
@@ -424,6 +438,8 @@ jobs:
     needs:
       - unity_scope
       - unity_compile
+      - unity-tests
+      - unity_distro_compile
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -433,6 +449,9 @@ jobs:
           SCOPE_RESULT: ${{ needs.unity_scope.result }}
           UNITY_REQUIRED: ${{ needs.unity_scope.outputs.unity_required }}
           UNITY_RESULT: ${{ needs.unity_compile.result }}
+          TEST_RESULT: ${{ needs['unity-tests'].result }}
+          DISTRO_RESULT: ${{ needs.unity_distro_compile.result }}
+          DISTRO_REQUIRED: ${{ needs.unity_scope.outputs.distro_compile }}
           RUNNER_ENABLED: ${{ vars.UNITY_SELF_HOSTED_RUNNER }}
           EVENT_NAME: ${{ github.event_name }}
           HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
@@ -459,6 +478,14 @@ jobs:
           fi
           if [ "$UNITY_RESULT" != "success" ]; then
             echo "::error::unity-compile result: $UNITY_RESULT"
+            exit 1
+          fi
+          if [ "$TEST_RESULT" != "success" ]; then
+            echo "::error::unity-tests result: $TEST_RESULT"
+            exit 1
+          fi
+          if [ "$DISTRO_REQUIRED" = "true" ] && [ "$DISTRO_RESULT" != "success" ]; then
+            echo "::error::unity-distro-compile result: $DISTRO_RESULT"
             exit 1
           fi
           echo "UNITY_GATE_PASS"
