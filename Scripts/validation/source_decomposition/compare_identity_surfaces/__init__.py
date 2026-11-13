@@ -17,6 +17,7 @@ if str(_PHASE192_REPOSITORY_ROOT) not in _phase192_sys.path:
     _phase192_sys.path.insert(0, str(_PHASE192_REPOSITORY_ROOT))
 
 from . import foundation as _phase192_section_0
+from . import environment_risk as _phase192_section_8
 from . import template_registry as _phase192_section_1
 from . import initializer_contracts as _phase192_section_2
 from . import namespace_access as _phase192_section_3
@@ -34,6 +35,7 @@ _PHASE192_SECTION_MODULES = (
     _phase192_section_5,
     _phase192_section_6,
     _phase192_section_7,
+    _phase192_section_8,
 )
 for _phase192_section in _PHASE192_SECTION_MODULES:
     _phase192_section.__dict__["__file__"] = __file__
