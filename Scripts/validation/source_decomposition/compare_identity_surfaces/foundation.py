@@ -592,7 +592,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
             if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
                 if self.consumer_aliases.get(self._target_key(node)) == "callback": return "callback"
                 if node.attr in {"chain", "reduce", "deque"} and self.consumer_aliases.get(node.value.id) == {"chain": "__itertools__", "reduce": "__functools__", "deque": "__collections__"}[node.attr]: return node.attr
-                return None
+            if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str) and node.attr == "join": return "join"
             if not isinstance(node, ast.Name):
                 return None
             if node.id in self.eager_callbacks: return "callback"
@@ -681,7 +681,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
     ) -> None:
         """Collect signatures while tracking the enclosing definition scope."""
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            if any(isinstance(call.func, ast.Name) and any(call.func.id == argument.arg for argument in ast.walk(node.args) if isinstance(argument, ast.arg)) for call in ast.walk(node) if isinstance(call, ast.Call)): environment_visitor.eager_callbacks.add(node.name)
+            if any(isinstance(call.func, ast.Name) and any(call.func.id == argument.arg for argument in ast.walk(node.args) if isinstance(argument, ast.arg)) for call in ast.walk(node) if isinstance(call, ast.Call)) or any(isinstance(call.func, ast.Name) and call.func.id in deferred_consumers and any(isinstance(argument, ast.Name) and any(argument.id == parameter.arg for parameter in ast.walk(node.args) if isinstance(parameter, ast.arg)) for argument in call.args) for call in ast.walk(node) if isinstance(call, ast.Call)): environment_visitor.eager_callbacks.add(node.name)
             for decorator in node.decorator_list:
                 record_import_time_environment(
                     decorator, scope, in_function, execute_deferred=True
