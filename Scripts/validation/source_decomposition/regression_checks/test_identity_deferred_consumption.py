@@ -825,3 +825,61 @@ class DeferredIdentityConsumptionTests(unittest.TestCase):
             ["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"],
             self._compatibility_errors(base, head),
         )
+
+    def test_compatibility_allows_generator_passed_to_regular_call(self) -> None:
+        """Passing a generator to an ordinary call does not prove that it is consumed."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = (
+            "import os\n"
+            "register((os.environ.setdefault('FLAG', '1') for _ in [1]))\n"
+            "def helper():\n"
+            "    return 1\n"
+            "__all__ = ['helper']\n"
+        )
+        self.assertEqual([], self._compatibility_errors(base, head))
+
+    def test_compatibility_allows_statically_false_while_body(self) -> None:
+        """A statically false while body never executes during import."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = (
+            "import os\n"
+            "while False:\n"
+            "    os.environ['FLAG'] = '1'\n"
+            "def helper():\n"
+            "    return 1\n"
+            "__all__ = ['helper']\n"
+        )
+        self.assertEqual([], self._compatibility_errors(base, head))
+
+    def test_compatibility_rejects_saved_generator_returned_by_lambda(self) -> None:
+        """A generator returned by an invoked lambda remains deferred until consumed."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = (
+            "import os\n"
+            "values = (lambda: (os.environ.setdefault('FLAG', '1') for _ in [1]))()\n"
+            "list(values)\n"
+            "def helper():\n"
+            "    return 1\n"
+            "__all__ = ['helper']\n"
+        )
+        self.assertEqual(
+            ["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"],
+            self._compatibility_errors(base, head),
+        )
+
+    def test_compatibility_rejects_deferred_value_from_conditional_assignment(self) -> None:
+        """A deferred generator selected through an assignment wrapper remains consumable."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = (
+            "import os\n"
+            "values = (os.environ.setdefault('FLAG', '1') for _ in [1])\n"
+            "selected = values if flag else ()\n"
+            "list(selected)\n"
+            "def helper():\n"
+            "    return 1\n"
+            "__all__ = ['helper']\n"
+        )
+        self.assertEqual(
+            ["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"],
+            self._compatibility_errors(base, head),
+        )
