@@ -94,6 +94,8 @@ namespace Unity2Foxglove.Tests.PlayMode
             RequireGraphicsReadback();
             var manager = CreateManager();
             var imageObject = CreateCamera("image-source", 40, 30, manager, out var imagePublisher);
+            var imageSourceCamera = imageObject.GetComponent<Camera>();
+            imageSourceCamera.fieldOfView = 60f;
             var configuredCameraObject = new GameObject("configured-camera");
             var configuredCamera = configuredCameraObject.AddComponent<Camera>();
             configuredCamera.fieldOfView = 25f;
@@ -111,8 +113,10 @@ namespace Unity2Foxglove.Tests.PlayMode
                 var frame = frames[0];
                 Assert.That(frame.Width, Is.EqualTo(imagePublisher.SensorCameraCaptureWidth));
                 Assert.That(frame.Height, Is.EqualTo(imagePublisher.SensorCameraCaptureHeight));
-                Assert.That(frame.K[0], Is.GreaterThan(0d));
-                Assert.That(frame.K[4], Is.GreaterThan(0d));
+                var expectedFy = frame.Height / (2d * Math.Tan(imageSourceCamera.fieldOfView * Math.PI / 360d));
+                var expectedFx = expectedFy * frame.Width / (double)frame.Height;
+                Assert.That(frame.K[0], Is.EqualTo(expectedFx).Within(0.1d));
+                Assert.That(frame.K[4], Is.EqualTo(expectedFy).Within(0.1d));
             }
             finally
             {

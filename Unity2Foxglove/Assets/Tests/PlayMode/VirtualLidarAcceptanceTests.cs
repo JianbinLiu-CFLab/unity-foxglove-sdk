@@ -114,7 +114,7 @@ namespace Unity2Foxglove.Tests.PlayMode
                 yield return WaitForFrame(lidar, previousFrame);
                 var movedPoint = FindOffAxisPoint(lidar.LastFrame);
 
-                Assert.That(movedPoint.Y, Is.Not.EqualTo(firstPoint.Y).Within(0.01f));
+                Assert.That(movedPoint.X, Is.Not.EqualTo(firstPoint.X).Within(0.01f));
                 Assert.That(movedPoint.Z, Is.EqualTo(firstPoint.Z).Within(0.05f));
                 Assert.That(lidar.LastFrame.FrameId, Is.EqualTo("sensor-frame"));
             }
