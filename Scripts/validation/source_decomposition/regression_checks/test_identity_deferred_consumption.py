@@ -880,6 +880,25 @@ class DeferredIdentityConsumptionTests(unittest.TestCase):
             self._compatibility_errors(base, head),
         )
 
+    def test_compatibility_rejects_eager_iterable_consumers(self) -> None:
+        """Known iterable consumers and local draining helpers execute generators."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = (
+            "import os\n"
+            "def drain(values):\n"
+            "    return list(values)\n"
+            "values = (os.environ.setdefault('A', '1') for _ in [1])\n"
+            "drain(values)\n"
+            "''.join(os.environ.setdefault('B', '1') for _ in [1])\n"
+            "def helper():\n"
+            "    return 1\n"
+            "__all__ = ['helper']\n"
+        )
+        self.assertEqual(
+            ["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"],
+            self._compatibility_errors(base, head),
+        )
+
     def test_compatibility_allows_generator_passed_to_regular_call(self) -> None:
         """Passing a generator to an ordinary call does not prove that it is consumed."""
         base = "def helper():\n    return 1\n__all__ = ['helper']\n"
