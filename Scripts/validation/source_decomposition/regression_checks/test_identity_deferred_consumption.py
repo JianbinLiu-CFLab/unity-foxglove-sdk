@@ -843,6 +843,24 @@ class DeferredIdentityConsumptionTests(unittest.TestCase):
             self._compatibility_errors(base, head),
         )
 
+    def test_compatibility_rejects_object_alias_attribute_consumption(self) -> None:
+        """An object alias preserves deferred attributes for later consumption."""
+        base = "class Box:\n    pass\n__all__ = ['Box']\n"
+        head = (
+            "import os\n"
+            "class Box:\n"
+            "    pass\n"
+            "holder = Box()\n"
+            "holder.values = (os.environ.setdefault('FLAG', '1') for _ in [1])\n"
+            "alias = holder\n"
+            "list(alias.values)\n"
+            "__all__ = ['Box']\n"
+        )
+        self.assertEqual(
+            ["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"],
+            self._compatibility_errors(base, head),
+        )
+
     def test_compatibility_allows_generator_passed_to_regular_call(self) -> None:
         """Passing a generator to an ordinary call does not prove that it is consumed."""
         base = "def helper():\n    return 1\n__all__ = ['helper']\n"
