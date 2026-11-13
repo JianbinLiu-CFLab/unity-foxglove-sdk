@@ -244,7 +244,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
                     for keyword in node.keywords: self.visit(keyword.value)
                     return
                 if consumer_kind == "next" and node.args:
-                    (self._visit_short_circuit(node.args[0], consumer_kind), tuple(self.visit(keyword.value) for keyword in node.keywords))
+                    (self._visit_short_circuit(node.args[0], consumer_kind), tuple(self.visit(argument) for argument in (*node.args[1:], *(keyword.value for keyword in node.keywords))))
                     return
                 if consumer_kind == "callback" and isinstance(node.func, ast.Name):
                     self._visit_callback_defaults(node)
@@ -279,6 +279,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
             generator = node.generators[0]
             if not isinstance(generator.iter, (ast.List, ast.Tuple, ast.Set)) or not isinstance(generator.target, ast.Name): self._visit_deferred(node); return
             operations = {ast.Eq: operator.eq, ast.NotEq: operator.ne, ast.Lt: operator.lt, ast.LtE: operator.le, ast.Gt: operator.gt, ast.GtE: operator.ge}
+            (self.visit(generator.iter), tuple(self.visit(condition) for condition in generator.ifs))
             for element in generator.iter.elts[:1] if consumer_kind == "next" else generator.iter.elts:
                 decisive = None
                 if isinstance(node.elt, ast.IfExp) and isinstance(element, ast.Constant):
@@ -629,8 +630,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
             self.visit(target)
             self.executing_deferred = previous
     EnvironmentWriteVisitor.visit_AsyncFunctionDef = EnvironmentWriteVisitor.visit_FunctionDef
-    EnvironmentWriteVisitor.visit_AsyncFor = EnvironmentWriteVisitor.visit_For
-    EnvironmentWriteVisitor.visit_AsyncWith = EnvironmentWriteVisitor.visit_With
+    EnvironmentWriteVisitor.visit_AsyncFor, EnvironmentWriteVisitor.visit_AsyncWith = EnvironmentWriteVisitor.visit_For, EnvironmentWriteVisitor.visit_With
     EnvironmentWriteVisitor.visit_SetComp = EnvironmentWriteVisitor.visit_ListComp
     EnvironmentWriteVisitor.visit_DictComp = EnvironmentWriteVisitor.visit_ListComp
     environment_visitor = EnvironmentWriteVisitor()
