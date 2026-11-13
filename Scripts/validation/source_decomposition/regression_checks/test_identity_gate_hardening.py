@@ -919,6 +919,16 @@ class IdentityGateHardeningTests(unittest.TestCase):
         head = "import os\nitems = set()\nitems.update([], (os.environ.setdefault('FLAG', '1') for _ in [1]))\ndef helper():\n    return 1\n__all__ = ['helper']\n"
         self.assertEqual(["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"], self._compatibility_errors(base, head))
 
+    def test_deferred_consumer_short_circuit_visits_eager_iterable(self) -> None:
+        """Short-circuit analysis still observes side effects building the iterable."""
+        base, head = "def helper():\n    return 1\n__all__ = ['helper']\n", "import os\nall(x for x in [False, os.environ.setdefault('FLAG', '1')])\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual(["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"], self._compatibility_errors(base, head))
+
+    def test_deferred_consumer_next_visits_default_argument(self) -> None:
+        """next evaluates its default argument even when the iterator is empty."""
+        base, head = "def helper():\n    return 1\n__all__ = ['helper']\n", "import os\nnext((x for x in ()), os.environ.setdefault('FLAG', '1'))\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual(["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"], self._compatibility_errors(base, head))
+
     def test_deferred_consumer_rebinding_clears_eager_classification(self) -> None:
         """Rebinding an eager helper removes its old callback execution semantics."""
         base = "def helper():\n    return 1\n__all__ = ['helper']\n"
