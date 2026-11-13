@@ -855,6 +855,23 @@ class DeferredIdentityConsumptionTests(unittest.TestCase):
         )
         self.assertEqual([], self._compatibility_errors(base, head))
 
+    def test_compatibility_rejects_local_eager_callback_call(self) -> None:
+        """A local function that invokes its callback executes a passed lambda."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = (
+            "import os\n"
+            "def run(callback):\n"
+            "    return callback()\n"
+            "run(lambda: os.environ.setdefault('FLAG', '1'))\n"
+            "def helper():\n"
+            "    return 1\n"
+            "__all__ = ['helper']\n"
+        )
+        self.assertEqual(
+            ["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"],
+            self._compatibility_errors(base, head),
+        )
+
     def test_compatibility_allows_statically_false_while_body(self) -> None:
         """A statically false while body never executes during import."""
         base = "def helper():\n    return 1\n__all__ = ['helper']\n"
