@@ -329,11 +329,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
                     else:
                         self.visit(keyword.value)
             else:
-                for argument in (*node.args, *(keyword.value for keyword in node.keywords)):
-                    if not (isinstance(node.func, ast.Name) and node.func.id in self.consumer_aliases) and isinstance(self._deferred_value(argument), (ast.GeneratorExp, ast.Call)):
-                        self._visit_deferred(argument)
-                    else:
-                        self.visit(argument)
+                for argument in (*node.args, *(keyword.value for keyword in node.keywords)): self.visit(argument)
         def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
             """Visit function definition expressions without entering its body."""
             for decorator in node.decorator_list: self.visit(decorator)
@@ -360,7 +356,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
             for alias in node.names:
                 name = alias.asname or alias.name.split(".", 1)[0]
                 self._discard_name(name)
-                if alias.name in {"itertools", "functools"}: self.consumer_aliases[name] = f"__{alias.name}__"
+                if alias.name in {"itertools", "functools", "collections"}: self.consumer_aliases[name] = f"__{alias.name}__"
         def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
             """Invalidate deferred bindings shadowed by imported names."""
             for alias in node.names:
@@ -369,7 +365,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
                 self._discard_name(name)
                 if node.module == "builtins" and alias.name in deferred_consumers: self.consumer_aliases[name] = alias.name
                 if node.module == "builtins" and alias.name in deferred_producers: self.producer_aliases.add(name)
-                if node.module in {"itertools", "functools"} and alias.name in {"chain", "reduce"}: self.consumer_aliases[name] = alias.name
+                if node.module in {"itertools", "functools", "collections"} and alias.name in {"chain", "reduce", "deque"}: self.consumer_aliases[name] = alias.name
                 if node.module == "itertools" and alias.name in {"filterfalse", "takewhile", "dropwhile", "groupby", "starmap"}: self.producer_aliases.add(name)
         def visit_Lambda(self, node: ast.Lambda) -> None:
             """Visit lambda defaults and execute its body only when called."""
@@ -415,7 +411,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
         ) -> None:
             """Visit loop paths while retaining the zero-iteration state."""
             empty = isinstance(iterator, (ast.List, ast.Tuple, ast.Set)) and not iterator.elts
-            if empty:
+            if empty or (target is None and isinstance(iterator, ast.Constant) and not bool(iterator.value)):
                 self.visit(iterator)
                 for statement in orelse:
                     self.visit(statement)
@@ -583,17 +579,20 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
             return ()
         def _deferred_value(self, node: ast.AST) -> ast.AST | None:
             """Resolve a direct or aliased deferred expression binding."""
-            if isinstance(node, (ast.Lambda, ast.GeneratorExp)):
+            if isinstance(node, (ast.Lambda, ast.GeneratorExp)) or self._is_producer(node):
                 return node
-            if self._is_producer(node):
-                return node
+            if isinstance(node, ast.Call):
+                target = node.func if isinstance(node.func, ast.Lambda) else self._deferred_value(node.func)
+                if isinstance(target, ast.Lambda): return self._deferred_value(target.body)
+            if isinstance(node, ast.IfExp): return self._deferred_value(node.body) or self._deferred_value(node.orelse)
+            if isinstance(node, ast.BoolOp): return next((value for value in (self._deferred_value(item) for item in node.values) if value is not None), None)
             if isinstance(node, (ast.Name, ast.Attribute, ast.Subscript)):
                 return self.deferred_bindings.get(self._target_key(node))
             return None
         def _consumer_kind(self, node: ast.AST) -> str | None:
             """Return the builtin consumer kind for a call target or alias."""
             if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
-                if node.attr in {"chain", "reduce"} and self.consumer_aliases.get(node.value.id) == ("__itertools__" if node.attr == "chain" else "__functools__"): return node.attr
+                if node.attr in {"chain", "reduce", "deque"} and self.consumer_aliases.get(node.value.id) == {"chain": "__itertools__", "reduce": "__functools__", "deque": "__collections__"}[node.attr]: return node.attr
                 return None
             if not isinstance(node, ast.Name):
                 return None
