@@ -859,6 +859,12 @@ class IdentityGateHardeningTests(unittest.TestCase):
         head = "import os\ndef run(callback):\n    return callback()\nrun(callback=lambda: os.environ.setdefault('FLAG', '1'))\ndef helper():\n    return 1\n__all__ = ['helper']\n"
         self.assertEqual(["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"], self._compatibility_errors(base, head))
 
+    def test_deferred_consumer_same_line_callback_default_executes(self) -> None:
+        """A one-line eager helper still executes its omitted callback default."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import os\ndef run(callback=lambda: os.environ.setdefault('FLAG', '1')): return callback()\nrun()\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual(["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"], self._compatibility_errors(base, head))
+
     def test_deferred_consumer_rebinding_clears_eager_classification(self) -> None:
         """Rebinding an eager helper removes its old callback execution semantics."""
         base = "def helper():\n    return 1\n__all__ = ['helper']\n"
