@@ -275,7 +275,7 @@ class UnityTestRunnerTests(unittest.TestCase):
         self.assertEqual(2, counts["inconclusive"])
 
     def test_parse_nunit_results_rejects_mixed_passed_and_skipped(self) -> None:
-        """Reject a Unity run that contains skipped tests despite passing cases."""
+        """Reject skipped, malformed, negative, and inconsistent NUnit summaries."""
         with tempfile.TemporaryDirectory() as temp:
             results = Path(temp) / "results.xml"
             results.write_text('<test-run total="3" passed="1" failed="0" inconclusive="0" skipped="2" />', encoding="utf-8")
@@ -283,45 +283,24 @@ class UnityTestRunnerTests(unittest.TestCase):
         self.assertEqual("FAIL", verdict)
         self.assertEqual([], failed)
         self.assertEqual(1, counts["passed"])
-
-    def test_parse_nunit_results_rejects_malformed_counts(self) -> None:
-        """Convert malformed NUnit summary counts into a controlled failure."""
-        with tempfile.TemporaryDirectory() as temp:
-            results = Path(temp) / "results.xml"
-            results.write_text(
-                '<test-run total="one" passed="1" failed="0" inconclusive="0" skipped="0" />',
-                encoding="utf-8",
-            )
-            verdict, failed, counts = self.runner.parse_nunit_results(results)
-        self.assertEqual("FAIL", verdict)
-        self.assertTrue(failed)
-        self.assertEqual({}, counts)
-
-    def test_parse_nunit_results_rejects_negative_counts(self) -> None:
-        """Reject negative NUnit summary counts."""
-        with tempfile.TemporaryDirectory() as temp:
-            results = Path(temp) / "results.xml"
-            results.write_text(
-                '<test-run total="-1" passed="1" failed="0" inconclusive="0" skipped="0" />',
-                encoding="utf-8",
-            )
-            verdict, failed, counts = self.runner.parse_nunit_results(results)
-        self.assertEqual("FAIL", verdict)
-        self.assertTrue(failed)
-        self.assertEqual(-1, counts["total"])
-
-    def test_parse_nunit_results_rejects_inconsistent_counts(self) -> None:
-        """Reject NUnit summaries whose component counts do not total the run."""
-        with tempfile.TemporaryDirectory() as temp:
-            results = Path(temp) / "results.xml"
-            results.write_text(
-                '<test-run total="1" passed="2" failed="0" inconclusive="0" skipped="0" />',
-                encoding="utf-8",
-            )
-            verdict, failed, counts = self.runner.parse_nunit_results(results)
-        self.assertEqual("FAIL", verdict)
-        self.assertTrue(failed)
-        self.assertEqual(2, counts["passed"])
+        cases = (
+            ('<test-run total="one" passed="1" failed="0" inconclusive="0" skipped="0" />', {}),
+            ('<test-run total="-1" passed="1" failed="0" inconclusive="0" skipped="0" />', {"total": -1}),
+            ('<test-run total="1" passed="2" failed="0" inconclusive="0" skipped="0" />', {"passed": 2}),
+        )
+        for xml, expected_counts in cases:
+            with self.subTest(xml=xml):
+                with tempfile.TemporaryDirectory() as temp:
+                    results = Path(temp) / "results.xml"
+                    results.write_text(xml, encoding="utf-8")
+                    verdict, failed, counts = self.runner.parse_nunit_results(results)
+                self.assertEqual("FAIL", verdict)
+                self.assertTrue(failed)
+                if expected_counts:
+                    for key, value in expected_counts.items():
+                        self.assertEqual(value, counts[key])
+                else:
+                    self.assertEqual({}, counts)
 
     def test_parse_nunit_results_rejects_missing_summary(self) -> None:
         """Reject malformed NUnit XML without a summary element."""

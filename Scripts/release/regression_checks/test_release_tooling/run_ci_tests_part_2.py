@@ -370,10 +370,6 @@ printf '%s' "$required"
             job,
         )
         self.assertNotIn("junction", job.lower())
-
-    def test_unity_required_gate_waits_for_tests_and_scheduled_distros(self) -> None:
-        """Required Unity evidence must include tests and every scheduled distro job."""
-        workflow = UNITY_COMPILE_WORKFLOW_PATH.read_text(encoding="utf-8")
         aggregate = workflow.split("  unity_required:\n", 1)[1]
         needs = aggregate.split("    if:", 1)[0]
         self.assertIn("- unity-tests", needs)
