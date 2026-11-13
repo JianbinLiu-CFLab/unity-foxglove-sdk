@@ -159,27 +159,8 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
                     environ_names.add(alias.asname or "environ")
                 elif alias.name in _ENVIRONMENT_FUNCTIONS:
                     environment_function_names.add(alias.asname or alias.name)
-    deferred_consumers = frozenset(
-        {
-            "all",
-            "any",
-            "bytearray",
-            "bytes",
-            "dict",
-            "enumerate",
-            "frozenset",
-            "iter",
-            "list",
-            "max",
-            "min",
-            "next",
-            "set",
-            "sorted",
-            "sum",
-            "tuple",
-        }
-    )
-    deferred_producers = frozenset({"filter", "map", "zip"})
+    deferred_consumers = frozenset({"all", "any", "bytearray", "bytes", "dict", "enumerate", "frozenset", "iter", "list", "max", "min", "next", "set", "sorted", "sum", "tuple"})
+    deferred_producers = frozenset({"filter", "islice", "map", "zip"})
     def is_environ(node: ast.AST) -> bool:
         """Return whether an expression names os.environ."""
         if isinstance(node, ast.Name):
@@ -334,7 +315,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
                 if node.module == "builtins" and alias.name in deferred_consumers: self.consumer_aliases[name] = alias.name
                 if node.module == "builtins" and alias.name in deferred_producers: self.producer_aliases.add(name)
                 if node.module in {"itertools", "functools", "collections"} and alias.name in {"chain", "reduce", "deque"}: self.consumer_aliases[name] = alias.name
-                if node.module == "itertools" and alias.name in {"filterfalse", "takewhile", "dropwhile", "groupby", "starmap"}: self.producer_aliases.add(name)
+                if node.module == "itertools" and alias.name in {"filterfalse", "islice", "takewhile", "dropwhile", "groupby", "starmap"}: self.producer_aliases.add(name)
         def visit_Lambda(self, node: ast.Lambda) -> None:
             """Visit lambda defaults and execute its body only when called."""
             for expression in (*node.args.defaults, *node.args.kw_defaults): self.visit(expression) if expression is not None else None
@@ -362,6 +343,15 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
                 self._visit_comprehension(node)
             elif node.generators:
                 self.visit(node.generators[0].iter)
+        def visit_With(self, node: ast.With) -> None:
+            """Visit context expressions and binding targets in execution order."""
+            for item in node.items:
+                self.visit(item.context_expr)
+                if item.optional_vars is not None:
+                    self._check_targets([item.optional_vars])
+                    self.visit(item.optional_vars)
+                    self._discard_deferred(item.optional_vars)
+            for statement in node.body: self.visit(statement)
         def visit_For(self, node: ast.For) -> None:
             """Visit a loop and consume a generator used as its iterable."""
             self._visit_loop(node.iter, node.target, node.body, node.orelse, isinstance(node.iter, (ast.List, ast.Tuple, ast.Set)) and bool(node.iter.elts))
@@ -464,14 +454,14 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
             if isinstance(target, (ast.Name, ast.Attribute, ast.Subscript)):
                 is_name = isinstance(target, ast.Name)
                 consumer_kind = self._consumer_kind(value)
-                producer_value = self._is_producer(value) or (isinstance(value, ast.Name) and value.id in self.producer_aliases) or (isinstance(value, ast.Attribute) and isinstance(value.value, ast.Name) and self.consumer_aliases.get(value.value.id) == "__itertools__" and value.attr in {"filterfalse", "takewhile", "dropwhile", "groupby", "starmap"})
+                producer_value = self._is_producer(value) or (isinstance(value, ast.Name) and value.id in self.producer_aliases) or (isinstance(value, ast.Attribute) and isinstance(value.value, ast.Name) and self.consumer_aliases.get(value.value.id) == "__itertools__" and value.attr in {"filterfalse", "islice", "takewhile", "dropwhile", "groupby", "starmap"})
                 if is_name:
                     self._discard_name(target.id)
                     if isinstance(value, ast.Name):
                         needle = f"Name(id='{value.id}', ctx=Load())"
                         self.deferred_bindings.update({key.replace(needle, f"Name(id='{target.id}', ctx=Load())"): deferred for key, deferred in self.deferred_bindings.items() if key.startswith("target:") and needle in key})
                 elif consumer_kind is not None: self.consumer_aliases[self._target_key(target)] = consumer_kind
-                deferred = self._deferred_value(value)
+                deferred = value if isinstance(value, (ast.Tuple, ast.List, ast.Set)) else self._deferred_value(value)
                 if deferred is not None: self.deferred_bindings[self._target_key(target)] = deferred
                 else: self.deferred_bindings.pop(self._target_key(target), None)
                 if is_name:
@@ -546,8 +536,12 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
                 if isinstance(target, ast.Lambda): return self._deferred_value(target.body)
             if isinstance(node, ast.IfExp): return self._deferred_value(node.body) or self._deferred_value(node.orelse)
             if isinstance(node, ast.BoolOp): return next((value for value in (self._deferred_value(item) for item in node.values) if value is not None), None)
-            if isinstance(node, (ast.Tuple, ast.List, ast.Set)): return next((value for value in (self._deferred_value(item) for item in node.elts) if value is not None), None)
-            if isinstance(node, ast.Subscript): return self._deferred_value(node.value)
+            if isinstance(node, ast.Subscript):
+                try: index = ast.literal_eval(node.slice)
+                except (TypeError, ValueError, SyntaxError): index = None
+                container = node.value if isinstance(node.value, (ast.Tuple, ast.List, ast.Set)) else self._deferred_value(node.value)
+                if isinstance(index, int) and isinstance(container, (ast.Tuple, ast.List, ast.Set)) and -len(container.elts) <= index < len(container.elts): return self._deferred_value(container.elts[index])
+                return None
             if isinstance(node, (ast.Name, ast.Attribute, ast.Subscript)):
                 return self.deferred_bindings.get(self._target_key(node))
             return None
@@ -558,6 +552,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
                 if node.attr in {"chain", "reduce", "deque"} and self.consumer_aliases.get(node.value.id) == {"chain": "__itertools__", "reduce": "__functools__", "deque": "__collections__"}[node.attr]: return node.attr
                 if node.attr == "fromkeys" and node.value.id == "dict" and "dict" not in self.consumer_aliases: return "dict.fromkeys"
                 if node.attr in {"extend", "update"}: return "container_mutator"
+            if isinstance(node, ast.Attribute) and node.attr == "from_iterable" and isinstance(node.value, ast.Name) and self.consumer_aliases.get(node.value.id) == "chain": return "chain_from_iterable"
             if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Attribute) and node.attr == "from_iterable" and node.value.attr == "chain" and isinstance(node.value.value, ast.Name) and self.consumer_aliases.get(node.value.value.id) == "__itertools__": return "chain_from_iterable"
             if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str) and node.attr == "join": return "join"
             if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.attr == "join" and self.consumer_aliases.get(node.value.id) == "__string__": return "join"
@@ -592,7 +587,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
                     self._visit_deferred(default)
         def _is_producer(self, node: ast.AST) -> bool:
             """Return whether a call creates a lazy iterator with deferred callbacks."""
-            return isinstance(node, ast.Call) and ((isinstance(node.func, ast.Name) and node.func.id in self.producer_aliases) or (isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name) and self.consumer_aliases.get(node.func.value.id) == "__itertools__" and node.func.attr in {"filterfalse", "takewhile", "dropwhile", "groupby", "starmap"}))
+            return isinstance(node, ast.Call) and ((isinstance(node.func, ast.Name) and node.func.id in self.producer_aliases) or (isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name) and self.consumer_aliases.get(node.func.value.id) == "__itertools__" and node.func.attr in {"filterfalse", "islice", "takewhile", "dropwhile", "groupby", "starmap"}))
         def _visit_consumable(self, node: ast.AST) -> None:
             """Consume a tracked deferred value while leaving ordinary calls opaque."""
             if isinstance(node, (ast.IfExp, ast.BoolOp)):
@@ -637,6 +632,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
             self.executing_deferred = previous
     EnvironmentWriteVisitor.visit_AsyncFunctionDef = EnvironmentWriteVisitor.visit_FunctionDef
     EnvironmentWriteVisitor.visit_AsyncFor = EnvironmentWriteVisitor.visit_For
+    EnvironmentWriteVisitor.visit_AsyncWith = EnvironmentWriteVisitor.visit_With
     EnvironmentWriteVisitor.visit_SetComp = EnvironmentWriteVisitor.visit_ListComp
     EnvironmentWriteVisitor.visit_DictComp = EnvironmentWriteVisitor.visit_ListComp
     environment_visitor = EnvironmentWriteVisitor()
