@@ -877,6 +877,30 @@ class IdentityGateHardeningTests(unittest.TestCase):
         head = "import os\nvalues = ((os.environ.setdefault('FLAG', '1') for _ in [1]),)\nlist(values[0])\ndef helper():\n    return 1\n__all__ = ['helper']\n"
         self.assertEqual(["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"], self._compatibility_errors(base, head))
 
+    def test_deferred_consumer_unpacking_keeps_nested_generator_deferred(self) -> None:
+        """Unpacking a container binds its generator element without consuming it."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import os\nfirst, second = ((os.environ.setdefault('FLAG', '1') for _ in [1]), 2)\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual([], self._compatibility_errors(base, head))
+
+    def test_deferred_consumer_container_extend_executes(self) -> None:
+        """A list extend operation eagerly consumes a deferred iterable."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import os\nvalues = (os.environ.setdefault('FLAG', '1') for _ in [1])\nitems = []\nitems.extend(values)\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual(["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"], self._compatibility_errors(base, head))
+
+    def test_deferred_consumer_star_import_invalidates_old_binding(self) -> None:
+        """A star import may replace a previously tracked deferred binding."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import os\nvalues = (os.environ.setdefault('FLAG', '1') for _ in [1])\nfrom elsewhere import *\nlist(values)\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual([], self._compatibility_errors(base, head))
+
+    def test_deferred_consumer_constant_false_branch_is_skipped(self) -> None:
+        """A falsy constant condition never executes its import-time body."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import os\nif 0:\n    os.environ['FLAG'] = '1'\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual([], self._compatibility_errors(base, head))
+
 
 if __name__ == "__main__":
     raise SystemExit(unittest.main(module=__name__))
