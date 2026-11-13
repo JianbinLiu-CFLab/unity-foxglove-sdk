@@ -569,7 +569,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
         def _merge_states(self, *states: tuple[dict[str, ast.AST], dict[str, str], set[str]]) -> None:
             """Merge path states conservatively after control-flow joins."""
             self.deferred_bindings = {key: value for state in states for key, value in state[0].items()}
-            self.consumer_aliases = {key: value for state in states for key, value in state[1].items()}
+            self.consumer_aliases = {key: value for state in states for key, value in state[1].items() if key not in deferred_consumers or all(key in path[1] for path in states)}
             self.producer_aliases = {value for state in states for value in state[2]}
         @staticmethod
         def _target_key(target: ast.AST) -> str:
