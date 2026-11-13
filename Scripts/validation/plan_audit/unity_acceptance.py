@@ -22,6 +22,15 @@ TRUSTED_AUDIT_MODULES = (
     "Scripts/validation/plan_audit/unity_coverage.py",
     "Scripts/validation/plan_audit/unity_lane.py",
     "Scripts/release/run_unity_tests.py",
+    "Scripts/unity_build/unity_il2cpp.py",
+    "Scripts/unity_build/unity_il2cpp/__init__.py",
+    "Scripts/unity_build/unity_il2cpp/__main__.py",
+    "Scripts/unity_build/unity_il2cpp/implementation.py",
+    "Scripts/unity_build/unity_il2cpp/parts/__init__.py",
+    "Scripts/unity_build/unity_il2cpp/parts/cli.py",
+    "Scripts/unity_build/unity_il2cpp/parts/foundation.py",
+    "Scripts/unity_build/unity_il2cpp/parts/il2cpp_logging.py",
+    "Scripts/unity_build/unity_il2cpp/parts/process.py",
 )
 
 

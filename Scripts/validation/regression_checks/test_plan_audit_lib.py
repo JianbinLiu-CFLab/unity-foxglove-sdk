@@ -277,6 +277,41 @@ class PlanAuditLibraryTests(unittest.TestCase):
             lane.assert_called_once()
             coverage.assert_called_once()
 
+    def test_trusted_source_check_detects_unity_helper_tamper(self) -> None:
+        """Tampering with any imported Unity helper must fail the trusted-source check."""
+        helper_paths = {
+            "Scripts/unity_build/unity_il2cpp.py",
+            "Scripts/unity_build/unity_il2cpp/__init__.py",
+            "Scripts/unity_build/unity_il2cpp/__main__.py",
+            "Scripts/unity_build/unity_il2cpp/implementation.py",
+            "Scripts/unity_build/unity_il2cpp/parts/__init__.py",
+            "Scripts/unity_build/unity_il2cpp/parts/cli.py",
+            "Scripts/unity_build/unity_il2cpp/parts/foundation.py",
+            "Scripts/unity_build/unity_il2cpp/parts/il2cpp_logging.py",
+            "Scripts/unity_build/unity_il2cpp/parts/process.py",
+        }
+        self.assertTrue(helper_paths.issubset(set(unity_acceptance.TRUSTED_AUDIT_MODULES)))
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            for relative in unity_acceptance.TRUSTED_AUDIT_MODULES:
+                path = root / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b"current")
+
+            def fake_show(command, **kwargs):
+                """Return trusted bytes except for one deliberately tampered helper."""
+                del kwargs
+                relative = command[2].split(":", 1)[1]
+                expected = b"trusted" if relative == "Scripts/unity_build/unity_il2cpp/parts/process.py" else b"current"
+                return SimpleNamespace(returncode=0, stdout=expected)
+
+            with mock.patch.object(unity_acceptance.audit_lib, "ROOT", root), mock.patch.object(
+                unity_acceptance.subprocess, "run", side_effect=fake_show
+            ):
+                check = unity_acceptance._trusted_source_check("base")
+        self.assertEqual("FAIL", check.status)
+        self.assertIn("Scripts/unity_build/unity_il2cpp/parts/process.py", check.detail)
+
     def test_local100_does_not_trust_cached_summary(self) -> None:
         """A cached 100-run summary never bypasses a fresh acceptance loop."""
         audit_lib.BUILD_ROOT.mkdir(parents=True, exist_ok=True)
