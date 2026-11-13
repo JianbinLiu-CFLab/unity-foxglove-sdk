@@ -511,7 +511,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
             if isinstance(target, (ast.Name, ast.Attribute, ast.Subscript)):
                 is_name = isinstance(target, ast.Name)
                 consumer_kind = self._consumer_kind(value) if is_name else None
-                producer_value = self._is_producer(value) or (isinstance(value, ast.Name) and value.id in self.producer_aliases)
+                producer_value = self._is_producer(value) or (isinstance(value, ast.Name) and value.id in self.producer_aliases) or (isinstance(value, ast.Attribute) and isinstance(value.value, ast.Name) and self.consumer_aliases.get(value.value.id) == "__itertools__" and value.attr in {"filterfalse", "takewhile", "dropwhile", "groupby", "starmap"})
                 if is_name:
                     self._discard_name(target.id)
                 deferred = self._deferred_value(value)
