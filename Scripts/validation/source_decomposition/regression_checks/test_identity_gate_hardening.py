@@ -203,7 +203,6 @@ class IdentityGateHardeningTests(unittest.TestCase):
             ["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"],
             self._compatibility_errors(base, head),
         )
-
     def test_compatibility_allows_postponed_annotation_environment_expression(self) -> None:
         """Future annotations preserve deferred annotation evaluation semantics."""
         base = "def helper(value):\n    return value\n__all__ = ['helper']\n"
@@ -811,6 +810,189 @@ class IdentityGateHardeningTests(unittest.TestCase):
                     check=False,
                 )
                 self.assertEqual(0, result.returncode, result.stderr)
+
+    def test_deferred_consumer_loop_target_checks_environment_writes(self) -> None:
+        """A loop target assignment can mutate the environment during import."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import os\nfor os.environ['FLAG'] in [1]:\n    pass\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual(["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"], self._compatibility_errors(base, head))
+
+    def test_deferred_consumer_dict_fromkeys(self) -> None:
+        """dict.fromkeys eagerly consumes its iterable argument."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import os\nvalues = (os.environ.setdefault('FLAG', '1') for _ in [1])\ndict.fromkeys(values)\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual(["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"], self._compatibility_errors(base, head))
+
+    def test_deferred_consumer_ignores_uncalled_nested_callback(self) -> None:
+        """An uncalled nested helper does not make its outer function eager."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import os\ndef outer(callback):\n    def inner():\n        return callback()\n    return 1\nouter(lambda: os.environ.setdefault('FLAG', '1'))\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual([], self._compatibility_errors(base, head))
+
+    def test_deferred_consumer_string_alias_join(self) -> None:
+        """A string separator alias still consumes the generator passed to join."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import os\nseparator = ','\nvalues = (os.environ.setdefault('FLAG', '1') for _ in [1])\nseparator.join(values)\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual(["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"], self._compatibility_errors(base, head))
+
+    def test_deferred_consumer_chain_from_iterable(self) -> None:
+        """chain.from_iterable consumes each nested iterable."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import itertools\nimport os\nvalues = (os.environ.setdefault('FLAG', '1') for _ in [1])\nlist(itertools.chain.from_iterable([values]))\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual(["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"], self._compatibility_errors(base, head))
+
+    def test_deferred_consumer_local_callback_default(self) -> None:
+        """A default callback on an eager local helper executes when omitted."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import os\ndef run(callback=lambda: os.environ.setdefault('FLAG', '1')):\n    return callback()\nrun()\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual(["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"], self._compatibility_errors(base, head))
+
+    def test_deferred_consumer_explicit_callback_skips_default(self) -> None:
+        """An explicit callback replaces an eager helper's deferred default."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import os\ndef run(callback=lambda: os.environ.setdefault('FLAG', '1')):\n    return callback()\nrun(lambda: None)\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual([], self._compatibility_errors(base, head))
+
+    def test_deferred_consumer_keyword_callback_executes(self) -> None:
+        """A callback supplied by keyword is executed by an eager local helper."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import os\ndef run(callback):\n    return callback()\nrun(callback=lambda: os.environ.setdefault('FLAG', '1'))\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual(["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"], self._compatibility_errors(base, head))
+
+    def test_deferred_consumer_same_line_callback_default_executes(self) -> None:
+        """A one-line eager helper still executes its omitted callback default."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import os\ndef run(callback=lambda: os.environ.setdefault('FLAG', '1')): return callback()\nrun()\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual(["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"], self._compatibility_errors(base, head))
+
+    def test_deferred_consumer_keyword_iterable_sources_execute(self) -> None:
+        """Supported eager consumers drain their keyword iterable sources."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import os\nvalues = (os.environ.setdefault('A', '1') for _ in [1])\ndict.fromkeys(iterable=values)\nbytes(source=(os.environ.setdefault('B', '1') for _ in [1]))\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual(["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"], self._compatibility_errors(base, head))
+
+    def test_deferred_consumer_enumerate_and_iter_stay_lazy(self) -> None:
+        """enumerate and iter do not advance their generator until consumed."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import os\nvalues = (os.environ.setdefault('A', '1') for _ in [1])\nenumerate(values)\niter(values)\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual([], self._compatibility_errors(base, head))
+
+    def test_deferred_consumer_all_short_circuit_skips_unreachable_generator_values(self) -> None:
+        """all stops before a later generator value with an environment write."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import os\nall(False if i == 0 else os.environ.setdefault('FLAG', '1') for i in [0, 1])\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual([], self._compatibility_errors(base, head))
+
+    def test_deferred_consumer_indirect_callback_invocation_executes(self) -> None:
+        """Attribute and alias callback invocations are treated as eager."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import os\ndef run(callback):\n    alias = callback\n    return alias.__call__()\nrun(lambda: os.environ.setdefault('FLAG', '1'))\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual(["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"], self._compatibility_errors(base, head))
+
+    def test_deferred_consumer_next_only_executes_first_generator_item(self) -> None:
+        """next stops after the first statically reachable generator value."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import os\nnext((0 if i == 0 else os.environ.setdefault('FLAG', '1') for i in [0, 1]))\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual([], self._compatibility_errors(base, head))
+
+    def test_deferred_consumer_destructured_target_checks_environment(self) -> None:
+        """Environment writes nested in destructured assignment targets are detected."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import os\nfirst, os.environ['FLAG'] = [1, 2]\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual(["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"], self._compatibility_errors(base, head))
+        read_only = "import os\na[os.environ['FLAG']] = 1\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual([], self._compatibility_errors(base, read_only))
+
+    def test_deferred_consumer_next_visits_default_argument(self) -> None:
+        """next evaluates its default argument even when the iterator is empty."""
+        base, head = "def helper():\n    return 1\n__all__ = ['helper']\n", "import os\nnext((x for x in ()), os.environ.setdefault('FLAG', '1'))\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual(["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"], self._compatibility_errors(base, head))
+
+    def test_deferred_consumer_reduce_singleton_skips_reducer(self) -> None:
+        """reduce returns its singleton input without invoking the reducer."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import functools\nimport os\nfunctools.reduce(lambda a, b: os.environ.setdefault('FLAG', '1'), [1])\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual([], self._compatibility_errors(base, head))
+
+    def test_deferred_consumer_empty_producer_skips_callback(self) -> None:
+        """A lazy producer with an empty source never invokes its callback."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import os\nlist(map(lambda _: os.environ.setdefault('FLAG', '1'), []))\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual([], self._compatibility_errors(base, head))
+
+    def test_deferred_consumer_boolop_respects_short_circuit_value(self) -> None:
+        """A truthy generator followed by and returns the later empty value."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import os\nvalues = (os.environ.setdefault('FLAG', '1') for _ in [1]) and ()\nlist(values)\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual([], self._compatibility_errors(base, head))
+
+    def test_deferred_consumer_rebinding_clears_eager_classification(self) -> None:
+        """Rebinding an eager helper removes its old callback execution semantics."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import os\ndef run(callback):\n    return callback()\nrun = lambda callback: None\nrun(lambda: os.environ.setdefault('FLAG', '1'))\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual([], self._compatibility_errors(base, head))
+
+    def test_deferred_consumer_empty_key_skips_callback(self) -> None:
+        """An empty iterable never invokes a max/min/sorted key callback."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import os\nsorted([], key=lambda _: os.environ.setdefault('FLAG', '1'))\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual([], self._compatibility_errors(base, head))
+
+    def test_deferred_consumer_container_index(self) -> None:
+        """A generator nested in a container remains deferred through indexing."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import os\nvalues = ((os.environ.setdefault('FLAG', '1') for _ in [1]),)\nlist(values[0])\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual(["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"], self._compatibility_errors(base, head))
+
+    def test_deferred_consumer_unpacking_keeps_nested_generator_deferred(self) -> None:
+        """Unpacking a container binds its generator element without consuming it."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import os\nfirst, second = ((os.environ.setdefault('FLAG', '1') for _ in [1]), 2)\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual([], self._compatibility_errors(base, head))
+
+    def test_deferred_consumer_container_extend_executes(self) -> None:
+        """A list extend operation eagerly consumes a deferred iterable."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import os\nvalues = (os.environ.setdefault('FLAG', '1') for _ in [1])\nitems = []\nitems.extend(values)\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual(["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"], self._compatibility_errors(base, head))
+
+    def test_deferred_consumer_container_literal_does_not_drain_inner_generator(self) -> None:
+        """Consuming an outer container does not consume a generator stored inside it."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import os\nvalues = [(os.environ.setdefault('FLAG', '1') for _ in [1])]\nlist(values)\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual([], self._compatibility_errors(base, head))
+        loop_head = "import os\nvalues = [(os.environ.setdefault('FLAG', '1') for _ in [1])]\nfor value in values:\n    list(value)\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual(["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"], self._compatibility_errors(base, loop_head))
+
+    def test_deferred_consumer_direct_chain_from_iterable_executes(self) -> None:
+        """A directly imported chain.from_iterable consumes nested iterables."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "from itertools import chain\nimport os\nvalues = (os.environ.setdefault('FLAG', '1') for _ in [1])\nlist(chain.from_iterable([values]))\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual(["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"], self._compatibility_errors(base, head))
+
+    def test_deferred_consumer_islice_forwards_and_defers(self) -> None:
+        """islice remains lazy until its result is consumed."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import itertools\nimport os\nvalues = (os.environ.setdefault('FLAG', '1') for _ in [1])\nlist(itertools.islice(values, 1))\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual(["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"], self._compatibility_errors(base, head))
+
+    def test_deferred_consumer_with_target_checks_environment_writes(self) -> None:
+        """A with target assignment can mutate the environment during import."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import os\nwith context() as os.environ['FLAG']:\n    pass\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual(["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"], self._compatibility_errors(base, head))
+
+    def test_deferred_consumer_star_import_invalidates_old_binding(self) -> None:
+        """A star import may replace a previously tracked deferred binding."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import os\nvalues = (os.environ.setdefault('FLAG', '1') for _ in [1])\nfrom elsewhere import *\nlist(values)\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual([], self._compatibility_errors(base, head))
+
+    def test_deferred_consumer_constant_false_branch_is_skipped(self) -> None:
+        """A falsy constant condition never executes its import-time body."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import os\nif 0:\n    os.environ['FLAG'] = '1'\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual([], self._compatibility_errors(base, head))
 
 
 if __name__ == "__main__":

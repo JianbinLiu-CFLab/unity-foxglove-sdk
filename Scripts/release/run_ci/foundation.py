@@ -220,6 +220,8 @@ PACKAGE_LANE_REGRESSION_MODULES = (
     "Scripts.validation.source_decomposition.regression_checks.test_freeze_baseline",
     "Scripts.validation.source_decomposition.regression_checks.test_u2r2_protocol_limits",
     "Scripts.validation.source_decomposition.regression_checks.test_identity_gate_hardening",
+    "Scripts.validation.source_decomposition.regression_checks.test_identity_deferred_consumption",
+    "Scripts.validation.source_decomposition.regression_checks.test_identity_semantic_edges",
     "Scripts.performance.regression_checks.test_phase188_replay",
     "Scripts.smoke.replay.regression_checks.test_phase188_deterministic_replay_acceptance",
 )
