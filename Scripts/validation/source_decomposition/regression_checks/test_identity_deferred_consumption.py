@@ -555,3 +555,31 @@ class DeferredIdentityConsumptionTests(unittest.TestCase):
         )
         with self.assertRaises(ValueError):
             self._compatibility_errors(base, head)
+
+    def test_compatibility_allows_definite_for_overwrite(self) -> None:
+        """A non-empty literal loop definitely replaces the deferred binding."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = (
+            "import os\n"
+            "values = (os.environ.setdefault('FLAG', '1') for _ in [1])\n"
+            "for _ in [1]:\n"
+            "    values = []\n"
+            "list(values)\n"
+            "def helper():\n    return 1\n__all__ = ['helper']\n"
+        )
+        self.assertEqual([], self._compatibility_errors(base, head))
+
+    def test_compatibility_allows_definite_try_overwrite(self) -> None:
+        """A simple literal assignment in try cannot take the exception path."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = (
+            "import os\n"
+            "values = (os.environ.setdefault('FLAG', '1') for _ in [1])\n"
+            "try:\n"
+            "    values = []\n"
+            "except Exception:\n"
+            "    pass\n"
+            "list(values)\n"
+            "def helper():\n    return 1\n__all__ = ['helper']\n"
+        )
+        self.assertEqual([], self._compatibility_errors(base, head))
