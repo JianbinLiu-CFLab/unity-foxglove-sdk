@@ -180,7 +180,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
             self.eager_callback_specs: dict[str, tuple[ast.arguments, tuple[str, ...]]] = {}
         def _check_targets(self, targets: list[ast.AST]) -> None:
             """Check assignment targets for direct environment mutation."""
-            if any(is_environ(target) or (isinstance(target, ast.Subscript) and is_environ(target.value)) for target in targets):
+            if any(is_environ(candidate) or (isinstance(candidate, ast.Subscript) and is_environ(candidate.value)) for target in targets for candidate in ast.walk(target)):
                 self.found = True
         def visit_Assign(self, node: ast.Assign) -> None:
             """Visit assignment targets and their eagerly evaluated values."""
@@ -243,6 +243,9 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
                     for argument in node.args[1:]: self.visit(argument)
                     for keyword in node.keywords: self.visit(keyword.value)
                     return
+                if consumer_kind == "next" and node.args:
+                    (self._visit_short_circuit(node.args[0], consumer_kind), tuple(self.visit(keyword.value) for keyword in node.keywords))
+                    return
                 if consumer_kind == "callback" and isinstance(node.func, ast.Name):
                     self._visit_callback_defaults(node)
                 if consumer_kind == "reduce" and node.args: self._visit_deferred(node.args[0])
@@ -276,7 +279,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
             generator = node.generators[0]
             if not isinstance(generator.iter, (ast.List, ast.Tuple, ast.Set)) or not isinstance(generator.target, ast.Name): self._visit_deferred(node); return
             operations = {ast.Eq: operator.eq, ast.NotEq: operator.ne, ast.Lt: operator.lt, ast.LtE: operator.le, ast.Gt: operator.gt, ast.GtE: operator.ge}
-            for element in generator.iter.elts:
+            for element in generator.iter.elts[:1] if consumer_kind == "next" else generator.iter.elts:
                 decisive = None
                 if isinstance(node.elt, ast.IfExp) and isinstance(element, ast.Constant):
                     test = node.elt.test
@@ -290,8 +293,8 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
                     decisive = bool(node.elt.value)
                     self.visit(node.elt)
                 else:
-                    self._visit_deferred(node); return
-                if decisive is not None and ((consumer_kind == "all" and not decisive) or (consumer_kind == "any" and decisive)):
+                    self.visit(node.elt); return
+                if consumer_kind == "next" or (decisive is not None and ((consumer_kind == "all" and not decisive) or (consumer_kind == "any" and decisive))):
                     return
         def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
             """Visit function definition expressions without entering its body."""
@@ -325,8 +328,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
         def visit_Lambda(self, node: ast.Lambda) -> None:
             """Visit lambda defaults and execute its body only when called."""
             for expression in (*node.args.defaults, *node.args.kw_defaults): self.visit(expression) if expression is not None else None
-            if self.executing_deferred is node:
-                self.visit(node.body)
+            if self.executing_deferred is node: self.visit(node.body)
         def visit_ClassDef(self, node: ast.ClassDef) -> None:
             """Visit class definition expressions and its executing body."""
             for decorator in node.decorator_list: self.visit(decorator)
@@ -345,10 +347,8 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
             self._discard_name(node.name)
         def visit_GeneratorExp(self, node: ast.GeneratorExp) -> None:
             """Visit the eager outer iterable or the consumed generator body."""
-            if self.executing_deferred is node:
-                self._visit_comprehension(node)
-            elif node.generators:
-                self.visit(node.generators[0].iter)
+            if self.executing_deferred is node: self._visit_comprehension(node)
+            elif node.generators: self.visit(node.generators[0].iter)
         def visit_With(self, node: ast.With) -> None:
             """Visit context expressions and binding targets in execution order."""
             for item in node.items:
