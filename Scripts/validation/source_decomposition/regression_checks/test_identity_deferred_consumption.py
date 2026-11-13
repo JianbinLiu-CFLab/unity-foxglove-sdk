@@ -444,3 +444,114 @@ class DeferredIdentityConsumptionTests(unittest.TestCase):
             "def helper():\n    return 1\n__all__ = ['helper']\n"
         )
         self.assertEqual([], self._compatibility_errors(base, head))
+
+    def test_compatibility_allows_shadowed_consumer_name(self) -> None:
+        """A rebound builtin name is an ordinary callable, not a consumer."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = (
+            "import os\n"
+            "list = lambda value: value\n"
+            "values = (os.environ.setdefault('FLAG', '1') for _ in [1])\n"
+            "list(values)\n"
+            "def helper():\n    return 1\n__all__ = ['helper']\n"
+        )
+        self.assertEqual([], self._compatibility_errors(base, head))
+
+    def test_compatibility_rejects_starred_generator_consumption(self) -> None:
+        """A starred tuple passed to list still exposes its deferred generator."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = (
+            "import os\n"
+            "values = (os.environ.setdefault('FLAG', '1') for _ in [1])\n"
+            "list(*(values,))\n"
+            "def helper():\n    return 1\n__all__ = ['helper']\n"
+        )
+        self.assertEqual(
+            ["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"],
+            self._compatibility_errors(base, head),
+        )
+
+    def test_compatibility_rejects_comprehension_target_environment_write(self) -> None:
+        """Comprehension target assignment can mutate the environment at import time."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = (
+            "import os\n"
+            "[value for os.environ['FLAG'] in [1]]\n"
+            "def helper():\n    return 1\n__all__ = ['helper']\n"
+        )
+        self.assertEqual(
+            ["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"],
+            self._compatibility_errors(base, head),
+        )
+
+    def test_compatibility_rejects_exported_class_generator_consumption(self) -> None:
+        """A deferred class attribute remains consumable through the class object."""
+        base = "class Box:\n    values = []\n__all__ = ['Box']\n"
+        head = (
+            "import os\n"
+            "class Box:\n"
+            "    values = (os.environ.setdefault('FLAG', '1') for _ in [1])\n"
+            "list(Box.values)\n"
+            "__all__ = ['Box']\n"
+        )
+        self.assertEqual(
+            ["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"],
+            self._compatibility_errors(base, head),
+        )
+
+    def test_compatibility_rejects_aliased_itertools_chain_consumption(self) -> None:
+        """An aliased itertools module still exposes chain consumption."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = (
+            "import itertools as it\n"
+            "import os\n"
+            "values = (os.environ.setdefault('FLAG', '1') for _ in [1])\n"
+            "list(it.chain(values))\n"
+            "def helper():\n    return 1\n__all__ = ['helper']\n"
+        )
+        self.assertEqual(
+            ["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"],
+            self._compatibility_errors(base, head),
+        )
+
+    def test_compatibility_rejects_same_name_deferred_decorator(self) -> None:
+        """A decorator evaluates the previous same-name binding before rebinding."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = (
+            "import os\n"
+            "helper = lambda fn: os.environ.setdefault('FLAG', '1')\n"
+            "@helper\n"
+            "def helper():\n"
+            "    return 1\n"
+            "__all__ = ['helper']\n"
+        )
+        self.assertEqual(
+            ["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"],
+            self._compatibility_errors(base, head),
+        )
+
+    def test_compatibility_rejects_conditional_generator_consumption(self) -> None:
+        """Conditional and boolean wrappers preserve deferred consumption."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = (
+            "import os\n"
+            "values = (os.environ.setdefault('FLAG', '1') for _ in [1])\n"
+            "list(values if flag else ())\n"
+            "list(values or ())\n"
+            "def helper():\n    return 1\n__all__ = ['helper']\n"
+        )
+        self.assertEqual(
+            ["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"],
+            self._compatibility_errors(base, head),
+        )
+
+    def test_compatibility_rejects_unsupported_walrus_binding(self) -> None:
+        """Unsupported module walrus bindings fail closed before identity comparison."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = (
+            "import os\n"
+            "list(x := lambda: os.environ.setdefault('FLAG', '1'))\n"
+            "def helper():\n    return 1\n__all__ = ['helper']\n"
+        )
+        with self.assertRaises(ValueError):
+            self._compatibility_errors(base, head)
