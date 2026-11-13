@@ -587,6 +587,20 @@ class DeferredIdentityConsumptionTests(unittest.TestCase):
             self._compatibility_errors(base, head),
         )
 
+    def test_compatibility_rejects_itertools_starmap_consumption(self) -> None:
+        """itertools.starmap executes its callback while the result is drained."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = (
+            "import itertools\n"
+            "import os\n"
+            "list(itertools.starmap(lambda _: os.environ.setdefault('FLAG', '1'), [(1,)]))\n"
+            "def helper():\n    return 1\n__all__ = ['helper']\n"
+        )
+        self.assertEqual(
+            ["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"],
+            self._compatibility_errors(base, head),
+        )
+
     def test_compatibility_rejects_unsupported_walrus_binding(self) -> None:
         """Unsupported module walrus bindings fail closed before identity comparison."""
         base = "def helper():\n    return 1\n__all__ = ['helper']\n"
