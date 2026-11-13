@@ -140,7 +140,11 @@ namespace Unity2Foxglove.Ros2Bridge
 
         public IMcapMessageDecoder TryCreate(McapSchema schema, McapChannel channel)
         {
-            return TryCreateKnownSchema(schema, channel, McapRos2CdrTypedDecoderFactory.SchemaContentMatches(schema));
+            if (!IsCompatible(schema, channel))
+                return null;
+            return new Decoder(
+                schema?.Name ?? string.Empty,
+                McapRos2CdrTypedDecoderFactory.SchemaContentMatches(schema));
         }
 
         internal IMcapMessageDecoder TryCreateKnownSchema(
@@ -148,21 +152,21 @@ namespace Unity2Foxglove.Ros2Bridge
             McapChannel channel,
             bool schemaKnown)
         {
-            if (!string.Equals(
-                    channel?.MessageEncoding,
-                    Ros2BridgeMcapCodecs.MessageEncoding,
-                    StringComparison.OrdinalIgnoreCase))
-            {
+            if (!IsCompatible(schema, channel))
                 return null;
-            }
-            if (!string.Equals(
-                    schema?.Encoding,
-                    Ros2BridgeMcapCodecs.SchemaEncoding,
-                    StringComparison.OrdinalIgnoreCase))
-            {
-                return null;
-            }
             return new Decoder(schema?.Name ?? string.Empty, schemaKnown);
+        }
+
+        private static bool IsCompatible(McapSchema schema, McapChannel channel)
+        {
+            return string.Equals(
+                       channel?.MessageEncoding,
+                       Ros2BridgeMcapCodecs.MessageEncoding,
+                       StringComparison.OrdinalIgnoreCase)
+                   && string.Equals(
+                       schema?.Encoding,
+                       Ros2BridgeMcapCodecs.SchemaEncoding,
+                       StringComparison.OrdinalIgnoreCase);
         }
 
         private sealed class Decoder : IMcapMessageDecoder

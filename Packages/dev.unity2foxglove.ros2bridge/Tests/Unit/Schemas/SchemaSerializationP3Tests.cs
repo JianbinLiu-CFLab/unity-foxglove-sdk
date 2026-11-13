@@ -120,6 +120,21 @@ namespace Unity2Foxglove.Ros2Bridge.UnitTests
         }
 
         [Fact]
+        public void DiagnosticFactoryRejectsIncompatibleEncodingBeforeSchemaInspection()
+        {
+            var decoder = new McapRos2CdrDiagnosticDecoderFactory().TryCreate(
+                new McapSchema
+                {
+                    Name = "foxglove_msgs/msg/Log",
+                    Encoding = "jsonschema",
+                    Data = new byte[1024 * 1024]
+                },
+                new McapChannel { Topic = "/log", MessageEncoding = "cdr" });
+
+            Assert.Null(decoder);
+        }
+
+        [Fact]
         public void MergedDependencyChangeIsRejectedForTheSameSchemaName()
         {
             Assert.True(
