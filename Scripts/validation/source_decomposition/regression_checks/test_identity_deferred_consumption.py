@@ -643,6 +643,41 @@ class DeferredIdentityConsumptionTests(unittest.TestCase):
             self._compatibility_errors(base, head),
         )
 
+    def test_compatibility_rejects_itertools_callback_consumers(self) -> None:
+        """Eager itertools callback iterators execute predicates while consumed."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = (
+            "import itertools\n"
+            "import os\n"
+            "list(itertools.filterfalse(lambda _: os.environ.setdefault('A', '1'), [1]))\n"
+            "list(itertools.takewhile(lambda _: os.environ.setdefault('B', '1'), [1]))\n"
+            "list(itertools.dropwhile(lambda _: os.environ.setdefault('C', '1'), [1]))\n"
+            "list(itertools.groupby([1], key=lambda _: os.environ.setdefault('D', '1')))\n"
+            "def helper():\n"
+            "    return 1\n"
+            "__all__ = ['helper']\n"
+        )
+        self.assertEqual(
+            ["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"],
+            self._compatibility_errors(base, head),
+        )
+
+    def test_compatibility_rejects_aliased_itertools_callback_consumer(self) -> None:
+        """An imported itertools callback iterator remains eager when consumed."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = (
+            "from itertools import starmap as apply\n"
+            "import os\n"
+            "list(apply(lambda _: os.environ.setdefault('FLAG', '1'), [(1,)]))\n"
+            "def helper():\n"
+            "    return 1\n"
+            "__all__ = ['helper']\n"
+        )
+        self.assertEqual(
+            ["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"],
+            self._compatibility_errors(base, head),
+        )
+
     def test_compatibility_rejects_unsupported_walrus_binding(self) -> None:
         """Unsupported module walrus bindings fail closed before identity comparison."""
         base = "def helper():\n    return 1\n__all__ = ['helper']\n"
