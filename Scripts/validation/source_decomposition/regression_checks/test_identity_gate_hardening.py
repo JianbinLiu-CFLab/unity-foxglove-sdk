@@ -847,6 +847,12 @@ class IdentityGateHardeningTests(unittest.TestCase):
         head = "import os\ndef run(callback=lambda: os.environ.setdefault('FLAG', '1')):\n    return callback()\nrun()\ndef helper():\n    return 1\n__all__ = ['helper']\n"
         self.assertEqual(["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"], self._compatibility_errors(base, head))
 
+    def test_deferred_consumer_container_index(self) -> None:
+        """A generator nested in a container remains deferred through indexing."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import os\nvalues = ((os.environ.setdefault('FLAG', '1') for _ in [1]),)\nlist(values[0])\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual(["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"], self._compatibility_errors(base, head))
+
 
 if __name__ == "__main__":
     raise SystemExit(unittest.main(module=__name__))
