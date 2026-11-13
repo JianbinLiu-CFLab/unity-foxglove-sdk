@@ -331,8 +331,8 @@ printf '%s' "$required"
         """Clean Unity runner inputs and prevent push runs from cancelling dispatch runs."""
         workflow = UNITY_COMPILE_WORKFLOW_PATH.read_text(encoding="utf-8")
         compile_job = workflow.split("  unity_compile:\n", 1)[1].split("  unity_required:\n", 1)[0]
-        self.assertIn("clean: true", compile_job)
-        self.assertIn("git clean -ffdx", compile_job)
+        self.assertIn("clean: false", compile_job)
+        self.assertIn("git clean -ffdx -e 'Unity2Foxglove/Library/' -e 'Unity2Foxglove/Library-*/'", compile_job)
         self.assertNotIn("Library*/'", compile_job)
         self.assertIn("--timeout-seconds 3600", compile_job)
         self.assertIn(
@@ -361,11 +361,12 @@ printf '%s' "$required"
         self.assertIn("distro: [humble, lyrical]", job)
         self.assertIn("workflow_dispatch", workflow)
         self.assertIn("inputs:", workflow)
+        self.assertIn("clean: false", job)
         self.assertIn("phase195-distro-swap-", job)
         self.assertIn("if: always()", job)
         self.assertIn("git status --porcelain", job)
         self.assertIn("Library(?:-[A-Za-z0-9._-]+)?", job)
-        self.assertIn("git clean -ffdx", job)
+        self.assertIn("git clean -ffdx -e 'Unity2Foxglove/Library/' -e 'Unity2Foxglove/Library-*/'", job)
         self.assertNotIn("Library*/'", job)
         self.assertIn("-e 'build/unity-batch-compile/'", job)
         self.assertIn(

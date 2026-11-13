@@ -114,12 +114,12 @@ jobs:
         with:
           fetch-depth: 1
           persist-credentials: false
-          clean: true
+          clean: false
 
 
       - name: Clean runner workspace before Unity compile
         shell: pwsh
-        run: git clean -ffdx
+        run: git clean -ffdx -e 'Unity2Foxglove/Library/' -e 'Unity2Foxglove/Library-*/'
 
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
@@ -176,11 +176,11 @@ jobs:
         with:
           fetch-depth: 1
           persist-credentials: false
-          clean: true
+          clean: false
 
       - name: Clean runner workspace before Unity compile
         shell: pwsh
-        run: git clean -ffdx
+        run: git clean -ffdx -e 'Unity2Foxglove/Library/' -e 'Unity2Foxglove/Library-*/'
 
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
@@ -285,7 +285,7 @@ jobs:
         with:
           fetch-depth: 1
           persist-credentials: false
-          clean: true
+          clean: false
 
       - name: Select requested distro
         id: select_distro
@@ -326,7 +326,7 @@ jobs:
       - name: Clean runner workspace before activating distro inputs
         if: steps.select_distro.outputs.run_distro == 'true'
         shell: pwsh
-        run: git clean -ffdx
+        run: git clean -ffdx -e 'Unity2Foxglove/Library/' -e 'Unity2Foxglove/Library-*/'
 
       - name: Prepare distro manifest and isolated Library
         if: steps.select_distro.outputs.run_distro == 'true'
@@ -419,7 +419,7 @@ jobs:
             if (Test-Path -LiteralPath $jazzy) { Move-Item -LiteralPath $jazzy -Destination $library }
             Remove-Item -LiteralPath $marker -Force
           }
-          git clean -ffdx -e 'build/unity-batch-compile/'
+          git clean -ffdx -e 'build/unity-batch-compile/' -e 'Unity2Foxglove/Library/' -e 'Unity2Foxglove/Library-*/'
           $status = @(git status --porcelain)
           $unexpected = @($status | Where-Object {
             $_ -notmatch '^\?\? Unity2Foxglove/Library(?:-[A-Za-z0-9._-]+)?/$'
