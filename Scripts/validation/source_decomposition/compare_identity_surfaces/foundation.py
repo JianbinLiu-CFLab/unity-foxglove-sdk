@@ -354,7 +354,6 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
                 if node.returns is not None:
                     self.visit(node.returns)
             self._discard_name(node.name)
-        visit_AsyncFunctionDef = visit_FunctionDef
         def visit_Import(self, node: ast.Import) -> None:
             """Invalidate deferred bindings shadowed by imported modules."""
             for alias in node.names:
@@ -413,7 +412,6 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
         def visit_For(self, node: ast.For) -> None:
             """Visit a loop and consume a generator used as its iterable."""
             self._visit_loop(node.iter, node.target, node.body, node.orelse, isinstance(node.iter, (ast.List, ast.Tuple, ast.Set)) and bool(node.iter.elts))
-        visit_AsyncFor = visit_For
         def _visit_loop(
             self,
             iterator: ast.AST,
@@ -486,8 +484,6 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
         def visit_ListComp(self, node: ast.ListComp) -> None:
             """Visit list comprehensions, which consume all generator inputs."""
             self._visit_comprehension(node)
-        visit_SetComp = visit_ListComp
-        visit_DictComp = visit_ListComp
         def _visit_comprehension(self, node: ast.AST) -> None:
             """Visit comprehension inputs and expressions in execution order."""
             for generator in node.generators:
@@ -646,6 +642,10 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
             self.executing_deferred = target
             self.visit(target)
             self.executing_deferred = previous
+    EnvironmentWriteVisitor.visit_AsyncFunctionDef = EnvironmentWriteVisitor.visit_FunctionDef
+    EnvironmentWriteVisitor.visit_AsyncFor = EnvironmentWriteVisitor.visit_For
+    EnvironmentWriteVisitor.visit_SetComp = EnvironmentWriteVisitor.visit_ListComp
+    EnvironmentWriteVisitor.visit_DictComp = EnvironmentWriteVisitor.visit_ListComp
     environment_visitor = EnvironmentWriteVisitor()
     def writes_environment(statement: ast.AST, *, execute_deferred: bool = False) -> bool:
         """Return whether one import-time statement writes the process environment."""
