@@ -58,7 +58,7 @@ class UnityBatchCompileGateTests(unittest.TestCase):
 
             process.wait.side_effect = finish_process
             tree = mock.Mock(process=process)
-            tree.terminate.return_value = []
+            tree.terminate.return_value = [424242]
             environment = {name: "present" for name in self.gate.REQUIRED_ENVIRONMENT}
             with mock.patch.dict(os.environ, environment, clear=False):
                 with mock.patch.object(self.gate, "_active_unity_project", return_value=False):
@@ -274,15 +274,33 @@ class UnityTestRunnerTests(unittest.TestCase):
         self.assertEqual([], failed)
         self.assertEqual(2, counts["inconclusive"])
 
-    def test_parse_nunit_results_passes_mixed_passed_and_skipped(self) -> None:
-        """Accept a Unity run when at least one discovered test passed."""
+    def test_parse_nunit_results_rejects_mixed_passed_and_skipped(self) -> None:
+        """Reject skipped, malformed, negative, and inconsistent NUnit summaries."""
         with tempfile.TemporaryDirectory() as temp:
             results = Path(temp) / "results.xml"
             results.write_text('<test-run total="3" passed="1" failed="0" inconclusive="0" skipped="2" />', encoding="utf-8")
             verdict, failed, counts = self.runner.parse_nunit_results(results)
-        self.assertEqual("PASS", verdict)
+        self.assertEqual("FAIL", verdict)
         self.assertEqual([], failed)
         self.assertEqual(1, counts["passed"])
+        cases = (
+            ('<test-run total="one" passed="1" failed="0" inconclusive="0" skipped="0" />', {}),
+            ('<test-run total="-1" passed="1" failed="0" inconclusive="0" skipped="0" />', {"total": -1}),
+            ('<test-run total="1" passed="2" failed="0" inconclusive="0" skipped="0" />', {"passed": 2}),
+        )
+        for xml, expected_counts in cases:
+            with self.subTest(xml=xml):
+                with tempfile.TemporaryDirectory() as temp:
+                    results = Path(temp) / "results.xml"
+                    results.write_text(xml, encoding="utf-8")
+                    verdict, failed, counts = self.runner.parse_nunit_results(results)
+                self.assertEqual("FAIL", verdict)
+                self.assertTrue(failed)
+                if expected_counts:
+                    for key, value in expected_counts.items():
+                        self.assertEqual(value, counts[key])
+                else:
+                    self.assertEqual({}, counts)
 
     def test_parse_nunit_results_rejects_missing_summary(self) -> None:
         """Reject malformed NUnit XML without a summary element."""
@@ -363,6 +381,56 @@ class UnityTestRunnerTests(unittest.TestCase):
         self.assertEqual("FAIL", payload["verdict"])
         self.assertIn("Smoke.Fails", payload["failed_tests"])
         self.assertTrue(payload["timed_out"])
+
+        with tempfile.TemporaryDirectory(dir=ROOT) as residual_temp:
+            residual_root = Path(residual_temp)
+            residual_project = residual_root / "Unity2Foxglove"
+            residual_project.mkdir()
+            residual_unity = residual_root / "Unity.exe"
+            residual_unity.write_text("", encoding="utf-8")
+            residual_results = residual_root / "results.xml"
+            residual_log = residual_root / "unity.log"
+            residual_process = mock.Mock()
+
+            def finish_with_results(*_args, **_kwargs):
+                """Write a passing NUnit result before reporting normal exit."""
+                residual_results.write_text(
+                    '<test-run total="1" passed="1" failed="0" inconclusive="0" skipped="0">'
+                    '<test-case fullname="Smoke.Passes" result="Passed" />'
+                    '</test-run>',
+                    encoding="utf-8",
+                )
+                return 0
+
+            residual_process.wait.side_effect = finish_with_results
+            residual_tree = mock.Mock(process=residual_process)
+            residual_tree.terminate.return_value = []
+            with mock.patch.dict(
+                os.environ,
+                {name: "present" for name in self.runner.REQUIRED_ENVIRONMENT},
+                clear=False,
+            ):
+                with mock.patch.object(self.runner, "_active_unity_project", return_value=False):
+                    with mock.patch(
+                        "Scripts.unity_build.unity_il2cpp.start_owned_process",
+                        return_value=residual_tree,
+                    ):
+                        with mock.patch(
+                            "Scripts.unity_build.unity_il2cpp.await_tree_quiescence",
+                            return_value=[424242],
+                        ):
+                            residual_result = self.runner.run(
+                                residual_unity,
+                                residual_project,
+                                "PlayMode",
+                                residual_results,
+                                residual_log,
+                                timeout_seconds=1,
+                            )
+            residual_payload = json.loads(residual_results.with_suffix(".json").read_text(encoding="utf-8"))
+        self.assertEqual(1, residual_result)
+        self.assertIn("Unity process tree did not quiesce after exit", residual_payload["diagnostics"])
+        self.assertEqual([424242], residual_payload["residual_pids"])
 
     def test_main_forwards_platform_and_paths(self) -> None:
         """Forward command-line test platform and output paths to run."""

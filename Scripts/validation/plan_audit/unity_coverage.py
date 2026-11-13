@@ -158,6 +158,8 @@ def _w3_mutation(checks: list[audit_lib.Check], output: Path) -> None:
         "Unity2Foxglove",
         "--test-platform",
         "PlayMode",
+        "--test-category",
+        "LidarAcceptance",
         "--test-results",
         "build/plan-audit/unity_acceptance/w3/red/playmode.xml",
         "--log-file",
@@ -194,9 +196,9 @@ def _workflow_w4(checks: list[audit_lib.Check], output: Path) -> None:
     evidence.parent.mkdir(parents=True, exist_ok=True)
     lines = [f"{name}={needle in text}" for name, needle in required.items()]
     distro_path_markers = (
-        r"Packages/dev\.unity2foxglove\.ros2forunity\.runtime\.(humble|lyrical)\.win64",
-        "Packages/dev.unity2foxglove.ros2forunity.runtime.humble.win64",
-        "Packages/dev.unity2foxglove.ros2forunity.runtime.lyrical.win64",
+        r"Packages/dev\.unity2foxglove\.(ros2forunity\.runtime|foxrun\.ros2\.interfaces\.typesupport)\.(humble|lyrical)\.win64",
+        "dev.unity2foxglove.ros2forunity.runtime.humble.win64",
+        "dev.unity2foxglove.ros2forunity.runtime.lyrical.win64",
     )
     distro_paths = any(marker in text for marker in distro_path_markers)
     lines.append(f"distro_paths={distro_paths}")
@@ -237,7 +239,7 @@ def _workflow_w4(checks: list[audit_lib.Check], output: Path) -> None:
             if any(job.get("name") == name and job.get("conclusion") == "success" for job in jobs):
                 verified[distro] = run_id
     status = "PASS" if set(verified) == {"humble", "lyrical"} else "MANUAL"
-    detail = f"head={head}; verified distro runs={verified or 'none'}"
+    detail = f"head={head}; verified distro runs={verified or 'none'}; compile-error mutation is a separate manual acceptance"
     _record(checks, "195-W4", "history", status, " ".join(command), output / "logs" / "w4-history.log", detail)
 
 

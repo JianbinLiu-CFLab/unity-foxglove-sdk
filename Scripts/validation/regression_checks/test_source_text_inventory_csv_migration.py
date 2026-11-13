@@ -201,3 +201,25 @@ class SourceTextInventoryCsvMigrationTests(_FixtureSupport, unittest.TestCase):
             rejected = run_guard()
             self.assertNotEqual(0, rejected.returncode)
             self.assertIn("immutable base checker", rejected.stderr)
+
+    def test_missing_file_targets_are_unresolved(self):
+        """A reader path must resolve to an existing repository file."""
+        from Scripts.validation.source_text_inventory import inventory
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runtime = root / "Packages" / "fixture" / "Tests" / "Runtime"
+            runtime.mkdir(parents=True)
+            (runtime / "MissingValidation.cs").write_text(
+                'class MissingValidation { public static void Validate() { var source = ReadRequiredRepoText("Packages/fixture/Runtime/Missing.cs"); Check(source.Contains("Missing")); } }\n',
+                encoding="utf-8",
+            )
+            registry = root / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "PhaseValidationRegistry.cs"
+            registry.parent.mkdir(parents=True, exist_ok=True)
+            registry.write_text(
+                'Ci("--phase-missing", "fixture", MissingValidation.Validate, evidence: ValidationEvidence.Behavior),\n',
+                encoding="utf-8",
+            )
+            rows = inventory(root)
+        self.assertEqual("<unresolved>", rows[0]["target"])
+        self.assertEqual("UNRESOLVED", rows[0]["class"])

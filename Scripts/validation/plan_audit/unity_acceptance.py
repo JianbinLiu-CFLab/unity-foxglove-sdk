@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
+import subprocess
 from pathlib import Path
 
 from . import audit_lib
@@ -13,6 +15,54 @@ from . import unity_lane
 TOPIC = "unity_acceptance"
 OUTPUT = audit_lib.BUILD_ROOT / TOPIC
 PLAN = audit_lib.ROOT / "Plan" / "195_PHASE195_WORKSTREAM_E_UNITY_ACCEPTANCE_HARDENING_PLAN.md"
+TRUSTED_AUDIT_MODULES = (
+    "Scripts/validation/plan_audit/audit_lib.py",
+    "Scripts/validation/plan_audit/bridge_history.py",
+    "Scripts/validation/plan_audit/unity_acceptance.py",
+    "Scripts/validation/plan_audit/unity_coverage.py",
+    "Scripts/validation/plan_audit/unity_lane.py",
+    "Scripts/release/run_unity_tests.py",
+    "Scripts/unity_build/unity_il2cpp.py",
+    "Scripts/unity_build/unity_il2cpp/__init__.py",
+    "Scripts/unity_build/unity_il2cpp/__main__.py",
+    "Scripts/unity_build/unity_il2cpp/implementation.py",
+    "Scripts/unity_build/unity_il2cpp/parts/__init__.py",
+    "Scripts/unity_build/unity_il2cpp/parts/cli.py",
+    "Scripts/unity_build/unity_il2cpp/parts/foundation.py",
+    "Scripts/unity_build/unity_il2cpp/parts/il2cpp_logging.py",
+    "Scripts/unity_build/unity_il2cpp/parts/process.py",
+)
+
+
+def _trusted_source_check(base_sha: str) -> audit_lib.Check:
+    """Refuse to execute contributor-modified audit modules in a maintainer run."""
+    mismatches: list[str] = []
+    for relative in TRUSTED_AUDIT_MODULES:
+        current = audit_lib.ROOT / relative
+        result = subprocess.run(
+            ["git", "show", f"{base_sha}:{relative}"],
+            cwd=audit_lib.ROOT,
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode != 0 or not current.is_file():
+            mismatches.append(relative)
+            continue
+        expected = hashlib.sha256(result.stdout).hexdigest()
+        actual = hashlib.sha256(current.read_bytes()).hexdigest()
+        if expected != actual:
+            mismatches.append(relative)
+    status = "PASS" if not mismatches else "FAIL"
+    detail = f"base={base_sha}; mismatched_modules={mismatches or 'none'}"
+    return audit_lib.Check(
+        "195-AUDIT-trust",
+        "Plan/195... § trusted audit source",
+        "security",
+        status,
+        "git show <base>:Scripts/validation/plan_audit/*.py; sha256 compare",
+        "build/plan-audit/unity_acceptance/trusted-source.log",
+        detail,
+    )
 
 
 def _plan_check(base_sha: str) -> audit_lib.Check:
@@ -94,6 +144,9 @@ def main() -> int:
     base_sha = audit_lib.resolve_revision()
     (OUTPUT / "base.txt").write_text(base_sha + "\n", encoding="utf-8")
     checks = [_plan_check(base_sha)]
+    trusted = _trusted_source_check(base_sha)
+    (OUTPUT / "trusted-source.log").write_text(trusted.detail + "\n", encoding="utf-8")
+    checks.append(trusted)
     checks.extend(bridge_history.bridge_checks(OUTPUT))
     checks.extend(unity_lane.lane_checks(OUTPUT))
     checks.extend(unity_coverage.coverage_checks(OUTPUT))

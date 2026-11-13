@@ -267,7 +267,8 @@ def _transfer_checks(rows: list[dict[str, str]]) -> list[audit_lib.Check]:
     comment_count = sum(row.get("comment_only") == "True" for row in rows)
     evidence = OUTPUT / "logs" / "comment-only.log"
     evidence.write_text(f"comment_only={comment_count}\n", encoding="utf-8")
-    checks.append(_check("198-COMMENT", "Plan/198... § comment assertions", "auto", "PASS" if comment_count >= 0 else "FAIL", "inspect inventory comment_only column", evidence, f"comment_only_rows={comment_count}; 181F-16 requires manual status review"))
+    comment_status = "MANUAL" if comment_count else "PASS"
+    checks.append(_check("198-COMMENT", "Plan/198... § comment assertions", "manual" if comment_count else "auto", comment_status, "inspect inventory comment_only column", evidence, f"comment_only_rows={comment_count}; 181F-16 requires manual status review"))
     return checks
 
 
@@ -288,7 +289,7 @@ def main() -> int:
     (OUTPUT / "state-after.txt").write_text(after, encoding="utf-8")
     unchanged = before_sha == after_sha
     audit_lib.write_verdict(TOPIC, "198", checks, base_sha, OUTPUT, unchanged)
-    return 0 if unchanged and not any(check.status == "FAIL" for check in checks) else 1
+    return 0 if unchanged and not any(check.status in {"FAIL", "MISSING"} for check in checks) else 1
 
 
 if __name__ == "__main__":

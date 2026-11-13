@@ -90,6 +90,8 @@ class SourceTextInventoryTests(unittest.TestCase):
             product = root / "Packages" / "fixture" / "Runtime" / "Foo.cs"
             product.parent.mkdir(parents=True)
             product.write_text("public sealed class Foo {}\n", encoding="utf-8")
+            for name in ("Bar.cs", "First.cs", "Second.cs", "String.cs", "Shared.cs", "manifest.json", "Native.cs"):
+                (product.parent / name).write_text(f"// {name}\n", encoding="utf-8")
             foo_tests = root / "Packages" / "fixture" / "Tests" / "Unit" / "FooTests.cs"
             foo_tests.parent.mkdir(parents=True, exist_ok=True)
             foo_tests.write_text(
@@ -993,7 +995,6 @@ class SourceTextInventoryTests(unittest.TestCase):
             self.assertEqual(1, len(rows))
             self.assertEqual("<unresolved>", rows[0]["target"])
             self.assertEqual("UNRESOLVED", rows[0]["class"])
-
 
 if __name__ == "__main__":
     unittest.main()

@@ -94,6 +94,8 @@ namespace Unity2Foxglove.Tests.PlayMode
             RequireGraphicsReadback();
             var manager = CreateManager();
             var imageObject = CreateCamera("image-source", 40, 30, manager, out var imagePublisher);
+            var imageSourceCamera = imageObject.GetComponent<Camera>();
+            imageSourceCamera.fieldOfView = 60f;
             var configuredCameraObject = new GameObject("configured-camera");
             var configuredCamera = configuredCameraObject.AddComponent<Camera>();
             configuredCamera.fieldOfView = 25f;
@@ -111,13 +113,46 @@ namespace Unity2Foxglove.Tests.PlayMode
                 var frame = frames[0];
                 Assert.That(frame.Width, Is.EqualTo(imagePublisher.SensorCameraCaptureWidth));
                 Assert.That(frame.Height, Is.EqualTo(imagePublisher.SensorCameraCaptureHeight));
-                Assert.That(frame.K[0], Is.GreaterThan(0d));
-                Assert.That(frame.K[4], Is.GreaterThan(0d));
+                var projection = imageSourceCamera.projectionMatrix;
+                var expectedFx = projection.m00 * frame.Width * 0.5d;
+                var expectedFy = projection.m11 * frame.Height * 0.5d;
+                Assert.That(frame.K[0], Is.EqualTo(expectedFx).Within(0.1d));
+                Assert.That(frame.K[4], Is.EqualTo(expectedFy).Within(0.1d));
             }
             finally
             {
                 DestroyObjects(imageObject, configuredCameraObject, infoObject, manager.gameObject);
             }
+        }
+
+        [UnityTest]
+        [Category("ManagerAcceptance")]
+        public IEnumerator ManagerDisableAndDestroyInvokeProductionTeardown()
+        {
+            var disabledManager = CreateManager();
+            var destroyedManager = CreateManager();
+            try
+            {
+                disabledManager.StartServer();
+                Assert.That(disabledManager.IsRunning, Is.True);
+                disabledManager.enabled = false;
+                Assert.That(disabledManager.IsRunning, Is.False);
+
+                destroyedManager.StartServer();
+                Assert.That(destroyedManager.IsRunning, Is.True);
+                var onDestroy = typeof(FoxgloveManager).GetMethod(
+                    "OnDestroy",
+                    PrivateInstance);
+                Assert.That(onDestroy, Is.Not.Null);
+                onDestroy.Invoke(destroyedManager, null);
+                Assert.That(destroyedManager.IsRunning, Is.False);
+            }
+            finally
+            {
+                DestroyObjects(disabledManager.gameObject, destroyedManager.gameObject);
+            }
+
+            yield return null;
         }
 
         private static void RequireGraphicsReadback()

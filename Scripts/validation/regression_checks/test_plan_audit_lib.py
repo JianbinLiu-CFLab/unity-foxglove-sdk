@@ -144,6 +144,26 @@ class PlanAuditLibraryTests(unittest.TestCase):
                 checks = source_text_rules._transfer_checks([])
                 self.assertEqual("FAIL", checks[1].status)
 
+    def test_source_text_comment_rows_require_manual_review(self) -> None:
+        """Comment-only inventory rows cannot be reported as an automatic pass."""
+        audit_lib.BUILD_ROOT.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=audit_lib.BUILD_ROOT) as temp:
+            output = Path(temp) / "output"
+            (output / "logs").mkdir(parents=True)
+            with mock.patch.object(source_text_rules, "OUTPUT", output):
+                checks = source_text_rules._transfer_checks([{"comment_only": "True"}])
+        self.assertEqual("MANUAL", checks[-1].status)
+
+    def test_structure_guard_handles_missing_agents_file(self) -> None:
+        """A missing ignored AGENTS.md is a controlled missing audit input."""
+        from Scripts.validation.plan_audit import structure_guard_audit
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            with mock.patch.object(structure_guard_audit.audit_lib, "ROOT", root):
+                check = structure_guard_audit._agents_check()
+        self.assertEqual("MISSING", check.status)
+
     def test_plan_check_rejects_missing_or_unrecognized_status(self) -> None:
         """A plan must declare a recognized delivered status before passing."""
         with tempfile.TemporaryDirectory() as temp:
@@ -192,6 +212,29 @@ class PlanAuditLibraryTests(unittest.TestCase):
     def test_w4_workflow_accepts_escaped_package_paths(self) -> None:
         """W4 recognizes the escaped package path used by the shell workflow."""
         with tempfile.TemporaryDirectory(dir=audit_lib.BUILD_ROOT) as temp:
+            build_root = Path(temp) / "build"
+
+            def fake_audit_run(command, log_path, timeout, cwd=audit_lib.ROOT):
+                """Return successful current-head workflow and distro evidence."""
+                del timeout, cwd
+                log_path.parent.mkdir(parents=True, exist_ok=True)
+                if command[1:3] == ["run", "list"]:
+                    return {
+                        "exit_code": 0,
+                        "output": '[{"databaseId":123,"headSha":"head","conclusion":"success"}]',
+                    }
+                return {
+                    "exit_code": 0,
+                    "output": json.dumps(
+                        {
+                            "jobs": [
+                                {"name": "unity-distro-compile (humble)", "conclusion": "success"},
+                                {"name": "unity-distro-compile (lyrical)", "conclusion": "success"},
+                            ]
+                        }
+                    ),
+                }
+
             with mock.patch.object(
                 unity_coverage.subprocess,
                 "run",
@@ -199,12 +242,75 @@ class PlanAuditLibraryTests(unittest.TestCase):
             ), mock.patch.object(
                 unity_coverage.audit_lib,
                 "run",
-                return_value={"exit_code": 0, "output": "[]"},
+                side_effect=fake_audit_run,
+            ), mock.patch.object(
+                unity_coverage.audit_lib,
+                "BUILD_ROOT",
+                build_root,
             ):
                 checks: list[audit_lib.Check] = []
                 unity_coverage._workflow_w4(checks, Path(temp))
             self.assertEqual("195-W4", checks[0].id)
-            self.assertNotEqual("MISSING", checks[0].status)
+            self.assertEqual("PASS", checks[0].status)
+
+    def test_acceptance_audit_runs_checks_when_trusted_source_changes(self) -> None:
+        """A trusted-source mismatch must not silently skip the remaining audit checks."""
+        self.assertIn("Scripts/release/run_unity_tests.py", unity_acceptance.TRUSTED_AUDIT_MODULES)
+        audit_lib.BUILD_ROOT.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=audit_lib.BUILD_ROOT) as temp:
+            trusted = audit_lib.Check("195-AUDIT-trust", "Plan", "security", "FAIL", "true", "build/trust", "changed")
+            with mock.patch.object(unity_acceptance, "OUTPUT", Path(temp) / "output"), mock.patch.object(
+                unity_acceptance, "_plan_check", return_value=audit_lib.Check("195-PLAN", "Plan", "history", "PASS", "true", "build/plan", "ok")
+            ), mock.patch.object(unity_acceptance, "_trusted_source_check", return_value=trusted), mock.patch.object(
+                unity_acceptance.audit_lib, "worktree_snapshot", return_value=("", "sha")
+            ), mock.patch.object(unity_acceptance.audit_lib, "resolve_revision", return_value="base"), mock.patch.object(
+                unity_acceptance.bridge_history, "bridge_checks", return_value=[]
+            ) as bridge, mock.patch.object(
+                unity_acceptance.unity_lane, "lane_checks", return_value=[]
+            ) as lane, mock.patch.object(
+                unity_acceptance.unity_coverage, "coverage_checks", return_value=[]
+            ) as coverage, mock.patch.object(unity_acceptance.audit_lib, "write_verdict"), mock.patch.object(
+                unity_acceptance, "_write_manual"
+            ):
+                self.assertEqual(1, unity_acceptance.main())
+            bridge.assert_called_once()
+            lane.assert_called_once()
+            coverage.assert_called_once()
+
+    def test_trusted_source_check_detects_unity_helper_tamper(self) -> None:
+        """Tampering with any imported Unity helper must fail the trusted-source check."""
+        helper_paths = {
+            "Scripts/unity_build/unity_il2cpp.py",
+            "Scripts/unity_build/unity_il2cpp/__init__.py",
+            "Scripts/unity_build/unity_il2cpp/__main__.py",
+            "Scripts/unity_build/unity_il2cpp/implementation.py",
+            "Scripts/unity_build/unity_il2cpp/parts/__init__.py",
+            "Scripts/unity_build/unity_il2cpp/parts/cli.py",
+            "Scripts/unity_build/unity_il2cpp/parts/foundation.py",
+            "Scripts/unity_build/unity_il2cpp/parts/il2cpp_logging.py",
+            "Scripts/unity_build/unity_il2cpp/parts/process.py",
+        }
+        self.assertTrue(helper_paths.issubset(set(unity_acceptance.TRUSTED_AUDIT_MODULES)))
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            for relative in unity_acceptance.TRUSTED_AUDIT_MODULES:
+                path = root / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b"current")
+
+            def fake_show(command, **kwargs):
+                """Return trusted bytes except for one deliberately tampered helper."""
+                del kwargs
+                relative = command[2].split(":", 1)[1]
+                expected = b"trusted" if relative == "Scripts/unity_build/unity_il2cpp/parts/process.py" else b"current"
+                return SimpleNamespace(returncode=0, stdout=expected)
+
+            with mock.patch.object(unity_acceptance.audit_lib, "ROOT", root), mock.patch.object(
+                unity_acceptance.subprocess, "run", side_effect=fake_show
+            ):
+                check = unity_acceptance._trusted_source_check("base")
+        self.assertEqual("FAIL", check.status)
+        self.assertIn("Scripts/unity_build/unity_il2cpp/parts/process.py", check.detail)
 
     def test_local100_does_not_trust_cached_summary(self) -> None:
         """A cached 100-run summary never bypasses a fresh acceptance loop."""

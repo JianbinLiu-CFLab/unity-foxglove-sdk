@@ -42,9 +42,28 @@ def parse_nunit_results(results_path: Path) -> tuple[str, list[str], dict[str, i
     summary = root if root.tag == "test-run" else root.find("./test-suite")
     if summary is None:
         return "FAIL", ["Unity results did not contain a test summary"], {}
-    counts = {key: int(summary.attrib.get(key, "0")) for key in ("total", "passed", "failed", "inconclusive", "skipped")}
-    no_passing_tests = counts["passed"] == 0
-    return ("FAIL" if failed or counts["failed"] or no_passing_tests else "PASS"), failed, counts
+    try:
+        counts = {
+            key: int(summary.attrib.get(key, "0"))
+            for key in ("total", "passed", "failed", "inconclusive", "skipped")
+        }
+    except (TypeError, ValueError) as exc:
+        return "FAIL", [f"Unity result summary contains invalid counts: {exc}"], {}
+    if any(count < 0 for count in counts.values()):
+        return "FAIL", ["Unity result summary contains negative counts"], counts
+    observed = sum(counts[key] for key in ("passed", "failed", "inconclusive", "skipped"))
+    if observed != counts["total"]:
+        return "FAIL", [
+            "Unity result summary counts are inconsistent: "
+            f"total={counts['total']} observed={observed}"
+        ], counts
+    no_passing_tests = counts["passed"] <= 0 or counts["total"] <= 0
+    has_non_passing_tests = any(counts[key] > 0 for key in ("failed", "inconclusive", "skipped"))
+    return (
+        "FAIL" if failed or no_passing_tests or has_non_passing_tests else "PASS",
+        failed,
+        counts,
+    )
 
 
 def _active_unity_project(project_path: Path) -> bool:
@@ -154,9 +173,10 @@ def run(
             exit_code = 124
             residual = tree.terminate()
         else:
-            residual = await_tree_quiescence(tree, 10.0)
-            if residual:
-                tree.terminate()
+            observed_residual = await_tree_quiescence(tree, 10.0)
+            if observed_residual:
+                terminated_residual = tree.terminate()
+                residual = list(dict.fromkeys([*observed_residual, *terminated_residual]))
     finally:
         tree.close()
 

@@ -387,7 +387,6 @@ class _ExternalHelperIndex:
         self.signature_cache[key] = result
         return result
 
-
 def _unresolved_reason(
     call: dict[str, object],
     target: str,
@@ -420,7 +419,6 @@ def _unresolved_reason(
     if READER_CALL_PATTERN.search(call_text):
         return "dynamic_path"
     return "unsupported_reader"
-
 
 def scan_file(
     path: Path,
@@ -531,11 +529,23 @@ def scan_file(
         classification_text = _call_context(lines, call)
         target_parts = []
         for part in target.split(";"):
-            candidate = (root / part).resolve() if part and part != "<unresolved>" else None
+            candidate = None
+            if part and part != "<unresolved>":
+                candidates = [root / part]
+                if "Packages" in path.parts:
+                    package_index = path.parts.index("Packages")
+                    package_root = Path(*path.parts[: package_index + 2])
+                    candidates.append(package_root / part)
+                candidate = next(
+                    (item.resolve() for item in candidates if item.exists()),
+                    candidates[0].resolve(),
+                )
             if candidate is not None and candidate.is_dir():
                 target_parts.append(f"<directory>:{part}")
-            elif part:
+            elif candidate is not None and candidate.is_file():
                 target_parts.append(part)
+            elif part:
+                target_parts.append("<unresolved>")
         target = ";".join(dict.fromkeys(target_parts)) or "<unresolved>"
         unresolved_reason = _unresolved_reason(
             call,
@@ -633,7 +643,6 @@ def scan_file(
         )
     return rows
 
-
 def _external_dependency_expression(
     text: str, masked: str, call: dict[str, object], method, methods: list[object], checked: str,
     harness, harness_calls: list[dict[str, object]], definitions: dict[int, list[tuple[int, str, str, str]]],
@@ -669,7 +678,6 @@ def _external_dependency_expression(
             start = method.body_start + qualifier.start()
         expressions.append(text[start : int(consumer["end"])])
     return "\n".join(expressions)
-
 
 def _predicate_consumer_signature(
     text: str,

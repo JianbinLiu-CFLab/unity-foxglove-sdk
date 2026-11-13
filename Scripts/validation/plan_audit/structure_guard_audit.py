@@ -107,16 +107,30 @@ def _ci_placement() -> audit_lib.Check:
     install = section.find("Install pinned Python test dependencies")
     dotnet = min((index for index in (section.find("setup-dotnet"), section.find("dotnet ")) if index >= 0), default=-1)
     placement = job_start >= 0 and 0 <= setup < guard < install < dotnet
-    required_result = subprocess.run(
+    required = _run(
         ["gh", "api", "repos/JianbinLiu-CFLab/unity-foxglove-sdk/branches/main/protection/required_status_checks"],
-        capture_output=True,
-        text=True,
-        check=False,
+        "196-required-status",
+        timeout=120.0,
     )
-    required_text = required_result.stdout + required_result.stderr
-    job_required = "test" in required_text or "linux-python-regressions" in required_text
-    status = "PASS" if placement and required_result.returncode == 0 and job_required else "NOT_RUN" if placement and required_result.returncode != 0 else "FAIL"
-    detail = f"placement={placement}; required_api_exit={required_result.returncode}; required_match={job_required}"
+    required_payload = {}
+    try:
+        required_payload = json.loads(str(required["output"]))
+    except json.JSONDecodeError:
+        required_payload = {}
+    contexts = required_payload.get("contexts", [])
+    checks = required_payload.get("checks", [])
+    required_names = {
+        str(context) if isinstance(context, str) else str(context.get("context", ""))
+        for context in contexts
+    }
+    required_names.update(
+        str(check) if isinstance(check, str) else str(check.get("context", check.get("name", "")))
+        for check in checks
+    )
+    expected = "Linux: Python regressions and package closure"
+    job_required = expected in required_names
+    status = "PASS" if placement and required["exit_code"] == 0 and job_required else "NOT_RUN" if placement and required["exit_code"] != 0 else "FAIL"
+    detail = f"placement={placement}; required_api_exit={required['exit_code']}; required_match={job_required}; contexts={sorted(required_names)}"
     return _check("196-CI-placement", "Plan/196... § 3 item 4", "auto", status, "read .github/workflows/dotnet-tests.yml; gh api .../branches/main/protection/required_status_checks", "build/plan-audit/structure_guard_audit/ci-placement.log", detail)
 
 
@@ -178,9 +192,9 @@ def _baseline_exact() -> audit_lib.Check:
     return _check("196-BASELINE-exact", "Plan/196... § 6 DoD", "auto", status, "measure PR716 base with the PR716 merge guard and baseline", "build/plan-audit/structure_guard_audit/logs/196-BASELINE-exact.log", detail)
 
 
-def _baseline_history() -> audit_lib.Check:
+def _baseline_history(base_sha: str) -> audit_lib.Check:
     """Check for baseline ceilings raised or entries added after PR716."""
-    result = _run(["git", "log", "--format=%H %s", "--reverse", f"{PR716_MERGE}..origin/main", "--", BASELINE_REL], "196-BASELINE-history")
+    result = _run(["git", "log", "--format=%H %s", "--reverse", f"{PR716_MERGE}..{base_sha}", "--", BASELINE_REL], "196-BASELINE-history")
     changed = [line for line in str(result["output"]).splitlines() if line.strip()]
     status = "PASS" if result["exit_code"] == 0 and not changed else "FAIL"
     return _check("196-BASELINE-history", "Plan/196... § 6 baseline policy", "history", status, "git log -p origin/main -- Scripts/architecture/structure_guard_baseline.json", result["log"], f"post-PR716 baseline commits={changed or 'none'}")
@@ -318,7 +332,10 @@ def _plan194_check() -> audit_lib.Check:
 
 def _agents_check() -> audit_lib.Check:
     """Verify the local ceiling and baseline approval rule."""
-    text = (audit_lib.ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    path = audit_lib.ROOT / "AGENTS.md"
+    if not path.is_file():
+        return _check("196-AGENTS", "Plan/196... § 2 baseline update policy", "history", "MISSING", "read AGENTS.md", "build/plan-audit/structure_guard_audit/agents.log", "ignored AGENTS.md is missing")
+    text = path.read_text(encoding="utf-8")
     found = "do not raise or add structure-guard baseline ceilings or entries without explicit user approval" in text.lower()
     return _check("196-AGENTS", "Plan/196... § 2 baseline update policy", "auto", "PASS" if found else "FAIL", "read AGENTS.md", "build/plan-audit/structure_guard_audit/agents.log", f"approval wording found={found}")
 
@@ -331,7 +348,7 @@ def main() -> int:
     base_sha = audit_lib.resolve_revision()
     checks = [_plan_check(base_sha), _guard_main(), _ci_placement()]
     checks.extend(_red_runs(base_sha))
-    checks.extend([_baseline_exact(), _baseline_history(), _baseline_slack(base_sha)])
+    checks.extend([_baseline_exact(), _baseline_history(base_sha), _baseline_slack(base_sha)])
     checks.extend(_test_mutations())
     checks.extend([_plan194_check(), _agents_check()])
     after, after_sha = audit_lib.worktree_snapshot(exclude=("build/",))

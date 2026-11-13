@@ -198,6 +198,13 @@ class _RunCiTestsPart2:
         self.assertIn("UNITY_GATE_PASS", aggregate)
         self.assertIn("github.event.pull_request.head.repo.full_name", aggregate)
         self.assertNotIn("pull_request_target", workflow)
+        distro_scope = scope.split("^Packages/dev\\.unity2foxglove\\.", 1)[1]
+        self.assertIn("distro_compile=true", distro_scope)
+        self.assertIn("required=true", distro_scope)
+        self.assertLess(
+            aggregate.index('if [ "$DISTRO_REQUIRED" = "true" ]'),
+            aggregate.index('if [ "$UNITY_REQUIRED" != "true" ]'),
+        )
 
     def test_unity_scope_matches_import_sensitive_paths(self) -> None:
         """Unity import and project configuration changes must require the gate."""
@@ -221,6 +228,8 @@ class _RunCiTestsPart2:
             "Packages/dev.unity2foxglove.sdk/Foo.asmdef",
             "Packages/dev.unity2foxglove.sdk/Foo.asmref",
             "Packages/dev.unity2foxglove.sdk/Runtime/Foo.cs.meta",
+            "Packages/dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.humble.win64/Runtime/Foo.cs",
+            "Packages/dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.lyrical.win64/Runtime/Foo.cs",
         ):
             self.assertRegex(path, path_pattern, path)
         for path in ("README.md", "Scripts/release/run_ci.py", ".github/workflows/test.yml"):
@@ -319,11 +328,12 @@ printf '%s' "$required"
         self.assertLess(bootstrap.index("shell: cmd"), steps.index("shell: pwsh"))
 
     def test_unity_workflow_preserves_library_and_separates_manual_runs(self) -> None:
-        """Keep the Unity Library cache and prevent push runs from cancelling dispatch runs."""
+        """Clean Unity runner inputs and prevent push runs from cancelling dispatch runs."""
         workflow = UNITY_COMPILE_WORKFLOW_PATH.read_text(encoding="utf-8")
         compile_job = workflow.split("  unity_compile:\n", 1)[1].split("  unity_required:\n", 1)[0]
         self.assertIn("clean: false", compile_job)
-        self.assertIn("git clean -ffdx -e 'Unity2Foxglove/Library*/'", compile_job)
+        self.assertIn("git clean -ffdx -e 'Unity2Foxglove/Library/' -e 'Unity2Foxglove/Library-*/'", compile_job)
+        self.assertNotIn("Library*/'", compile_job)
         self.assertIn("--timeout-seconds 3600", compile_job)
         self.assertIn(
             "group: unity-compile-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}",
@@ -351,11 +361,13 @@ printf '%s' "$required"
         self.assertIn("distro: [humble, lyrical]", job)
         self.assertIn("workflow_dispatch", workflow)
         self.assertIn("inputs:", workflow)
+        self.assertIn("clean: false", job)
         self.assertIn("phase195-distro-swap-", job)
         self.assertIn("if: always()", job)
         self.assertIn("git status --porcelain", job)
         self.assertIn("Library(?:-[A-Za-z0-9._-]+)?", job)
-        self.assertIn("git clean -ffdx -e 'Unity2Foxglove/Library*/'", job)
+        self.assertIn("git clean -ffdx -e 'Unity2Foxglove/Library/' -e 'Unity2Foxglove/Library-*/'", job)
+        self.assertNotIn("Library*/'", job)
         self.assertIn("-e 'build/unity-batch-compile/'", job)
         self.assertIn(
             '("dev.unity2foxglove.ros2forunity.runtime.{0}.win64" -f $env:DISTRO)',
@@ -366,6 +378,13 @@ printf '%s' "$required"
             job,
         )
         self.assertNotIn("junction", job.lower())
+        aggregate = workflow.split("  unity_required:\n", 1)[1]
+        needs = aggregate.split("    if:", 1)[0]
+        self.assertIn("- unity-tests", needs)
+        self.assertIn("- unity_distro_compile", needs)
+        self.assertIn("TEST_RESULT:", aggregate)
+        self.assertIn("DISTRO_RESULT:", aggregate)
+        self.assertIn("DISTRO_REQUIRED:", aggregate)
 
     def test_phase186_live_workflow_preserves_library_and_bootstraps_powershell(self) -> None:
         """The live certification lane must reuse the Unity cache and resolve PowerShell 7."""

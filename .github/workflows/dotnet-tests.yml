@@ -332,7 +332,8 @@ jobs:
           )
           if [ "$trusted_revision" != "$trusted_minimum_revision" ] \
             && [ "$trusted_revision" != "69d645a31940054eccd776c17b175378f11d6dca" ] \
-            && [ "$trusted_revision" != "202be484368654e24e353059d052487b6fa31f3a" ]; then
+            && [ "$trusted_revision" != "202be484368654e24e353059d052487b6fa31f3a" ] \
+            && [ "$trusted_revision" != "6858beeda351b406ca804f9e4ad7f29a596f6d23" ]; then
             if [ "$actual_migration_checker_sha" != "$trusted_checker_sha" ]; then
               echo "Current checker differs from immutable base checker without a reviewed migration approval" >&2
               exit 1
@@ -386,6 +387,25 @@ jobs:
             "parser_changes_sha256": "c647094ec1573de6d2134a8aedf5a0ba0f8e1c499981aea780de7e384f7f8e9b",
             "scope": "versioned-parser-maintenance",
             "reason": "Reviewed exact parser maintenance to keep unresolved production helper candidates out of validation harness signatures in the Phase200 follow-up."
+          }
+          MIGRATION_APPROVAL
+            expected_migration_checker_sha=$(python3 -I -B -c 'import json,sys; print(json.load(open(sys.argv[1]))["checker_sha256"])' "$migration_approval_file")
+            if [ "$actual_migration_checker_sha" != "$expected_migration_checker_sha" ]; then
+              echo "Reviewed parser maintenance checker SHA-256 does not match: actual=$actual_migration_checker_sha expected=$expected_migration_checker_sha" >&2
+              exit 1
+            fi
+            migration_args=(--parser-migration-approval "$migration_approval_file")
+          elif [ "$trusted_revision" = "6858beeda351b406ca804f9e4ad7f29a596f6d23" ]; then
+            migration_approval_file="$RUNNER_TEMP/source-text-parser-maintenance-approval.json"
+            cat > "$migration_approval_file" <<'MIGRATION_APPROVAL'
+          {
+            "base_revision": "6858beeda351b406ca804f9e4ad7f29a596f6d23",
+            "checker_sha256": "c949f02872323c7054ade56cfd14c09c00d53e45abd9ce998900fcf811897909",
+            "base_inventory_sha256": "3174f489122ac9f7fcd65b9f09b52ce72711d2787857a1324f2d52242d52c146",
+            "current_inventory_sha256": "1dbc4e21f906154d89a14a89d2aa84e9021cc798af0c7c042f554b34346c975b",
+            "parser_changes_sha256": "2194f7ca297f88c6d78c0f983c73c4f4e082637a43e64e68ef16d1af6c2addf0",
+            "scope": "versioned-parser-maintenance",
+            "reason": "Reviewed exact parser maintenance for PR744 historical review closure; approved in the protected workflow on 2026-11-13."
           }
           MIGRATION_APPROVAL
             expected_migration_checker_sha=$(python3 -I -B -c 'import json,sys; print(json.load(open(sys.argv[1]))["checker_sha256"])' "$migration_approval_file")
