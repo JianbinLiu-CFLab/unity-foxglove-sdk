@@ -58,6 +58,29 @@ class DeferredIdentityConsumptionTests(unittest.TestCase):
             self._compatibility_errors(base, head),
         )
 
+    def test_deferred_consumer_false_comprehension_filter_skips_element(self) -> None:
+        """A constant-false comprehension filter prevents element evaluation."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import os\nlist([os.environ.setdefault('FLAG', '1') for _ in [1] if False])\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual([], self._compatibility_errors(base, head))
+
+    def test_deferred_consumer_false_conditional_branch_stays_deferred(self) -> None:
+        """A constant-false conditional does not propagate its unreachable generator."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import os\nvalues = (os.environ.setdefault('FLAG', '1') for _ in [1]) if False else ()\nlist(values)\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual([], self._compatibility_errors(base, head))
+
+    def test_deferred_consumer_update_drains_all_iterables(self) -> None:
+        """A multi-argument update consumes every iterable source."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import os\nitems = set()\nitems.update([], (os.environ.setdefault('FLAG', '1') for _ in [1]))\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual(["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"], self._compatibility_errors(base, head))
+
+    def test_deferred_consumer_short_circuit_visits_eager_iterable(self) -> None:
+        """Short-circuit analysis still observes side effects building the iterable."""
+        base, head = "def helper():\n    return 1\n__all__ = ['helper']\n", "import os\nall(x for x in [False, os.environ.setdefault('FLAG', '1')])\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual(["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"], self._compatibility_errors(base, head))
+
     def test_compatibility_rejects_consumed_generator_body(self) -> None:
         """A generator body executes when an import-time consumer drains it."""
         base = "def helper():\n    return 1\n__all__ = ['helper']\n"
