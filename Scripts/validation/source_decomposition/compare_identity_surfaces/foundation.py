@@ -252,7 +252,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
                 if consumer_kind == "callback":
                     consumed = self._callback_consumed_positions(node)
                 else:
-                    consumed = set(range(len(node.args))) if consumer_kind == "chain" else ({1} if consumer_kind == "reduce" else {0})
+                    consumed = set(range(len(node.args))) if consumer_kind in {"chain", "container_mutator"} else ({1} if consumer_kind == "reduce" else {0})
                 for index, argument in enumerate(node.args):
                     if index in consumed:
                         self._visit_consumable(argument)
@@ -310,8 +310,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
         def visit_Import(self, node: ast.Import) -> None:
             """Invalidate deferred bindings shadowed by imported modules."""
             for alias in node.names:
-                name = alias.asname or alias.name.split(".", 1)[0]
-                self._discard_name(name)
+                (name := alias.asname or alias.name.split(".", 1)[0], self._discard_name(name))
                 if alias.name in {"itertools", "functools", "collections"}: self.consumer_aliases[name] = f"__{alias.name}__"
         def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
             """Invalidate deferred bindings shadowed by imported names."""
@@ -429,6 +428,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
                 self.visit(generator.target)
                 self._discard_deferred(generator.target)
                 for condition in generator.ifs: self.visit(condition)
+                if any(isinstance(condition, ast.Constant) and not bool(condition.value) for condition in generator.ifs): return
             if isinstance(node, ast.DictComp):
                 self.visit(node.key)
                 self.visit(node.value)
@@ -532,7 +532,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
             if isinstance(node, ast.Call):
                 target = node.func if isinstance(node.func, ast.Lambda) else self._deferred_value(node.func)
                 if isinstance(target, ast.Lambda): return self._deferred_value(target.body)
-            if isinstance(node, ast.IfExp): return self._deferred_value(node.body) or self._deferred_value(node.orelse)
+            if isinstance(node, ast.IfExp): return self._deferred_value(node.body if isinstance(node.test, ast.Constant) and bool(node.test.value) else node.orelse) if isinstance(node.test, ast.Constant) else self._deferred_value(node.body) or self._deferred_value(node.orelse)
             if isinstance(node, ast.BoolOp): return next((value for value in (self._deferred_value(item) for item in node.values) if value is not None), None)
             if isinstance(node, ast.Subscript):
                 try: index = ast.literal_eval(node.slice)
