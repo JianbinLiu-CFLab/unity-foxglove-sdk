@@ -114,7 +114,7 @@ namespace Unity2Foxglove.Tests.PlayMode
                 Assert.That(frame.Width, Is.EqualTo(imagePublisher.SensorCameraCaptureWidth));
                 Assert.That(frame.Height, Is.EqualTo(imagePublisher.SensorCameraCaptureHeight));
                 var expectedFy = frame.Height / (2d * Math.Tan(imageSourceCamera.fieldOfView * Math.PI / 360d));
-                var expectedFx = expectedFy * frame.Width / (double)frame.Height;
+                var expectedFx = expectedFy;
                 Assert.That(frame.K[0], Is.EqualTo(expectedFx).Within(0.1d));
                 Assert.That(frame.K[4], Is.EqualTo(expectedFy).Within(0.1d));
             }

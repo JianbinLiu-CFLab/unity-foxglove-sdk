@@ -49,6 +49,14 @@ def parse_nunit_results(results_path: Path) -> tuple[str, list[str], dict[str, i
         }
     except (TypeError, ValueError) as exc:
         return "FAIL", [f"Unity result summary contains invalid counts: {exc}"], {}
+    if any(count < 0 for count in counts.values()):
+        return "FAIL", ["Unity result summary contains negative counts"], counts
+    observed = sum(counts[key] for key in ("passed", "failed", "inconclusive", "skipped"))
+    if observed != counts["total"]:
+        return "FAIL", [
+            "Unity result summary counts are inconsistent: "
+            f"total={counts['total']} observed={observed}"
+        ], counts
     no_passing_tests = counts["passed"] <= 0 or counts["total"] <= 0
     has_non_passing_tests = any(counts[key] > 0 for key in ("failed", "inconclusive", "skipped"))
     return (

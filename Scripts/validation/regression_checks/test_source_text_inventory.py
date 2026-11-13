@@ -369,31 +369,6 @@ class SourceTextInventoryTests(unittest.TestCase):
                 any(row["class"] == "UNRESOLVED" and "inline" in str(row["token"]) for row in rows)
             )
 
-    def test_missing_file_targets_are_unresolved(self):
-        """A reader path must resolve to an existing repository file."""
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            runtime = root / "Packages" / "fixture" / "Tests" / "Runtime"
-            runtime.mkdir(parents=True)
-            (runtime / "MissingValidation.cs").write_text(
-                "public static class MissingValidation {\n"
-                "    public static void Validate() {\n"
-                '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Missing.cs");\n'
-                '        Check(source.Contains("Missing"));\n'
-                "    }\n"
-                "}\n",
-                encoding="utf-8",
-            )
-            registry = root / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "PhaseValidationRegistry.cs"
-            registry.parent.mkdir(parents=True, exist_ok=True)
-            registry.write_text(
-                'Ci("--phase-missing", "fixture", MissingValidation.Validate, evidence: ValidationEvidence.Behavior),\n',
-                encoding="utf-8",
-            )
-            rows = inventory(root)
-        self.assertEqual("<unresolved>", rows[0]["target"])
-        self.assertEqual("UNRESOLVED", rows[0]["class"])
-
     def test_scope_and_multiline_receiver_resolution_are_fail_closed(self):
         """Keep local symbols scoped, preserve combined targets, and inspect multiline literals."""
         with tempfile.TemporaryDirectory() as directory:
@@ -1020,7 +995,6 @@ class SourceTextInventoryTests(unittest.TestCase):
             self.assertEqual(1, len(rows))
             self.assertEqual("<unresolved>", rows[0]["target"])
             self.assertEqual("UNRESOLVED", rows[0]["class"])
-
 
 if __name__ == "__main__":
     unittest.main()

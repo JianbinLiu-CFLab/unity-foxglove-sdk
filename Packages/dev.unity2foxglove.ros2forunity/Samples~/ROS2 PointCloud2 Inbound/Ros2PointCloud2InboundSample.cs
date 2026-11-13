@@ -66,25 +66,18 @@ public sealed class Ros2PointCloud2InboundSample : MonoBehaviour
 
     private void OnFrameReceived(PackedPointCloudFrame frame)
     {
-        try
-        {
-            _receivedFrames++;
-            _receivedPoints += frame.ValidCount;
-            if (TryCalculateBounds(frame, _maxBoundsPoints, out var bounds))
-                _latestBounds = bounds;
+        _receivedFrames++;
+        _receivedPoints += frame.ValidCount;
+        if (TryCalculateBounds(frame, _maxBoundsPoints, out var bounds))
+            _latestBounds = bounds;
 
-            var stats = _bridge.Stats;
-            _droppedFrames = stats.Dropped;
-            if (Time.unscaledTime >= _nextLogAt)
-            {
-                _nextLogAt = Time.unscaledTime + Mathf.Max(0.1f, _logIntervalSeconds);
-                _status = $"Received {_receivedFrames} frame(s), {_receivedPoints} point(s), drops {_droppedFrames}.";
-                Debug.Log("[Foxglove][PointCloud2InboundSample] " + _status, this);
-            }
-        }
-        finally
+        var stats = _bridge.Stats;
+        _droppedFrames = stats.Dropped;
+        if (Time.unscaledTime >= _nextLogAt)
         {
-            frame.Dispose();
+            _nextLogAt = Time.unscaledTime + Mathf.Max(0.1f, _logIntervalSeconds);
+            _status = $"Received {_receivedFrames} frame(s), {_receivedPoints} point(s), drops {_droppedFrames}.";
+            Debug.Log("[Foxglove][PointCloud2InboundSample] " + _status, this);
         }
     }
 #endif

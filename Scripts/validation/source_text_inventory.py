@@ -387,7 +387,6 @@ class _ExternalHelperIndex:
         self.signature_cache[key] = result
         return result
 
-
 def _unresolved_reason(
     call: dict[str, object],
     target: str,
@@ -420,7 +419,6 @@ def _unresolved_reason(
     if READER_CALL_PATTERN.search(call_text):
         return "dynamic_path"
     return "unsupported_reader"
-
 
 def scan_file(
     path: Path,
@@ -645,7 +643,6 @@ def scan_file(
         )
     return rows
 
-
 def _external_dependency_expression(
     text: str, masked: str, call: dict[str, object], method, methods: list[object], checked: str,
     harness, harness_calls: list[dict[str, object]], definitions: dict[int, list[tuple[int, str, str, str]]],
@@ -681,7 +678,6 @@ def _external_dependency_expression(
             start = method.body_start + qualifier.start()
         expressions.append(text[start : int(consumer["end"])])
     return "\n".join(expressions)
-
 
 def _predicate_consumer_signature(
     text: str,
