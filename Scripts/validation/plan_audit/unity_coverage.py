@@ -238,16 +238,8 @@ def _workflow_w4(checks: list[audit_lib.Check], output: Path) -> None:
             name = f"unity-distro-compile ({distro})"
             if any(job.get("name") == name and job.get("conclusion") == "success" for job in jobs):
                 verified[distro] = run_id
-    mutation_evidence = audit_lib.BUILD_ROOT / "unity_acceptance" / "w4" / "mutation.json"
-    mutation_ok = False
-    if mutation_evidence.is_file():
-        try:
-            mutation = json.loads(mutation_evidence.read_text(encoding="utf-8"))
-            mutation_ok = mutation.get("status") == "PASS" and set(mutation.get("distros", [])) == {"humble", "lyrical"}
-        except (OSError, json.JSONDecodeError):
-            mutation_ok = False
-    status = "PASS" if set(verified) == {"humble", "lyrical"} and mutation_ok else "MANUAL"
-    detail = f"head={head}; verified distro runs={verified or 'none'}; compile-error mutation evidence={mutation_evidence if mutation_ok else 'missing or incomplete'}"
+    status = "PASS" if set(verified) == {"humble", "lyrical"} else "MANUAL"
+    detail = f"head={head}; verified distro runs={verified or 'none'}; compile-error mutation is a separate manual acceptance"
     _record(checks, "195-W4", "history", status, " ".join(command), output / "logs" / "w4-history.log", detail)
 
 

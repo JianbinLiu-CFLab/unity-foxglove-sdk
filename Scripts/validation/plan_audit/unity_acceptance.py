@@ -137,10 +137,9 @@ def main() -> int:
     trusted = _trusted_source_check(base_sha)
     (OUTPUT / "trusted-source.log").write_text(trusted.detail + "\n", encoding="utf-8")
     checks.append(trusted)
-    if trusted.status == "PASS":
-        checks.extend(bridge_history.bridge_checks(OUTPUT))
-        checks.extend(unity_lane.lane_checks(OUTPUT))
-        checks.extend(unity_coverage.coverage_checks(OUTPUT))
+    checks.extend(bridge_history.bridge_checks(OUTPUT))
+    checks.extend(unity_lane.lane_checks(OUTPUT))
+    checks.extend(unity_coverage.coverage_checks(OUTPUT))
     checks.append(_dod_check(checks))
     after, after_sha = audit_lib.worktree_snapshot(exclude=("build/",))
     (OUTPUT / "state-after.txt").write_text(after, encoding="utf-8")

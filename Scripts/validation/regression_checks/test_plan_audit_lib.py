@@ -212,6 +212,29 @@ class PlanAuditLibraryTests(unittest.TestCase):
     def test_w4_workflow_accepts_escaped_package_paths(self) -> None:
         """W4 recognizes the escaped package path used by the shell workflow."""
         with tempfile.TemporaryDirectory(dir=audit_lib.BUILD_ROOT) as temp:
+            build_root = Path(temp) / "build"
+
+            def fake_audit_run(command, log_path, timeout, cwd=audit_lib.ROOT):
+                """Return successful current-head workflow and distro evidence."""
+                del timeout, cwd
+                log_path.parent.mkdir(parents=True, exist_ok=True)
+                if command[1:3] == ["run", "list"]:
+                    return {
+                        "exit_code": 0,
+                        "output": '[{"databaseId":123,"headSha":"head","conclusion":"success"}]',
+                    }
+                return {
+                    "exit_code": 0,
+                    "output": json.dumps(
+                        {
+                            "jobs": [
+                                {"name": "unity-distro-compile (humble)", "conclusion": "success"},
+                                {"name": "unity-distro-compile (lyrical)", "conclusion": "success"},
+                            ]
+                        }
+                    ),
+                }
+
             with mock.patch.object(
                 unity_coverage.subprocess,
                 "run",
@@ -219,12 +242,38 @@ class PlanAuditLibraryTests(unittest.TestCase):
             ), mock.patch.object(
                 unity_coverage.audit_lib,
                 "run",
-                return_value={"exit_code": 0, "output": "[]"},
+                side_effect=fake_audit_run,
+            ), mock.patch.object(
+                unity_coverage.audit_lib,
+                "BUILD_ROOT",
+                build_root,
             ):
                 checks: list[audit_lib.Check] = []
                 unity_coverage._workflow_w4(checks, Path(temp))
             self.assertEqual("195-W4", checks[0].id)
-            self.assertNotEqual("MISSING", checks[0].status)
+            self.assertEqual("PASS", checks[0].status)
+
+    def test_acceptance_audit_runs_checks_when_trusted_source_changes(self) -> None:
+        """A trusted-source mismatch must not silently skip the remaining audit checks."""
+        with tempfile.TemporaryDirectory(dir=audit_lib.BUILD_ROOT) as temp:
+            trusted = audit_lib.Check("195-AUDIT-trust", "Plan", "security", "FAIL", "true", "build/trust", "changed")
+            with mock.patch.object(unity_acceptance, "OUTPUT", Path(temp) / "output"), mock.patch.object(
+                unity_acceptance, "_plan_check", return_value=audit_lib.Check("195-PLAN", "Plan", "history", "PASS", "true", "build/plan", "ok")
+            ), mock.patch.object(unity_acceptance, "_trusted_source_check", return_value=trusted), mock.patch.object(
+                unity_acceptance.audit_lib, "worktree_snapshot", return_value=("", "sha")
+            ), mock.patch.object(unity_acceptance.audit_lib, "resolve_revision", return_value="base"), mock.patch.object(
+                unity_acceptance.bridge_history, "bridge_checks", return_value=[]
+            ) as bridge, mock.patch.object(
+                unity_acceptance.unity_lane, "lane_checks", return_value=[]
+            ) as lane, mock.patch.object(
+                unity_acceptance.unity_coverage, "coverage_checks", return_value=[]
+            ) as coverage, mock.patch.object(unity_acceptance.audit_lib, "write_verdict"), mock.patch.object(
+                unity_acceptance, "_write_manual"
+            ):
+                self.assertEqual(1, unity_acceptance.main())
+            bridge.assert_called_once()
+            lane.assert_called_once()
+            coverage.assert_called_once()
 
     def test_local100_does_not_trust_cached_summary(self) -> None:
         """A cached 100-run summary never bypasses a fresh acceptance loop."""

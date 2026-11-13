@@ -72,6 +72,7 @@ jobs:
 
           if printf '%s\n' "$changed" | grep -E '^Packages/dev\.unity2foxglove\.(ros2forunity\.runtime|foxrun\.ros2\.interfaces\.typesupport)\.(humble|lyrical)\.win64/' >/dev/null; then
             distro_compile=true
+            required=true
           fi
 
           printf 'Changed paths:\n%s\n' "$changed"
@@ -462,6 +463,10 @@ jobs:
             echo "::error::Unity scope detection failed; refusing to bypass the required gate."
             exit 1
           fi
+          if [ "$DISTRO_REQUIRED" = "true" ] && [ "$DISTRO_RESULT" != "success" ]; then
+            echo "::error::unity-distro-compile result: $DISTRO_RESULT"
+            exit 1
+          fi
           if [ "$UNITY_REQUIRED" != "true" ]; then
             echo "UNITY_GATE_NOT_REQUIRED"
             exit 0
@@ -482,10 +487,6 @@ jobs:
           fi
           if [ "$TEST_RESULT" != "success" ]; then
             echo "::error::unity-tests result: $TEST_RESULT"
-            exit 1
-          fi
-          if [ "$DISTRO_REQUIRED" = "true" ] && [ "$DISTRO_RESULT" != "success" ]; then
-            echo "::error::unity-distro-compile result: $DISTRO_RESULT"
             exit 1
           fi
           echo "UNITY_GATE_PASS"

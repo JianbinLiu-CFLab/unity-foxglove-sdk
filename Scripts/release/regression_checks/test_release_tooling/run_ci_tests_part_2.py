@@ -198,6 +198,13 @@ class _RunCiTestsPart2:
         self.assertIn("UNITY_GATE_PASS", aggregate)
         self.assertIn("github.event.pull_request.head.repo.full_name", aggregate)
         self.assertNotIn("pull_request_target", workflow)
+        distro_scope = scope.split("^Packages/dev\\.unity2foxglove\\.", 1)[1]
+        self.assertIn("distro_compile=true", distro_scope)
+        self.assertIn("required=true", distro_scope)
+        self.assertLess(
+            aggregate.index('if [ "$DISTRO_REQUIRED" = "true" ]'),
+            aggregate.index('if [ "$UNITY_REQUIRED" != "true" ]'),
+        )
 
     def test_unity_scope_matches_import_sensitive_paths(self) -> None:
         """Unity import and project configuration changes must require the gate."""
