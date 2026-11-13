@@ -900,6 +900,8 @@ class IdentityGateHardeningTests(unittest.TestCase):
         base = "def helper():\n    return 1\n__all__ = ['helper']\n"
         head = "import os\nfirst, os.environ['FLAG'] = [1, 2]\ndef helper():\n    return 1\n__all__ = ['helper']\n"
         self.assertEqual(["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"], self._compatibility_errors(base, head))
+        read_only = "import os\na[os.environ['FLAG']] = 1\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual([], self._compatibility_errors(base, read_only))
 
     def test_deferred_consumer_next_visits_default_argument(self) -> None:
         """next evaluates its default argument even when the iterator is empty."""
@@ -959,6 +961,8 @@ class IdentityGateHardeningTests(unittest.TestCase):
         base = "def helper():\n    return 1\n__all__ = ['helper']\n"
         head = "import os\nvalues = [(os.environ.setdefault('FLAG', '1') for _ in [1])]\nlist(values)\ndef helper():\n    return 1\n__all__ = ['helper']\n"
         self.assertEqual([], self._compatibility_errors(base, head))
+        loop_head = "import os\nvalues = [(os.environ.setdefault('FLAG', '1') for _ in [1])]\nfor value in values:\n    list(value)\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual(["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"], self._compatibility_errors(base, loop_head))
 
     def test_deferred_consumer_direct_chain_from_iterable_executes(self) -> None:
         """A directly imported chain.from_iterable consumes nested iterables."""
