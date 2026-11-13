@@ -302,6 +302,89 @@ class IdentityGateHardeningTests(unittest.TestCase):
         )
         self.assertEqual([], self._compatibility_errors(base, head))
 
+    def test_compatibility_allows_callback_in_ordinary_iterator_factory(self) -> None:
+        """Consuming an ordinary factory result does not execute its callback arguments."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = (
+            "import os\n"
+            "def make_iter(callback):\n"
+            "    return [1]\n"
+            "for item in make_iter(lambda: os.environ.setdefault('FLAG', '1')):\n"
+            "    pass\n"
+            "def helper():\n    return 1\n__all__ = ['helper']\n"
+        )
+        self.assertEqual([], self._compatibility_errors(base, head))
+
+    def test_compatibility_rejects_next_consumption(self) -> None:
+        """Calling next on a tracked generator executes its body during import."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = (
+            "import os\n"
+            "values = (os.environ.setdefault('FLAG', '1') for _ in [1])\n"
+            "next(values)\n"
+            "def helper():\n    return 1\n__all__ = ['helper']\n"
+        )
+        self.assertEqual(
+            ["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"],
+            self._compatibility_errors(base, head),
+        )
+
+    def test_compatibility_rejects_comprehension_consumption(self) -> None:
+        """Comprehensions consume tracked generators and execute their bodies."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = (
+            "import os\n"
+            "values = (os.environ.setdefault('FLAG', '1') for _ in [1])\n"
+            "items = [value for value in values]\n"
+            "def helper():\n    return 1\n__all__ = ['helper']\n"
+        )
+        self.assertEqual(
+            ["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"],
+            self._compatibility_errors(base, head),
+        )
+
+    def test_compatibility_rejects_consumer_alias(self) -> None:
+        """A simple alias to list still consumes a tracked generator."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = (
+            "import os\n"
+            "collect = list\n"
+            "values = (os.environ.setdefault('FLAG', '1') for _ in [1])\n"
+            "collect(values)\n"
+            "def helper():\n    return 1\n__all__ = ['helper']\n"
+        )
+        self.assertEqual(
+            ["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"],
+            self._compatibility_errors(base, head),
+        )
+
+    def test_compatibility_allows_function_rebinding_over_old_lambda(self) -> None:
+        """A later function definition replaces an earlier deferred lambda binding."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = (
+            "import os\n"
+            "f = lambda: os.environ.setdefault('FLAG', '1')\n"
+            "def f():\n"
+            "    return 1\n"
+            "f()\n"
+            "def helper():\n    return 1\n__all__ = ['helper']\n"
+        )
+        self.assertEqual([], self._compatibility_errors(base, head))
+
+    def test_compatibility_rejects_saved_map_consumption(self) -> None:
+        """A saved map iterator executes its lambda when consumed later."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = (
+            "import os\n"
+            "mapped = map(lambda _: os.environ.setdefault('FLAG', '1'), [1])\n"
+            "list(mapped)\n"
+            "def helper():\n    return 1\n__all__ = ['helper']\n"
+        )
+        self.assertEqual(
+            ["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"],
+            self._compatibility_errors(base, head),
+        )
+
     def test_compatibility_allows_postponed_annotation_environment_expression(self) -> None:
         """Future annotations preserve deferred annotation evaluation semantics."""
         base = "def helper(value):\n    return value\n__all__ = ['helper']\n"
