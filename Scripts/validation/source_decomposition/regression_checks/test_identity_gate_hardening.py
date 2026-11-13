@@ -811,6 +811,36 @@ class IdentityGateHardeningTests(unittest.TestCase):
                 )
                 self.assertEqual(0, result.returncode, result.stderr)
 
+    def test_deferred_consumer_loop_target_checks_environment_writes(self) -> None:
+        """A loop target assignment can mutate the environment during import."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import os\nfor os.environ['FLAG'] in [1]:\n    pass\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual(["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"], self._compatibility_errors(base, head))
+
+    def test_deferred_consumer_dict_fromkeys(self) -> None:
+        """dict.fromkeys eagerly consumes its iterable argument."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import os\nvalues = (os.environ.setdefault('FLAG', '1') for _ in [1])\ndict.fromkeys(values)\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual(["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"], self._compatibility_errors(base, head))
+
+    def test_deferred_consumer_ignores_uncalled_nested_callback(self) -> None:
+        """An uncalled nested helper does not make its outer function eager."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import os\ndef outer(callback):\n    def inner():\n        return callback()\n    return 1\nouter(lambda: os.environ.setdefault('FLAG', '1'))\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual([], self._compatibility_errors(base, head))
+
+    def test_deferred_consumer_string_alias_join(self) -> None:
+        """A string separator alias still consumes the generator passed to join."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import os\nseparator = ','\nvalues = (os.environ.setdefault('FLAG', '1') for _ in [1])\nseparator.join(values)\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual(["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"], self._compatibility_errors(base, head))
+
+    def test_deferred_consumer_chain_from_iterable(self) -> None:
+        """chain.from_iterable consumes each nested iterable."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import itertools\nimport os\nvalues = (os.environ.setdefault('FLAG', '1') for _ in [1])\nlist(itertools.chain.from_iterable([values]))\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual(["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"], self._compatibility_errors(base, head))
+
 
 if __name__ == "__main__":
     raise SystemExit(unittest.main(module=__name__))
