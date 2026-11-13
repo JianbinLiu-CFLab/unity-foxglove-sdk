@@ -250,6 +250,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
             self.deferred_bindings: dict[str, ast.AST] = {}
             self.consumer_aliases: dict[str, str] = {}
             self.producer_aliases: set[str] = set(deferred_producers)
+            self.eager_callbacks: set[str] = set()
         def _check_targets(self, targets: list[ast.AST]) -> None:
             """Check assignment targets for direct environment mutation."""
             if any(
@@ -286,8 +287,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
                 self._bind_deferred(node.target, node.value)
             else:
                 self._discard_deferred(node.target)
-            if node.annotation is not None and not future_annotations:
-                self.visit(node.annotation)
+            if node.annotation is not None and not future_annotations: self.visit(node.annotation)
         def visit_Delete(self, node: ast.Delete) -> None:
             """Visit deleted environment targets."""
             self._check_targets(node.targets)
@@ -317,7 +317,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
                 for argument in (*node.args, *(keyword.value for keyword in node.keywords)): self._visit_consumable(argument)
             elif consumer_kind is not None:
                 if consumer_kind == "reduce" and node.args: self._visit_deferred(node.args[0])
-                consumed = set(range(len(node.args))) if consumer_kind == "chain" else ({1} if consumer_kind == "reduce" else {0})
+                consumed = set(range(len(node.args))) if consumer_kind in {"chain", "callback"} else ({1} if consumer_kind == "reduce" else {0})
                 for index, argument in enumerate(node.args):
                     if index in consumed:
                         self._visit_consumable(argument)
@@ -447,10 +447,8 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
             for handler in node.handlers:
                 self._restore_state(baseline)
                 self._merge_states(baseline, normal_state)
-                if handler.type is not None:
-                    self.visit(handler.type)
-                if handler.name is not None:
-                    self._discard_name(handler.name)
+                if handler.type is not None: self.visit(handler.type)
+                if handler.name is not None: self._discard_name(handler.name)
                 for statement in handler.body:
                     self.visit(statement)
                 paths.append(self._state())
@@ -596,6 +594,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
                 return None
             if not isinstance(node, ast.Name):
                 return None
+            if node.id in self.eager_callbacks: return "callback"
             return (self.consumer_aliases[node.id] or None) if node.id in self.consumer_aliases else (node.id if node.id in deferred_consumers else None)
         def _is_producer(self, node: ast.AST) -> bool:
             """Return whether a call creates a lazy iterator with deferred callbacks."""
@@ -681,6 +680,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
     ) -> None:
         """Collect signatures while tracking the enclosing definition scope."""
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if any(isinstance(call.func, ast.Name) and any(call.func.id == argument.arg for argument in ast.walk(node.args) if isinstance(argument, ast.arg)) for call in ast.walk(node) if isinstance(call, ast.Call)): environment_visitor.eager_callbacks.add(node.name)
             for decorator in node.decorator_list:
                 record_import_time_environment(
                     decorator, scope, in_function, execute_deferred=True
