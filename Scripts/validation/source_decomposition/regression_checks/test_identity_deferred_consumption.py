@@ -457,6 +457,22 @@ class DeferredIdentityConsumptionTests(unittest.TestCase):
         )
         self.assertEqual([], self._compatibility_errors(base, head))
 
+    def test_compatibility_rejects_conditional_consumer_shadowing(self) -> None:
+        """A conditional shadow must retain the builtin consumer path conservatively."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = (
+            "import os\n"
+            "if flag:\n"
+            "    list = lambda value: value\n"
+            "values = (os.environ.setdefault('FLAG', '1') for _ in [1])\n"
+            "list(values)\n"
+            "def helper():\n    return 1\n__all__ = ['helper']\n"
+        )
+        self.assertEqual(
+            ["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"],
+            self._compatibility_errors(base, head),
+        )
+
     def test_compatibility_rejects_starred_generator_consumption(self) -> None:
         """A starred tuple passed to list still exposes its deferred generator."""
         base = "def helper():\n    return 1\n__all__ = ['helper']\n"
