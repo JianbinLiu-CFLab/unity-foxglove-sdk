@@ -1,22 +1,6 @@
 """Compare split Python identity surfaces between two Git revisions."""
 from __future__ import annotations
-_REVIEWED_IDENTITY_TOOLING_SECTIONS = frozenset(
-    {
-        "aggregate",
-        "foundation",
-        "surface_rows_tests",
-        "split_surface_tests",
-        "split_contract_tests",
-        "compatibility_surface_tests",
-        "compatibility_initializer_tests",
-        "loader_isolation_tests",
-        "loader_entrypoint_tests",
-        "loader_mutation_tests",
-        "namespace_risk_tests",
-        "namespace_execution_core_tests",
-        "namespace_execution_edges_tests",
-    }
-)
+_REVIEWED_IDENTITY_TOOLING_SECTIONS = frozenset({"aggregate", "foundation", "surface_rows_tests", "split_surface_tests", "split_contract_tests", "compatibility_surface_tests", "compatibility_initializer_tests", "loader_isolation_tests", "loader_entrypoint_tests", "loader_mutation_tests", "namespace_risk_tests", "namespace_execution_core_tests", "namespace_execution_edges_tests"})
 def _reviewed_identity_tooling_test_split(relative: str, sections: tuple[Path, ...]) -> bool:
     """Recognize only the exact reviewed identity-tooling decomposition."""
     return (
@@ -25,38 +9,19 @@ def _reviewed_identity_tooling_test_split(relative: str, sections: tuple[Path, .
         and {section.stem for section in sections} == _REVIEWED_IDENTITY_TOOLING_SECTIONS
         and len(sections) == len(_REVIEWED_IDENTITY_TOOLING_SECTIONS)
     )
-import argparse
-import ast
-import copy
-import hashlib
-import importlib
-import importlib.util
-import json
-import keyword
-import re
+import argparse, ast, copy, hashlib, importlib, importlib.util, json, keyword, re
 from contextlib import contextmanager
 from functools import lru_cache
 from pathlib import Path
-import subprocess
-import tarfile
-import tempfile
+import subprocess, tarfile, tempfile
 from typing import Iterator, Mapping
 REPOSITORY_ROOT = Path(__file__).resolve().parents[4]
-try:
-    _TRY_TYPES = (ast.Try, ast.TryStar)
-except AttributeError:
-    _TRY_TYPES = (ast.Try,)
-try:
-    _TYPE_ALIAS_TYPE = ast.TypeAlias
-except AttributeError:
-    _TYPE_ALIAS_TYPE = None
+_TRY_TYPES = (ast.Try, ast.TryStar) if hasattr(ast, "TryStar") else (ast.Try,)
+_TYPE_ALIAS_TYPE = getattr(ast, "TypeAlias", None)
 _SECTION_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
-SPLIT_ROOTS = (Path("Scripts"),)
-_LEGACY_SOURCE_DECOMPOSITION_PREFIX = "Scripts/phase192/"
+SPLIT_ROOTS, _LEGACY_SOURCE_DECOMPOSITION_PREFIX = (Path("Scripts"),), "Scripts/phase192/"
 SOURCE_DECOMPOSITION_PREFIX = "Scripts/validation/source_decomposition/"
-IDENTITY_WAIVER_PATH = Path(
-    SOURCE_DECOMPOSITION_PREFIX + "identity_waivers.json"
-)
+IDENTITY_WAIVER_PATH = Path(SOURCE_DECOMPOSITION_PREFIX + "identity_waivers.json")
 def _legacy_relative_path(relative: str) -> str | None:
     """Return the pre-validation path for a migrated source-decomposition file."""
     if relative.startswith(SOURCE_DECOMPOSITION_PREFIX):
@@ -251,7 +216,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
             self.consumer_aliases: dict[str, str] = {}
             self.producer_aliases: set[str] = set(deferred_producers)
             self.eager_callbacks: set[str] = set()
-            self.eager_callback_defaults: dict[str, tuple[ast.AST, ...]] = {}
+            self.eager_callback_specs: dict[str, tuple[ast.arguments, tuple[str, ...]]] = {}
         def _check_targets(self, targets: list[ast.AST]) -> None:
             """Check assignment targets for direct environment mutation."""
             if any(
@@ -317,16 +282,23 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
                     for element in nested: self._visit_consumable(element)
                     return
                 if consumer_kind == "callback" and isinstance(node.func, ast.Name):
-                    for default in self.eager_callback_defaults.get(node.func.id, ()): self._visit_deferred(default)
+                    self._visit_callback_defaults(node)
                 if consumer_kind == "reduce" and node.args: self._visit_deferred(node.args[0])
-                consumed = set(range(len(node.args))) if consumer_kind in {"chain", "callback"} else ({1} if consumer_kind == "reduce" else {0})
+                if consumer_kind == "callback":
+                    consumed = self._callback_consumed_positions(node)
+                else:
+                    consumed = set(range(len(node.args))) if consumer_kind == "chain" else ({1} if consumer_kind == "reduce" else {0})
                 for index, argument in enumerate(node.args):
                     if index in consumed:
                         self._visit_consumable(argument)
                     else:
                         self.visit(argument)
                 for keyword in node.keywords:
-                    if keyword.arg == "key" and consumer_kind in {"max", "min", "sorted"}:
+                    if keyword.arg == "key" and consumer_kind in {"max", "min", "sorted"} and not (
+                        node.args and isinstance(node.args[0], (ast.List, ast.Tuple, ast.Set)) and not node.args[0].elts
+                    ):
+                        self._visit_consumable(keyword.value)
+                    elif consumer_kind == "callback" and isinstance(node.func, ast.Name) and self._callback_parameter_is_eager(node.func.id, keyword.arg):
                         self._visit_consumable(keyword.value)
                     else:
                         self.visit(keyword.value)
@@ -528,7 +500,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
             elif isinstance(target, (ast.Tuple, ast.List)):
                 for child in target.elts: self._discard_deferred(child)
             else: self.consumer_aliases.pop(self._target_key(target), None)
-        def _discard_name(self, name: str) -> None:
+        def _discard_name(self, name: str, *, clear_eager: bool = True) -> None:
             """Forget all deferred semantics for one rebound name."""
             self.deferred_bindings.pop(f"name:{name}", None)
             needle = f"Name(id='{name}', ctx=Load())"
@@ -540,6 +512,9 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
             else:
                 self.consumer_aliases.pop(name, None)
             self.producer_aliases.discard(name)
+            if clear_eager:
+                self.eager_callbacks.discard(name)
+                self.eager_callback_specs.pop(name, None)
         def _state(self) -> tuple[dict[str, ast.AST], dict[str, str], set[str]]:
             """Snapshot deferred bindings and aliases for a control-flow path."""
             return dict(self.deferred_bindings), dict(self.consumer_aliases), set(self.producer_aliases)
@@ -593,6 +568,31 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
                 return None
             if node.id in self.eager_callbacks: return "callback"
             return (self.consumer_aliases[node.id] or None) if node.id in self.consumer_aliases else (node.id if node.id in deferred_consumers else None)
+        def _callback_parameter_is_eager(self, name: str, parameter: str | None) -> bool:
+            """Return whether a callback consumer invokes the named parameter."""
+            spec = self.eager_callback_specs.get(name)
+            return parameter is not None and (spec is None or parameter in spec[1])
+        def _callback_consumed_positions(self, node: ast.Call) -> set[int]:
+            """Return positional arguments consumed as eager callback parameters."""
+            spec = self.eager_callback_specs.get(node.func.id) if isinstance(node.func, ast.Name) else None
+            if spec is None:
+                return set(range(len(node.args)))
+            arguments, eager = spec
+            positional = (*getattr(arguments, "posonlyargs", ()), *arguments.args)
+            return {index for index, parameter in enumerate(positional[:len(node.args)]) if parameter.arg in eager}
+        def _visit_callback_defaults(self, node: ast.Call) -> None:
+            """Execute only omitted defaults for eager callback parameters."""
+            spec = self.eager_callback_specs.get(node.func.id) if isinstance(node.func, ast.Name) else None
+            if spec is None:
+                return
+            arguments, eager = spec
+            positional = (*getattr(arguments, "posonlyargs", ()), *arguments.args)
+            names, provided = tuple(parameter.arg for parameter in positional), set(parameter.arg for parameter in positional[:len(node.args)])
+            provided.update(keyword.arg for keyword in node.keywords if keyword.arg)
+            defaults = tuple(zip(names[len(positional) - len(arguments.defaults):], arguments.defaults)) + tuple((parameter.arg, default) for parameter, default in zip(arguments.kwonlyargs, arguments.kw_defaults) if default is not None)
+            for name, default in defaults:
+                if name in eager and name not in provided:
+                    self._visit_deferred(default)
         def _is_producer(self, node: ast.AST) -> bool:
             """Return whether a call creates a lazy iterator with deferred callbacks."""
             return isinstance(node, ast.Call) and ((isinstance(node.func, ast.Name) and node.func.id in self.producer_aliases) or (isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name) and self.consumer_aliases.get(node.func.value.id) == "__itertools__" and node.func.attr in {"filterfalse", "takewhile", "dropwhile", "groupby", "starmap"}))
@@ -638,10 +638,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
             self.executing_deferred = target
             self.visit(target)
             self.executing_deferred = previous
-    EnvironmentWriteVisitor.visit_AsyncFunctionDef = EnvironmentWriteVisitor.visit_FunctionDef
-    EnvironmentWriteVisitor.visit_AsyncFor = EnvironmentWriteVisitor.visit_For
-    EnvironmentWriteVisitor.visit_SetComp = EnvironmentWriteVisitor.visit_ListComp
-    EnvironmentWriteVisitor.visit_DictComp = EnvironmentWriteVisitor.visit_ListComp
+    for alias, method in (("visit_AsyncFunctionDef", EnvironmentWriteVisitor.visit_FunctionDef), ("visit_AsyncFor", EnvironmentWriteVisitor.visit_For), ("visit_SetComp", EnvironmentWriteVisitor.visit_ListComp), ("visit_DictComp", EnvironmentWriteVisitor.visit_ListComp)): setattr(EnvironmentWriteVisitor, alias, method)
     environment_visitor = EnvironmentWriteVisitor()
     def writes_environment(statement: ast.AST, *, execute_deferred: bool = False) -> bool:
         """Return whether one import-time statement writes the process environment."""
@@ -680,13 +677,16 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
             parameters = {argument.arg for argument in ast.walk(node.args) if isinstance(argument, ast.arg)}
             nested_ranges = {(child.lineno, child.end_lineno) for child in ast.walk(node) if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)) and child is not node}
             calls = [call for call in ast.walk(node) if isinstance(call, ast.Call) and not any(start <= getattr(call, "lineno", 0) <= end for start, end in nested_ranges)]
-            environment_visitor.eager_callback_defaults[node.name] = tuple(expression for expression in (*node.args.defaults, *node.args.kw_defaults) if expression is not None)
-            if any(isinstance(call.func, ast.Name) and call.func.id in parameters for call in calls) or any(isinstance(call.func, ast.Name) and call.func.id in deferred_consumers and any(isinstance(argument, ast.Name) and argument.id in parameters for argument in call.args) for call in calls): environment_visitor.eager_callbacks.add(node.name)
+            callback_parameters = {call.func.id for call in calls if isinstance(call.func, ast.Name) and call.func.id in parameters}
+            callback_parameters.update(argument.id for call in calls if isinstance(call.func, ast.Name) and call.func.id in deferred_consumers for argument in call.args if isinstance(argument, ast.Name) and argument.id in parameters)
             for decorator in node.decorator_list:
                 record_import_time_environment(
                     decorator, scope, in_function, execute_deferred=True
                 )
                 visit(decorator, scope, in_function)
+            environment_visitor._discard_name(node.name)
+            environment_visitor.eager_callback_specs[node.name] = (node.args, tuple(callback_parameters))
+            if callback_parameters: environment_visitor.eager_callbacks.add(node.name)
             arguments = node.args
             definition_expressions = [
                 expression
@@ -715,7 +715,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
             function_scope = scope + (node.name,)
             for statement in node.body:
                 visit(statement, function_scope, True)
-            environment_visitor._discard_name(node.name)
+            environment_visitor._discard_name(node.name, clear_eager=False)
             return
         if isinstance(node, ast.Lambda):
             for expression in (*node.args.defaults, *node.args.kw_defaults):
