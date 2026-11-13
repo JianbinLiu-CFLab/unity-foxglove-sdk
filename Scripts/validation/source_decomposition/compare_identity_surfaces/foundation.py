@@ -369,9 +369,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
                 if node.module == "itertools" and alias.name in {"filterfalse", "takewhile", "dropwhile", "groupby", "starmap"}: self.producer_aliases.add(name)
         def visit_Lambda(self, node: ast.Lambda) -> None:
             """Visit lambda defaults and execute its body only when called."""
-            for expression in (*node.args.defaults, *node.args.kw_defaults):
-                if expression is not None:
-                    self.visit(expression)
+            for expression in (*node.args.defaults, *node.args.kw_defaults): self.visit(expression) if expression is not None else None
             if self.executing_deferred is node:
                 self.visit(node.body)
         def visit_ClassDef(self, node: ast.ClassDef) -> None:
@@ -484,8 +482,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
                 self._check_targets([generator.target])
                 self.visit(generator.target)
                 self._discard_deferred(generator.target)
-                for condition in generator.ifs:
-                    self.visit(condition)
+                for condition in generator.ifs: self.visit(condition)
             if isinstance(node, ast.DictComp):
                 self.visit(node.key)
                 self.visit(node.value)
@@ -508,13 +505,14 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
             """Track simple names bound to deferred expressions for later consumers."""
             if isinstance(target, (ast.Name, ast.Attribute, ast.Subscript)):
                 is_name = isinstance(target, ast.Name)
-                consumer_kind = self._consumer_kind(value) if is_name else None
+                consumer_kind = self._consumer_kind(value)
                 producer_value = self._is_producer(value) or (isinstance(value, ast.Name) and value.id in self.producer_aliases) or (isinstance(value, ast.Attribute) and isinstance(value.value, ast.Name) and self.consumer_aliases.get(value.value.id) == "__itertools__" and value.attr in {"filterfalse", "takewhile", "dropwhile", "groupby", "starmap"})
                 if is_name:
                     self._discard_name(target.id)
                     if isinstance(value, ast.Name):
                         needle = f"Name(id='{value.id}', ctx=Load())"
                         self.deferred_bindings.update({key.replace(needle, f"Name(id='{target.id}', ctx=Load())"): deferred for key, deferred in self.deferred_bindings.items() if key.startswith("target:") and needle in key})
+                elif consumer_kind is not None: self.consumer_aliases[self._target_key(target)] = consumer_kind
                 deferred = self._deferred_value(value)
                 if deferred is not None: self.deferred_bindings[self._target_key(target)] = deferred
                 else: self.deferred_bindings.pop(self._target_key(target), None)
@@ -538,6 +536,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
                 self._discard_name(target.id)
             elif isinstance(target, (ast.Tuple, ast.List)):
                 for child in target.elts: self._discard_deferred(child)
+            else: self.consumer_aliases.pop(self._target_key(target), None)
         def _discard_name(self, name: str) -> None:
             """Forget all deferred semantics for one rebound name."""
             self.deferred_bindings.pop(f"name:{name}", None)
@@ -591,6 +590,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
         def _consumer_kind(self, node: ast.AST) -> str | None:
             """Return the builtin consumer kind for a call target or alias."""
             if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
+                if self.consumer_aliases.get(self._target_key(node)) == "callback": return "callback"
                 if node.attr in {"chain", "reduce", "deque"} and self.consumer_aliases.get(node.value.id) == {"chain": "__itertools__", "reduce": "__functools__", "deque": "__collections__"}[node.attr]: return node.attr
                 return None
             if not isinstance(node, ast.Name):
