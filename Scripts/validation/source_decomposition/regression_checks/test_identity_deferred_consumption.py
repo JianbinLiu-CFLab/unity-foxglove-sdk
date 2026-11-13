@@ -583,3 +583,94 @@ class DeferredIdentityConsumptionTests(unittest.TestCase):
             "def helper():\n    return 1\n__all__ = ['helper']\n"
         )
         self.assertEqual([], self._compatibility_errors(base, head))
+
+    def test_compatibility_rejects_iter_wrapper_consumption(self) -> None:
+        """The builtin iter wrapper still drains a deferred generator in a loop."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = (
+            "import os\n"
+            "for _ in iter((os.environ.setdefault('FLAG', '1') for _ in [1])):\n"
+            "    pass\n"
+            "def helper():\n    return 1\n__all__ = ['helper']\n"
+        )
+        self.assertEqual(
+            ["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"],
+            self._compatibility_errors(base, head),
+        )
+
+    def test_compatibility_rejects_nested_generator_consumption(self) -> None:
+        """A nested generator used as an outer generator iterable is consumed."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = (
+            "import os\n"
+            "list(value for value in (os.environ.setdefault('FLAG', '1') for _ in [1]))\n"
+            "def helper():\n    return 1\n__all__ = ['helper']\n"
+        )
+        self.assertEqual(
+            ["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"],
+            self._compatibility_errors(base, head),
+        )
+
+    def test_compatibility_rejects_try_handler_consumption(self) -> None:
+        """A deferred binding created before a failing try statement remains in a handler."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = (
+            "import os\n"
+            "try:\n"
+            "    values = (os.environ.setdefault('FLAG', '1') for _ in [1])\n"
+            "    raise RuntimeError()\n"
+            "except RuntimeError:\n"
+            "    list(values)\n"
+            "def helper():\n    return 1\n__all__ = ['helper']\n"
+        )
+        self.assertEqual(
+            ["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"],
+            self._compatibility_errors(base, head),
+        )
+
+    def test_compatibility_rejects_try_finally_consumption(self) -> None:
+        """A deferred binding created in try remains visible to finally."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = (
+            "import os\n"
+            "try:\n"
+            "    values = (os.environ.setdefault('FLAG', '1') for _ in [1])\n"
+            "finally:\n"
+            "    list(values)\n"
+            "def helper():\n    return 1\n__all__ = ['helper']\n"
+        )
+        self.assertEqual(
+            ["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"],
+            self._compatibility_errors(base, head),
+        )
+
+    def test_compatibility_rejects_nested_class_deferred_binding(self) -> None:
+        """Nested class attributes fail closed when their binding path is not flattened."""
+        base = "class Box:\n    class Inner:\n        values = []\n__all__ = ['Box']\n"
+        head = (
+            "import os\n"
+            "class Box:\n"
+            "    class Inner:\n"
+            "        values = (os.environ.setdefault('FLAG', '1') for _ in [1])\n"
+            "    list(Inner.values)\n"
+            "__all__ = ['Box']\n"
+        )
+        self.assertEqual(
+            ["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"],
+            self._compatibility_errors(base, head),
+        )
+
+    def test_compatibility_rejects_unmodeled_eager_consumer(self) -> None:
+        """Unknown calls receiving a deferred generator fail closed."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = (
+            "import collections\n"
+            "import os\n"
+            "values = (os.environ.setdefault('FLAG', '1') for _ in [1])\n"
+            "collections.deque(values)\n"
+            "def helper():\n    return 1\n__all__ = ['helper']\n"
+        )
+        self.assertEqual(
+            ["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"],
+            self._compatibility_errors(base, head),
+        )
