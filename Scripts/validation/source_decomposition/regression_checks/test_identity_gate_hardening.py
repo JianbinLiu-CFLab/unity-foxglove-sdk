@@ -901,6 +901,24 @@ class IdentityGateHardeningTests(unittest.TestCase):
         head = "import os\nfirst, os.environ['FLAG'] = [1, 2]\ndef helper():\n    return 1\n__all__ = ['helper']\n"
         self.assertEqual(["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"], self._compatibility_errors(base, head))
 
+    def test_deferred_consumer_false_comprehension_filter_skips_element(self) -> None:
+        """A constant-false comprehension filter prevents element evaluation."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import os\nlist([os.environ.setdefault('FLAG', '1') for _ in [1] if False])\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual([], self._compatibility_errors(base, head))
+
+    def test_deferred_consumer_false_conditional_branch_stays_deferred(self) -> None:
+        """A constant-false conditional does not propagate its unreachable generator."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import os\nvalues = (os.environ.setdefault('FLAG', '1') for _ in [1]) if False else ()\nlist(values)\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual([], self._compatibility_errors(base, head))
+
+    def test_deferred_consumer_update_drains_all_iterables(self) -> None:
+        """A multi-argument update consumes every iterable source."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import os\nitems = set()\nitems.update([], (os.environ.setdefault('FLAG', '1') for _ in [1]))\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual(["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"], self._compatibility_errors(base, head))
+
     def test_deferred_consumer_rebinding_clears_eager_classification(self) -> None:
         """Rebinding an eager helper removes its old callback execution semantics."""
         base = "def helper():\n    return 1\n__all__ = ['helper']\n"
