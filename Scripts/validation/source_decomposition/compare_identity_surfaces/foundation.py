@@ -180,7 +180,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
             self.eager_callback_specs: dict[str, tuple[ast.arguments, tuple[str, ...]]] = {}
         def _check_targets(self, targets: list[ast.AST]) -> None:
             """Check assignment targets for direct environment mutation."""
-            if any(is_environ(candidate) or (isinstance(candidate, ast.Subscript) and is_environ(candidate.value)) for target in targets for candidate in ast.walk(target)):
+            if any(isinstance(getattr(candidate, "ctx", None), (ast.Store, ast.Del)) and (is_environ(candidate) or (isinstance(candidate, ast.Subscript) and is_environ(candidate.value))) for target in targets for candidate in ast.walk(target)):
                 self.found = True
         def visit_Assign(self, node: ast.Assign) -> None:
             """Visit assignment targets and their eagerly evaluated values."""
@@ -373,7 +373,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
             if target is None:
                 self.visit(iterator)
             else:
-                (self._visit_consumable(iterator), self._check_targets([target]), self.visit(target), self._discard_deferred(target))
+                (self._visit_consumable(iterator), self._check_targets([target]), self.visit(target), self._discard_deferred(target), self._bind_deferred(target, candidate) if isinstance(container := iterator if isinstance(iterator, (ast.List, ast.Tuple, ast.Set)) else self._deferred_value(iterator), (ast.List, ast.Tuple, ast.Set)) and (candidate := next((element for element in container.elts if self._deferred_value(element) is not None), None)) is not None else None)
             baseline = self._state()
             for statement in body: self.visit(statement)
             body_state = self._state()
