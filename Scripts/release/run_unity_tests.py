@@ -173,9 +173,10 @@ def run(
             exit_code = 124
             residual = tree.terminate()
         else:
-            residual = await_tree_quiescence(tree, 10.0)
-            if residual:
-                residual = tree.terminate()
+            observed_residual = await_tree_quiescence(tree, 10.0)
+            if observed_residual:
+                terminated_residual = tree.terminate()
+                residual = list(dict.fromkeys([*observed_residual, *terminated_residual]))
     finally:
         tree.close()
 

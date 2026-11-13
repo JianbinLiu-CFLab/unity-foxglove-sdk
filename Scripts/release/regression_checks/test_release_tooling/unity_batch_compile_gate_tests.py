@@ -382,6 +382,56 @@ class UnityTestRunnerTests(unittest.TestCase):
         self.assertIn("Smoke.Fails", payload["failed_tests"])
         self.assertTrue(payload["timed_out"])
 
+        with tempfile.TemporaryDirectory(dir=ROOT) as residual_temp:
+            residual_root = Path(residual_temp)
+            residual_project = residual_root / "Unity2Foxglove"
+            residual_project.mkdir()
+            residual_unity = residual_root / "Unity.exe"
+            residual_unity.write_text("", encoding="utf-8")
+            residual_results = residual_root / "results.xml"
+            residual_log = residual_root / "unity.log"
+            residual_process = mock.Mock()
+
+            def finish_with_results(*_args, **_kwargs):
+                """Write a passing NUnit result before reporting normal exit."""
+                residual_results.write_text(
+                    '<test-run total="1" passed="1" failed="0" inconclusive="0" skipped="0">'
+                    '<test-case fullname="Smoke.Passes" result="Passed" />'
+                    '</test-run>',
+                    encoding="utf-8",
+                )
+                return 0
+
+            residual_process.wait.side_effect = finish_with_results
+            residual_tree = mock.Mock(process=residual_process)
+            residual_tree.terminate.return_value = []
+            with mock.patch.dict(
+                os.environ,
+                {name: "present" for name in self.runner.REQUIRED_ENVIRONMENT},
+                clear=False,
+            ):
+                with mock.patch.object(self.runner, "_active_unity_project", return_value=False):
+                    with mock.patch(
+                        "Scripts.unity_build.unity_il2cpp.start_owned_process",
+                        return_value=residual_tree,
+                    ):
+                        with mock.patch(
+                            "Scripts.unity_build.unity_il2cpp.await_tree_quiescence",
+                            return_value=[424242],
+                        ):
+                            residual_result = self.runner.run(
+                                residual_unity,
+                                residual_project,
+                                "PlayMode",
+                                residual_results,
+                                residual_log,
+                                timeout_seconds=1,
+                            )
+            residual_payload = json.loads(residual_results.with_suffix(".json").read_text(encoding="utf-8"))
+        self.assertEqual(1, residual_result)
+        self.assertIn("Unity process tree did not quiesce after exit", residual_payload["diagnostics"])
+        self.assertEqual([424242], residual_payload["residual_pids"])
+
     def test_main_forwards_platform_and_paths(self) -> None:
         """Forward command-line test platform and output paths to run."""
         with mock.patch.object(self.runner, "run", return_value=0) as run:
