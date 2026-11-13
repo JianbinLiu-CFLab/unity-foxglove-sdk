@@ -16,8 +16,14 @@ from pathlib import Path
 import subprocess, tarfile, tempfile
 from typing import Iterator, Mapping
 REPOSITORY_ROOT = Path(__file__).resolve().parents[4]
-_TRY_TYPES = (ast.Try, ast.TryStar) if hasattr(ast, "TryStar") else (ast.Try,)
-_TYPE_ALIAS_TYPE = getattr(ast, "TypeAlias", None)
+try:
+    _TRY_TYPES = (ast.Try, ast.TryStar)
+except AttributeError:
+    _TRY_TYPES = (ast.Try,)
+try:
+    _TYPE_ALIAS_TYPE = ast.TypeAlias
+except AttributeError:
+    _TYPE_ALIAS_TYPE = None
 _SECTION_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
 SPLIT_ROOTS, _LEGACY_SOURCE_DECOMPOSITION_PREFIX = (Path("Scripts"),), "Scripts/phase192/"
 SOURCE_DECOMPOSITION_PREFIX = "Scripts/validation/source_decomposition/"
@@ -61,34 +67,18 @@ def _load_identity_waivers(root: Path) -> dict[str, frozenset[str]]:
     waivers: dict[str, frozenset[str]] = {}
     for relative, names in entries.items():
         relative_path = Path(relative) if isinstance(relative, str) else None
-        if (
-            not isinstance(relative, str)
-            or not relative.endswith(".py")
-            or "\\" in relative
-            or ":" in relative
-            or relative_path.is_absolute()
-            or ".." in relative_path.parts
-        ):
+        if (not isinstance(relative, str) or not relative.endswith(".py") or "\\" in relative or ":" in relative
+                or relative_path.is_absolute() or ".." in relative_path.parts):
             raise ValueError(f"Invalid identity waiver path: {relative!r}")
-        if not isinstance(names, list) or any(
-            not isinstance(name, str) or not name or name.startswith("_")
-            for name in names
-        ):
+        if not isinstance(names, list) or any(not isinstance(name, str) or not name or name.startswith("_") for name in names):
             raise ValueError(f"Invalid identity waiver symbols: {relative}")
         waivers[relative] = frozenset(names)
     return waivers
 def _git(repository: Path, *args: str) -> str:
     """Run Git and return standard output."""
     try:
-        completed = subprocess.run(
-            ["git", *args],
-            cwd=repository,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            check=False,
-            timeout=60,
-        )
+        completed = subprocess.run(["git", *args], cwd=repository, text=True, stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE, check=False, timeout=60)
     except subprocess.TimeoutExpired as exc:
         raise RuntimeError(f"git command timed out: {' '.join(args)}") from exc
     if completed.returncode != 0:
@@ -638,7 +628,10 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
             self.executing_deferred = target
             self.visit(target)
             self.executing_deferred = previous
-    for alias, method in (("visit_AsyncFunctionDef", EnvironmentWriteVisitor.visit_FunctionDef), ("visit_AsyncFor", EnvironmentWriteVisitor.visit_For), ("visit_SetComp", EnvironmentWriteVisitor.visit_ListComp), ("visit_DictComp", EnvironmentWriteVisitor.visit_ListComp)): setattr(EnvironmentWriteVisitor, alias, method)
+    EnvironmentWriteVisitor.visit_AsyncFunctionDef = EnvironmentWriteVisitor.visit_FunctionDef
+    EnvironmentWriteVisitor.visit_AsyncFor = EnvironmentWriteVisitor.visit_For
+    EnvironmentWriteVisitor.visit_SetComp = EnvironmentWriteVisitor.visit_ListComp
+    EnvironmentWriteVisitor.visit_DictComp = EnvironmentWriteVisitor.visit_ListComp
     environment_visitor = EnvironmentWriteVisitor()
     def writes_environment(statement: ast.AST, *, execute_deferred: bool = False) -> bool:
         """Return whether one import-time statement writes the process environment."""
