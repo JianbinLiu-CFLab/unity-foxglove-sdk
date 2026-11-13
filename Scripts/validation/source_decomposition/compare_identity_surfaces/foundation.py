@@ -369,11 +369,10 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
                     continue
                 name = alias.asname or alias.name
                 self._discard_name(name)
-                if node.module == "builtins":
-                    if alias.name in deferred_consumers:
-                        self.consumer_aliases[name] = alias.name
-                    if alias.name in deferred_producers:
-                        self.producer_aliases.add(name)
+                if node.module == "builtins" and alias.name in deferred_consumers:
+                    self.consumer_aliases[name] = alias.name
+                if node.module == "builtins" and alias.name in deferred_producers:
+                    self.producer_aliases.add(name)
                 if node.module == "itertools" and alias.name == "chain":
                     self.consumer_aliases[name] = "chain"
         def visit_Lambda(self, node: ast.Lambda) -> None:
@@ -413,14 +412,14 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
                 self.visit(node.generators[0].iter)
         def visit_For(self, node: ast.For) -> None:
             """Visit a loop and consume a generator used as its iterable."""
-            self._visit_loop(node.iter, node.target, node.body, node.orelse)
+            self._visit_loop(node.iter, node.target, node.body, node.orelse, isinstance(node.iter, (ast.List, ast.Tuple, ast.Set)) and bool(node.iter.elts))
         visit_AsyncFor = visit_For
         def _visit_loop(
             self,
             iterator: ast.AST,
             target: ast.AST | None,
             body: list[ast.stmt],
-            orelse: list[ast.stmt],
+            orelse: list[ast.stmt], definite: bool = False,
         ) -> None:
             """Visit loop paths while retaining the zero-iteration state."""
             if target is None:
@@ -433,19 +432,25 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
             for statement in body:
                 self.visit(statement)
             body_state = self._state()
-            self._restore_state(baseline)
+            self._restore_state(body_state if definite else baseline)
             for statement in orelse:
                 self.visit(statement)
-            self._merge_states(baseline, body_state, self._state())
+            states = (body_state, self._state()) if definite else (baseline, body_state, self._state())
+            self._merge_states(*states)
         def visit_While(self, node: ast.While) -> None:
             """Visit while-loop paths while retaining the zero-iteration state."""
-            self._visit_loop(node.test, None, node.body, node.orelse)
+            self._visit_loop(node.test, None, node.body, node.orelse, isinstance(node.test, ast.Constant) and node.test.value is True)
         def visit_Try(self, node: ast.Try) -> None:
             """Visit normal and exceptional paths without losing prior bindings."""
             baseline = self._state()
             for statement in node.body:
                 self.visit(statement)
-            paths = [self._state()]
+            normal_state = self._state()
+            assignment = node.body[0] if len(node.body) == 1 else None
+            if isinstance(assignment, ast.Assign) and all(isinstance(target, ast.Name) for target in assignment.targets) and isinstance(assignment.value, (ast.Constant, ast.List, ast.Tuple, ast.Set)):
+                self._merge_states(normal_state)
+                return
+            paths = [normal_state]
             for handler in node.handlers:
                 self._restore_state(baseline)
                 if handler.type is not None:
@@ -603,11 +608,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
                 return None
             if not isinstance(node, ast.Name):
                 return None
-            if node.id in self.consumer_aliases:
-                return self.consumer_aliases[node.id] or None
-            if node.id in deferred_consumers:
-                return node.id
-            return None
+            return (self.consumer_aliases[node.id] or None) if node.id in self.consumer_aliases else (node.id if node.id in deferred_consumers else None)
         def _is_producer(self, node: ast.AST) -> bool:
             """Return whether a call creates a lazy iterator with deferred callbacks."""
             return isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in self.producer_aliases
@@ -755,9 +756,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
                 environment_visitor.producer_aliases = previous_producers
             environment_visitor._discard_name(node.name)
             for key, deferred in class_bindings.items():
-                if key.startswith("name:") and (
-                    key not in previous_bindings or previous_bindings[key] is not deferred
-                ):
+                if key.startswith("name:") and (key not in previous_bindings or previous_bindings[key] is not deferred):
                     attribute = ast.Attribute(value=ast.Name(id=node.name, ctx=ast.Load()), attr=key[5:], ctx=ast.Load())
                     environment_visitor.deferred_bindings[EnvironmentWriteVisitor._target_key(attribute)] = deferred
             return
