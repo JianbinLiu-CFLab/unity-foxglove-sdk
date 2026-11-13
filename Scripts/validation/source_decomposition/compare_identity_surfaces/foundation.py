@@ -370,6 +370,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
                 if node.module == "builtins" and alias.name in deferred_consumers: self.consumer_aliases[name] = alias.name
                 if node.module == "builtins" and alias.name in deferred_producers: self.producer_aliases.add(name)
                 if node.module in {"itertools", "functools"} and alias.name in {"chain", "reduce"}: self.consumer_aliases[name] = alias.name
+                if node.module == "itertools" and alias.name in {"filterfalse", "takewhile", "dropwhile", "groupby", "starmap"}: self.producer_aliases.add(name)
         def visit_Lambda(self, node: ast.Lambda) -> None:
             """Visit lambda defaults and execute its body only when called."""
             for expression in (*node.args.defaults, *node.args.kw_defaults):
@@ -599,7 +600,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
             return (self.consumer_aliases[node.id] or None) if node.id in self.consumer_aliases else (node.id if node.id in deferred_consumers else None)
         def _is_producer(self, node: ast.AST) -> bool:
             """Return whether a call creates a lazy iterator with deferred callbacks."""
-            return isinstance(node, ast.Call) and ((isinstance(node.func, ast.Name) and node.func.id in self.producer_aliases) or (isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name) and self.consumer_aliases.get(node.func.value.id) == "__itertools__" and node.func.attr == "starmap"))
+            return isinstance(node, ast.Call) and ((isinstance(node.func, ast.Name) and node.func.id in self.producer_aliases) or (isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name) and self.consumer_aliases.get(node.func.value.id) == "__itertools__" and node.func.attr in {"filterfalse", "takewhile", "dropwhile", "groupby", "starmap"}))
         def _visit_consumable(self, node: ast.AST) -> None:
             """Consume a tracked deferred value while leaving ordinary calls opaque."""
             if isinstance(node, (ast.IfExp, ast.BoolOp)):
