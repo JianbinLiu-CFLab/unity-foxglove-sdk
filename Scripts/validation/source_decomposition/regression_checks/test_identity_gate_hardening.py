@@ -865,6 +865,30 @@ class IdentityGateHardeningTests(unittest.TestCase):
         head = "import os\ndef run(callback=lambda: os.environ.setdefault('FLAG', '1')): return callback()\nrun()\ndef helper():\n    return 1\n__all__ = ['helper']\n"
         self.assertEqual(["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"], self._compatibility_errors(base, head))
 
+    def test_deferred_consumer_keyword_iterable_sources_execute(self) -> None:
+        """Supported eager consumers drain their keyword iterable sources."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import os\nvalues = (os.environ.setdefault('A', '1') for _ in [1])\ndict.fromkeys(iterable=values)\nbytes(source=(os.environ.setdefault('B', '1') for _ in [1]))\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual(["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"], self._compatibility_errors(base, head))
+
+    def test_deferred_consumer_enumerate_and_iter_stay_lazy(self) -> None:
+        """enumerate and iter do not advance their generator until consumed."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import os\nvalues = (os.environ.setdefault('A', '1') for _ in [1])\nenumerate(values)\niter(values)\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual([], self._compatibility_errors(base, head))
+
+    def test_deferred_consumer_all_short_circuit_skips_unreachable_generator_values(self) -> None:
+        """all stops before a later generator value with an environment write."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import os\nall(False if i == 0 else os.environ.setdefault('FLAG', '1') for i in [0, 1])\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual([], self._compatibility_errors(base, head))
+
+    def test_deferred_consumer_indirect_callback_invocation_executes(self) -> None:
+        """Attribute and alias callback invocations are treated as eager."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import os\ndef run(callback):\n    alias = callback\n    return alias.__call__()\nrun(lambda: os.environ.setdefault('FLAG', '1'))\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual(["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"], self._compatibility_errors(base, head))
+
     def test_deferred_consumer_rebinding_clears_eager_classification(self) -> None:
         """Rebinding an eager helper removes its old callback execution semantics."""
         base = "def helper():\n    return 1\n__all__ = ['helper']\n"
