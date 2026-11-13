@@ -861,6 +861,25 @@ class DeferredIdentityConsumptionTests(unittest.TestCase):
             self._compatibility_errors(base, head),
         )
 
+    def test_compatibility_rejects_eager_callback_attribute_alias(self) -> None:
+        """An eager callback invoker stored on an attribute retains its semantics."""
+        base = "class Box:\n    pass\n__all__ = ['Box']\n"
+        head = (
+            "import os\n"
+            "def run(callback):\n"
+            "    return callback()\n"
+            "class Box:\n"
+            "    pass\n"
+            "box = Box()\n"
+            "box.run = run\n"
+            "box.run(lambda: os.environ.setdefault('FLAG', '1'))\n"
+            "__all__ = ['Box']\n"
+        )
+        self.assertEqual(
+            ["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"],
+            self._compatibility_errors(base, head),
+        )
+
     def test_compatibility_allows_generator_passed_to_regular_call(self) -> None:
         """Passing a generator to an ordinary call does not prove that it is consumed."""
         base = "def helper():\n    return 1\n__all__ = ['helper']\n"
