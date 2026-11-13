@@ -682,6 +682,24 @@ class DeferredIdentityConsumptionTests(unittest.TestCase):
         )
         self.assertEqual([], self._compatibility_errors(base, head))
 
+    def test_compatibility_rejects_finally_environment_write_after_definite_try(self) -> None:
+        """A finally block still executes after a definite try assignment."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = (
+            "import os\n"
+            "try:\n"
+            "    values = []\n"
+            "finally:\n"
+            "    os.environ['FLAG'] = '1'\n"
+            "def helper():\n"
+            "    return 1\n"
+            "__all__ = ['helper']\n"
+        )
+        self.assertEqual(
+            ["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"],
+            self._compatibility_errors(base, head),
+        )
+
     def test_compatibility_rejects_iter_wrapper_consumption(self) -> None:
         """The builtin iter wrapper still drains a deferred generator in a loop."""
         base = "def helper():\n    return 1\n__all__ = ['helper']\n"
