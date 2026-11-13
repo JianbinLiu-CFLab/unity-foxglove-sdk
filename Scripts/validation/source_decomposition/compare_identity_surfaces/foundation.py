@@ -291,9 +291,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
         def visit_Delete(self, node: ast.Delete) -> None:
             """Visit deleted environment targets."""
             self._check_targets(node.targets)
-            for target in node.targets:
-                self.visit(target)
-                self._discard_deferred(target)
+            for target in node.targets: self.visit(target) or self._discard_deferred(target)
         def visit_Call(self, node: ast.Call) -> None:
             """Visit calls while executing only proven deferred callbacks."""
             if isinstance(node.func, ast.Attribute):
@@ -316,6 +314,10 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
             if producer_consumed:
                 for argument in (*node.args, *(keyword.value for keyword in node.keywords)): self._visit_consumable(argument)
             elif consumer_kind is not None:
+                if consumer_kind == "chain_from_iterable" and node.args:
+                    nested = node.args[0].elts if isinstance(node.args[0], (ast.Tuple, ast.List, ast.Set)) else (node.args[0],)
+                    for element in nested: self._visit_consumable(element)
+                    return
                 if consumer_kind == "reduce" and node.args: self._visit_deferred(node.args[0])
                 consumed = set(range(len(node.args))) if consumer_kind in {"chain", "callback"} else ({1} if consumer_kind == "reduce" else {0})
                 for index, argument in enumerate(node.args):
@@ -333,9 +335,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
         def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
             """Visit function definition expressions without entering its body."""
             for decorator in node.decorator_list: self.visit(decorator)
-            for expression in (*node.args.defaults, *node.args.kw_defaults):
-                if expression is not None:
-                    self.visit(expression)
+            for expression in (*node.args.defaults, *node.args.kw_defaults): self.visit(expression) if expression is not None else None
             if not future_annotations:
                 for argument in (
                     *getattr(node.args, "posonlyargs", ()),
@@ -375,10 +375,8 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
         def visit_ClassDef(self, node: ast.ClassDef) -> None:
             """Visit class definition expressions and its executing body."""
             for decorator in node.decorator_list: self.visit(decorator)
-            for base in node.bases:
-                self.visit(base)
-            for keyword in node.keywords:
-                self.visit(keyword.value)
+            for base in node.bases: self.visit(base)
+            for keyword in node.keywords: self.visit(keyword.value)
             previous_bindings = self.deferred_bindings
             previous_consumers = self.consumer_aliases
             previous_producers = self.producer_aliases
@@ -386,8 +384,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
             self.consumer_aliases = dict(previous_consumers)
             self.producer_aliases = set(previous_producers)
             try:
-                for statement in node.body:
-                    self.visit(statement)
+                for statement in node.body: self.visit(statement)
             finally:
                 self.deferred_bindings, self.consumer_aliases, self.producer_aliases = previous_bindings, previous_consumers, previous_producers
             self._discard_name(node.name)
@@ -411,22 +408,20 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
             empty = isinstance(iterator, (ast.List, ast.Tuple, ast.Set)) and not iterator.elts
             if empty or (target is None and isinstance(iterator, ast.Constant) and not bool(iterator.value)):
                 self.visit(iterator)
-                for statement in orelse:
-                    self.visit(statement)
+                for statement in orelse: self.visit(statement)
                 return
             if target is None:
                 self.visit(iterator)
             else:
                 self._visit_consumable(iterator)
+                self._check_targets([target])
                 self.visit(target)
                 self._discard_deferred(target)
             baseline = self._state()
-            for statement in body:
-                self.visit(statement)
+            for statement in body: self.visit(statement)
             body_state = self._state()
             self._restore_state(body_state if definite else baseline)
-            for statement in orelse:
-                self.visit(statement)
+            for statement in orelse: self.visit(statement)
             states = (body_state, self._state()) if definite else (baseline, body_state, self._state())
             self._merge_states(*states)
         def visit_While(self, node: ast.While) -> None:
@@ -435,8 +430,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
         def visit_Try(self, node: ast.Try) -> None:
             """Visit normal and exceptional paths without losing prior bindings."""
             baseline = self._state()
-            for statement in node.body:
-                self.visit(statement)
+            for statement in node.body: self.visit(statement)
             normal_state = self._state()
             if len(node.body) == 1 and isinstance(node.body[0], ast.Assign) and all(isinstance(target, ast.Name) for target in node.body[0].targets) and isinstance(node.body[0].value, (ast.Constant, ast.List, ast.Tuple, ast.Set)):
                 for statement in (*node.orelse, *node.finalbody): self.visit(statement)
@@ -447,8 +441,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
                 self._merge_states(baseline, normal_state)
                 if handler.type is not None: self.visit(handler.type)
                 if handler.name is not None: self._discard_name(handler.name)
-                for statement in handler.body:
-                    self.visit(statement)
+                for statement in handler.body: self.visit(statement)
                 paths.append(self._state())
             self._restore_state(paths[0])
             for statement in node.orelse:
@@ -525,6 +518,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
                         self.producer_aliases.add(target.id)
                     else:
                         self.producer_aliases.discard(target.id)
+                    if isinstance(value, ast.Constant) and isinstance(value.value, str): self.consumer_aliases[target.id] = "__string__"
                 return
             for key in self._target_keys(target):
                 self.deferred_bindings.pop(key, None)
@@ -592,7 +586,10 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
             if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
                 if self.consumer_aliases.get(self._target_key(node)) == "callback": return "callback"
                 if node.attr in {"chain", "reduce", "deque"} and self.consumer_aliases.get(node.value.id) == {"chain": "__itertools__", "reduce": "__functools__", "deque": "__collections__"}[node.attr]: return node.attr
+                if node.attr == "fromkeys" and node.value.id == "dict" and "dict" not in self.consumer_aliases: return "dict.fromkeys"
+            if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Attribute) and node.attr == "from_iterable" and node.value.attr == "chain" and isinstance(node.value.value, ast.Name) and self.consumer_aliases.get(node.value.value.id) == "__itertools__": return "chain_from_iterable"
             if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str) and node.attr == "join": return "join"
+            if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.attr == "join" and self.consumer_aliases.get(node.value.id) == "__string__": return "join"
             if not isinstance(node, ast.Name):
                 return None
             if node.id in self.eager_callbacks: return "callback"
@@ -681,7 +678,10 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
     ) -> None:
         """Collect signatures while tracking the enclosing definition scope."""
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            if any(isinstance(call.func, ast.Name) and any(call.func.id == argument.arg for argument in ast.walk(node.args) if isinstance(argument, ast.arg)) for call in ast.walk(node) if isinstance(call, ast.Call)) or any(isinstance(call.func, ast.Name) and call.func.id in deferred_consumers and any(isinstance(argument, ast.Name) and any(argument.id == parameter.arg for parameter in ast.walk(node.args) if isinstance(parameter, ast.arg)) for argument in call.args) for call in ast.walk(node) if isinstance(call, ast.Call)): environment_visitor.eager_callbacks.add(node.name)
+            parameters = {argument.arg for argument in ast.walk(node.args) if isinstance(argument, ast.arg)}
+            nested_ranges = {(child.lineno, child.end_lineno) for child in ast.walk(node) if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)) and child is not node}
+            calls = [call for call in ast.walk(node) if isinstance(call, ast.Call) and not any(start <= getattr(call, "lineno", 0) <= end for start, end in nested_ranges)]
+            if any(isinstance(call.func, ast.Name) and call.func.id in parameters for call in calls) or any(isinstance(call.func, ast.Name) and call.func.id in deferred_consumers and any(isinstance(argument, ast.Name) and argument.id in parameters for argument in call.args) for call in calls): environment_visitor.eager_callbacks.add(node.name)
             for decorator in node.decorator_list:
                 record_import_time_environment(
                     decorator, scope, in_function, execute_deferred=True
