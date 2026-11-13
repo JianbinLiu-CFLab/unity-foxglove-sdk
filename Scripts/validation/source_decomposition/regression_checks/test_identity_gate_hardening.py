@@ -889,6 +889,18 @@ class IdentityGateHardeningTests(unittest.TestCase):
         head = "import os\ndef run(callback):\n    alias = callback\n    return alias.__call__()\nrun(lambda: os.environ.setdefault('FLAG', '1'))\ndef helper():\n    return 1\n__all__ = ['helper']\n"
         self.assertEqual(["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"], self._compatibility_errors(base, head))
 
+    def test_deferred_consumer_next_only_executes_first_generator_item(self) -> None:
+        """next stops after the first statically reachable generator value."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import os\nnext((0 if i == 0 else os.environ.setdefault('FLAG', '1') for i in [0, 1]))\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual([], self._compatibility_errors(base, head))
+
+    def test_deferred_consumer_destructured_target_checks_environment(self) -> None:
+        """Environment writes nested in destructured assignment targets are detected."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import os\nfirst, os.environ['FLAG'] = [1, 2]\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual(["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"], self._compatibility_errors(base, head))
+
     def test_deferred_consumer_rebinding_clears_eager_classification(self) -> None:
         """Rebinding an eager helper removes its old callback execution semantics."""
         base = "def helper():\n    return 1\n__all__ = ['helper']\n"
