@@ -841,6 +841,12 @@ class IdentityGateHardeningTests(unittest.TestCase):
         head = "import itertools\nimport os\nvalues = (os.environ.setdefault('FLAG', '1') for _ in [1])\nlist(itertools.chain.from_iterable([values]))\ndef helper():\n    return 1\n__all__ = ['helper']\n"
         self.assertEqual(["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"], self._compatibility_errors(base, head))
 
+    def test_deferred_consumer_local_callback_default(self) -> None:
+        """A default callback on an eager local helper executes when omitted."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import os\ndef run(callback=lambda: os.environ.setdefault('FLAG', '1')):\n    return callback()\nrun()\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual(["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"], self._compatibility_errors(base, head))
+
 
 if __name__ == "__main__":
     raise SystemExit(unittest.main(module=__name__))
