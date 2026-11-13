@@ -295,3 +295,152 @@ class DeferredIdentityConsumptionTests(unittest.TestCase):
             ["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"],
             self._compatibility_errors(base, head),
         )
+
+    def test_compatibility_rejects_producer_tuple_unpacking(self) -> None:
+        """Tuple unpacking consumes a direct lazy producer during import."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = (
+            "import os\n"
+            "first, = map(lambda _: os.environ.setdefault('FLAG', '1'), [1])\n"
+            "def helper():\n    return 1\n__all__ = ['helper']\n"
+        )
+        self.assertEqual(
+            ["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"],
+            self._compatibility_errors(base, head),
+        )
+
+    def test_compatibility_rejects_producer_alias_tuple_unpacking(self) -> None:
+        """Tuple unpacking consumes an aliased lazy producer during import."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = (
+            "import os\n"
+            "make = map\n"
+            "first, = make(lambda _: os.environ.setdefault('FLAG', '1'), [1])\n"
+            "def helper():\n    return 1\n__all__ = ['helper']\n"
+        )
+        self.assertEqual(
+            ["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"],
+            self._compatibility_errors(base, head),
+        )
+
+    def test_compatibility_rejects_enumerate_consumption(self) -> None:
+        """Enumerate preserves consumption of a deferred generator."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = (
+            "import os\n"
+            "values = (os.environ.setdefault('FLAG', '1') for _ in [1])\n"
+            "list(enumerate(values))\n"
+            "def helper():\n    return 1\n__all__ = ['helper']\n"
+        )
+        self.assertEqual(
+            ["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"],
+            self._compatibility_errors(base, head),
+        )
+
+    def test_compatibility_rejects_itertools_chain_consumption(self) -> None:
+        """itertools.chain preserves consumption of a deferred generator."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = (
+            "import itertools\n"
+            "import os\n"
+            "values = (os.environ.setdefault('FLAG', '1') for _ in [1])\n"
+            "list(itertools.chain(values))\n"
+            "def helper():\n    return 1\n__all__ = ['helper']\n"
+        )
+        self.assertEqual(
+            ["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"],
+            self._compatibility_errors(base, head),
+        )
+
+    def test_compatibility_preserves_binding_through_zero_iteration_while(self) -> None:
+        """A while body may not run, so its overwrite cannot erase a deferred value."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = (
+            "import os\n"
+            "flag = False\n"
+            "values = (os.environ.setdefault('FLAG', '1') for _ in [1])\n"
+            "while flag:\n"
+            "    values = []\n"
+            "list(values)\n"
+            "def helper():\n    return 1\n__all__ = ['helper']\n"
+        )
+        self.assertEqual(
+            ["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"],
+            self._compatibility_errors(base, head),
+        )
+
+    def test_compatibility_preserves_binding_through_zero_iteration_for(self) -> None:
+        """An empty for iterable leaves the prior deferred value available."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = (
+            "import os\n"
+            "values = (os.environ.setdefault('FLAG', '1') for _ in [1])\n"
+            "for _ in []:\n"
+            "    values = []\n"
+            "list(values)\n"
+            "def helper():\n    return 1\n__all__ = ['helper']\n"
+        )
+        self.assertEqual(
+            ["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"],
+            self._compatibility_errors(base, head),
+        )
+
+    def test_compatibility_preserves_binding_through_failed_try_assignment(self) -> None:
+        """An assignment that raises before completion leaves the old binding intact."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = (
+            "import os\n"
+            "values = (os.environ.setdefault('FLAG', '1') for _ in [1])\n"
+            "try:\n"
+            "    values = 1 / 0\n"
+            "except ZeroDivisionError:\n"
+            "    pass\n"
+            "list(values)\n"
+            "def helper():\n    return 1\n__all__ = ['helper']\n"
+        )
+        self.assertEqual(
+            ["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"],
+            self._compatibility_errors(base, head),
+        )
+
+    def test_compatibility_allows_deterministic_if_overwrite(self) -> None:
+        """A definitely executed overwrite removes the old deferred binding."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = (
+            "import os\n"
+            "values = (os.environ.setdefault('FLAG', '1') for _ in [1])\n"
+            "if True:\n"
+            "    values = []\n"
+            "list(values)\n"
+            "def helper():\n    return 1\n__all__ = ['helper']\n"
+        )
+        self.assertEqual([], self._compatibility_errors(base, head))
+
+    def test_compatibility_rejects_consumed_lambda_returning_generator(self) -> None:
+        """Consuming a lambda result continues into a generator returned by that lambda."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = (
+            "import os\n"
+            "list((lambda: (os.environ.setdefault('FLAG', '1') for _ in [1]))())\n"
+            "def helper():\n    return 1\n__all__ = ['helper']\n"
+        )
+        self.assertEqual(
+            ["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"],
+            self._compatibility_errors(base, head),
+        )
+
+    def test_compatibility_allows_attribute_binding_after_base_rebind(self) -> None:
+        """A base-object rebind invalidates deferred attributes from the old object."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = (
+            "import os\n"
+            "class Box:\n"
+            "    values = []\n"
+            "generator = (os.environ.setdefault('FLAG', '1') for _ in [1])\n"
+            "holder = Box()\n"
+            "holder.values = generator\n"
+            "holder = Box()\n"
+            "list(holder.values)\n"
+            "def helper():\n    return 1\n__all__ = ['helper']\n"
+        )
+        self.assertEqual([], self._compatibility_errors(base, head))
