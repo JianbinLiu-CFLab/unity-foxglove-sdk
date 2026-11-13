@@ -8,7 +8,7 @@ _FUNCTION_BODY_RISK_NAMES = frozenset({"__import__", "compile", "eval", "exec", 
 _ENVIRONMENT_MUTATORS = frozenset({"clear", "pop", "popitem", "setdefault", "update"})
 _ENVIRONMENT_FUNCTIONS = frozenset({"putenv", "unsetenv"})
 _TRY_TYPES = (ast.Try, ast.TryStar) if hasattr(ast, "TryStar") else (ast.Try,)
-__all__ = ["_function_body_and_environment_risk_signatures"]
+__all__ = []
 _DEFERRED_CONSUMERS = frozenset({"all", "any", "bytearray", "bytes", "dict", "frozenset", "list", "max", "min", "next", "set", "sorted", "sum", "tuple"})
 _DEFERRED_PRODUCERS = frozenset({"enumerate", "filter", "islice", "iter", "map", "zip"})
 
