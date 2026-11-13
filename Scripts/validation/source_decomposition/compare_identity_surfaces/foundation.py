@@ -512,11 +512,12 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
                 producer_value = self._is_producer(value) or (isinstance(value, ast.Name) and value.id in self.producer_aliases) or (isinstance(value, ast.Attribute) and isinstance(value.value, ast.Name) and self.consumer_aliases.get(value.value.id) == "__itertools__" and value.attr in {"filterfalse", "takewhile", "dropwhile", "groupby", "starmap"})
                 if is_name:
                     self._discard_name(target.id)
+                    if isinstance(value, ast.Name):
+                        needle = f"Name(id='{value.id}', ctx=Load())"
+                        self.deferred_bindings.update({key.replace(needle, f"Name(id='{target.id}', ctx=Load())"): deferred for key, deferred in self.deferred_bindings.items() if key.startswith("target:") and needle in key})
                 deferred = self._deferred_value(value)
-                if deferred is not None:
-                    self.deferred_bindings[self._target_key(target)] = deferred
-                else:
-                    self.deferred_bindings.pop(self._target_key(target), None)
+                if deferred is not None: self.deferred_bindings[self._target_key(target)] = deferred
+                else: self.deferred_bindings.pop(self._target_key(target), None)
                 if is_name:
                     if consumer_kind is not None:
                         self.consumer_aliases[target.id] = consumer_kind
