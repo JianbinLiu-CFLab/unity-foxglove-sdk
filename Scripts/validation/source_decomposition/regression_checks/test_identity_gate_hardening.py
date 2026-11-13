@@ -889,6 +889,30 @@ class IdentityGateHardeningTests(unittest.TestCase):
         head = "import os\nvalues = (os.environ.setdefault('FLAG', '1') for _ in [1])\nitems = []\nitems.extend(values)\ndef helper():\n    return 1\n__all__ = ['helper']\n"
         self.assertEqual(["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"], self._compatibility_errors(base, head))
 
+    def test_deferred_consumer_container_literal_does_not_drain_inner_generator(self) -> None:
+        """Consuming an outer container does not consume a generator stored inside it."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import os\nvalues = [(os.environ.setdefault('FLAG', '1') for _ in [1])]\nlist(values)\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual([], self._compatibility_errors(base, head))
+
+    def test_deferred_consumer_direct_chain_from_iterable_executes(self) -> None:
+        """A directly imported chain.from_iterable consumes nested iterables."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "from itertools import chain\nimport os\nvalues = (os.environ.setdefault('FLAG', '1') for _ in [1])\nlist(chain.from_iterable([values]))\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual(["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"], self._compatibility_errors(base, head))
+
+    def test_deferred_consumer_islice_forwards_and_defers(self) -> None:
+        """islice remains lazy until its result is consumed."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import itertools\nimport os\nvalues = (os.environ.setdefault('FLAG', '1') for _ in [1])\nlist(itertools.islice(values, 1))\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual(["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"], self._compatibility_errors(base, head))
+
+    def test_deferred_consumer_with_target_checks_environment_writes(self) -> None:
+        """A with target assignment can mutate the environment during import."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = "import os\nwith context() as os.environ['FLAG']:\n    pass\ndef helper():\n    return 1\n__all__ = ['helper']\n"
+        self.assertEqual(["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"], self._compatibility_errors(base, head))
+
     def test_deferred_consumer_star_import_invalidates_old_binding(self) -> None:
         """A star import may replace a previously tracked deferred binding."""
         base = "def helper():\n    return 1\n__all__ = ['helper']\n"
