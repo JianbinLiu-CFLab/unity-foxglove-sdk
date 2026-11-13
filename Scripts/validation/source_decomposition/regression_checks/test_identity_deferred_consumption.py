@@ -572,6 +572,32 @@ class DeferredIdentityConsumptionTests(unittest.TestCase):
         )
         self.assertEqual([], self._compatibility_errors(base, head))
 
+    def test_compatibility_allows_short_circuit_boolean_without_consumption(self) -> None:
+        """Short-circuited boolean operands are not consumed by an outer list call."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = (
+            "import os\n"
+            "values = (os.environ.setdefault('FLAG', '1') for _ in [1])\n"
+            "list(False and values or ())\n"
+            "def helper():\n"
+            "    return 1\n"
+            "__all__ = ['helper']\n"
+        )
+        self.assertEqual([], self._compatibility_errors(base, head))
+
+    def test_compatibility_allows_environment_write_in_empty_loop(self) -> None:
+        """A statically empty loop never executes its body during import."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = (
+            "import os\n"
+            "for _ in []:\n"
+            "    os.environ['FLAG'] = '1'\n"
+            "def helper():\n"
+            "    return 1\n"
+            "__all__ = ['helper']\n"
+        )
+        self.assertEqual([], self._compatibility_errors(base, head))
+
     def test_compatibility_rejects_chain_second_iterable_consumption(self) -> None:
         """itertools.chain consumes every positional iterable, not only the first."""
         base = "def helper():\n    return 1\n__all__ = ['helper']\n"
@@ -595,6 +621,22 @@ class DeferredIdentityConsumptionTests(unittest.TestCase):
             "import os\n"
             "list(itertools.starmap(lambda _: os.environ.setdefault('FLAG', '1'), [(1,)]))\n"
             "def helper():\n    return 1\n__all__ = ['helper']\n"
+        )
+        self.assertEqual(
+            ["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"],
+            self._compatibility_errors(base, head),
+        )
+
+    def test_compatibility_rejects_functools_reduce_callback(self) -> None:
+        """functools.reduce executes its callback during import."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = (
+            "import functools\n"
+            "import os\n"
+            "functools.reduce(lambda a, b: os.environ.setdefault('FLAG', '1'), [1, 2])\n"
+            "def helper():\n"
+            "    return 1\n"
+            "__all__ = ['helper']\n"
         )
         self.assertEqual(
             ["NAMESPACE_CONTRACT_CHANGED Scripts/smoke/foxrun/fixture.py"],
