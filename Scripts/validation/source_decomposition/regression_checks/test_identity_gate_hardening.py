@@ -278,6 +278,30 @@ class IdentityGateHardeningTests(unittest.TestCase):
             self._compatibility_errors(base, head),
         )
 
+    def test_compatibility_allows_deferred_callback_inside_consumed_generator(self) -> None:
+        """Consuming a generator does not prove that a callback passed from its body runs."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = (
+            "import os\n"
+            "values = (register(lambda: os.environ.setdefault('FLAG', '1')) for _ in [1])\n"
+            "list(values)\n"
+            "def helper():\n    return 1\n__all__ = ['helper']\n"
+        )
+        self.assertEqual([], self._compatibility_errors(base, head))
+
+    def test_compatibility_scopes_class_deferred_bindings(self) -> None:
+        """Class-local deferred bindings must not change later module-level calls."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = (
+            "import os\n"
+            "callback = lambda: None\n"
+            "class Settings:\n"
+            "    callback = lambda: os.environ.setdefault('FLAG', '1')\n"
+            "callback()\n"
+            "def helper():\n    return 1\n__all__ = ['helper']\n"
+        )
+        self.assertEqual([], self._compatibility_errors(base, head))
+
     def test_compatibility_allows_postponed_annotation_environment_expression(self) -> None:
         """Future annotations preserve deferred annotation evaluation semantics."""
         base = "def helper(value):\n    return value\n__all__ = ['helper']\n"

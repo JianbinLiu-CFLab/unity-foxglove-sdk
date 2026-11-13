@@ -252,7 +252,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
         def __init__(self) -> None:
             """Initialize deferred-expression execution state."""
             self.found = False
-            self.execute_deferred = False
+            self.executing_deferred: ast.AST | None = None
             self.deferred_bindings: dict[str, ast.AST] = {}
 
         def _check_targets(self, targets: list[ast.AST]) -> None:
@@ -334,14 +334,14 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
                 "sorted",
                 "sum",
                 "tuple",
-            }
+            } or self.executing_deferred is node
             for argument in node.args:
-                if consumer or self.execute_deferred:
+                if consumer:
                     self._visit_deferred(argument)
                 else:
                     self.visit(argument)
             for keyword in node.keywords:
-                if consumer or self.execute_deferred:
+                if consumer:
                     self._visit_deferred(keyword.value)
                 else:
                     self.visit(keyword.value)
@@ -377,7 +377,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
             for expression in (*node.args.defaults, *node.args.kw_defaults):
                 if expression is not None:
                     self.visit(expression)
-            if self.execute_deferred:
+            if self.executing_deferred is node:
                 self.visit(node.body)
 
         def visit_ClassDef(self, node: ast.ClassDef) -> None:
@@ -388,12 +388,17 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
                 self.visit(base)
             for keyword in node.keywords:
                 self.visit(keyword.value)
-            for statement in node.body:
-                self.visit(statement)
+            previous_bindings = self.deferred_bindings
+            self.deferred_bindings = dict(previous_bindings)
+            try:
+                for statement in node.body:
+                    self.visit(statement)
+            finally:
+                self.deferred_bindings = previous_bindings
 
         def visit_GeneratorExp(self, node: ast.GeneratorExp) -> None:
             """Visit the eager outer iterable or the consumed generator body."""
-            if self.execute_deferred:
+            if self.executing_deferred is node:
                 self.generic_visit(node)
             elif node.generators:
                 self.visit(node.generators[0].iter)
@@ -465,20 +470,21 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
         def _visit_deferred(self, node: ast.AST) -> None:
             """Execute a deferred lambda/generator only in a consuming context."""
             deferred = self._deferred_value(node)
-            previous = self.execute_deferred
-            self.execute_deferred = True
-            self.visit(deferred if deferred is not None else node)
-            self.execute_deferred = previous
+            target = deferred if deferred is not None else node
+            previous = self.executing_deferred
+            self.executing_deferred = target
+            self.visit(target)
+            self.executing_deferred = previous
 
     environment_visitor = EnvironmentWriteVisitor()
 
     def writes_environment(statement: ast.AST, *, execute_deferred: bool = False) -> bool:
         """Return whether one import-time statement writes the process environment."""
         environment_visitor.found = False
-        previous = environment_visitor.execute_deferred
-        environment_visitor.execute_deferred = execute_deferred
+        previous = environment_visitor.executing_deferred
+        environment_visitor.executing_deferred = statement if execute_deferred else None
         environment_visitor.visit(statement)
-        environment_visitor.execute_deferred = previous
+        environment_visitor.executing_deferred = previous
         return environment_visitor.found
 
     signatures: set[str] = set()
@@ -554,12 +560,17 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
                 record_import_time_environment(keyword.value, scope, in_function)
                 visit(keyword.value, scope, in_function)
             class_scope = scope + (node.name,)
-            for statement in node.body:
-                if not in_function and not isinstance(
-                    statement, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
-                ):
-                    record_import_time_environment(statement, class_scope, in_function)
-                visit(statement, class_scope, in_function)
+            previous_bindings = environment_visitor.deferred_bindings
+            environment_visitor.deferred_bindings = dict(previous_bindings)
+            try:
+                for statement in node.body:
+                    if not in_function and not isinstance(
+                        statement, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+                    ):
+                        record_import_time_environment(statement, class_scope, in_function)
+                    visit(statement, class_scope, in_function)
+            finally:
+                environment_visitor.deferred_bindings = previous_bindings
             return
         for child in ast.iter_child_nodes(node):
             if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
