@@ -319,7 +319,7 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
                 for argument in (*node.args, *(keyword.value for keyword in node.keywords)):
                     self._visit_consumable(argument)
             elif consumer_kind is not None:
-                consumed = {0}
+                consumed = set(range(len(node.args))) if consumer_kind == "chain" else {0}
                 for index, argument in enumerate(node.args):
                     if index in consumed:
                         self._visit_consumable(argument)
@@ -610,9 +610,11 @@ def _function_body_and_environment_risk_signatures(tree: ast.AST) -> frozenset[s
         def _visit_consumable(self, node: ast.AST) -> None:
             """Consume a tracked deferred value while leaving ordinary calls opaque."""
             if isinstance(node, (ast.IfExp, ast.BoolOp)):
-                values = (node.body, node.orelse) if isinstance(node, ast.IfExp) else node.values
                 if isinstance(node, ast.IfExp):
                     self.visit(node.test)
+                    values = ((node.body if bool(node.test.value) else node.orelse,) if isinstance(node.test, ast.Constant) else (node.body, node.orelse))
+                else:
+                    values = node.values
                 for value in values:
                     self._visit_consumable(value)
                 return
