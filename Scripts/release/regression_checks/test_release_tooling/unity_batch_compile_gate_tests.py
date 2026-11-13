@@ -58,7 +58,7 @@ class UnityBatchCompileGateTests(unittest.TestCase):
 
             process.wait.side_effect = finish_process
             tree = mock.Mock(process=process)
-            tree.terminate.return_value = []
+            tree.terminate.return_value = [424242]
             environment = {name: "present" for name in self.gate.REQUIRED_ENVIRONMENT}
             with mock.patch.dict(os.environ, environment, clear=False):
                 with mock.patch.object(self.gate, "_active_unity_project", return_value=False):

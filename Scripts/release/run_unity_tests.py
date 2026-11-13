@@ -175,7 +175,7 @@ def run(
         else:
             residual = await_tree_quiescence(tree, 10.0)
             if residual:
-                tree.terminate()
+                residual = tree.terminate()
     finally:
         tree.close()
 
