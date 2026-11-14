@@ -2,9 +2,12 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import builtins
+import contextlib
 import dis
 import importlib
 import os
+import io
+import runpy
 import subprocess
 import sys
 import types
@@ -234,6 +237,57 @@ class RegressionInventoryTests(unittest.TestCase):
                 self.assertIn(f'[{label}] FAIL:', source)
         module_entrypoint = (root / 'Scripts/ros2forunity/interfaces/characterize_foxrun_custom_interface/__main__.py').read_text(encoding='utf-8')
         self.assertIn('main(sys.argv[1:])', module_entrypoint)
+
+    def test_split_package_entrypoints_preserve_exception_contract(self):
+        """Package entrypoints keep the stable failure mapping of their facades."""
+        entrypoints = {
+            'Scripts.smoke.ros2.launch_phase138m_rviz2': 'phase138m-rviz',
+            'Scripts.smoke.ros2.launch_phase138t_camera_raw_rviz2': 'phase138t-rviz',
+            'Scripts.smoke.ros2.phase160_humble_lidar_deskew_acceptance': 'phase160-humble',
+            'Scripts.mcap.conformance.run_phase121_conformance': 'phase121-conformance',
+            'Scripts.smoke.ros2.phase179_foxrun_ros2_player_host': 'phase179-player-host',
+        }
+        for package_name, label in entrypoints.items():
+            with self.subTest(package=package_name):
+                package = importlib.import_module(package_name)
+                with mock.patch.object(package, 'main', side_effect=RuntimeError('boom')):
+                    stderr = io.StringIO()
+                    with contextlib.redirect_stderr(stderr):
+                        with self.assertRaises(SystemExit) as raised:
+                            runpy.run_module(package_name + '.__main__', run_name='__main__')
+                self.assertEqual(1, raised.exception.code)
+                self.assertIn(f'[{label}] FAIL: boom', stderr.getvalue())
+
+    def test_split_package_entrypoints_map_keyboard_interrupt(self):
+        """Package entrypoints map operator interrupts to exit code 130."""
+        entrypoints = (
+            'Scripts.smoke.ros2.launch_phase138m_rviz2',
+            'Scripts.smoke.ros2.launch_phase138t_camera_raw_rviz2',
+            'Scripts.smoke.ros2.phase160_humble_lidar_deskew_acceptance',
+            'Scripts.mcap.conformance.run_phase121_conformance',
+            'Scripts.smoke.ros2.phase179_foxrun_ros2_player_host',
+        )
+        for package_name in entrypoints:
+            with self.subTest(package=package_name):
+                package = importlib.import_module(package_name)
+                with mock.patch.object(package, 'main', side_effect=KeyboardInterrupt):
+                    try:
+                        runpy.run_module(package_name + '.__main__', run_name='__main__')
+                    except BaseException as raised:
+                        self.assertIsInstance(raised, SystemExit)
+                        self.assertEqual(130, raised.code)
+                    else:
+                        self.fail('Package entrypoint returned without SystemExit')
+
+    def test_phase184_package_entrypoint_delegates(self):
+        """The Phase184 package entrypoint invokes and returns its coordinator."""
+        package_name = 'Scripts.smoke.foxrun.phase184_foxglove_desktop_live_acceptance'
+        package = importlib.import_module(package_name)
+        with mock.patch.object(package, 'main', return_value=7) as main:
+            with self.assertRaises(SystemExit) as raised:
+                runpy.run_module(package_name + '.__main__', run_name='__main__')
+        self.assertEqual(7, raised.exception.code)
+        main.assert_called_once_with()
 
     def test_phase138u_public_cli_maps_process_exceptions(self):
         """Phase138U main and run_cli retain stable public exit-code mapping."""
