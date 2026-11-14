@@ -174,6 +174,8 @@ class PlanAuditLibraryTests(unittest.TestCase):
             path.write_text("Entry base: base\nStatus: Not implemented\n", encoding="utf-8")
             with mock.patch.object(structure_guard_audit, "PLAN", path):
                 self.assertEqual("FAIL", structure_guard_audit._plan_check("base").status)
+                path.write_text("Entry base: base\nStatus: Unimplemented\n", encoding="utf-8")
+                self.assertEqual("FAIL", structure_guard_audit._plan_check("base").status)
                 path.write_text("Entry base: base\nStatus: implemented\n", encoding="utf-8")
                 self.assertEqual("PASS", structure_guard_audit._plan_check("base").status)
 

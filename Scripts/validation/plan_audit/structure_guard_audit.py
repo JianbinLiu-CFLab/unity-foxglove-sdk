@@ -113,9 +113,10 @@ def _plan_check(base_sha: str) -> audit_lib.Check:
     text = PLAN.read_text(encoding="utf-8")
     status_line = next((line for line in text.splitlines() if line.startswith("Status:")), "")
     entry_line = next((line for line in text.splitlines() if line.startswith("Entry base:")), "")
-    status_lower = status_line.lower()
-    status_ok = not re.search(r"\bnot\s+(?:implemented|completed)\b", status_lower) and any(
-        token in status_lower for token in ("audit pending", "implemented", "completed")
+    status_value = status_line.split(":", 1)[1].strip().lower() if ":" in status_line else ""
+    negative_status = re.search(r"\b(?:not\s+(?:implemented|completed)|unimplemented)\b", status_value)
+    status_ok = negative_status is None and bool(
+        re.search(r"\b(?:audit pending|implemented|completed)\b", status_value)
     )
     base_ok = base_sha in entry_line
     status = "PASS" if status_ok and base_ok else "FAIL"
