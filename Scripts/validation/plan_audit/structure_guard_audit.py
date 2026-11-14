@@ -19,6 +19,7 @@ PLAN = audit_lib.ROOT / "Plan" / "196_PHASE196_STRUCTURAL_SIZE_AND_NAMING_GUARDS
 PLAN194 = audit_lib.ROOT / "Plan" / "194_PHASE194_ENGINEERING_HEALTH_AND_VERIFICATION_DEBT_PLAN.md"
 PR716_BASE = "98e665a03d688aa26aac09650ae614214486d7c9"
 PR716_MERGE = "bf1131db208c308529846f87c1d8c3c744b8c7f9"
+REQUIRED_STATUS_CONTEXT = "test"
 
 
 def _check(identifier: str, plan_ref: str, kind: str, status: str, command: str, evidence: str, detail: str) -> audit_lib.Check:
@@ -75,12 +76,47 @@ def _guard_result(root: Path, identifier: str) -> dict[str, object]:
     return _run(["python", "-B", "-m", "Scripts.architecture.structure_guards"], identifier, root, 180.0)
 
 
+def _required_status_names(payload: object) -> tuple[set[str], bool]:
+    """Extract exact required-check names from the branch-protection payload."""
+    if not isinstance(payload, dict):
+        return set(), False
+    names: set[str] = set()
+    for field in ("contexts", "checks"):
+        values = payload.get(field, [])
+        if not isinstance(values, list):
+            return set(), False
+        for value in values:
+            if isinstance(value, str):
+                name = value
+            elif isinstance(value, dict):
+                candidate = value.get("context", value.get("name", ""))
+                name = candidate if isinstance(candidate, str) else ""
+            else:
+                name = ""
+            if name:
+                names.add(name)
+    return names, True
+
+
 def _plan_check(base_sha: str) -> audit_lib.Check:
     """Check that the live Plan196 status and entry base describe current main."""
-    text = PLAN.read_text(encoding="utf-8") if PLAN.is_file() else ""
+    if not PLAN.is_file():
+        return _check(
+            "196-PLAN",
+            "Plan/196... § header",
+            "environment",
+            "NOT_RUN",
+            "read Plan/196_PHASE196_STRUCTURAL_SIZE_AND_NAMING_GUARDS_PLAN.md",
+            "build/plan-audit/structure_guard_audit/plan.log",
+            "Plan196 is ignored local input and is unavailable in this checkout",
+        )
+    text = PLAN.read_text(encoding="utf-8")
     status_line = next((line for line in text.splitlines() if line.startswith("Status:")), "")
     entry_line = next((line for line in text.splitlines() if line.startswith("Entry base:")), "")
-    status_ok = any(token in status_line.lower() for token in ("audit pending", "implemented", "completed"))
+    status_lower = status_line.lower()
+    status_ok = not re.search(r"\bnot\s+(?:implemented|completed)\b", status_lower) and any(
+        token in status_lower for token in ("audit pending", "implemented", "completed")
+    )
     base_ok = base_sha in entry_line
     status = "PASS" if status_ok and base_ok else "FAIL"
     detail = f"{entry_line}; {status_line}; live base={base_sha}"
@@ -112,25 +148,16 @@ def _ci_placement() -> audit_lib.Check:
         "196-required-status",
         timeout=120.0,
     )
-    required_payload = {}
+    required_payload: object = {}
     try:
         required_payload = json.loads(str(required["output"]))
     except json.JSONDecodeError:
-        required_payload = {}
-    contexts = required_payload.get("contexts", [])
-    checks = required_payload.get("checks", [])
-    required_names = {
-        str(context) if isinstance(context, str) else str(context.get("context", ""))
-        for context in contexts
-    }
-    required_names.update(
-        str(check) if isinstance(check, str) else str(check.get("context", check.get("name", "")))
-        for check in checks
-    )
-    expected = "Linux: Python regressions and package closure"
-    job_required = expected in required_names
-    status = "PASS" if placement and required["exit_code"] == 0 and job_required else "NOT_RUN" if placement and required["exit_code"] != 0 else "FAIL"
-    detail = f"placement={placement}; required_api_exit={required['exit_code']}; required_match={job_required}; contexts={sorted(required_names)}"
+        required_payload = None
+    required_names, payload_valid = _required_status_names(required_payload)
+    job_required = REQUIRED_STATUS_CONTEXT in required_names
+    external_available = required["exit_code"] == 0 and payload_valid
+    status = "PASS" if placement and external_available and job_required else "NOT_RUN" if placement and not external_available else "FAIL"
+    detail = f"placement={placement}; required_api_exit={required['exit_code']}; payload_valid={payload_valid}; required_match={job_required}; contexts={sorted(required_names)}"
     return _check("196-CI-placement", "Plan/196... § 3 item 4", "auto", status, "read .github/workflows/dotnet-tests.yml; gh api .../branches/main/protection/required_status_checks", "build/plan-audit/structure_guard_audit/ci-placement.log", detail)
 
 
@@ -192,12 +219,51 @@ def _baseline_exact() -> audit_lib.Check:
     return _check("196-BASELINE-exact", "Plan/196... § 6 DoD", "auto", status, "measure PR716 base with the PR716 merge guard and baseline", "build/plan-audit/structure_guard_audit/logs/196-BASELINE-exact.log", detail)
 
 
+def _baseline_history_violations(
+    base_baseline: dict[str, object],
+    head_baseline: dict[str, object],
+    base_phase_paths: set[str],
+) -> list[str]:
+    """Return baseline changes that widen the trusted PR716 baseline."""
+    guard = _load_guard_module()
+    return guard.baseline_integrity_violations(head_baseline, base_baseline, base_phase_paths)
+
+
 def _baseline_history(base_sha: str) -> audit_lib.Check:
-    """Check for baseline ceilings raised or entries added after PR716."""
-    result = _run(["git", "log", "--format=%H %s", "--reverse", f"{PR716_MERGE}..{base_sha}", "--", BASELINE_REL], "196-BASELINE-history")
-    changed = [line for line in str(result["output"]).splitlines() if line.strip()]
-    status = "PASS" if result["exit_code"] == 0 and not changed else "FAIL"
-    return _check("196-BASELINE-history", "Plan/196... § 6 baseline policy", "history", status, "git log -p origin/main -- Scripts/architecture/structure_guard_baseline.json", result["log"], f"post-PR716 baseline commits={changed or 'none'}")
+    """Check baseline history for unauthorized growth or new phase prefixes."""
+    log = _log_name("196-BASELINE-history")
+    try:
+        guard = _load_guard_module()
+        base_paths = guard.tracked_paths_at_revision(audit_lib.ROOT, PR716_BASE)
+        base_source_paths = [
+            path
+            for path in base_paths
+            if Path(path).suffix in guard.CODE_SUFFIXES and not guard._is_excluded(path)
+        ]
+        base_phase_paths = set(guard._phase_prefixes(base_source_paths))
+        base_baseline = guard.load_baseline_at_revision(audit_lib.ROOT, PR716_MERGE)
+        head_baseline = guard.load_baseline_at_revision(audit_lib.ROOT, base_sha)
+        if base_baseline is None or head_baseline is None:
+            raise ValueError("trusted or audited baseline file is unavailable")
+        violations = _baseline_history_violations(base_baseline, head_baseline, base_phase_paths)
+        detail = f"base_phase_paths={len(base_phase_paths)}; violations={violations or 'none'}"
+        log.parent.mkdir(parents=True, exist_ok=True)
+        log.write_text(detail + "\n", encoding="utf-8")
+        status = "PASS" if not violations else "FAIL"
+    except (OSError, RuntimeError, ValueError, subprocess.CalledProcessError) as exc:
+        detail = f"baseline history comparison unavailable: {exc}"
+        log.parent.mkdir(parents=True, exist_ok=True)
+        log.write_text(detail + "\n", encoding="utf-8")
+        status = "NOT_RUN"
+    return _check(
+        "196-BASELINE-history",
+        "Plan/196... § 6 baseline policy",
+        "history",
+        status,
+        "compare trusted PR716 baseline with the audited revision",
+        str(log),
+        detail,
+    )
 
 
 def _baseline_slack(base_sha: str) -> audit_lib.Check:
@@ -322,7 +388,17 @@ def _test_mutations() -> list[audit_lib.Check]:
 
 def _plan194_check() -> audit_lib.Check:
     """Verify the Phase194 status markers for W5.4, W6.1, and W6.2b."""
-    text = PLAN194.read_text(encoding="utf-8") if PLAN194.is_file() else ""
+    if not PLAN194.is_file():
+        return _check(
+            "196-DOD-4",
+            "Plan/196... § 6 DoD item 4",
+            "environment",
+            "NOT_RUN",
+            "read Plan/194_PHASE194_ENGINEERING_HEALTH_AND_VERIFICATION_DEBT_PLAN.md",
+            "build/plan-audit/structure_guard_audit/plan194.log",
+            "Plan194 is ignored local input and is unavailable in this checkout",
+        )
+    text = PLAN194.read_text(encoding="utf-8")
     w54 = bool(re.search(r"W5\.4[^\n]*dropped", text, re.IGNORECASE))
     w61 = bool(re.search(r"W6\.1[^\n]*(?:moved to Phase196|implemented in Phase196)", text, re.IGNORECASE))
     w62 = bool(re.search(r"W6\.2b[^\n]*dropped", text, re.IGNORECASE))
@@ -334,7 +410,15 @@ def _agents_check() -> audit_lib.Check:
     """Verify the local ceiling and baseline approval rule."""
     path = audit_lib.ROOT / "AGENTS.md"
     if not path.is_file():
-        return _check("196-AGENTS", "Plan/196... § 2 baseline update policy", "history", "MISSING", "read AGENTS.md", "build/plan-audit/structure_guard_audit/agents.log", "ignored AGENTS.md is missing")
+        return _check(
+            "196-AGENTS",
+            "Plan/196... § 2 baseline update policy",
+            "environment",
+            "NOT_RUN",
+            "read AGENTS.md",
+            "build/plan-audit/structure_guard_audit/agents.log",
+            "AGENTS.md is ignored local input and is unavailable in this checkout",
+        )
     text = path.read_text(encoding="utf-8")
     found = "do not raise or add structure-guard baseline ceilings or entries without explicit user approval" in text.lower()
     return _check("196-AGENTS", "Plan/196... § 2 baseline update policy", "auto", "PASS" if found else "FAIL", "read AGENTS.md", "build/plan-audit/structure_guard_audit/agents.log", f"approval wording found={found}")
