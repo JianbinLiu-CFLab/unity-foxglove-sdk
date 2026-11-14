@@ -90,11 +90,14 @@ def _required_status_names(payload: object) -> tuple[set[str], bool]:
                 name = value
             elif isinstance(value, dict):
                 candidate = value.get("context", value.get("name", ""))
-                name = candidate if isinstance(candidate, str) else ""
+                if not isinstance(candidate, str) or not candidate:
+                    return set(), False
+                name = candidate
             else:
-                name = ""
-            if name:
-                names.add(name)
+                return set(), False
+            if not name:
+                return set(), False
+            names.add(name)
     return names, True
 
 

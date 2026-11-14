@@ -191,6 +191,16 @@ class PlanAuditLibraryTests(unittest.TestCase):
         )
         self.assertTrue(valid)
         self.assertIn("test", names)
+        names, valid = structure_guard_audit._required_status_names(
+            {"contexts": [42], "checks": []}
+        )
+        self.assertFalse(valid)
+        self.assertEqual(set(), names)
+        names, valid = structure_guard_audit._required_status_names(
+            {"contexts": [], "checks": [{}]}
+        )
+        self.assertFalse(valid)
+        self.assertEqual(set(), names)
 
     def test_structure_guard_ci_placement_marks_api_failures_not_run(self) -> None:
         """Unavailable or malformed GitHub status data is reported as NOT_RUN."""
