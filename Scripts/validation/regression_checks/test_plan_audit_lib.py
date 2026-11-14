@@ -238,7 +238,7 @@ class PlanAuditLibraryTests(unittest.TestCase):
             with mock.patch.object(
                 unity_coverage.subprocess,
                 "run",
-                side_effect=[SimpleNamespace(stdout="feature/test\n"), SimpleNamespace(stdout="head\n")],
+                side_effect=[SimpleNamespace(stdout="feature/test\n"), SimpleNamespace(stdout="head\n", returncode=0)],
             ), mock.patch.object(
                 unity_coverage.audit_lib,
                 "run",
@@ -263,14 +263,14 @@ class PlanAuditLibraryTests(unittest.TestCase):
         self.assertEqual("NOT_RUN", checks[0].status)
 
     def test_w4_mutation_accepts_matching_evidence(self) -> None:
-        """W4 mutation evidence passes only when it identifies the audited revision and failure."""
+        """W4 mutation evidence passes only after the recorded workflow run is verified."""
         with tempfile.TemporaryDirectory(dir=audit_lib.BUILD_ROOT) as temp:
             output = Path(temp)
-            output.mkdir(parents=True, exist_ok=True)
             (output / "w4-mutation.json").write_text(
                 json.dumps(
                     {
-                        "base_sha": "head",
+                        "head_sha": "head",
+                        "run_head_sha": "a" * 40,
                         "run_id": 123,
                         "distro": "lyrical",
                         "mutation": "compile-error",
@@ -281,9 +281,86 @@ class PlanAuditLibraryTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
+
+            def fake_audit_run(command, log_path, timeout, cwd=audit_lib.ROOT):
+                """Return the authoritative workflow job evidence."""
+                del timeout, cwd
+                log_path.parent.mkdir(parents=True, exist_ok=True)
+                self.assertEqual(["gh", "run", "view", "123", "--json", "headSha,jobs"], command)
+                return {
+                    "exit_code": 0,
+                    "timed_out": False,
+                    "output": json.dumps(
+                        {
+                            "headSha": "a" * 40,
+                            "jobs": [{"name": "unity-distro-compile (lyrical)", "conclusion": "failure"}],
+                        }
+                    ),
+                }
+
+            checks: list[audit_lib.Check] = []
+            with mock.patch.object(unity_coverage.audit_lib, "run", side_effect=fake_audit_run), mock.patch.object(
+                unity_coverage.subprocess, "run", return_value=SimpleNamespace(returncode=0)
+            ):
+                unity_coverage._w4_mutation(checks, output, "head")
+        self.assertEqual("PASS", checks[0].status)
+
+    def test_w4_mutation_rejects_stale_head_sha(self) -> None:
+        """W4 evidence for another audited head cannot pass."""
+        with tempfile.TemporaryDirectory(dir=audit_lib.BUILD_ROOT) as temp:
+            output = Path(temp)
+            (output / "w4-mutation.json").write_text('{"head_sha":"old"}', encoding="utf-8")
             checks: list[audit_lib.Check] = []
             unity_coverage._w4_mutation(checks, output, "head")
-        self.assertEqual("PASS", checks[0].status)
+        self.assertEqual("FAIL", checks[0].status)
+
+    def test_w4_mutation_rejects_missing_run_id(self) -> None:
+        """W4 evidence without a workflow run id cannot pass."""
+        with tempfile.TemporaryDirectory(dir=audit_lib.BUILD_ROOT) as temp:
+            output = Path(temp)
+            (output / "w4-mutation.json").write_text('{"head_sha":"head"}', encoding="utf-8")
+            checks: list[audit_lib.Check] = []
+            unity_coverage._w4_mutation(checks, output, "head")
+        self.assertEqual("FAIL", checks[0].status)
+
+    def test_w4_mutation_requires_current_head(self) -> None:
+        """W4 evidence cannot pass when the audited head is unavailable."""
+        with tempfile.TemporaryDirectory(dir=audit_lib.BUILD_ROOT) as temp:
+            output = Path(temp)
+            checks: list[audit_lib.Check] = []
+            unity_coverage._w4_mutation(checks, output, "")
+        self.assertEqual("FAIL", checks[0].status)
+
+    def test_w4_mutation_marks_unreadable_run_manual(self) -> None:
+        """A deleted or inaccessible workflow run remains manual rather than passing."""
+        with tempfile.TemporaryDirectory(dir=audit_lib.BUILD_ROOT) as temp:
+            output = Path(temp)
+            (output / "w4-mutation.json").write_text(
+                json.dumps(
+                    {
+                        "head_sha": "head",
+                        "run_head_sha": "a" * 40,
+                        "run_id": 123,
+                        "distro": "lyrical",
+                        "mutation": "compile-error",
+                        "job_name": "unity-distro-compile (lyrical)",
+                        "job_conclusion": "failure",
+                        "restored": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            def fake_audit_run(command, log_path, timeout, cwd=audit_lib.ROOT):
+                """Return an inaccessible workflow run."""
+                del command, timeout, cwd
+                log_path.parent.mkdir(parents=True, exist_ok=True)
+                return {"exit_code": 1, "timed_out": False, "output": "run not found"}
+
+            checks: list[audit_lib.Check] = []
+            with mock.patch.object(unity_coverage.audit_lib, "run", side_effect=fake_audit_run):
+                unity_coverage._w4_mutation(checks, output, "head")
+        self.assertEqual("MANUAL", checks[0].status)
 
     def test_w4_mutation_rejects_non_object_evidence(self) -> None:
         """Malformed W4 evidence produces a controlled failure."""
@@ -370,6 +447,24 @@ class PlanAuditLibraryTests(unittest.TestCase):
             evidence["changed_meta"],
         )
         self.assertEqual(2, evidence["guid_changes"])
+
+    def test_guid_audit_fails_when_committed_diff_cannot_be_read(self) -> None:
+        """A failed base-to-head metadata diff is an explicit audit failure."""
+        with tempfile.TemporaryDirectory(dir=audit_lib.BUILD_ROOT) as temp:
+            root = Path(temp)
+            output = root / "output"
+
+            def fake_run(command, **kwargs):
+                """Return a failed git diff."""
+                del command, kwargs
+                return SimpleNamespace(returncode=1, stdout="")
+
+            with mock.patch.object(unity_coverage.audit_lib, "ROOT", root), mock.patch.object(
+                unity_coverage.subprocess, "run", side_effect=fake_run
+            ):
+                checks: list[audit_lib.Check] = []
+                unity_coverage._guid_audit(checks, output, "base", "head")
+        self.assertEqual("FAIL", checks[0].status)
 
     def test_acceptance_audit_runs_checks_when_trusted_source_changes(self) -> None:
         """A trusted-source mismatch must not silently skip the remaining audit checks."""
