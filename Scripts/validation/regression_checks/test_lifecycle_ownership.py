@@ -320,18 +320,18 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
             "TryCleanup(\n"
             "    ref _state,\n"
             "    ref failure);\n"
-            "WarningDebouncer.TryUpdateCooldown(\n"
+            "static void TryCleanup(ref int value, ref int failure) { value = 1; }\nWarningDebouncer.TryUpdateCooldown(\n"
             "    ref _state,\n"
             "    now,\n"
             "    interval);\n"
-            "AddHandler(ref _state);\n"
-            "static void AddHandler(ref int value) { }\n"
+            "AddHandler(ref _state, 1, 2);\n"
+            "static void AddHandler(ref int value, int first, int second) { }\n"
         )
         refs = lifecycle_ownership._writer_refs(text, Path("Packages/pkg/Runtime/Owner.cs"), "_state")
         self.assertEqual(
             [
                 "Packages/pkg/Runtime/Owner.cs:3",
-                "Packages/pkg/Runtime/Owner.cs:6",
+                "Packages/pkg/Runtime/Owner.cs:7",
             ],
             refs,
         )
@@ -530,10 +530,10 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
             masked,
             scopes,
             {"_gate", "_state"},
-            {("Cleanup", 0)} | lifecycle_ownership.csharp_source.receiver_called_method_signatures(masked),
+            lifecycle_ownership._lifecycle_called_method_signatures(masked) | lifecycle_ownership.csharp_source.receiver_called_method_signatures(masked, masked),
         )
-        self.assertIn(("Cleanup", 2), lifecycle_ownership._lifecycle_called_method_signatures(masked))
-        self.assertEqual([], locks)
+        self.assertIn(("Owner", "Cleanup", 2), lifecycle_ownership._lifecycle_called_method_signatures(masked))
+        self.assertEqual(["Packages/pkg/Runtime/Owner.cs:7"], locks)
 
     def test_lifecycle_method_name_matching_is_anchored(self) -> None:
         """A method such as Stopwatch is not treated as lifecycle code."""
@@ -598,7 +598,7 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
         text = (
             "private int _state;\n"
             "void Set(int _state) { _state = 1; }\n"
-            "void Reset() { var _state = 2; _state = 3; }\n"
+            "void Reset() { using var _state = GetState(); _state = 3; }\n"
         )
         refs = lifecycle_ownership._writer_refs(text, Path("Packages/pkg/Runtime/Owner.cs"), "_state")
         self.assertEqual([], refs)
@@ -629,7 +629,7 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
             "    void Dispose() {\n"
             "        lock (_gate) {\n"
             "            for (int _state = 0; _state < 2; _state++) { }\n"
-            "            System.Action<int> action = (_state) => _state = 1;\n"
+            "            System.Action<int> action = (_state) => _state = 1; using var _state = GetState(); _state = 1;\n"
             "        }\n"
             "    }\n"
             "}\n"

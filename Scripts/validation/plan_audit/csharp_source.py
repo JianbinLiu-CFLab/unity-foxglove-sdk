@@ -386,6 +386,7 @@ def field_name_is_shadowed(masked_text: str, field: str, position: int) -> bool:
         rf"\bfor\s*\([^;{{}}]*\b(?:var|[A-Za-z_][A-Za-z0-9_<>.,?]*)\s+{name}\s*="
         rf"|\bforeach\s*\(\s*(?:var|[A-Za-z_][A-Za-z0-9_<>.,?]*)\s+{name}\b"
         rf"|\busing\s*\(\s*(?:var|[A-Za-z_][A-Za-z0-9_<>.,?]*)\s+{name}\b"
+        rf"|\busing\s+var\s+{name}\b"
         rf"|\bis\s+(?:[A-Za-z_][A-Za-z0-9_<>.,?]*)\s+{name}\b"
         rf"|\bcase\s+(?:[A-Za-z_][A-Za-z0-9_<>.,?]*)\s+{name}\b"
         rf"|(?:\(\s*[^)]*\b{name}\b[^)]*\)|\b{name}\b)\s*=>"
@@ -466,7 +467,51 @@ def is_declaration_assignment(masked_text: str, position: int) -> bool:
         masked_text.rfind("}", 0, position),
     ) + 1
     prefix = masked_text[statement_start:position]
-    return bool(re.search(r"\b(?:private|protected|internal|public)\b", prefix))
+    return bool(re.search(r"\b(?:private|protected|internal|public)\b|\busing\s+var\b", prefix))
+
+
+def ref_helper_mutates_parameter(masked_text: str, name: str, arity: int) -> bool:
+    """Return whether one exact ref-helper declaration mutates a ref parameter."""
+    if name == "WarningDebouncer.TryUpdateCooldown" and arity == 3:
+        return True
+    short_name = name.rsplit(".", 1)[-1]
+    declaration_pattern = re.compile(
+        rf"(?m)^[ \t]*(?:(?:public|private|protected|internal|static|async|virtual|override|sealed|new)\s+)*"
+        rf"(?:[A-Za-z_][A-Za-z0-9_<>,.?\[\]]*|void)\s+{re.escape(short_name)}"
+        rf"(?:<[^{{}}()]*>)?\s*\((?P<params>[^{{}};]*)\)\s*(?:where[^{{}}]*)?(?=\{{)"
+    )
+    matches: list[bool] = []
+    for declaration in declaration_pattern.finditer(masked_text):
+        if method_arity(masked_text, declaration.start()) != arity:
+            continue
+        ref_parameters = re.findall(
+            r"\bref\s+[A-Za-z_][A-Za-z0-9_<>,.?\[\]]*\s+([A-Za-z_][A-Za-z0-9_]*)\b",
+            declaration.group("params"),
+        )
+        opening = masked_text.find("{", declaration.end())
+        if not ref_parameters or opening < 0:
+            continue
+        depth = 0
+        closing = len(masked_text)
+        for index in range(opening, len(masked_text)):
+            if masked_text[index] == "{":
+                depth += 1
+            elif masked_text[index] == "}":
+                depth -= 1
+                if depth == 0:
+                    closing = index
+                    break
+        body = masked_text[opening:closing]
+        matches.append(
+            any(
+                re.search(
+                    rf"(?:\b{re.escape(parameter)}\b\s*(?:(?<![=!<>])=(?!=)|\+=|-=|\?\?=|\+\+|--)|(?:\+\+|--)\s*\b{re.escape(parameter)}\b|\b(?:Interlocked\.[A-Za-z_][A-Za-z0-9_]*|Volatile\.Write)\s*\(\s*ref\s+{re.escape(parameter)}\b)",
+                    body,
+                )
+                for parameter in ref_parameters
+            )
+        )
+    return len(matches) == 1 and matches[0]
 
 
 def writer_refs(
@@ -528,7 +573,10 @@ def writer_refs(
             refs.add(f"{relative.as_posix()}:{text.count(chr(10), 0, absolute) + 1}")
     for match in mutator_pattern.finditer(scoped_text):
         allowed_arities = (known_ref_mutator_arities or {}).get(match.group("name"))
-        if allowed_arities is not None and method_arity(scoped_text, match.start()) not in allowed_arities:
+        call_arity = method_arity(scoped_text, match.start())
+        if allowed_arities is not None and call_arity not in allowed_arities:
+            continue
+        if not ref_helper_mutates_parameter(masked, match.group("name"), call_arity):
             continue
         absolute = scope_start + match.start("ref")
         receiver = receiver_from_match(masked, absolute, scope_start + match.end(), receiver_pattern, field) if receiver_pattern else None
@@ -674,7 +722,7 @@ def lifecycle_called_method_names(masked_text: str) -> set[str]:
         if not LIFECYCLE_METHOD_PATTERN.search(method_name):
             continue
         body = masked_text[start:end]
-        for match in re.finditer(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\(", body):
+        for match in re.finditer(r"(?<!\.)\b([A-Za-z_][A-Za-z0-9_]*)\s*\(", body):
             if match.group(1) not in ignored:
                 names.add(match.group(1))
     return names
@@ -724,26 +772,41 @@ def _lifecycle_reachable_contexts(masked_text: str) -> tuple[tuple[int, int, str
         seen.add(context[0])
         reachable.append(context)
         body = masked_text[context[0]:context[1]]
-        for match in re.finditer(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\(", body):
+        for match in re.finditer(r"(?<!\.)\b([A-Za-z_][A-Za-z0-9_]*)\s*\(", body):
             if match.group(1) in ignored:
                 continue
             queue.extend(by_signature.get((match.group(1), method_arity(body, match.start())), ()))
     return tuple(reachable)
 
 
-def lifecycle_called_method_signatures(masked_text: str) -> set[tuple[str, int]]:
-    """Return called lifecycle helper names with their argument counts."""
+def _context_type(masked_text: str, position: int, type_spans: dict[str, tuple[int, int]]) -> str | None:
+    """Return the innermost declaring type for one method context."""
+    opening = masked_text.find("{", position)
+    candidates = [
+        (name.rsplit("::", 1)[-1], end - start)
+        for name, (start, end) in type_spans.items()
+        if opening >= 0 and start <= opening < end
+    ]
+    return min(candidates, key=lambda item: item[1])[0] if candidates else None
+
+
+def lifecycle_called_method_signatures(masked_text: str) -> set[tuple[str, str, int]]:
+    """Return called lifecycle helper signatures bound to declaring types."""
     ignored = {"if", "for", "foreach", "while", "switch", "catch", "using", "lock", "nameof", "typeof", "new"}
-    signatures: set[tuple[str, int]] = set()
+    signatures: set[tuple[str, str, int]] = set()
+    type_spans = _type_spans(masked_text, masked_text)
     for start, end, method_name in _method_contexts(masked_text):
         if not LIFECYCLE_METHOD_PATTERN.search(method_name):
             continue
+        context_type = _context_type(masked_text, start, type_spans)
+        if context_type is None:
+            continue
         body = masked_text[start:end]
-        for match in re.finditer(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\(", body):
+        for match in re.finditer(r"(?<!\.)\b([A-Za-z_][A-Za-z0-9_]*)\s*\(", body):
             name = match.group(1)
             if name in ignored:
                 continue
-            signatures.add((name, method_arity(body, match.start())))
+            signatures.add((context_type, name, method_arity(body, match.start())))
     return signatures
 
 
@@ -809,7 +872,6 @@ def bound_lifecycle_refs(
             and any(start <= lock_position < end for start, end in scopes)
             and (
                 LIFECYCLE_METHOD_PATTERN.search(lock_context[2])
-                or (lock_context[2], method_arity(masked_text, lock_context[0])) in approved_method_signatures
                 or (
                     lock_type,
                     lock_context[2],
