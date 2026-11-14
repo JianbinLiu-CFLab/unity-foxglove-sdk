@@ -96,7 +96,7 @@ def _line_refs(text: str, relative: Path, pattern: re.Pattern[str]) -> list[str]
 
 def _owner_evidence_valid(data: object) -> bool:
     """Return whether an owner payload contains traceable lifecycle evidence."""
-    if not isinstance(data, dict) or not data.get("files") or not data.get("fields"):
+    if not isinstance(data, dict) or not data.get("files") or not data.get("fields") or not data.get("locks"):
         return False
     fields = data["fields"]
     if not isinstance(fields, dict) or not any(int(value.get("assignments", 0)) > 0 for value in fields.values() if isinstance(value, dict)):
@@ -129,9 +129,13 @@ def _trx_outcomes(path: Path) -> dict[str, list[str]]:
 
 
 def _missing_expected_tests(path: Path) -> list[str]:
-    """Return expected lifecycle tests without a passing TRX result."""
+    """Return expected lifecycle tests without exclusively passing TRX results."""
     outcomes = _trx_outcomes(path)
-    return sorted(name for name in EXPECTED_TEST_NAMES if "Passed" not in outcomes.get(name, []))
+    return sorted(
+        name
+        for name in EXPECTED_TEST_NAMES
+        if not outcomes.get(name) or any(outcome != "Passed" for outcome in outcomes[name])
+    )
 
 
 def _expected_test_failure(path: Path) -> bool:

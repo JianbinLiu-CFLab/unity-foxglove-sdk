@@ -31,6 +31,12 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
         """Owner evidence rejects file-only and field-only payloads."""
         incomplete = {"files": ["Owner.cs"], "fields": {}}
         self.assertFalse(lifecycle_ownership._owner_evidence_valid(incomplete))
+        missing_locks = {
+            "files": ["Owner.cs"],
+            "fields": {"_state": {"assignments": 1}},
+            "lifetime": ["Owner.cs:20"],
+        }
+        self.assertFalse(lifecycle_ownership._owner_evidence_valid(missing_locks))
         complete = {
             "files": ["Owner.cs"],
             "fields": {"_state": {"assignments": 1}},
@@ -49,6 +55,15 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
                 ET.SubElement(results, "UnitTestResult", testName=name, outcome="Passed")
             ET.ElementTree(root).write(path, encoding="utf-8", xml_declaration=True)
             self.assertEqual([], lifecycle_ownership._missing_expected_tests(path))
+            ET.SubElement(
+                results,
+                "UnitTestResult",
+                testName=lifecycle_ownership.EXPECTED_TEST_NAMES[-1] + "(false, false)",
+                outcome="Failed",
+            )
+            ET.ElementTree(root).write(path, encoding="utf-8", xml_declaration=True)
+            self.assertIn(lifecycle_ownership.EXPECTED_TEST_NAMES[-1], lifecycle_ownership._missing_expected_tests(path))
+            results.remove(results[-1])
             results.remove(results[-1])
             ET.ElementTree(root).write(path, encoding="utf-8", xml_declaration=True)
             self.assertTrue(lifecycle_ownership._missing_expected_tests(path))
