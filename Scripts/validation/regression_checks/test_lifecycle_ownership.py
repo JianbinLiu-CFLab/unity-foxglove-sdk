@@ -288,6 +288,30 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
             refs,
         )
 
+    def test_inactive_conditional_regions_do_not_create_evidence(self) -> None:
+        """Explicitly inactive C# branches cannot provide owner evidence."""
+        text = (
+            "class Owner {\n"
+            "#if false\n"
+            "    private int _state;\n"
+            "    void Set() { _state = 1; }\n"
+            "    void Dispose() { lock (_gate) { } }\n"
+            "#endif\n"
+            "}\n"
+        )
+        masked = lifecycle_ownership._mask_csharp_source(text)
+        self.assertNotIn("_state", masked)
+        self.assertEqual([], lifecycle_ownership._field_declarations(masked, Path("Packages/pkg/Runtime/Owner.cs"), masked))
+        self.assertEqual(
+            [],
+            lifecycle_ownership._line_refs(
+                text,
+                Path("Packages/pkg/Runtime/Owner.cs"),
+                lifecycle_ownership.LIFETIME_WORDS,
+                masked,
+            ),
+        )
+
     def test_real_owner_map_uses_declared_production_synchronization(self) -> None:
         """The tracked production owner map must close without test-only evidence."""
         check = lifecycle_ownership._owner_map()

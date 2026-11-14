@@ -230,16 +230,50 @@ def _mask_csharp_comments_and_strings(text: str) -> str:
         index += 1
     return "".join(chars)
 
+def _mask_inactive_csharp_regions(masked_text: str) -> str:
+    """Mask explicitly inactive C# conditional-compilation branches."""
+    chars = list(masked_text)
+    frames: list[tuple[bool, bool]] = []
+    active = True
+    offset = 0
+    for line in masked_text.splitlines(keepends=True):
+        directive = re.match(r"^\s*#\s*(if|elif|else|endif)\b(.*)$", line)
+        if directive:
+            kind, expression = directive.groups()
+            if kind == "if":
+                condition_false = expression.strip().lower() in {"false", "0"}
+                branch_active = active and not condition_false
+                frames.append((active, branch_active))
+                active = branch_active
+            elif frames and kind in {"elif", "else"}:
+                parent, taken = frames[-1]
+                condition_false = kind == "elif" and expression.strip().lower() in {"false", "0"}
+                active = parent and not taken and not condition_false
+                frames[-1] = (parent, True)
+            elif frames:
+                parent, _ = frames.pop()
+                active = parent
+            offset += len(line)
+            continue
+        if not active:
+            for index in range(offset, offset + len(line)):
+                if chars[index] != "\n":
+                    chars[index] = " "
+        offset += len(line)
+    return "".join(chars)
+
+def _mask_csharp_source(text: str) -> str:
+    """Mask comments, strings, and explicitly inactive conditional regions."""
+    return _mask_inactive_csharp_regions(_mask_csharp_comments_and_strings(text))
 
 def _type_spans(text: str, masked_text: str | None = None) -> dict[str, tuple[int, int]]:
     """Return source spans for nested C# declaring types."""
-    masked = masked_text if masked_text is not None else _mask_csharp_comments_and_strings(text)
+    masked = masked_text if masked_text is not None else _mask_csharp_source(text)
     openings: dict[int, str] = {}
     for match in TYPE_DECLARATION_PATTERN.finditer(masked):
         opening = masked.find("{", match.end())
         if opening >= 0:
             openings[opening] = match.group("name")
-
     stack: list[tuple[int, str | None, str | None]] = []
     spans: dict[str, tuple[int, int]] = {}
     for index, character in enumerate(masked):
@@ -254,7 +288,6 @@ def _type_spans(text: str, masked_text: str | None = None) -> dict[str, tuple[in
                 spans[path] = (start, index + 1)
     return spans
 
-
 def _plan_bases(text: str) -> dict[str, list[str]]:
     """Read only the current explicit Plan base fields."""
     fields: dict[str, list[str]] = {}
@@ -265,7 +298,6 @@ def _plan_bases(text: str) -> dict[str, list[str]]:
             fields[field] = values
     return fields
 
-
 def _line_refs(
     text: str,
     relative: Path,
@@ -273,30 +305,24 @@ def _line_refs(
     masked_text: str | None = None,
 ) -> list[str]:
     """Return source locations matching a lifecycle evidence pattern."""
-    masked = masked_text if masked_text is not None else _mask_csharp_comments_and_strings(text)
+    masked = masked_text if masked_text is not None else _mask_csharp_source(text)
     return [
         f"{relative.as_posix()}:{line_number}"
         for line_number, line in enumerate(masked.splitlines(), 1)
         if pattern.search(line)
     ]
-
-
 def _nested_receiver_names(masked_texts: dict[Path, str], declaring_type: str) -> tuple[str, ...]:
     """Infer receiver expressions whose static type matches a nested declaring type."""
     leaf = declaring_type.rsplit("::", 1)[-1]
     text = "\n".join(masked_texts.values())
     receivers = set(re.findall(rf"\b{re.escape(leaf)}\s+([A-Za-z_][A-Za-z0-9_]*)\b", text))
-    receivers.update(
-        re.findall(rf"\b([A-Za-z_][A-Za-z0-9_]*)\s*=\s*new\s+{re.escape(leaf)}\b", text)
-    )
+    receivers.update(re.findall(rf"\b([A-Za-z_][A-Za-z0-9_]*)\s*=\s*new\s+{re.escape(leaf)}\b", text))
     dictionary_value = bool(re.search(rf"\bDictionary\s*<[^;\n]*,\s*{re.escape(leaf)}\s*>", text))
     if dictionary_value:
         receivers.update(re.findall(r"\bout\s+var\s+([A-Za-z_][A-Za-z0-9_]*)\b", text))
         receivers.update(re.findall(r"\bforeach\s*\(\s*var\s+([A-Za-z_][A-Za-z0-9_]*)\s+in\s+[^)]*\.Values", text))
         receivers.update(f"{name}.Value" for name in re.findall(r"\bforeach\s*\(\s*var\s+([A-Za-z_][A-Za-z0-9_]*)\s+in\s+[^)]*\)", text))
     return tuple(sorted(receivers))
-
-
 def _writer_refs(
     text: str,
     relative: Path,
@@ -306,7 +332,7 @@ def _writer_refs(
     qualified_receivers: tuple[str, ...] | None = None,
 ) -> list[str]:
     """Return source locations that prove a field write."""
-    masked = masked_text if masked_text is not None else _mask_csharp_comments_and_strings(text)
+    masked = masked_text if masked_text is not None else _mask_csharp_source(text)
     scope_start, scope_end = scope or (0, len(masked))
     scoped_text = masked[scope_start:scope_end]
     refs: set[str] = set()
@@ -333,15 +359,14 @@ def _writer_refs(
     )
     return sorted(refs)
 
-
 def _field_declarations(
     text: str,
     relative: Path,
     masked_text: str | None = None,
     spans: dict[str, tuple[int, int]] | None = None,
-) -> list[dict[str, str]]:
+    ) -> list[dict[str, str]]:
     """Collect field declarations and classify configuration fields."""
-    masked = masked_text if masked_text is not None else _mask_csharp_comments_and_strings(text)
+    masked = masked_text if masked_text is not None else _mask_csharp_source(text)
     lines = masked.splitlines()
     spans = spans if spans is not None else _type_spans(text, masked)
     fallback_type = relative.stem.split(".", 1)[0]
@@ -398,15 +423,13 @@ def _field_declarations(
             }
         )
     return declarations
-
-
 def _collect_owner_fields(matched: list[Path]) -> tuple[dict[str, dict[str, object]], list[str]]:
     """Collect all declarations first, then aggregate writers across partial files."""
     texts = {
         relative: (audit_lib.ROOT / relative).read_text(encoding="utf-8", errors="replace")
         for relative in matched
     }
-    masked_texts = {relative: _mask_csharp_comments_and_strings(text) for relative, text in texts.items()}
+    masked_texts = {relative: _mask_csharp_source(text) for relative, text in texts.items()}
     type_spans = {relative: _type_spans(text, masked_texts[relative]) for relative, text in texts.items()}
     fields: dict[str, dict[str, object]] = {}
     for relative, text in texts.items():
@@ -430,7 +453,6 @@ def _collect_owner_fields(matched: list[Path]) -> tuple[dict[str, dict[str, obje
             field_data["declarations"].append(declaration["declaration"])
             if declaration["classification"] == "mutable":
                 field_data["classification"] = "mutable"
-
     missing_writers: list[str] = []
     for field_key, field_data in fields.items():
         name = str(field_data["name"])
@@ -816,7 +838,7 @@ def _owner_map() -> audit_lib.Check:
         lifetime: list[str] = []
         for relative in matched:
             text = (audit_lib.ROOT / relative).read_text(encoding="utf-8", errors="replace")
-            masked = _mask_csharp_comments_and_strings(text)
+            masked = _mask_csharp_source(text)
             locks.extend(_line_refs(text, relative, re.compile(r"\block\s*\("), masked))
             lifetime.extend(_line_refs(text, relative, LIFETIME_WORDS, masked))
         fields, missing_writers = _collect_owner_fields(matched)
