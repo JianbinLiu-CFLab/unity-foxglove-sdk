@@ -266,6 +266,20 @@ jobs:
           SOURCE_DECOMPOSITION_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: python3 -B Scripts/release/run_ci.py --only packages
 
+  linux-source-text-inventory:
+    name: "Linux: source-text inventory"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository with provenance history
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+
       - name: Run live source-text inventory
         if: always()
         timeout-minutes: 20
@@ -837,6 +851,7 @@ jobs:
       - linux-xunit
       - linux-runtime
       - linux-python-regressions
+      - linux-source-text-inventory
       - linux-identity-gate
       - linux-conformance-panels
       - optional-ros2-adapter
@@ -852,6 +867,7 @@ jobs:
           LINUX_XUNIT_RESULT: ${{ needs['linux-xunit'].result }}
           LINUX_RUNTIME_RESULT: ${{ needs['linux-runtime'].result }}
           LINUX_PYTHON_RESULT: ${{ needs['linux-python-regressions'].result }}
+          SOURCE_TEXT_INVENTORY_RESULT: ${{ needs['linux-source-text-inventory'].result }}
           LINUX_IDENTITY_RESULT: ${{ needs['linux-identity-gate'].result }}
           LINUX_CONFORMANCE_RESULT: ${{ needs['linux-conformance-panels'].result }}
           ADAPTER_RESULT: ${{ needs['optional-ros2-adapter'].result }}
@@ -867,6 +883,7 @@ jobs:
             "linux-xunit=$LINUX_XUNIT_RESULT" \
             "linux-runtime=$LINUX_RUNTIME_RESULT" \
             "linux-python-regressions=$LINUX_PYTHON_RESULT" \
+            "linux-source-text-inventory=$SOURCE_TEXT_INVENTORY_RESULT" \
             "linux-identity-gate=$LINUX_IDENTITY_RESULT" \
             "linux-conformance-panels=$LINUX_CONFORMANCE_RESULT" \
             "optional-ros2-adapter=$ADAPTER_RESULT" \
