@@ -140,10 +140,7 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
         canonical = Path("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Evidence.cs")
         canonical_text = "namespace Unity.FoxgloveSDK.Components { public partial class FoxgloveManager { } }"
         self.assertTrue(lifecycle_ownership._owner_source_is_canonical(canonical, "FoxgloveManager", canonical_text))
-        self.assertFalse(
-            canonical.as_posix()
-            in {"Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs"}
-        )
+        self.assertTrue(lifecycle_ownership.csharp_source.source_declares_type(canonical_text, {"FoxgloveManager"}))
         mixed_text = (
             "namespace Unity.FoxgloveSDK.Components { }\n"
             "namespace Evil { public class FoxgloveManager { } }"
@@ -289,6 +286,18 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
         text = "private int _state = 1;\n"
         refs = lifecycle_ownership._writer_refs(text, Path("Packages/pkg/Runtime/Owner.cs"), "_state")
         self.assertEqual([], refs)
+        for shadowed in (
+            "class Owner {\n    private int _state;\n    void Set(int _state) {\n        if (ready) {\n            _state = 1;\n        }\n    }\n}\n",
+            "class Owner {\n    private int _state;\n    void Set() {\n        int _state = 0;\n        if (ready) {\n            _state = 1;\n        }\n    }\n}\n",
+        ):
+            self.assertEqual(
+                [],
+                lifecycle_ownership._writer_refs(
+                    shadowed,
+                    Path("Packages/pkg/Runtime/Owner.cs"),
+                    "_state",
+                ),
+            )
 
     def test_writer_evidence_accepts_increment_writes(self) -> None:
         """Increment and decrement operations are field writes."""
@@ -315,6 +324,8 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
             "    ref _state,\n"
             "    now,\n"
             "    interval);\n"
+            "AddHandler(ref _state);\n"
+            "static void AddHandler(ref int value) { }\n"
         )
         refs = lifecycle_ownership._writer_refs(text, Path("Packages/pkg/Runtime/Owner.cs"), "_state")
         self.assertEqual(
@@ -449,6 +460,53 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
             {"_gate", "_state"},
         )
         self.assertEqual([], locks)
+
+        shadowed = (
+            "class Owner {\n"
+            "    private object _gate;\n"
+            "    private int _state;\n"
+            "    void Dispose() { lock (_gate) { int _state = 0; _state = 1; } }\n"
+            "}\n"
+        )
+        shadowed_masked = lifecycle_ownership._mask_csharp_source(shadowed)
+        shadowed_scopes = lifecycle_ownership._owner_type_scopes(shadowed, shadowed_masked, "Owner")
+        shadowed_locks, _ = lifecycle_ownership._bound_lifecycle_refs(
+            shadowed,
+            Path("Packages/pkg/Runtime/Owner.cs"),
+            shadowed_masked,
+            shadowed_scopes,
+            {"_gate", "_state"},
+        )
+        self.assertEqual([], shadowed_locks)
+        self.assertFalse(
+            lifecycle_ownership.csharp_source.method_body_contains_field(
+                shadowed_masked,
+                shadowed_masked.index("void Dispose"),
+                {"_state"},
+            )
+        )
+
+        support = (
+            "class ClientEventAdmissionState {\n"
+            "    private object _gate;\n"
+            "    private int _state;\n"
+            "    void Worker() { lock (_gate) { _state = 1; } }\n"
+            "}\n"
+        )
+        support_masked = lifecycle_ownership._mask_csharp_source(support)
+        support_scopes = lifecycle_ownership._owner_type_scopes(
+            support,
+            support_masked,
+            "FoxgloveManager",
+        )
+        support_locks, _ = lifecycle_ownership._bound_lifecycle_refs(
+            support,
+            Path("Packages/pkg/Runtime/ClientEventAdmissionState.cs"),
+            support_masked,
+            support_scopes,
+            {"_gate", "_state"},
+        )
+        self.assertEqual([], support_locks)
 
     def test_lifecycle_lock_helper_signature_must_match_callsite(self) -> None:
         """An overload not called by lifecycle code cannot provide lock evidence."""
@@ -691,7 +749,7 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
         self.assertEqual(["Packages/pkg/Runtime/Owner.Lifecycle.cs:1"], fields["Owner::_state"]["writers"])
 
     def test_nested_receiver_inference_is_file_scoped(self) -> None:
-        """Unrelated files cannot provide nested receiver writer evidence."""
+        """Unrelated files and same-named dictionaries cannot provide nested writer evidence."""
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             owner = Path("Packages/pkg/Runtime/Owner.cs")
@@ -699,9 +757,10 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
             (root / owner).parent.mkdir(parents=True)
             (root / owner).write_text(
                 "class Owner {\n"
-                "    private Dictionary<int, Child> _children;\n"
                 "    private sealed class Child { private int _state; }\n"
-                "    void Set() { _children.TryGetValue(0, out var child); child._state = 1; }\n"
+                "    private sealed class Other { private int _state; }\n"
+                "    void Good(Dictionary<int, Child> map) { map.TryGetValue(0, out var child); child._state = 1; }\n"
+                "    void Bad(Dictionary<int, Other> map) { map.TryGetValue(0, out var child); child._state = 2; }\n"
                 "}\n",
                 encoding="utf-8",
             )
@@ -714,8 +773,8 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
         self.assertNotIn("Owner::Child::_state", missing)
         self.assertEqual(["Packages/pkg/Runtime/Owner.cs:4"], fields["Owner::Child::_state"]["writers"])
 
-    def test_nested_receiver_inference_rejects_same_name_other_type(self) -> None:
-        """A receiver with another static type cannot satisfy nested field evidence."""
+    def test_nested_receiver_constructor_rejects_same_name_other_type(self) -> None:
+        """A constructor receiver with another static type cannot satisfy nested field evidence."""
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             source = Path("Packages/pkg/Runtime/Owner.cs")
@@ -724,8 +783,8 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
                 "class Owner {\n"
                 "    private sealed class Child { private int _state; }\n"
                 "    private sealed class Other { private int _state; }\n"
-                "    void Good(Child child) { child._state = 1; }\n"
-                "    void Bad(Other child) { child._state = 2; }\n"
+                "    Owner(Child child) { child._state = 1; }\n"
+                "    Owner(Other child) { child._state = 2; }\n"
                 "}\n",
                 encoding="utf-8",
             )
@@ -754,39 +813,18 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
         )
         self.assertEqual([], refs)
 
-    def test_nested_receiver_inference_binds_dictionary_value_type(self) -> None:
-        """A same-named dictionary receiver must match its declared value type."""
-        with tempfile.TemporaryDirectory() as temp:
-            root = Path(temp)
-            source = Path("Packages/pkg/Runtime/Owner.cs")
-            (root / source).parent.mkdir(parents=True)
-            (root / source).write_text(
-                "class Owner {\n"
-                "    private Dictionary<int, Child> _children;\n"
-                "    private Dictionary<int, Other> _others;\n"
-                "    private sealed class Child { private int _state; }\n"
-                "    private sealed class Other { private int _state; }\n"
-                "    void Good() { _children.TryGetValue(0, out var child); child._state = 1; }\n"
-                "    void Bad() { _others.TryGetValue(0, out var child); child._state = 2; }\n"
-                "}\n",
-                encoding="utf-8",
-            )
-            with mock.patch.object(lifecycle_ownership.audit_lib, "ROOT", root):
-                fields, missing = lifecycle_ownership._collect_owner_fields([source])
-        self.assertNotIn("Owner::Child::_state", missing)
-        self.assertEqual(["Packages/pkg/Runtime/Owner.cs:6"], fields["Owner::Child::_state"]["writers"])
-
     def test_owner_fields_keep_missing_writer_evidence(self) -> None:
         """A mutable declaration without a writer remains a blocking finding."""
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             declaration = Path("Packages/pkg/Runtime/Owner.cs")
             (root / declaration).parent.mkdir(parents=True)
-            (root / declaration).write_text("private int _state;\n", encoding="utf-8")
+            (root / declaration).write_text("class Owner {\nprivate int _state;\nint\n[] _array;\n}\n", encoding="utf-8")
             with mock.patch.object(lifecycle_ownership.audit_lib, "ROOT", root):
                 fields, missing = lifecycle_ownership._collect_owner_fields([declaration])
-        self.assertEqual(["Owner::_state"], missing)
+        self.assertEqual(["Owner::_array", "Owner::_state"], missing)
         self.assertEqual([], fields["Owner::_state"]["writers"])
+        self.assertEqual([], fields["Owner::_array"]["writers"])
 
     def test_owner_fields_include_default_private_and_multiple_declarators(self) -> None:
         """Default-private and multi-declarator fields cannot disappear from the map."""

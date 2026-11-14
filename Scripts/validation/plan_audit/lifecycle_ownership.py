@@ -88,7 +88,7 @@ OWNER_SYNC_MODES = {
     "ReplayController": "replay locks",
     "Ros2BridgeWorkerLease": "worker lease locks",
 }
-KNOWN_REF_MUTATORS = ("TryCleanup", "WarningDebouncer.TryUpdateCooldown", "AddHandler", "RemoveHandler")
+KNOWN_REF_MUTATORS = {"TryCleanup": {2, 3}, "WarningDebouncer.TryUpdateCooldown": {3}, "AddHandler": {3}, "RemoveHandler": {3}}
 ATOMIC_WRITE_CALLS = (
     "Interlocked.Add",
     "Interlocked.And",
@@ -155,10 +155,9 @@ def _bound_lifecycle_refs(
     scopes: tuple[tuple[int, int], ...],
     field_names: set[str],
     approved_method_signatures: set[tuple[str, int]] | None = None,
-    allowed_sync_types: set[str] | None = None,
 ) -> tuple[list[str], list[str]]:
     """Return lock and lifecycle references bound to declared owner fields."""
-    return csharp_source.bound_lifecycle_refs(text, relative, masked_text, scopes, field_names, LIFETIME_WORDS, approved_method_signatures, allowed_sync_types)
+    return csharp_source.bound_lifecycle_refs(text, relative, masked_text, scopes, field_names, LIFETIME_WORDS, approved_method_signatures)
 
 
 def _owner_base_paths(owner: str, base_revision: str) -> set[str] | None:
@@ -188,12 +187,13 @@ def _writer_refs(
         relative,
         field,
         ATOMIC_WRITE_CALLS,
-        KNOWN_REF_MUTATORS,
+        tuple(KNOWN_REF_MUTATORS),
         scope,
         masked_text,
         qualified_receivers,
         receiver_type,
         receiver_type_context,
+        KNOWN_REF_MUTATORS,
     )
 
 
@@ -797,7 +797,7 @@ def _owner_map(base_sha: str | None = None) -> audit_lib.Check:
             text = (audit_lib.ROOT / path).read_text(encoding="utf-8", errors="replace")
             if path.as_posix() in base_paths and _owner_source_is_canonical(path, owner, _mask_csharp_source(text)):
                 matched.append(path)
-            elif _owner_source_is_canonical(path, owner, _mask_csharp_source(text)):
+            elif csharp_source.source_declares_type(_mask_csharp_source(text), {owner}):
                 untrusted_files.append(path.as_posix())
         support_names = OWNER_SUPPORT_NAMES.get(owner, ())
         for path in files:
@@ -805,16 +805,16 @@ def _owner_map(base_sha: str | None = None) -> audit_lib.Check:
                 text = (audit_lib.ROOT / path).read_text(encoding="utf-8", errors="replace")
                 if path.as_posix() in base_paths and _owner_source_is_canonical(path, owner, _mask_csharp_source(text)):
                     matched.append(path)
-                elif _owner_source_is_canonical(path, owner, _mask_csharp_source(text)):
+                elif csharp_source.source_declares_type(_mask_csharp_source(text), {owner, *(Path(name).stem for name in support_names)}):
                     untrusted_files.append(path.as_posix())
         fields, missing_writers = _collect_owner_fields(matched)
         field_names = {str(value["name"]) for value in fields.values()}
-        combined_masked = "\n".join(
+        owner_method_masked = "\n".join(
             _mask_csharp_source((audit_lib.ROOT / path).read_text(encoding="utf-8", errors="replace"))
             for path in matched
+            if path.name not in support_names
         )
-        approved_method_signatures = _lifecycle_called_method_signatures(combined_masked)
-        allowed_sync_types = {Path(name).stem for name in OWNER_SUPPORT_NAMES.get(owner, ())}
+        approved_method_signatures = _lifecycle_called_method_signatures(owner_method_masked) | csharp_source.receiver_called_method_signatures(owner_method_masked)
         locks: list[str] = []
         lifetime: list[str] = []
         for relative in matched:
@@ -828,7 +828,6 @@ def _owner_map(base_sha: str | None = None) -> audit_lib.Check:
                 scopes,
                 field_names,
                 approved_method_signatures,
-                allowed_sync_types,
             )
             locks.extend(bound_locks)
             lifetime.extend(bound_lifetime)
