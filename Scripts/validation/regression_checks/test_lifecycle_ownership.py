@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 import xml.etree.ElementTree as ET
@@ -98,17 +99,30 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
                 "_state": {
                     "assignments": 1,
                     "files": ["Packages/pkg/Runtime/Owner.cs"],
+                    "declarations": ["Packages/pkg/Runtime/Owner.cs:5"],
                     "writers": ["Packages/pkg/Runtime/Owner.cs:10"],
+                    "classification": "mutable",
                 }
             },
+            "missing_writers": [],
+            "owner": "FoxgloveSession",
             "locks": ["Packages/pkg/Runtime/Owner.cs:10"],
             "lifetime": ["Packages/pkg/Runtime/Owner.cs:20"],
             "synchronization": {
-                "mode": "lock",
+                "mode": lifecycle_ownership.OWNER_SYNC_MODES["FoxgloveSession"],
                 "refs": ["Packages/pkg/Runtime/Owner.cs:10"],
             },
         }
         self.assertTrue(lifecycle_ownership._owner_evidence_valid(complete))
+
+    def test_test_name_normalisation_preserves_method_with_dotted_arguments(self) -> None:
+        """Theory arguments cannot change the extracted method name."""
+        self.assertEqual(
+            "StopServerRunsForActiveOrPendingRuntimeOwnership",
+            lifecycle_ownership._normalise_test_name(
+                "Tests.FoxgloveManager.StopServerRunsForActiveOrPendingRuntimeOwnership(System.Double.NaN)"
+            ),
+        )
 
     def test_production_source_scope_excludes_editor_and_tests(self) -> None:
         """Only Runtime source paths can provide owner evidence."""
@@ -176,6 +190,49 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
         """The tracked production owner map must close without test-only evidence."""
         check = lifecycle_ownership._owner_map()
         self.assertEqual("PASS", check.status)
+        payload = json.loads((lifecycle_ownership.OUTPUT / "owner-map.json").read_text(encoding="utf-8"))
+        manager = payload["FoxgloveManager"]
+        self.assertIn("_clientConnectedForwarder", manager["fields"])
+        self.assertEqual([], manager["missing_writers"])
+
+    def test_owner_fields_aggregate_writers_across_partial_files(self) -> None:
+        """A writer in another partial file satisfies the declared field."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            declaration = Path("Packages/pkg/Runtime/Owner.cs")
+            writer = Path("Packages/pkg/Runtime/Owner.Lifecycle.cs")
+            (root / declaration).parent.mkdir(parents=True)
+            (root / declaration).write_text("private int _state;\n", encoding="utf-8")
+            (root / writer).write_text("_state = 1;\n", encoding="utf-8")
+            with mock.patch.object(lifecycle_ownership.audit_lib, "ROOT", root):
+                fields, missing = lifecycle_ownership._collect_owner_fields([declaration, writer])
+        self.assertEqual([], missing)
+        self.assertEqual(["Packages/pkg/Runtime/Owner.Lifecycle.cs:1"], fields["_state"]["writers"])
+
+    def test_owner_fields_keep_missing_writer_evidence(self) -> None:
+        """A mutable declaration without a writer remains a blocking finding."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            declaration = Path("Packages/pkg/Runtime/Owner.cs")
+            (root / declaration).parent.mkdir(parents=True)
+            (root / declaration).write_text("private int _state;\n", encoding="utf-8")
+            with mock.patch.object(lifecycle_ownership.audit_lib, "ROOT", root):
+                fields, missing = lifecycle_ownership._collect_owner_fields([declaration])
+        self.assertEqual(["_state"], missing)
+        self.assertEqual([], fields["_state"]["writers"])
+
+    def test_owner_fields_classify_serialized_configuration_without_writer(self) -> None:
+        """Serialized configuration fields are retained with an explicit classification."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            declaration = Path("Packages/pkg/Runtime/Owner.cs")
+            (root / declaration).parent.mkdir(parents=True)
+            (root / declaration).write_text("[SerializeField] private bool _enabled;\n", encoding="utf-8")
+            with mock.patch.object(lifecycle_ownership.audit_lib, "ROOT", root):
+                fields, missing = lifecycle_ownership._collect_owner_fields([declaration])
+        self.assertEqual([], missing)
+        self.assertEqual("configuration", fields["_enabled"]["classification"])
+        self.assertEqual([], fields["_enabled"]["writers"])
 
     def test_mutation_evidence_requires_expected_test_failure(self) -> None:
         """Mutation evidence rejects compile-only or unrelated failures."""

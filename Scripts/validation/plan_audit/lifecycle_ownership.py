@@ -43,6 +43,10 @@ EXPECTED_TEST_NAMES = (
 )
 EXPECTED_TEST_COUNTS = {name: 1 for name in EXPECTED_TEST_NAMES}
 EXPECTED_TEST_COUNTS["StopServerRunsForActiveOrPendingRuntimeOwnership"] = 4
+MUTATION_EXPECTED_TESTS = {
+    "197-W1-mutation-order": ("StopServerTailRunsEveryCleanupStepAfterMultipleFailures",),
+    "197-W1-mutation-cleanup": ("StopServerTailRunsEveryCleanupStepAfterMultipleFailures",),
+}
 OWNER_PATTERNS = {
     "FoxgloveManager": "FoxgloveManager*.cs",
     "FoxgloveSession": "FoxgloveSession*.cs",
@@ -53,11 +57,17 @@ OWNER_SUPPORT_NAMES = {
     "FoxgloveManager": ("ClientEventAdmissionState.cs", "ReplaySubscriberFanoutState.cs"),
 }
 OWNER_SYNC_MODES = {
-    "FoxgloveManager": "unity-main-thread with composed admission and fanout locks",
+    "FoxgloveManager": "composed admission and fanout locks",
     "FoxgloveSession": "lifecycle locks",
     "ReplayController": "replay locks",
     "Ros2BridgeWorkerLease": "worker lease locks",
 }
+FIELD_DECLARATION_PATTERN = re.compile(
+    r"\b(?P<access>private|protected|internal|public)\s+"
+    r"(?:(?:static|readonly|volatile)\s+)*"
+    r"(?!(?:const|event)\b)[A-Za-z_][A-Za-z0-9_:<>,.?()\[\]\s]*\s+"
+    r"(?P<name>_?[A-Za-z][A-Za-z0-9_]*)\s*(?:=|;)"
+)
 
 
 def _check(identifier: str, plan_ref: str, kind: str, status: str, command: str, evidence: str, detail: str) -> audit_lib.Check:
@@ -114,8 +124,100 @@ def _writer_refs(text: str, relative: Path, field: str) -> list[str]:
     pattern = re.compile(
         rf"\b{re.escape(field)}\s*(?:(?<![=!<>])=(?!=)|\+=|-=|\?\?=)"
         rf"|\b(?:Interlocked|Volatile)\.\w+\(\s*ref\s+{re.escape(field)}\b"
+        rf"|\bref\s+{re.escape(field)}\b"
     )
-    return _line_refs(text, relative, pattern)
+    return sorted(
+        {
+            f"{relative.as_posix()}:{text.count(chr(10), 0, match.start()) + 1}"
+            for match in pattern.finditer(text)
+        }
+    )
+
+
+def _field_declarations(text: str, relative: Path) -> list[dict[str, str]]:
+    """Collect field declarations and classify configuration fields."""
+    lines = text.splitlines()
+    declarations: list[dict[str, str]] = []
+    for match in FIELD_DECLARATION_PATTERN.finditer(text):
+        matched_text = match.group(0)
+        if (
+            "=>" in matched_text
+            or "{" in matched_text
+            or "}" in matched_text
+            or (match.end() < len(text) and text[match.end()] == ">")
+        ):
+            continue
+        line_number = text.count("\n", 0, match.start("name")) + 1
+        declaration_prefix = text[match.start():match.start("name")]
+        declaration_tail = text[match.start("name"):match.end()]
+        assignment_index = len(declaration_tail)
+        for terminator in ("=", ";"):
+            index = declaration_tail.find(terminator)
+            if index >= 0:
+                assignment_index = min(assignment_index, index)
+        before_assignment = declaration_tail[:assignment_index]
+        arrow_index = declaration_tail.find("=>")
+        if arrow_index >= 0 and declaration_tail.find("=") == arrow_index:
+            continue
+        if "{" in before_assignment or "(" in before_assignment:
+            continue
+        if "(" in declaration_prefix and ")" not in declaration_prefix:
+            continue
+        context = "\n".join(lines[max(0, line_number - 4):line_number])
+        access = match.group("access")
+        configuration = "[SerializeField]" in context or access == "public"
+        declarations.append(
+            {
+                "name": match.group("name"),
+                "file": relative.as_posix(),
+                "declaration": f"{relative.as_posix()}:{line_number}",
+                "classification": "configuration" if configuration else "mutable",
+            }
+        )
+    return declarations
+
+
+def _collect_owner_fields(matched: list[Path]) -> tuple[dict[str, dict[str, object]], list[str]]:
+    """Collect all declarations first, then aggregate writers across partial files."""
+    texts = {
+        relative: (audit_lib.ROOT / relative).read_text(encoding="utf-8", errors="replace")
+        for relative in matched
+    }
+    fields: dict[str, dict[str, object]] = {}
+    for relative, text in texts.items():
+        for declaration in _field_declarations(text, relative):
+            name = declaration["name"]
+            field_data = fields.setdefault(
+                name,
+                {
+                    "files": [],
+                    "declarations": [],
+                    "assignments": 0,
+                    "writers": [],
+                    "classification": declaration["classification"],
+                },
+            )
+            field_data["files"].append(declaration["file"])
+            field_data["declarations"].append(declaration["declaration"])
+            if declaration["classification"] == "mutable":
+                field_data["classification"] = "mutable"
+
+    missing_writers: list[str] = []
+    for name, field_data in fields.items():
+        for relative, text in texts.items():
+            writer_refs = _writer_refs(text, relative, name)
+            field_data["assignments"] = int(field_data["assignments"]) + len(writer_refs)
+            field_data["writers"].extend(writer_refs)
+        field_data["files"] = sorted(set(field_data["files"]))
+        field_data["declarations"] = sorted(set(field_data["declarations"]))
+        field_data["writers"] = sorted(set(field_data["writers"]))
+        if field_data["classification"] == "mutable":
+            if not field_data["writers"]:
+                missing_writers.append(name)
+            field_data["reason"] = "writer references required across owner partials"
+        else:
+            field_data["reason"] = "Unity-serialized or public configuration field"
+    return fields, sorted(missing_writers)
 
 
 def _is_production_source(path: str) -> bool:
@@ -153,28 +255,42 @@ def _owner_evidence_valid(data: object) -> bool:
     if not isinstance(data, dict) or not _source_paths_valid(data.get("files")) or not data.get("fields"):
         return False
     fields = data["fields"]
+    missing_writers = data.get("missing_writers")
+    owner = data.get("owner")
     synchronization = data.get("synchronization")
     if (
         not isinstance(fields, dict)
         or not fields
+        or not isinstance(missing_writers, list)
+        or missing_writers
+        or owner not in OWNER_SYNC_MODES
         or not _source_refs_valid(data.get("locks"))
         or not _source_refs_valid(data.get("lifetime"))
         or not isinstance(synchronization, dict)
-        or not synchronization.get("mode")
+        or synchronization.get("mode") != OWNER_SYNC_MODES[owner]
         or not _source_refs_valid(synchronization.get("refs"))
     ):
         return False
     for value in fields.values():
-        if not isinstance(value, dict) or int(value.get("assignments", 0)) <= 0:
+        if not isinstance(value, dict):
             return False
-        if not _source_paths_valid(value.get("files")) or not _source_refs_valid(value.get("writers")):
+        if value.get("classification") not in {"mutable", "configuration"}:
+            return False
+        if not _source_paths_valid(value.get("files")) or not _source_refs_valid(value.get("declarations")):
+            return False
+        writers = value.get("writers")
+        if writers and not _source_refs_valid(writers):
+            return False
+        if value["classification"] == "mutable" and (
+            not writers or int(value.get("assignments", 0)) <= 0
+        ):
             return False
     return True
 
 
 def _normalise_test_name(name: str) -> str:
     """Reduce a TRX test name to its method name."""
-    return name.rsplit(".", 1)[-1].split("(", 1)[0]
+    return name.split("(", 1)[0].rsplit(".", 1)[-1]
 
 
 def _trx_outcomes(path: Path) -> dict[str, list[str]]:
@@ -207,10 +323,11 @@ def _missing_expected_tests(path: Path) -> list[str]:
     )
 
 
-def _expected_test_failure(path: Path) -> bool:
+def _expected_test_failure(path: Path, expected_names: tuple[str, ...] | None = None) -> bool:
     """Return whether a named lifecycle test failed in a mutation run."""
     outcomes = _trx_outcomes(path)
-    return any("Failed" in outcomes.get(name, []) or "Error" in outcomes.get(name, []) for name in EXPECTED_TEST_NAMES)
+    names = expected_names or EXPECTED_TEST_NAMES
+    return any("Failed" in outcomes.get(name, []) or "Error" in outcomes.get(name, []) for name in names)
 
 
 def _candidate_metadata_issues(candidates: list[dict[str, str]]) -> list[str]:
@@ -376,24 +493,18 @@ def _owner_map() -> audit_lib.Check:
         matched = [path for path in files if fnmatch.fnmatch(path.name, pattern) or (owner == "Ros2BridgeWorkerLease" and "Ros2BridgeWorkerLease" in str(path))]
         support_names = OWNER_SUPPORT_NAMES.get(owner, ())
         matched.extend(path for path in files if path.name in support_names and path not in matched)
-        fields: dict[str, dict[str, object]] = {}
         locks: list[str] = []
         lifetime: list[str] = []
         for relative in matched:
             text = (audit_lib.ROOT / relative).read_text(encoding="utf-8", errors="replace")
             locks.extend(_line_refs(text, relative, re.compile(r"\block\s*\(")))
             lifetime.extend(_line_refs(text, relative, LIFETIME_WORDS))
-            for field in re.findall(r"\b(?:private|protected|internal|public)\s+(?:readonly\s+)?[A-Za-z0-9_<>,.?]+\s+(_?[A-Za-z][A-Za-z0-9_]*)\s*(?:=|;)", text):
-                writer_refs = _writer_refs(text, relative, field)
-                if not writer_refs:
-                    continue
-                field_data = fields.setdefault(field, {"files": [], "assignments": 0, "writers": []})
-                field_data["files"].append(str(relative).replace("\\", "/"))
-                field_data["assignments"] = int(field_data["assignments"]) + len(writer_refs)
-                field_data["writers"].extend(writer_refs)
+        fields, missing_writers = _collect_owner_fields(matched)
         payload[owner] = {
             "files": [str(path).replace("\\", "/") for path in matched],
             "fields": fields,
+            "missing_writers": missing_writers,
+            "owner": owner,
             "locks": locks,
             "lifetime": lifetime,
             "synchronization": {"mode": OWNER_SYNC_MODES[owner], "refs": locks},
@@ -467,10 +578,11 @@ def _mutation_checks() -> list[audit_lib.Check]:
                     600.0,
                 )
             mutation_file = mutation_dir / f"{identifier}.trx"
-            expected_failure = _expected_test_failure(mutation_file)
+            expected_names = MUTATION_EXPECTED_TESTS[identifier]
+            expected_failure = _expected_test_failure(mutation_file, expected_names)
             okay = baseline["exit_code"] == 0 and not baseline_missing and result["exit_code"] != 0 and expected_failure
             status = "PASS" if okay else "FAIL"
-            detail = f"baseline_exit={baseline['exit_code']}; baseline_passed={baseline_passed}; baseline_missing={baseline_missing or 'none'}; mutated_exit={result['exit_code']}; expected_test_failure={expected_failure}"
+            detail = f"baseline_exit={baseline['exit_code']}; baseline_passed={baseline_passed}; baseline_missing={baseline_missing or 'none'}; mutated_exit={result['exit_code']}; expected_tests={expected_names}; expected_test_failure={expected_failure}"
             evidence = result["log"]
         except Exception as exc:
             status = "FAIL"
