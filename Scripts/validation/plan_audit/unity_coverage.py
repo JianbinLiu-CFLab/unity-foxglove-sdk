@@ -348,21 +348,27 @@ def _w4_mutation(checks: list[audit_lib.Check], output: Path, head_sha: str) -> 
                     mismatches.append("mutation_patch_file")
                 if restored_state is None or not restored_state.is_file():
                     mismatches.append("restored_state_file")
-                for key in ("mutation_patch_sha256", "restored_worktree_sha256"):
+                for key in ("mutation_patch_sha256", "restored_state_sha256", "restored_worktree_sha256"):
                     if not isinstance(payload.get(key), str) or not re.fullmatch(r"[0-9a-fA-F]{64}", payload[key]):
                         mismatches.append(key)
                 if mutation_patch is not None and mutation_patch.is_file() and re.fullmatch(r"[0-9a-fA-F]{64}", str(payload.get("mutation_patch_sha256", ""))):
                     if hashlib.sha256(mutation_patch.read_bytes()).hexdigest() != payload["mutation_patch_sha256"]:
                         mismatches.append("mutation_patch_sha256")
-                if restored_state is not None and restored_state.is_file() and re.fullmatch(r"[0-9a-fA-F]{64}", str(payload.get("restored_worktree_sha256", ""))):
-                    if hashlib.sha256(restored_state.read_bytes()).hexdigest() != payload["restored_worktree_sha256"]:
-                        mismatches.append("restored_worktree_sha256")
+                if restored_state is not None and restored_state.is_file() and re.fullmatch(r"[0-9a-fA-F]{64}", str(payload.get("restored_state_sha256", ""))):
+                    if hashlib.sha256(restored_state.read_bytes()).hexdigest() != payload["restored_state_sha256"]:
+                        mismatches.append("restored_state_sha256")
                     try:
                         restored_payload = json.loads(restored_state.read_text(encoding="utf-8"))
                     except (OSError, json.JSONDecodeError):
                         restored_payload = {}
                     if not isinstance(restored_payload, dict) or restored_payload.get("worktree_unchanged") is not True:
                         mismatches.append("restored_state")
+                    else:
+                        _, current_worktree_sha = audit_lib.worktree_snapshot(exclude=("build/",))
+                        if restored_payload.get("worktree_sha256") != payload.get("restored_worktree_sha256"):
+                            mismatches.append("restored_worktree_sha256")
+                        elif current_worktree_sha != payload.get("restored_worktree_sha256"):
+                            mismatches.append("current_worktree_sha256")
                 run_id = payload.get("run_id")
                 if isinstance(run_id, bool) or not re.fullmatch(r"[0-9]+", str(run_id or "")) or int(run_id) <= 0:
                     mismatches.append("run_id")
@@ -593,5 +599,5 @@ def manual_steps(checks: list[audit_lib.Check]) -> str:
 1. Obtain approval to dispatch one run for Humble and one for Lyrical on `main`.
 2. Record selected package, runner path on `D:`, independent `Library` directory, compile command, and run id.
 3. Verify the manifest is restored in an `if: always()` step and `git status --porcelain` is clean.
-4. Treat the disposable Lyrical compile-error run as manual acceptance. If recording it, use a branch based directly on the audited `HEAD`, inject one compile error, confirm batch compile fails, save the mutation patch and a JSON restore record with `worktree_unchanged=true` under the audit output, and write `build/plan-audit/unity_acceptance/w4-mutation.json` with `audited_head_sha`, `mutation_head_sha`, `mutation_parent_sha`, numeric `run_id`, `distro=lyrical`, `mutation=compile-error`, `compile_error_observed=true`, `mutation_patch_file`, `mutation_patch_sha256`, `restored_state_file`, `restored_worktree_sha256`, and `restored=true`. The audit verifies the canonical workflow, failed Lyrical job log, direct parent, and artifact hashes, and requires a fresh record for every new audited commit. This manual check is reported separately from the automatic DoD.
+4. Treat the disposable Lyrical compile-error run as manual acceptance. If recording it, use a branch based directly on the audited `HEAD`, inject one compile error, confirm batch compile fails, save the mutation patch and a JSON restore record with `worktree_unchanged=true` and `worktree_sha256` equal to the audited checkout snapshot under the audit output, and write `build/plan-audit/unity_acceptance/w4-mutation.json` with `audited_head_sha`, `mutation_head_sha`, `mutation_parent_sha`, numeric `run_id`, `distro=lyrical`, `mutation=compile-error`, `compile_error_observed=true`, `mutation_patch_file`, `mutation_patch_sha256`, `restored_state_file`, `restored_state_sha256`, `restored_worktree_sha256`, and `restored=true`. The audit verifies the canonical workflow, failed Lyrical job log, direct parent, artifact hashes, and current worktree snapshot, and requires a fresh record for every new audited commit. This manual check is reported separately from the automatic DoD.
 """

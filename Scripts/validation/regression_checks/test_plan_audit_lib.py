@@ -288,7 +288,8 @@ class PlanAuditLibraryTests(unittest.TestCase):
                 ).encode("utf-8")
             )
             restored_state = output / "restored.json"
-            restored_state.write_text(json.dumps({"worktree_unchanged": True}), encoding="utf-8")
+            _, current_worktree_sha = audit_lib.worktree_snapshot(exclude=("build/",))
+            restored_state.write_text(json.dumps({"worktree_unchanged": True, "worktree_sha256": current_worktree_sha}), encoding="utf-8")
             (output / "w4-mutation.json").write_text(
                 json.dumps(
                     {
@@ -304,7 +305,8 @@ class PlanAuditLibraryTests(unittest.TestCase):
                         "mutation_patch_file": str(mutation_patch.relative_to(audit_lib.ROOT)).replace("\\", "/"),
                         "mutation_patch_sha256": hashlib.sha256(mutation_patch.read_bytes()).hexdigest(),
                         "restored_state_file": str(restored_state.relative_to(audit_lib.ROOT)).replace("\\", "/"),
-                        "restored_worktree_sha256": hashlib.sha256(restored_state.read_bytes()).hexdigest(),
+                        "restored_state_sha256": hashlib.sha256(restored_state.read_bytes()).hexdigest(),
+                        "restored_worktree_sha256": current_worktree_sha,
                         "restored": True,
                     }
                 ),
@@ -366,9 +368,7 @@ class PlanAuditLibraryTests(unittest.TestCase):
                 }
 
             checks: list[audit_lib.Check] = []
-            with mock.patch.object(unity_coverage.audit_lib, "run", side_effect=fake_audit_run), mock.patch.object(
-                unity_coverage.subprocess, "run", return_value=SimpleNamespace(returncode=0, stdout=f"{'a' * 40} head\n")
-            ):
+            with mock.patch.object(unity_coverage.audit_lib, "run", side_effect=fake_audit_run):
                 unity_coverage._w4_mutation(checks, output, "head")
         self.assertEqual("PASS", checks[0].status)
         self.assertTrue(checks[0].evidence.endswith("/w4-mutation.json"))
@@ -415,7 +415,8 @@ class PlanAuditLibraryTests(unittest.TestCase):
             mutation_patch = output / "mutation.patch"
             mutation_patch.write_bytes(b"deliberate compile error")
             restored_state = output / "restored.json"
-            restored_state.write_text(json.dumps({"worktree_unchanged": True}), encoding="utf-8")
+            _, current_worktree_sha = audit_lib.worktree_snapshot(exclude=("build/",))
+            restored_state.write_text(json.dumps({"worktree_unchanged": True, "worktree_sha256": current_worktree_sha}), encoding="utf-8")
             (output / "w4-mutation.json").write_text(
                 json.dumps(
                     {
@@ -431,7 +432,8 @@ class PlanAuditLibraryTests(unittest.TestCase):
                         "mutation_patch_file": str(mutation_patch.relative_to(audit_lib.ROOT)).replace("\\", "/"),
                         "mutation_patch_sha256": hashlib.sha256(mutation_patch.read_bytes()).hexdigest(),
                         "restored_state_file": str(restored_state.relative_to(audit_lib.ROOT)).replace("\\", "/"),
-                        "restored_worktree_sha256": hashlib.sha256(restored_state.read_bytes()).hexdigest(),
+                        "restored_state_sha256": hashlib.sha256(restored_state.read_bytes()).hexdigest(),
+                        "restored_worktree_sha256": current_worktree_sha,
                         "restored": True,
                     }
                 ),
