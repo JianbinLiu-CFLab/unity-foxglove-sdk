@@ -390,6 +390,17 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
         self.assertEqual([], fields["Owner::Second::_state"]["writers"])
         self.assertEqual(["Packages/pkg/Runtime/Owner.cs:4"], fields["Owner::First::_state"]["writers"])
 
+    def test_qualified_receiver_requires_identifier_boundary(self) -> None:
+        """A longer identifier cannot impersonate an inferred receiver."""
+        text = "mychild._state = 1;\nchild._state = 2;\n"
+        refs = lifecycle_ownership._writer_refs(
+            text,
+            Path("Packages/pkg/Runtime/Owner.cs"),
+            "_state",
+            qualified_receivers=("child",),
+        )
+        self.assertEqual(["Packages/pkg/Runtime/Owner.cs:2"], refs)
+
     def test_owner_fields_aggregate_writers_across_partial_files(self) -> None:
         """A writer in another partial file satisfies the declared field."""
         with tempfile.TemporaryDirectory() as temp:

@@ -229,7 +229,6 @@ def _mask_csharp_comments_and_strings(text: str) -> str:
             continue
         index += 1
     return "".join(chars)
-
 def _mask_inactive_csharp_regions(masked_text: str) -> str:
     """Mask explicitly inactive C# conditional-compilation branches."""
     chars = list(masked_text)
@@ -265,7 +264,6 @@ def _mask_inactive_csharp_regions(masked_text: str) -> str:
 def _mask_csharp_source(text: str) -> str:
     """Mask comments, strings, and explicitly inactive conditional regions."""
     return _mask_inactive_csharp_regions(_mask_csharp_comments_and_strings(text))
-
 def _type_spans(text: str, masked_text: str | None = None) -> dict[str, tuple[int, int]]:
     """Return source spans for nested C# declaring types."""
     masked = masked_text if masked_text is not None else _mask_csharp_source(text)
@@ -336,7 +334,10 @@ def _writer_refs(
     scope_start, scope_end = scope or (0, len(masked))
     scoped_text = masked[scope_start:scope_end]
     refs: set[str] = set()
-    receiver_pattern = "|".join(re.escape(receiver) for receiver in qualified_receivers or ())
+    receiver_pattern = "|".join(
+        rf"(?<![A-Za-z0-9_]){re.escape(receiver)}(?![A-Za-z0-9_])"
+        for receiver in qualified_receivers or ()
+    )
     field_target = rf"(?:{receiver_pattern})\.{re.escape(field)}\b" if receiver_pattern else rf"\b{re.escape(field)}\b"
     assignment_pattern = re.compile(
         rf"{field_target}\s*(?:(?<![=!<>])=(?!=)|\+=|-=|\?\?=)"
