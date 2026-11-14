@@ -22,28 +22,114 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
             "Audit base: `origin/main == " + "a" * 40 + "`\n"
         )
         self.assertEqual(
-            {"Audit base": "a" * 40, "Entry base": "a" * 40},
+            {"Audit base": ["a" * 40], "Entry base": ["a" * 40]},
             lifecycle_ownership._plan_bases(text),
         )
         self.assertEqual({}, lifecycle_ownership._plan_bases("Entry base: old\n"))
 
-    def test_owner_evidence_requires_fields_writers_and_lifetime(self) -> None:
+        duplicate = (
+            "Audit base: `origin/main == " + "a" * 40 + "`\n"
+            "Audit base: `origin/main == " + "b" * 40 + "`\n"
+            "Entry base: `origin/main == " + "a" * 40 + "`\n"
+        )
+        self.assertEqual(
+            {"Audit base": ["a" * 40, "b" * 40], "Entry base": ["a" * 40]},
+            lifecycle_ownership._plan_bases(duplicate),
+        )
+
+    def test_owner_evidence_requires_fields_writers_locks_and_lifetime(self) -> None:
         """Owner evidence rejects file-only and field-only payloads."""
         incomplete = {"files": ["Owner.cs"], "fields": {}}
         self.assertFalse(lifecycle_ownership._owner_evidence_valid(incomplete))
         missing_locks = {
-            "files": ["Owner.cs"],
-            "fields": {"_state": {"assignments": 1}},
-            "lifetime": ["Owner.cs:20"],
+            "files": ["Packages/pkg/Runtime/Owner.cs"],
+            "fields": {
+                "_state": {
+                    "assignments": 1,
+                    "files": ["Packages/pkg/Runtime/Owner.cs"],
+                    "writers": ["Packages/pkg/Runtime/Owner.cs:10"],
+                }
+            },
+            "lifetime": ["Packages/pkg/Runtime/Owner.cs:20"],
         }
         self.assertFalse(lifecycle_ownership._owner_evidence_valid(missing_locks))
+        missing_writers = {
+            "files": ["Packages/pkg/Runtime/Owner.cs"],
+            "fields": {
+                "_state": {
+                    "assignments": 1,
+                    "files": ["Packages/pkg/Runtime/Owner.cs"],
+                    "writers": [],
+                }
+            },
+            "locks": ["Packages/pkg/Runtime/Owner.cs:10"],
+            "lifetime": ["Packages/pkg/Runtime/Owner.cs:20"],
+        }
+        self.assertFalse(lifecycle_ownership._owner_evidence_valid(missing_writers))
+        malformed_reference = {
+            "files": ["Packages/pkg/Runtime/Owner.cs"],
+            "fields": {
+                "_state": {
+                    "assignments": 1,
+                    "files": ["Packages/pkg/Runtime/Owner.cs"],
+                    "writers": ["Packages/pkg/Runtime/Owner.cs"],
+                }
+            },
+            "locks": ["Packages/pkg/Runtime/Owner.cs:10"],
+            "lifetime": ["Packages/pkg/Runtime/Owner.cs:20"],
+        }
+        self.assertFalse(lifecycle_ownership._owner_evidence_valid(malformed_reference))
+        test_only = {
+            "files": ["Packages/pkg/Tests/OwnerTests.cs"],
+            "fields": {
+                "_state": {
+                    "assignments": 1,
+                    "files": ["Packages/pkg/Tests/OwnerTests.cs"],
+                    "writers": ["Packages/pkg/Tests/OwnerTests.cs:10"],
+                }
+            },
+            "locks": ["Packages/pkg/Tests/OwnerTests.cs:10"],
+            "lifetime": ["Packages/pkg/Tests/OwnerTests.cs:20"],
+        }
+        self.assertFalse(lifecycle_ownership._owner_evidence_valid(test_only))
         complete = {
-            "files": ["Owner.cs"],
-            "fields": {"_state": {"assignments": 1}},
-            "locks": ["Owner.cs:10"],
-            "lifetime": ["Owner.cs:20"],
+            "files": ["Packages/pkg/Runtime/Owner.cs"],
+            "fields": {
+                "_state": {
+                    "assignments": 1,
+                    "files": ["Packages/pkg/Runtime/Owner.cs"],
+                    "writers": ["Packages/pkg/Runtime/Owner.cs:10"],
+                }
+            },
+            "locks": ["Packages/pkg/Runtime/Owner.cs:10"],
+            "lifetime": ["Packages/pkg/Runtime/Owner.cs:20"],
         }
         self.assertTrue(lifecycle_ownership._owner_evidence_valid(complete))
+
+    def test_production_source_scope_excludes_editor_and_tests(self) -> None:
+        """Only Runtime source paths can provide owner evidence."""
+        self.assertTrue(lifecycle_ownership._is_production_source("Packages/pkg/Runtime/Owner.cs"))
+        self.assertFalse(lifecycle_ownership._is_production_source("Packages/pkg/Editor/OwnerEditor.cs"))
+        self.assertFalse(lifecycle_ownership._is_production_source("Packages/pkg/Tests/OwnerTests.cs"))
+
+    def test_plan_check_rejects_duplicate_base_fields(self) -> None:
+        """Duplicate current Plan base fields cannot satisfy the audit gate."""
+        with tempfile.TemporaryDirectory() as temp:
+            plan = Path(temp) / "Plan197.md"
+            sha = "a" * 40
+            plan.write_text(
+                "Status: W1 pending manual review\n"
+                f"Audit base: `origin/main == {sha}`\n"
+                f"Audit base: `origin/main == {'b' * 40}`\n"
+                f"Entry base: `origin/main == {sha}`\n"
+                "| #731 | fix lifecycle | Packages | local | tooling |\n",
+                encoding="utf-8",
+            )
+            with mock.patch.object(lifecycle_ownership, "PLAN", plan), mock.patch.object(
+                lifecycle_ownership, "_origin_main_sha", return_value=sha
+            ):
+                check = lifecycle_ownership._plan_check(sha)
+        self.assertEqual("FAIL", check.status)
 
     def test_trx_coverage_requires_every_expected_test(self) -> None:
         """A single passing test cannot satisfy the lifecycle coverage gate."""

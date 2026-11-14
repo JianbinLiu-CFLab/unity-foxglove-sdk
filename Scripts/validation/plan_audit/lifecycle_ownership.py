@@ -72,16 +72,14 @@ def _origin_main_sha() -> str | None:
         return None
 
 
-def _plan_bases(text: str) -> dict[str, str]:
+def _plan_bases(text: str) -> dict[str, list[str]]:
     """Read only the current explicit Plan base fields."""
-    fields: dict[str, str] = {}
+    fields: dict[str, list[str]] = {}
     for field in ("Audit base", "Entry base"):
         pattern = re.compile(rf"^{re.escape(field)}:\s*`origin/main == ([0-9a-f]{{40}})`(?:\s*\(.*\))?\.?$")
-        for line in text.splitlines():
-            match = pattern.fullmatch(line.strip())
-            if match:
-                fields[field] = match.group(1)
-                break
+        values = [match.group(1) for line in text.splitlines() if (match := pattern.fullmatch(line.strip()))]
+        if values:
+            fields[field] = values
     return fields
 
 
@@ -94,14 +92,54 @@ def _line_refs(text: str, relative: Path, pattern: re.Pattern[str]) -> list[str]
     ]
 
 
+def _is_production_source(path: str) -> bool:
+    """Return whether a source path belongs to a tracked Runtime tree."""
+    normalized = path.replace("\\", "/")
+    parts = normalized.split("/")
+    excluded = {"Editor", "Tests", "Fixtures", "Harness"}
+    return normalized.endswith(".cs") and "Runtime" in parts and not any(part in excluded for part in parts)
+
+
+def _source_paths_valid(value: object) -> bool:
+    """Return whether a path list contains only production source paths."""
+    return (
+        isinstance(value, list)
+        and bool(value)
+        and all(isinstance(path, str) and _is_production_source(path) for path in value)
+    )
+
+
+def _source_refs_valid(value: object) -> bool:
+    """Return whether source references use a production path and positive line number."""
+    if not isinstance(value, list) or not value:
+        return False
+    for reference in value:
+        if not isinstance(reference, str):
+            return False
+        match = re.fullmatch(r"(.+):([1-9][0-9]*)", reference)
+        if not match or not _is_production_source(match.group(1)):
+            return False
+    return True
+
+
 def _owner_evidence_valid(data: object) -> bool:
     """Return whether an owner payload contains traceable lifecycle evidence."""
-    if not isinstance(data, dict) or not data.get("files") or not data.get("fields") or not data.get("locks"):
+    if not isinstance(data, dict) or not _source_paths_valid(data.get("files")) or not data.get("fields"):
         return False
     fields = data["fields"]
-    if not isinstance(fields, dict) or not any(int(value.get("assignments", 0)) > 0 for value in fields.values() if isinstance(value, dict)):
+    if (
+        not isinstance(fields, dict)
+        or not fields
+        or not _source_refs_valid(data.get("locks"))
+        or not _source_refs_valid(data.get("lifetime"))
+    ):
         return False
-    return bool(data.get("lifetime"))
+    for value in fields.values():
+        if not isinstance(value, dict) or int(value.get("assignments", 0)) <= 0:
+            return False
+        if not _source_paths_valid(value.get("files")) or not _source_refs_valid(value.get("writers")):
+            return False
+    return True
 
 
 def _normalise_test_name(name: str) -> str:
@@ -176,7 +214,7 @@ def _plan_check(base_sha: str) -> audit_lib.Check:
     origin_main = _origin_main_sha()
     if origin_main is None:
         return _check("197-PLAN", "Plan/197... § header and Appendix A", "environment", "NOT_RUN", "git rev-parse --verify origin/main; read Plan/197...", str(plan_log), "origin/main is unavailable in this checkout")
-    recorded_match = origin_main == base_sha and bases.get("Audit base") == origin_main and bases.get("Entry base") == origin_main
+    recorded_match = origin_main == base_sha and bases.get("Audit base") == [origin_main] and bases.get("Entry base") == [origin_main]
     okay = recorded_match and appendix_note and (accepted_stop or pending_review)
     detail = f"base={base_sha}; plan_bases={bases}; recorded_base_match={recorded_match}; accepted_stop={accepted_stop}; pending_review={pending_review}; appendix_rows={len(_appendix_labels())}"
     return _check("197-PLAN", "Plan/197... § header and Appendix A", "history", "PASS" if okay else "FAIL", "git rev-parse origin/main; read Plan/197...", "build/plan-audit/lifecycle_ownership/plan.log", detail)
@@ -302,7 +340,7 @@ def _scope_check(candidates: list[dict[str, str]], evidence: str, base_sha: str)
 def _owner_map() -> audit_lib.Check:
     """Build a compact field, writer, lock, and lifetime map for four owners."""
     patterns = {"FoxgloveManager": "FoxgloveManager*.cs", "FoxgloveSession": "FoxgloveSession*.cs", "ReplayController": "ReplayController*.cs", "Ros2BridgeWorkerLease": "Ros2BridgeWorkerLease*.cs"}
-    files = [Path(path) for path in _git_output(["git", "ls-files", "*.cs"]).splitlines()]
+    files = [Path(path) for path in _git_output(["git", "ls-files", "*.cs"]).splitlines() if _is_production_source(path)]
     payload: dict[str, object] = {}
     for owner, pattern in patterns.items():
         matched = [path for path in files if fnmatch.fnmatch(path.name, pattern) or (owner == "Ros2BridgeWorkerLease" and "Ros2BridgeWorkerLease" in str(path))]
@@ -314,9 +352,15 @@ def _owner_map() -> audit_lib.Check:
             locks.extend(_line_refs(text, relative, re.compile(r"\block\s*\(")))
             lifetime.extend(_line_refs(text, relative, LIFETIME_WORDS))
             for field in re.findall(r"\b(?:private|protected|internal|public)\s+(?:readonly\s+)?[A-Za-z0-9_<>,.?]+\s+(_?[A-Za-z][A-Za-z0-9_]*)\s*(?:=|;)", text):
+                writer_refs = _line_refs(
+                    text,
+                    relative,
+                    re.compile(rf"\b{re.escape(field)}\s*(?:=|\+=|-=|\?\?=)|\b(?:Interlocked|Volatile)\.\w+\(\s*ref\s+{re.escape(field)}\b"),
+                )
+                if not writer_refs:
+                    continue
                 field_data = fields.setdefault(field, {"files": [], "assignments": 0, "writers": []})
                 field_data["files"].append(str(relative).replace("\\", "/"))
-                writer_refs = _line_refs(text, relative, re.compile(rf"\b{re.escape(field)}\s*(?:=|\+=|-=|\?\?=)"))
                 field_data["assignments"] = int(field_data["assignments"]) + len(writer_refs)
                 field_data["writers"].extend(writer_refs)
         payload[owner] = {"files": [str(path).replace("\\", "/") for path in matched], "fields": fields, "locks": locks, "lifetime": lifetime}
