@@ -354,6 +354,17 @@ class _RunCiTestsPart1:
         self.assertIn("build/review/source-text-inventory/", workflow)
         self.assertIn("build/review/source-text-inventory-trusted/", workflow)
 
+    def test_source_inventory_runs_in_its_dedicated_job(self) -> None:
+        """The expensive source inventory lane is independent from package closure."""
+        workflow = DOTNET_WORKFLOW_PATH.read_text(encoding="utf-8")
+        python_job = workflow.split("\n  linux-python-regressions:\n", 1)[1].split("\n  linux-source-text-inventory:\n", 1)[0]
+        inventory_job = workflow.split("\n  linux-source-text-inventory:\n", 1)[1].split("\n  linux-identity-gate:\n", 1)[0]
+        self.assertNotIn("Run live source-text inventory", python_job)
+        self.assertIn("Run live source-text inventory", inventory_job)
+        self.assertIn("Upload live source-text inventory", inventory_job)
+        self.assertIn("fetch-depth: 0", inventory_job)
+        self.assertIn("setup-python", inventory_job)
+
     def test_dotnet_workflow_cannot_waive_validator_initializer_changes(self) -> None:
         """The trusted-base identity result must fail the workflow without a parser waiver."""
         workflow = DOTNET_WORKFLOW_PATH.read_text(encoding="utf-8")
