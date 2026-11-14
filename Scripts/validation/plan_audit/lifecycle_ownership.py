@@ -41,6 +41,23 @@ EXPECTED_TEST_NAMES = (
     "RuntimeDisposeRetryDoesNotRepeatDisposeWhenReferenceReleaseFails",
     "StopServerRunsForActiveOrPendingRuntimeOwnership",
 )
+EXPECTED_TEST_COUNTS = {name: 1 for name in EXPECTED_TEST_NAMES}
+EXPECTED_TEST_COUNTS["StopServerRunsForActiveOrPendingRuntimeOwnership"] = 4
+OWNER_PATTERNS = {
+    "FoxgloveManager": "FoxgloveManager*.cs",
+    "FoxgloveSession": "FoxgloveSession*.cs",
+    "ReplayController": "ReplayController*.cs",
+    "Ros2BridgeWorkerLease": "Ros2BridgeWorkerLease*.cs",
+}
+OWNER_SUPPORT_NAMES = {
+    "FoxgloveManager": ("ClientEventAdmissionState.cs", "ReplaySubscriberFanoutState.cs"),
+}
+OWNER_SYNC_MODES = {
+    "FoxgloveManager": "unity-main-thread with composed admission and fanout locks",
+    "FoxgloveSession": "lifecycle locks",
+    "ReplayController": "replay locks",
+    "Ros2BridgeWorkerLease": "worker lease locks",
+}
 
 
 def _check(identifier: str, plan_ref: str, kind: str, status: str, command: str, evidence: str, detail: str) -> audit_lib.Check:
@@ -92,6 +109,15 @@ def _line_refs(text: str, relative: Path, pattern: re.Pattern[str]) -> list[str]
     ]
 
 
+def _writer_refs(text: str, relative: Path, field: str) -> list[str]:
+    """Return source locations that write a field or an atomic field reference."""
+    pattern = re.compile(
+        rf"\b{re.escape(field)}\s*(?:(?<![=!<>])=(?!=)|\+=|-=|\?\?=)"
+        rf"|\b(?:Interlocked|Volatile)\.\w+\(\s*ref\s+{re.escape(field)}\b"
+    )
+    return _line_refs(text, relative, pattern)
+
+
 def _is_production_source(path: str) -> bool:
     """Return whether a source path belongs to a tracked Runtime tree."""
     normalized = path.replace("\\", "/")
@@ -127,11 +153,15 @@ def _owner_evidence_valid(data: object) -> bool:
     if not isinstance(data, dict) or not _source_paths_valid(data.get("files")) or not data.get("fields"):
         return False
     fields = data["fields"]
+    synchronization = data.get("synchronization")
     if (
         not isinstance(fields, dict)
         or not fields
         or not _source_refs_valid(data.get("locks"))
         or not _source_refs_valid(data.get("lifetime"))
+        or not isinstance(synchronization, dict)
+        or not synchronization.get("mode")
+        or not _source_refs_valid(synchronization.get("refs"))
     ):
         return False
     for value in fields.values():
@@ -172,7 +202,8 @@ def _missing_expected_tests(path: Path) -> list[str]:
     return sorted(
         name
         for name in EXPECTED_TEST_NAMES
-        if not outcomes.get(name) or any(outcome != "Passed" for outcome in outcomes[name])
+        if len(outcomes.get(name, [])) != EXPECTED_TEST_COUNTS[name]
+        or any(outcome != "Passed" for outcome in outcomes.get(name, []))
     )
 
 
@@ -339,11 +370,12 @@ def _scope_check(candidates: list[dict[str, str]], evidence: str, base_sha: str)
 
 def _owner_map() -> audit_lib.Check:
     """Build a compact field, writer, lock, and lifetime map for four owners."""
-    patterns = {"FoxgloveManager": "FoxgloveManager*.cs", "FoxgloveSession": "FoxgloveSession*.cs", "ReplayController": "ReplayController*.cs", "Ros2BridgeWorkerLease": "Ros2BridgeWorkerLease*.cs"}
     files = [Path(path) for path in _git_output(["git", "ls-files", "*.cs"]).splitlines() if _is_production_source(path)]
     payload: dict[str, object] = {}
-    for owner, pattern in patterns.items():
+    for owner, pattern in OWNER_PATTERNS.items():
         matched = [path for path in files if fnmatch.fnmatch(path.name, pattern) or (owner == "Ros2BridgeWorkerLease" and "Ros2BridgeWorkerLease" in str(path))]
+        support_names = OWNER_SUPPORT_NAMES.get(owner, ())
+        matched.extend(path for path in files if path.name in support_names and path not in matched)
         fields: dict[str, dict[str, object]] = {}
         locks: list[str] = []
         lifetime: list[str] = []
@@ -352,18 +384,20 @@ def _owner_map() -> audit_lib.Check:
             locks.extend(_line_refs(text, relative, re.compile(r"\block\s*\(")))
             lifetime.extend(_line_refs(text, relative, LIFETIME_WORDS))
             for field in re.findall(r"\b(?:private|protected|internal|public)\s+(?:readonly\s+)?[A-Za-z0-9_<>,.?]+\s+(_?[A-Za-z][A-Za-z0-9_]*)\s*(?:=|;)", text):
-                writer_refs = _line_refs(
-                    text,
-                    relative,
-                    re.compile(rf"\b{re.escape(field)}\s*(?:=|\+=|-=|\?\?=)|\b(?:Interlocked|Volatile)\.\w+\(\s*ref\s+{re.escape(field)}\b"),
-                )
+                writer_refs = _writer_refs(text, relative, field)
                 if not writer_refs:
                     continue
                 field_data = fields.setdefault(field, {"files": [], "assignments": 0, "writers": []})
                 field_data["files"].append(str(relative).replace("\\", "/"))
                 field_data["assignments"] = int(field_data["assignments"]) + len(writer_refs)
                 field_data["writers"].extend(writer_refs)
-        payload[owner] = {"files": [str(path).replace("\\", "/") for path in matched], "fields": fields, "locks": locks, "lifetime": lifetime}
+        payload[owner] = {
+            "files": [str(path).replace("\\", "/") for path in matched],
+            "fields": fields,
+            "locks": locks,
+            "lifetime": lifetime,
+            "synchronization": {"mode": OWNER_SYNC_MODES[owner], "refs": locks},
+        }
     (OUTPUT / "owner-map.json").write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     missing = [owner for owner, data in payload.items() if not _owner_evidence_valid(data)]
     status = "FAIL" if missing else "PASS"

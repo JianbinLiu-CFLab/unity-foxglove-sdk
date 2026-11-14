@@ -103,6 +103,10 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
             },
             "locks": ["Packages/pkg/Runtime/Owner.cs:10"],
             "lifetime": ["Packages/pkg/Runtime/Owner.cs:20"],
+            "synchronization": {
+                "mode": "lock",
+                "refs": ["Packages/pkg/Runtime/Owner.cs:10"],
+            },
         }
         self.assertTrue(lifecycle_ownership._owner_evidence_valid(complete))
 
@@ -138,7 +142,9 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
             root = ET.Element("TestRun")
             results = ET.SubElement(root, "Results")
             for name in lifecycle_ownership.EXPECTED_TEST_NAMES:
-                ET.SubElement(results, "UnitTestResult", testName=name, outcome="Passed")
+                for case_index in range(lifecycle_ownership.EXPECTED_TEST_COUNTS[name]):
+                    test_name = name if case_index == 0 else f"{name}(case-{case_index})"
+                    ET.SubElement(results, "UnitTestResult", testName=test_name, outcome="Passed")
             ET.ElementTree(root).write(path, encoding="utf-8", xml_declaration=True)
             self.assertEqual([], lifecycle_ownership._missing_expected_tests(path))
             ET.SubElement(
@@ -150,9 +156,26 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
             ET.ElementTree(root).write(path, encoding="utf-8", xml_declaration=True)
             self.assertIn(lifecycle_ownership.EXPECTED_TEST_NAMES[-1], lifecycle_ownership._missing_expected_tests(path))
             results.remove(results[-1])
-            results.remove(results[-1])
+            for _ in range(lifecycle_ownership.EXPECTED_TEST_COUNTS[lifecycle_ownership.EXPECTED_TEST_NAMES[-1]] - 1):
+                results.remove(results[-1])
             ET.ElementTree(root).write(path, encoding="utf-8", xml_declaration=True)
             self.assertTrue(lifecycle_ownership._missing_expected_tests(path))
+
+    def test_writer_evidence_excludes_comparisons(self) -> None:
+        """Comparison operators do not create writer evidence."""
+        text = (
+            "if (_state == expected) return;\n"
+            "if (_state != expected) return;\n"
+            "if (_count <= limit || _count >= minimum) return;\n"
+            "_state = next;\n"
+        )
+        refs = lifecycle_ownership._writer_refs(text, Path("Packages/pkg/Runtime/Owner.cs"), "_state")
+        self.assertEqual(["Packages/pkg/Runtime/Owner.cs:4"], refs)
+
+    def test_real_owner_map_uses_declared_production_synchronization(self) -> None:
+        """The tracked production owner map must close without test-only evidence."""
+        check = lifecycle_ownership._owner_map()
+        self.assertEqual("PASS", check.status)
 
     def test_mutation_evidence_requires_expected_test_failure(self) -> None:
         """Mutation evidence rejects compile-only or unrelated failures."""
