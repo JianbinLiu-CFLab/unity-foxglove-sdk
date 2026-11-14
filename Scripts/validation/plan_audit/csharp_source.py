@@ -334,7 +334,16 @@ def method_arity(masked_text: str, start: int) -> int:
     opening = masked_text.find("(", start)
     if opening < 0:
         return 0
-    closing = masked_text.find(")", opening)
+    depth = 0
+    closing = -1
+    for index in range(opening, len(masked_text)):
+        if masked_text[index] == "(":
+            depth += 1
+        elif masked_text[index] == ")":
+            depth -= 1
+            if depth == 0:
+                closing = index
+                break
     if closing < 0:
         return 0
     header = masked_text[opening + 1:closing].strip()
@@ -671,12 +680,55 @@ def lifecycle_called_method_names(masked_text: str) -> set[str]:
     return names
 
 
-def receiver_called_method_signatures(masked_text: str) -> set[tuple[str, int]]:
-    """Return method signatures called through local owner-state receivers."""
-    signatures: set[tuple[str, int]] = set()
-    for match in re.finditer(r"\b_[A-Za-z_][A-Za-z0-9_]*\s*\.\s*([A-Za-z_][A-Za-z0-9_]*)\s*\(", masked_text):
-        signatures.add((match.group(1), method_arity(masked_text, match.start())))
+def receiver_called_method_signatures(
+    masked_text: str,
+    type_context: str | None = None,
+) -> set[tuple[str, str, int]]:
+    """Return lifecycle receiver calls bound to declared receiver types."""
+    declaration_text = type_context or masked_text
+    receiver_types = {
+        match.group("receiver"): match.group("type").rsplit(".", 1)[-1].split("<", 1)[0]
+        for match in re.finditer(
+            r"\b(?:(?:private|protected|internal|public|static|readonly|volatile)\s+)*"
+            r"(?P<type>[A-Za-z_][A-Za-z0-9_.<>?,\[\]]*)\s+"
+            r"(?P<receiver>_[A-Za-z_][A-Za-z0-9_]*)\s*(?:=|;)",
+            declaration_text,
+        )
+    }
+    declared_types = {match.group("name") for match in TYPE_DECLARATION_PATTERN.finditer(declaration_text)}
+    signatures: set[tuple[str, str, int]] = set()
+    for start, end, method_name in _lifecycle_reachable_contexts(masked_text):
+        body = masked_text[start:end]
+        for match in re.finditer(r"\b(?P<receiver>_[A-Za-z_][A-Za-z0-9_]*)\s*\.\s*(?P<name>[A-Za-z_][A-Za-z0-9_]*)\s*\(", body):
+            receiver_type = receiver_types.get(match.group("receiver"))
+            if receiver_type not in declared_types:
+                continue
+            signatures.add((receiver_type, match.group("name"), method_arity(body, match.start())))
     return signatures
+
+
+def _lifecycle_reachable_contexts(masked_text: str) -> tuple[tuple[int, int, str], ...]:
+    """Return lifecycle methods and helpers reachable by exact name and arity."""
+    contexts = _method_contexts(masked_text)
+    by_signature: dict[tuple[str, int], list[tuple[int, int, str]]] = {}
+    for context in contexts:
+        by_signature.setdefault((context[2], method_arity(masked_text, context[0])), []).append(context)
+    queue = [context for context in contexts if LIFECYCLE_METHOD_PATTERN.search(context[2])]
+    reachable: list[tuple[int, int, str]] = []
+    seen: set[int] = set()
+    ignored = {"if", "for", "foreach", "while", "switch", "catch", "using", "lock", "nameof", "typeof", "new"}
+    while queue:
+        context = queue.pop(0)
+        if context[0] in seen:
+            continue
+        seen.add(context[0])
+        reachable.append(context)
+        body = masked_text[context[0]:context[1]]
+        for match in re.finditer(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\(", body):
+            if match.group(1) in ignored:
+                continue
+            queue.extend(by_signature.get((match.group(1), method_arity(body, match.start())), ()))
+    return tuple(reachable)
 
 
 def lifecycle_called_method_signatures(masked_text: str) -> set[tuple[str, int]]:
@@ -720,7 +772,7 @@ def bound_lifecycle_refs(
     scopes: tuple[tuple[int, int], ...],
     field_names: set[str],
     lifetime_pattern: re.Pattern[str],
-    approved_method_signatures: set[tuple[str, int]] | None = None,
+    approved_method_signatures: set[tuple[str, int] | tuple[str, str, int]] | None = None,
 ) -> tuple[list[str], list[str]]:
     """Return lock and lifecycle references bound to declared owner fields."""
     lock_pattern = re.compile(r"\block\s*\(\s*(?:this\.)?(?P<name>[A-Za-z_][A-Za-z0-9_]*)")
@@ -728,6 +780,7 @@ def bound_lifecycle_refs(
     lifetime: set[str] = set()
     contexts = _method_contexts(masked_text)
     approved_method_signatures = approved_method_signatures or set()
+    type_spans = _type_spans(masked_text, masked_text)
     offset = 0
     for line_number, line in enumerate(masked_text.splitlines(keepends=True), 1):
         matches = list(lifetime_pattern.finditer(line))
@@ -741,6 +794,14 @@ def bound_lifecycle_refs(
             ),
             None,
         )
+        lock_type = next(
+            (
+                name.rsplit("::", 1)[-1]
+                for name, (start, end) in type_spans.items()
+                if lock_position is not None and start <= lock_position < end
+            ),
+            None,
+        )
         if (
             lock_match
             and lock_match.group("name") in field_names
@@ -749,6 +810,11 @@ def bound_lifecycle_refs(
             and (
                 LIFECYCLE_METHOD_PATTERN.search(lock_context[2])
                 or (lock_context[2], method_arity(masked_text, lock_context[0])) in approved_method_signatures
+                or (
+                    lock_type,
+                    lock_context[2],
+                    method_arity(masked_text, lock_context[0]),
+                ) in approved_method_signatures
             )
             and _lock_block_writes_field(masked_text, lock_position, field_names)
         ):

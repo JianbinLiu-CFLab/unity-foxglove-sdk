@@ -514,9 +514,12 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
             "class Owner {\n"
             "    private object _gate;\n"
             "    private int _state;\n"
-            "    void Dispose() { Cleanup(); }\n"
-            "    void Cleanup(int unused) { lock (_gate) { _state = 1; } }\n"
-            "    void Cleanup() { }\n"
+            "    private List<int> _items;\n"
+            "    void Dispose() { Cleanup(Get(a, b), reason); }\n"
+            "    void Stop() { _items.Add(1); }\n"
+            "    void Cleanup(int first, int second) { lock (_gate) { _state = 1; } }\n"
+            "    void Cleanup(int unused) { }\n"
+            "    void Add(int value) { lock (_gate) { _state = 1; } }\n"
             "}\n"
         )
         masked = lifecycle_ownership._mask_csharp_source(text)
@@ -527,8 +530,9 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
             masked,
             scopes,
             {"_gate", "_state"},
-            {("Cleanup", 0)},
+            {("Cleanup", 0)} | lifecycle_ownership.csharp_source.receiver_called_method_signatures(masked),
         )
+        self.assertIn(("Cleanup", 2), lifecycle_ownership._lifecycle_called_method_signatures(masked))
         self.assertEqual([], locks)
 
     def test_lifecycle_method_name_matching_is_anchored(self) -> None:

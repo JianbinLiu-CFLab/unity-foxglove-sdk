@@ -154,7 +154,7 @@ def _bound_lifecycle_refs(
     masked_text: str,
     scopes: tuple[tuple[int, int], ...],
     field_names: set[str],
-    approved_method_signatures: set[tuple[str, int]] | None = None,
+    approved_method_signatures: set[tuple[str, int] | tuple[str, str, int]] | None = None,
 ) -> tuple[list[str], list[str]]:
     """Return lock and lifecycle references bound to declared owner fields."""
     return csharp_source.bound_lifecycle_refs(text, relative, masked_text, scopes, field_names, LIFETIME_WORDS, approved_method_signatures)
@@ -814,7 +814,7 @@ def _owner_map(base_sha: str | None = None) -> audit_lib.Check:
             for path in matched
             if path.name not in support_names
         )
-        approved_method_signatures = _lifecycle_called_method_signatures(owner_method_masked) | csharp_source.receiver_called_method_signatures(owner_method_masked)
+        approved_method_signatures = _lifecycle_called_method_signatures(owner_method_masked) | csharp_source.receiver_called_method_signatures(owner_method_masked, "\n".join(_mask_csharp_source((audit_lib.ROOT / path).read_text(encoding="utf-8", errors="replace")) for path in matched))
         locks: list[str] = []
         lifetime: list[str] = []
         for relative in matched:
