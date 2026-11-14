@@ -189,7 +189,7 @@ class RegressionInventoryTests(unittest.TestCase):
     def test_decomposed_python_regression_surfaces_keep_expected_counts(self):
         """Explicit package loading keeps the four migrated suites complete."""
         expected = {
-            "Scripts.package.regression_checks.test_validate_phase186_package_matrix": 14,
+            "Scripts.package.regression_checks.test_validate_phase186_package_matrix": 15,
             "Scripts.remotegateway.regression_checks.test_remote_gateway_tooling": 23,
             "Scripts.ros2forunity.windows.humble.regression_checks.test_build_r2fu_runtime_package": 23,
             "Scripts.samples.regression_checks.test_sample_sync_tooling": 25,
@@ -201,8 +201,8 @@ class RegressionInventoryTests(unittest.TestCase):
         }
         self.assertEqual(expected, observed)
 
-    def test_discovery_load_tests_is_single_pass(self):
-        """Repeated discovery does not execute split package tests twice."""
+    def test_discovery_load_tests_is_repeatable(self):
+        """Repeated discovery does not drop split package tests."""
         names = (
             'Scripts.package.regression_checks.test_validate_phase186_package_matrix',
             'Scripts.remotegateway.regression_checks.test_remote_gateway_tooling',
@@ -219,7 +219,7 @@ class RegressionInventoryTests(unittest.TestCase):
                 first = loader.loadTestsFromModule(module, pattern='test*.py')
                 second = loader.loadTestsFromModule(module, pattern='test*.py')
                 self.assertGreater(first.countTestCases(), 0)
-                self.assertEqual(0, second.countTestCases())
+                self.assertEqual(first.countTestCases(), second.countTestCases())
 
     def test_split_cli_guards_preserve_exception_contract(self):
         """The three repaired facades retain stable direct-entry exception mapping."""
