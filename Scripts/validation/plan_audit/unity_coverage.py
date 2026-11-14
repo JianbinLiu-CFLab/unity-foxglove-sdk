@@ -308,6 +308,26 @@ def _verify_mutation_patch(output: Path, audited_head: str, mutation_head: str, 
     return True, f"mutation path={filename}; patch_sha256={expected_sha}"
 
 
+def _trusted_workflow_matches_base(base_sha: str, workflow: Path) -> tuple[bool, str]:
+    """Require the checked-out workflow bytes to match the trusted base revision."""
+    try:
+        current = workflow.read_bytes()
+    except OSError:
+        return False, "checked-out workflow could not be read"
+    result = subprocess.run(
+        ["git", "show", f"{base_sha}:{WORKFLOW_PATH}"],
+        cwd=audit_lib.ROOT,
+        env=audit_lib._audit_environment(),
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        return False, "trusted workflow revision could not be read"
+    if current != result.stdout:
+        return False, "checked-out workflow differs from trusted base"
+    return True, "checked-out workflow matches trusted base"
+
+
 def _w4_mutation(checks: list[audit_lib.Check], output: Path, head_sha: str, trusted_base_sha: str | None = None) -> None:
     """Require revision-bound evidence verified against the recorded workflow run."""
     evidence = output / "w4-mutation.json"
@@ -385,17 +405,13 @@ def _w4_mutation(checks: list[audit_lib.Check], output: Path, head_sha: str, tru
                     detail = f"head={payload.get('audited_head_sha', 'missing')}; run_id={run_id or 'missing'}; mismatches={mismatches}"
                 else:
                     if trusted_base_sha:
-                        workflow_diff = subprocess.run(
-                            ["git", "diff", "--quiet", f"{trusted_base_sha}...{head_sha}", "--", WORKFLOW_PATH],
-                            cwd=audit_lib.ROOT,
-                            env=audit_lib._audit_environment(),
-                            capture_output=True,
-                            text=True,
-                            check=False,
+                        workflow_valid, workflow_detail = _trusted_workflow_matches_base(
+                            trusted_base_sha,
+                            audit_lib.ROOT / WORKFLOW_PATH,
                         )
-                        if workflow_diff.returncode != 0:
+                        if not workflow_valid:
                             status = "FAIL"
-                            detail = f"head={head_sha}; run_id={run_id}; audited workflow differs from trusted base"
+                            detail = f"head={head_sha}; run_id={run_id}; {workflow_detail}"
                             log.write_text(detail + "\n", encoding="utf-8")
                             _record(checks, "195-W4-mutation", "mutation", status, "read build/plan-audit/unity_acceptance/w4-mutation.json", evidence, detail)
                             return

@@ -275,6 +275,20 @@ class PlanAuditLibraryTests(unittest.TestCase):
         self.assertEqual("195-W4-mutation", checks[0].id)
         self.assertEqual("MANUAL", checks[0].status)
 
+    def test_trusted_workflow_rejects_checked_out_file_mismatch(self) -> None:
+        """A dirty checked-out workflow cannot satisfy the trusted revision guard."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            workflow = root / ".github" / "workflows" / "unity-compile.yml"
+            workflow.parent.mkdir(parents=True)
+            workflow.write_bytes(b"tampered workflow")
+            with mock.patch.object(unity_coverage.audit_lib, "ROOT", root), mock.patch.object(
+                unity_coverage.subprocess, "run", return_value=SimpleNamespace(returncode=0, stdout=b"trusted workflow")
+            ):
+                valid, detail = unity_coverage._trusted_workflow_matches_base("base", workflow)
+        self.assertFalse(valid)
+        self.assertIn("differs", detail)
+
     def test_w4_mutation_accepts_matching_evidence(self) -> None:
         """W4 mutation evidence passes only after the recorded workflow run is verified."""
         with tempfile.TemporaryDirectory(dir=audit_lib.BUILD_ROOT) as temp:
