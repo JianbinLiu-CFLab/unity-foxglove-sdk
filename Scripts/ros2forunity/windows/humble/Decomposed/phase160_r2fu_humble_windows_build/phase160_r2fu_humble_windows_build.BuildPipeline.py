@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 def ensure_r2fu_checkout(work_root: pathlib.Path, env: dict[str, str], log_file: pathlib.Path, clean: bool) -> pathlib.Path:
     """Create or update a clean R2FU Humble-support checkout under WorkRoot."""
 

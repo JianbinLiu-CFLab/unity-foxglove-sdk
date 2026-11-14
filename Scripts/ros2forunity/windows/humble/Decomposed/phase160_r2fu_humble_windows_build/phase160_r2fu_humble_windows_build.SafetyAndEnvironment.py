@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 def is_relative_to(path: pathlib.Path, parent: pathlib.Path) -> bool:
     """Return whether path is inside parent."""
 

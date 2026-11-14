@@ -47,6 +47,15 @@ class Phase160BuildDefaultsTests(unittest.TestCase):
         self.assertTrue(str(work_root).endswith("build/r2fu-humble-win64/work") or str(work_root).endswith("build\\r2fu-humble-win64\\work"))
         self.assertTrue(str(temp_root).endswith("build/r2fu-humble-win64/tmp") or str(temp_root).endswith("build\\r2fu-humble-win64\\tmp"))
 
+    def test_exec_loaded_sections_preserve_postponed_annotations(self) -> None:
+        """Every independently compiled build section keeps annotation postponement."""
+        section_dir = SCRIPT_PATH.with_name("Decomposed") / "phase160_r2fu_humble_windows_build"
+        for path in section_dir.glob("*.py"):
+            with self.subTest(path=path.name):
+                source = path.read_text(encoding="utf-8")
+                self.assertIn("from __future__ import annotations", source)
+                compile(source, str(path), "exec")
+
     def test_rejects_cmd_percent_expansion_in_vsdev_path(self) -> None:
         """VsDevCmd.bat shell embedding should reject percent expansion."""
         module = load_build_module()

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 def scrub_environment(env: dict[str, str], ros2_root: pathlib.Path, temp_root: pathlib.Path) -> dict[str, str]:
     """Remove common Python contamination and pin ROS2 Humble paths."""
 
