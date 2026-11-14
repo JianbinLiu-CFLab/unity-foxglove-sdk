@@ -219,6 +219,29 @@ namespace Unity2Foxglove.Tests.Ros2ForUnity
         }
 
         [Fact]
+        public void TerminalRegistrationFailuresRemainFailedAfterBindingRemoval()
+        {
+            Assert.Equal(
+                1,
+                FoxRunRos2CustomPublisherHub.CountFailedContracts(
+                    bindingCount: 0,
+                    readyContracts: 0,
+                    terminalFailureCount: 1));
+            Assert.Equal(
+                2,
+                FoxRunRos2CustomPublisherHub.CountFailedContracts(
+                    bindingCount: 1,
+                    readyContracts: 0,
+                    terminalFailureCount: 2));
+            Assert.Equal(
+                1,
+                FoxRunRos2CustomPublisherHub.CountFailedContracts(
+                    bindingCount: 1,
+                    readyContracts: 0,
+                    terminalFailureCount: 1));
+        }
+
+        [Fact]
         public void CapacityRejectedBindingDemandRemainsObservable()
         {
             var demand = new HashSet<string>(StringComparer.Ordinal);

@@ -204,7 +204,10 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             for (var index = 0; index < _bindings.Count; index++)
                 if (!_bindings[index].IsStopped)
                     ready++;
-            var failed = _bindings.Count - ready;
+            var failed = CountFailedContracts(
+                _bindings.Count,
+                ready,
+                _terminalRegistrationFailures.Count);
             var observed = Math.Max(_observedNativeContractCount, _bindings.Count);
             return BuildTransportStatus(
                 _providerSessionActive,
@@ -214,6 +217,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 ready,
                 failed);
         }
+
+        internal static int CountFailedContracts(
+            int bindingCount,
+            int readyContracts,
+            int terminalFailureCount)
+            => Math.Max(Math.Max(0, bindingCount - readyContracts), terminalFailureCount);
 
         internal static FoxRunTransportDirectionStatus BuildTransportStatus(
             bool sessionActive,
