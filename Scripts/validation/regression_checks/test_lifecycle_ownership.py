@@ -149,6 +149,12 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
             "namespace Evil { public class FoxgloveManager { } }"
         )
         self.assertFalse(lifecycle_ownership._owner_source_is_canonical(canonical, "FoxgloveManager", mixed_text))
+        nested_evil_text = (
+            "namespace Unity.FoxgloveSDK.Components {\n"
+            "    namespace Evil { public class FoxgloveManager { } }\n"
+            "}"
+        )
+        self.assertFalse(lifecycle_ownership._owner_source_is_canonical(canonical, "FoxgloveManager", nested_evil_text))
 
     def test_plan_check_rejects_duplicate_base_fields(self) -> None:
         """Duplicate current Plan base fields cannot satisfy the audit gate."""

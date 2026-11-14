@@ -242,13 +242,13 @@ def _type_spans(text: str, masked_text: str | None = None) -> dict[str, tuple[in
     return spans
 
 
-def _namespace_spans(masked_text: str) -> dict[str, tuple[int, int]]:
+def _namespace_spans(masked_text: str) -> list[tuple[str, int, int]]:
     """Return lexical spans for block and file-scoped namespaces."""
     pattern = re.compile(r"\bnamespace\s+(?P<name>[A-Za-z_][A-Za-z0-9_.]*)\s*(?P<delimiter>[{;])")
-    namespaces: dict[str, tuple[int, int]] = {}
+    namespaces: list[tuple[str, int, int]] = []
     for match in pattern.finditer(masked_text):
         if match.group("delimiter") == ";":
-            namespaces[match.group("name")] = (match.end(), len(masked_text))
+            namespaces.append((match.group("name"), match.end(), len(masked_text)))
             continue
         opening = match.end() - 1
         depth = 0
@@ -261,24 +261,24 @@ def _namespace_spans(masked_text: str) -> dict[str, tuple[int, int]]:
                 if depth == 0:
                     closing = index + 1
                     break
-        namespaces[match.group("name")] = (opening, closing)
+        namespaces.append((match.group("name"), opening, closing))
     return namespaces
 
 
 def owner_type_is_in_namespace(masked_text: str, namespace: str, type_names: set[str]) -> bool:
     """Return whether canonical types occur only inside the expected namespace."""
     namespace_spans = _namespace_spans(masked_text)
-    expected_spans = [span for name, span in namespace_spans.items() if name == namespace]
-    if not expected_spans:
+    if not any(name == namespace for name, _, _ in namespace_spans):
         return False
     found_expected = False
     found_outside = False
     for match in TYPE_DECLARATION_PATTERN.finditer(masked_text):
         if match.group("name") not in type_names:
             continue
-        inside_expected = any(start <= match.start() < end for start, end in expected_spans)
-        found_expected = found_expected or inside_expected
-        found_outside = found_outside or not inside_expected
+        containing = [item for item in namespace_spans if item[1] <= match.start() < item[2]]
+        innermost = min(containing, key=lambda item: item[2] - item[1])[0] if containing else None
+        found_expected = found_expected or innermost == namespace
+        found_outside = found_outside or innermost != namespace
     return found_expected and not found_outside
 
 
