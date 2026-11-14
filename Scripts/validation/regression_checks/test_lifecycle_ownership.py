@@ -114,6 +114,8 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
             },
         }
         self.assertTrue(lifecycle_ownership._owner_evidence_valid(complete))
+        complete["untrusted_files"] = ["Packages/pkg/Runtime/FoxgloveManagerEvidence.cs"]
+        self.assertFalse(lifecycle_ownership._owner_evidence_valid(complete))
 
     def test_test_name_normalisation_preserves_method_with_dotted_arguments(self) -> None:
         """Theory arguments cannot change the extracted method name."""
@@ -129,6 +131,23 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
         self.assertTrue(lifecycle_ownership._is_production_source("Packages/pkg/Runtime/Owner.cs"))
         self.assertFalse(lifecycle_ownership._is_production_source("Packages/pkg/Editor/OwnerEditor.cs"))
         self.assertFalse(lifecycle_ownership._is_production_source("Packages/pkg/Tests/OwnerTests.cs"))
+
+    def test_owner_source_requires_canonical_namespace_and_path(self) -> None:
+        """A same-named type from another namespace or Runtime tree is rejected."""
+        fake = Path("Packages/dev.unity2foxglove.sdk/Runtime/FoxgloveManagerEvidence.cs")
+        fake_text = "namespace Evil { class FoxgloveManager { } }"
+        self.assertFalse(lifecycle_ownership._owner_source_is_canonical(fake, "FoxgloveManager", fake_text))
+        canonical = Path("Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.Evidence.cs")
+        canonical_text = "namespace Unity.FoxgloveSDK.Components { public partial class FoxgloveManager { } }"
+        self.assertTrue(lifecycle_ownership._owner_source_is_canonical(canonical, "FoxgloveManager", canonical_text))
+        self.assertFalse(
+            lifecycle_ownership._owner_source_is_trusted(
+                canonical,
+                "FoxgloveManager",
+                canonical_text,
+                {"Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs"},
+            )
+        )
 
     def test_plan_check_rejects_duplicate_base_fields(self) -> None:
         """Duplicate current Plan base fields cannot satisfy the audit gate."""
@@ -149,8 +168,8 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
                 check = lifecycle_ownership._plan_check(sha)
         self.assertEqual("FAIL", check.status)
 
-    def test_plan_check_keeps_entry_base_as_historical_context(self) -> None:
-        """A historical Entry base remains valid after the audit base advances."""
+    def test_plan_check_rejects_stale_entry_base(self) -> None:
+        """Entry base must match the audited origin/main revision."""
         with tempfile.TemporaryDirectory() as temp:
             plan = Path(temp) / "Plan197.md"
             audit_sha = "a" * 40
@@ -166,7 +185,7 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
                 lifecycle_ownership, "_origin_main_sha", return_value=audit_sha
             ):
                 check = lifecycle_ownership._plan_check(audit_sha)
-        self.assertEqual("PASS", check.status)
+        self.assertEqual("FAIL", check.status)
 
     def test_trx_coverage_requires_every_expected_test(self) -> None:
         """A single passing test cannot satisfy the lifecycle coverage gate."""
@@ -371,6 +390,28 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
         self.assertEqual(["Packages/pkg/Runtime/Owner.cs:3"], locks)
         self.assertEqual(["Packages/pkg/Runtime/Owner.cs:3"], lifetime)
 
+    def test_lifecycle_lock_requires_a_field_transition(self) -> None:
+        """An unrelated lock cannot satisfy lifecycle synchronization evidence."""
+        text = (
+            "class Owner {\n"
+            "    private object _gate;\n"
+            "    private int _state;\n"
+            "    void Diagnostic() { lock (_gate) { } }\n"
+            "    void Dispose() { _state = 0; }\n"
+            "}\n"
+        )
+        masked = lifecycle_ownership._mask_csharp_source(text)
+        scopes = lifecycle_ownership._owner_type_scopes(text, masked, "Owner")
+        locks, lifetime = lifecycle_ownership._bound_lifecycle_refs(
+            text,
+            Path("Packages/pkg/Runtime/Owner.cs"),
+            masked,
+            scopes,
+            {"_gate", "_state"},
+        )
+        self.assertEqual([], locks)
+        self.assertEqual(["Packages/pkg/Runtime/Owner.cs:5"], lifetime)
+
     def test_inactive_conditional_regions_do_not_create_evidence(self) -> None:
         """Explicitly inactive C# branches cannot provide owner evidence."""
         text = (
@@ -418,6 +459,23 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
         )
         refs = lifecycle_ownership._writer_refs(text, Path("Packages/pkg/Runtime/Owner.cs"), "_state")
         self.assertEqual([], refs)
+
+    def test_writer_shadowing_is_scoped_to_the_affected_method(self) -> None:
+        """A shadowed parameter cannot suppress a writer in another method."""
+        text = (
+            "class Owner {\n"
+            "    private int _state;\n"
+            "    void Read(int _state) { _ = _state; }\n"
+            "    void Set() { _state = 1; }\n"
+            "}\n"
+        )
+        refs = lifecycle_ownership._writer_refs(
+            text,
+            Path("Packages/pkg/Runtime/Owner.cs"),
+            "_state",
+            lifecycle_ownership._type_spans(text)["Owner"],
+        )
+        self.assertEqual(["Packages/pkg/Runtime/Owner.cs:4"], refs)
 
     def test_real_owner_map_uses_declared_production_synchronization(self) -> None:
         """The tracked production owner map must close without test-only evidence."""
@@ -546,6 +604,48 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
         self.assertNotIn("Owner::Child::_state", missing)
         self.assertEqual(["Packages/pkg/Runtime/Owner.cs:4"], fields["Owner::Child::_state"]["writers"])
 
+    def test_nested_receiver_inference_rejects_same_name_other_type(self) -> None:
+        """A receiver with another static type cannot satisfy nested field evidence."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = Path("Packages/pkg/Runtime/Owner.cs")
+            (root / source).parent.mkdir(parents=True)
+            (root / source).write_text(
+                "class Owner {\n"
+                "    private sealed class Child { private int _state; }\n"
+                "    private sealed class Other { private int _state; }\n"
+                "    void Good(Child child) { child._state = 1; }\n"
+                "    void Bad(Other child) { child._state = 2; }\n"
+                "}\n",
+                encoding="utf-8",
+            )
+            with mock.patch.object(lifecycle_ownership.audit_lib, "ROOT", root):
+                fields, missing = lifecycle_ownership._collect_owner_fields([source])
+        self.assertNotIn("Owner::Child::_state", missing)
+        self.assertEqual(["Packages/pkg/Runtime/Owner.cs:4"], fields["Owner::Child::_state"]["writers"])
+
+    def test_nested_receiver_inference_binds_dictionary_value_type(self) -> None:
+        """A same-named dictionary receiver must match its declared value type."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = Path("Packages/pkg/Runtime/Owner.cs")
+            (root / source).parent.mkdir(parents=True)
+            (root / source).write_text(
+                "class Owner {\n"
+                "    private Dictionary<int, Child> _children;\n"
+                "    private Dictionary<int, Other> _others;\n"
+                "    private sealed class Child { private int _state; }\n"
+                "    private sealed class Other { private int _state; }\n"
+                "    void Good() { _children.TryGetValue(0, out var child); child._state = 1; }\n"
+                "    void Bad() { _others.TryGetValue(0, out var child); child._state = 2; }\n"
+                "}\n",
+                encoding="utf-8",
+            )
+            with mock.patch.object(lifecycle_ownership.audit_lib, "ROOT", root):
+                fields, missing = lifecycle_ownership._collect_owner_fields([source])
+        self.assertNotIn("Owner::Child::_state", missing)
+        self.assertEqual(["Packages/pkg/Runtime/Owner.cs:6"], fields["Owner::Child::_state"]["writers"])
+
     def test_owner_fields_keep_missing_writer_evidence(self) -> None:
         """A mutable declaration without a writer remains a blocking finding."""
         with tempfile.TemporaryDirectory() as temp:
@@ -570,6 +670,27 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
         self.assertEqual([], missing)
         self.assertEqual("configuration", fields["Owner::_enabled"]["classification"])
         self.assertEqual([], fields["Owner::_enabled"]["writers"])
+
+    def test_editor_only_writer_is_explicitly_classified(self) -> None:
+        """Editor-only writes cannot masquerade as production writer evidence."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            declaration = Path("Packages/pkg/Runtime/Owner.cs")
+            (root / declaration).parent.mkdir(parents=True)
+            (root / declaration).write_text(
+                "private double _editorRefresh;\n"
+                "#if UNITY_EDITOR\n"
+                "void Refresh() { _editorRefresh = 1d; }\n"
+                "#endif\n",
+                encoding="utf-8",
+            )
+            with mock.patch.object(lifecycle_ownership.audit_lib, "ROOT", root):
+                fields, missing = lifecycle_ownership._collect_owner_fields([declaration])
+        value = fields["Owner::_editorRefresh"]
+        self.assertEqual([], missing)
+        self.assertEqual("editor-only", value["classification"])
+        self.assertEqual([], value["writers"])
+        self.assertEqual(["Packages/pkg/Runtime/Owner.cs:3"], value["editor_writers"])
 
     def test_readonly_fields_do_not_require_writer_evidence(self) -> None:
         """Readonly fields are retained without mutable writer evidence."""

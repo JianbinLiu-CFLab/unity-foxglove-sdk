@@ -26,6 +26,9 @@ _mask_csharp_source = csharp_source._mask_csharp_source
 _type_spans = csharp_source._type_spans
 _line_refs = csharp_source._line_refs
 _nested_receiver_names = csharp_source._nested_receiver_names
+_field_name_is_shadowed = csharp_source.field_name_is_shadowed
+_qualified_receiver_is_bound = csharp_source.qualified_receiver_is_bound
+_receiver_from_match = csharp_source.receiver_from_match
 
 TOPIC = "lifecycle_ownership"
 PHASE = "197"
@@ -72,6 +75,18 @@ OWNER_PATTERNS = {
 OWNER_SUPPORT_NAMES = {
     "FoxgloveManager": ("ClientEventAdmissionState.cs", "ReplaySubscriberFanoutState.cs"),
     "Ros2BridgeWorkerLease": ("Ros2BridgeRuntime.cs",),
+}
+OWNER_NAMESPACES = {
+    "FoxgloveManager": "Unity.FoxgloveSDK.Components",
+    "FoxgloveSession": "Unity.FoxgloveSDK.Core",
+    "ReplayController": "Unity.FoxgloveSDK.Core",
+    "Ros2BridgeWorkerLease": "Unity2Foxglove.Ros2Bridge",
+}
+OWNER_PATH_PREFIXES = {
+    "FoxgloveManager": "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/",
+    "FoxgloveSession": "Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/",
+    "ReplayController": "Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/",
+    "Ros2BridgeWorkerLease": "Packages/dev.unity2foxglove.ros2bridge/Runtime/Ros2Bridge/",
 }
 OWNER_SYNC_MODES = {
     "FoxgloveManager": "composed admission and fanout locks",
@@ -122,8 +137,6 @@ def _origin_main_sha() -> str | None:
         return None
 
 
-
-
 def _plan_bases(text: str) -> dict[str, list[str]]:
     """Read only the current explicit Plan base fields."""
     fields: dict[str, list[str]] = {}
@@ -137,45 +150,7 @@ def _plan_bases(text: str) -> dict[str, list[str]]:
 
 def _owner_type_scopes(text: str, masked_text: str, owner: str) -> tuple[tuple[int, int], ...]:
     """Return lexical spans belonging to an owner and its approved support types."""
-    support_types = {Path(path).stem for path in OWNER_SUPPORT_NAMES.get(owner, ())}
-    allowed = {owner, *support_types}
-    spans = _type_spans(text, masked_text)
-    scopes: list[tuple[int, int]] = []
-    for name, (start, end) in spans.items():
-        if name not in allowed:
-            continue
-        cursor = start
-        nested = sorted((nested_start, nested_end) for nested_name, (nested_start, nested_end) in spans.items() if nested_name not in allowed and start < nested_start and nested_end <= end)
-        for nested_start, nested_end in nested:
-            if cursor < nested_start:
-                scopes.append((cursor, nested_start))
-            cursor = max(cursor, nested_end)
-        if cursor < end:
-            scopes.append((cursor, end))
-    return tuple(scopes)
-
-
-def _method_body_contains_field(masked_text: str, position: int, field_names: set[str]) -> bool:
-    """Return whether a lifecycle method body references an owner field."""
-    opening = masked_text.find("{", position)
-    arrow = masked_text.find("=>", position, opening if opening >= 0 else len(masked_text))
-    if arrow >= 0:
-        body = masked_text[arrow + 2:masked_text.find(";", arrow) if ";" in masked_text[arrow:] else len(masked_text)]
-    elif opening >= 0:
-        depth = 0
-        closing = len(masked_text)
-        for index in range(opening, len(masked_text)):
-            if masked_text[index] == "{":
-                depth += 1
-            elif masked_text[index] == "}":
-                depth -= 1
-                if depth == 0:
-                    closing = index
-                    break
-        body = masked_text[opening:closing]
-    else:
-        return False
-    return any(re.search(rf"\b{re.escape(field)}\b", body) for field in field_names)
+    return csharp_source.owner_type_scopes(text, masked_text, owner, OWNER_SUPPORT_NAMES.get(owner, ()))
 
 
 def _bound_lifecycle_refs(
@@ -186,39 +161,25 @@ def _bound_lifecycle_refs(
     field_names: set[str],
 ) -> tuple[list[str], list[str]]:
     """Return lock and lifecycle references bound to declared owner fields."""
-    lock_pattern = re.compile(r"\block\s*\(\s*(?:this\.)?(?P<name>[A-Za-z_][A-Za-z0-9_]*)")
-    method_pattern = re.compile(r"\b(?:public|private|protected|internal)\b[^\n{}]*\b(?:OnEnable|OnDisable|OnDestroy|StartServer|StopServer|CleanupStartupAfterFailure|Dispose|Reset|Connect|Disconnect)\s*\(")
-    locks: list[str] = []
-    lifetime: list[str] = []
-    offset = 0
-    for line_number, line in enumerate(masked_text.splitlines(keepends=True), 1):
-        matches = list(LIFETIME_WORDS.finditer(line))
-        lock_match = lock_pattern.search(line)
-        if lock_match and any(start <= offset + lock_match.start() < end for start, end in scopes):
-            if lock_match.group("name") in field_names:
-                locks.append(f"{relative.as_posix()}:{line_number}")
-        if matches and any(start <= offset + match.start() < end for match in matches for start, end in scopes):
-            line_has_field = any(re.search(rf"\b{re.escape(field)}\b", line) for field in field_names)
-            method_match = method_pattern.search(line)
-            method_has_field = method_match is not None and _method_body_contains_field(masked_text, offset + method_match.start(), field_names)
-            if line_has_field or method_has_field:
-                lifetime.append(f"{relative.as_posix()}:{line_number}")
-        offset += len(line)
-    return locks, lifetime
+    return csharp_source.bound_lifecycle_refs(text, relative, masked_text, scopes, field_names, LIFETIME_WORDS)
 
 
-def _field_name_is_shadowed(masked_text: str, field: str) -> bool:
-    """Return whether a parameter or local uses the field identifier."""
-    name = re.escape(field)
-    parameter = re.compile(rf"\([^(){{}};]*\b(?:(?:ref|out|in)\s+[A-Za-z_][A-Za-z0-9_<>.,?]*|(?!ref\b|out\b|in\b)[A-Za-z_][A-Za-z0-9_<>.,?]*)\s+{name}\b[^(){{}};]*\)(?=\s*(?:\{{|=>|:))")
-    if parameter.search(masked_text):
-        return True
-    local = re.compile(rf"(?:^|[;{{}}])\s*(?:var|(?!ref\b|out\b|in\b|return\b|if\b|else\b|for\b|foreach\b|while\b|switch\b|case\b|throw\b|new\b|lock\b|using\b|yield\b|await\b|_) [A-Za-z_][A-Za-z0-9_<>.,?]*)\s+{name}\s*(?:=|;|,)", re.MULTILINE | re.VERBOSE)
-    for match in local.finditer(masked_text):
-        prefix = masked_text[max(0, match.start() - 256):match.start()]
-        if not re.search(r"\b(?:private|protected|internal|public)\b[^;{}]*$", prefix):
-            return True
-    return False
+def _owner_source_is_canonical(path: Path, owner: str, masked_text: str) -> bool:
+    """Return whether a source file can contribute to the canonical owner."""
+    return csharp_source.owner_source_is_canonical(path, owner, masked_text, OWNER_PATH_PREFIXES, OWNER_NAMESPACES, OWNER_SUPPORT_NAMES)
+
+
+def _owner_source_is_trusted(path: Path, owner: str, masked_text: str, base_paths: set[str]) -> bool:
+    """Return whether a canonical owner file already exists on the audit base."""
+    return path.as_posix() in base_paths and _owner_source_is_canonical(path, owner, masked_text)
+
+
+def _owner_base_paths(owner: str) -> set[str]:
+    """Return canonical owner source paths tracked by origin/main."""
+    return set(
+        _git_output(["git", "ls-tree", "-r", "--name-only", "origin/main", "--", OWNER_PATH_PREFIXES[owner]])
+        .splitlines()
+    )
 
 
 def _is_declaration_assignment(masked_text: str, position: int) -> bool:
@@ -235,6 +196,8 @@ def _writer_refs(
     scope: tuple[int, int] | None = None,
     masked_text: str | None = None,
     qualified_receivers: tuple[str, ...] | None = None,
+    receiver_type: str | None = None,
+    receiver_type_context: str | None = None,
 ) -> list[str]:
     """Return source locations that prove a field write."""
     masked = masked_text if masked_text is not None else _mask_csharp_source(text)
@@ -246,7 +209,6 @@ def _writer_refs(
         for receiver in qualified_receivers or ()
     )
     field_target = rf"(?:{receiver_pattern})\.{re.escape(field)}\b" if receiver_pattern else rf"\b{re.escape(field)}\b"
-    shadowed = not receiver_pattern and _field_name_is_shadowed(scoped_text, field)
     assignment_pattern = re.compile(
         rf"(?:{field_target}\s*(?:(?<![=!<>])=(?!=)|\+=|-=|\?\?=|\+\+|--)|(?:\+\+|--)\s*{field_target})"
     )
@@ -257,18 +219,32 @@ def _writer_refs(
         rf"\b(?:{mutator_names})\s*\([^;{{}}]*?(?P<ref>\bref\s+{field_target})",
         re.DOTALL,
     )
-    if not shadowed:
-        for match in assignment_pattern.finditer(scoped_text):
-            absolute = scope_start + match.start()
-            if not _is_declaration_assignment(masked, absolute):
-                refs.add(f"{relative.as_posix()}:{text.count(chr(10), 0, absolute) + 1}")
-        for match in atomic_pattern.finditer(scoped_text):
-            absolute = scope_start + match.start()
+    for match in assignment_pattern.finditer(scoped_text):
+        absolute = scope_start + match.start()
+        receiver = _receiver_from_match(masked, absolute, scope_start + match.end(), receiver_pattern, field) if receiver_pattern else None
+        if receiver_pattern and not receiver:
+            continue
+        if receiver_pattern and not _qualified_receiver_is_bound(masked, absolute, receiver, receiver_type, receiver_type_context):
+            continue
+        shadowed = not receiver_pattern and _field_name_is_shadowed(scoped_text, field, match.start())
+        if not shadowed and not _is_declaration_assignment(masked, absolute):
             refs.add(f"{relative.as_posix()}:{text.count(chr(10), 0, absolute) + 1}")
-        for match in mutator_pattern.finditer(scoped_text):
-            absolute = scope_start + match.start("ref")
-            if not _is_declaration_assignment(masked, absolute):
-                refs.add(f"{relative.as_posix()}:{text.count(chr(10), 0, absolute) + 1}")
+    for match in atomic_pattern.finditer(scoped_text):
+        absolute = scope_start + match.start()
+        receiver = _receiver_from_match(masked, absolute, scope_start + match.end(), receiver_pattern, field) if receiver_pattern else None
+        if receiver_pattern and (not receiver or not _qualified_receiver_is_bound(masked, absolute, receiver, receiver_type, receiver_type_context)):
+            continue
+        shadowed = not receiver_pattern and _field_name_is_shadowed(scoped_text, field, match.start())
+        if not shadowed:
+            refs.add(f"{relative.as_posix()}:{text.count(chr(10), 0, absolute) + 1}")
+    for match in mutator_pattern.finditer(scoped_text):
+        absolute = scope_start + match.start("ref")
+        receiver = _receiver_from_match(masked, absolute, scope_start + match.end(), receiver_pattern, field) if receiver_pattern else None
+        if receiver_pattern and (not receiver or not _qualified_receiver_is_bound(masked, absolute, receiver, receiver_type, receiver_type_context)):
+            continue
+        shadowed = not receiver_pattern and _field_name_is_shadowed(scoped_text, field, match.start("ref"))
+        if not shadowed and not _is_declaration_assignment(masked, absolute):
+            refs.add(f"{relative.as_posix()}:{text.count(chr(10), 0, absolute) + 1}")
     return sorted(refs)
 
 
@@ -277,7 +253,7 @@ def _field_declarations(
     relative: Path,
     masked_text: str | None = None,
     spans: dict[str, tuple[int, int]] | None = None,
-    ) -> list[dict[str, str]]:
+) -> list[dict[str, str]]:
     """Collect field declarations and classify configuration fields."""
     masked = masked_text if masked_text is not None else _mask_csharp_source(text)
     lines = masked.splitlines()
@@ -358,7 +334,8 @@ def _collect_owner_fields(matched: list[Path]) -> tuple[dict[str, dict[str, obje
         for relative in matched
     }
     masked_texts = {relative: _mask_csharp_source(text) for relative, text in texts.items()}
-    writer_masked_texts = {
+    writer_masked_texts = masked_texts
+    editor_masked_texts = {
         relative: _mask_csharp_source(text, WRITER_PREPROCESSOR_SYMBOLS)
         for relative, text in texts.items()
     }
@@ -387,10 +364,12 @@ def _collect_owner_fields(matched: list[Path]) -> tuple[dict[str, dict[str, obje
                 field_data["classification"] = "mutable"
     missing_writers: list[str] = []
     receiver_cache: dict[tuple[str, Path], tuple[str, ...]] = {}
-    for field_key, field_data in fields.items():
-        name = str(field_data["name"])
-        declaring_type = str(field_data["declaring_type"])
+    receiver_type_context = "\n".join(masked_texts.values())
+
+    def collect_writers(field_name: str, declaring_type: str, masked_map: dict[Path, str]) -> list[str]:
+        """Collect writer references for one field across owner partials."""
         nested_type = "::" in declaring_type
+        refs: list[str] = []
         for relative, text in texts.items():
             exact_scope = type_spans[relative].get(declaring_type)
             parent_scope = None
@@ -409,34 +388,50 @@ def _collect_owner_fields(matched: list[Path]) -> tuple[dict[str, dict[str, obje
             scope = exact_scope if nested_type else exact_scope or parent_scope
             if scope is None:
                 if nested_type and parent_scope and nested_receivers:
-                    writer_refs = _writer_refs(
-                        text,
-                        relative,
-                        name,
-                        parent_scope,
-                        writer_masked_texts[relative],
-                        qualified_receivers=nested_receivers,
+                    refs.extend(
+                        _writer_refs(
+                            text,
+                            relative,
+                            field_name,
+                            parent_scope,
+                            masked_map[relative],
+                            qualified_receivers=nested_receivers,
+                            receiver_type=declaring_type.rsplit("::", 1)[-1],
+                            receiver_type_context=receiver_type_context,
+                        )
                     )
-                    field_data["assignments"] = int(field_data["assignments"]) + len(writer_refs)
-                    field_data["writers"].extend(writer_refs)
                     continue
                 fallback_type = relative.stem.split(".", 1)[0]
                 if declaring_type == fallback_type:
                     scope = (0, len(text))
                 else:
                     continue
-            writer_refs = _writer_refs(text, relative, name, scope, writer_masked_texts[relative])
+            writer_refs = _writer_refs(text, relative, field_name, scope, masked_map[relative])
             if nested_type and parent_scope and not writer_refs and nested_receivers:
                 writer_refs = _writer_refs(
                     text,
                     relative,
-                    name,
+                    field_name,
                     parent_scope,
-                    writer_masked_texts[relative],
+                    masked_map[relative],
                     qualified_receivers=nested_receivers,
+                    receiver_type=declaring_type.rsplit("::", 1)[-1],
+                    receiver_type_context=receiver_type_context,
                 )
-            field_data["assignments"] = int(field_data["assignments"]) + len(writer_refs)
-            field_data["writers"].extend(writer_refs)
+            refs.extend(writer_refs)
+        return sorted(set(refs))
+
+    for field_key, field_data in fields.items():
+        name = str(field_data["name"])
+        declaring_type = str(field_data["declaring_type"])
+        writer_refs = collect_writers(name, declaring_type, writer_masked_texts)
+        field_data["assignments"] = len(writer_refs)
+        field_data["writers"] = writer_refs
+        if field_data["classification"] == "mutable" and not writer_refs:
+            editor_refs = collect_writers(name, declaring_type, editor_masked_texts)
+            if editor_refs:
+                field_data["classification"] = "editor-only"
+                field_data["editor_writers"] = editor_refs
         field_data["files"] = sorted(set(field_data["files"]))
         field_data["declarations"] = sorted(set(field_data["declarations"]))
         field_data["writers"] = sorted(set(field_data["writers"]))
@@ -444,6 +439,8 @@ def _collect_owner_fields(matched: list[Path]) -> tuple[dict[str, dict[str, obje
             if not field_data["writers"]:
                 missing_writers.append(field_key)
             field_data["reason"] = "writer references required across owner partials"
+        elif field_data["classification"] == "editor-only":
+            field_data["reason"] = "all writer references are inside UNITY_EDITOR branches"
         elif field_data["classification"] == "readonly":
             field_data["reason"] = "readonly field initialization"
         else:
@@ -489,11 +486,14 @@ def _owner_evidence_valid(data: object) -> bool:
     missing_writers = data.get("missing_writers")
     owner = data.get("owner")
     synchronization = data.get("synchronization")
+    untrusted_files = data.get("untrusted_files", [])
     if (
         not isinstance(fields, dict)
         or not fields
         or not isinstance(missing_writers, list)
         or missing_writers
+        or not isinstance(untrusted_files, list)
+        or untrusted_files
         or owner not in OWNER_SYNC_MODES
         or not _source_refs_valid(data.get("locks"))
         or not _source_refs_valid(data.get("lifetime"))
@@ -505,16 +505,23 @@ def _owner_evidence_valid(data: object) -> bool:
     for value in fields.values():
         if not isinstance(value, dict):
             return False
-        if value.get("classification") not in {"mutable", "configuration", "readonly"}:
+        classification = value.get("classification")
+        if classification not in {"mutable", "configuration", "readonly", "editor-only"}:
             return False
         if not _source_paths_valid(value.get("files")) or not _source_refs_valid(value.get("declarations")):
             return False
         writers = value.get("writers")
         if writers and not _source_refs_valid(writers):
             return False
-        if value["classification"] == "mutable" and (
-            not writers or int(value.get("assignments", 0)) <= 0
+        editor_writers = value.get("editor_writers", [])
+        if editor_writers and not _source_refs_valid(editor_writers):
+            return False
+        assignments = value.get("assignments")
+        if classification == "mutable" and (
+            not writers or type(assignments) is not int or assignments <= 0
         ):
+            return False
+        if classification == "editor-only" and (writers or not editor_writers):
             return False
     return True
 
@@ -647,9 +654,9 @@ def _plan_check(base_sha: str) -> audit_lib.Check:
     if origin_main is None:
         return _check("197-PLAN", "Plan/197... § header and Appendix A", "environment", "NOT_RUN", "git rev-parse --verify origin/main; read Plan/197...", str(plan_log), "origin/main is unavailable in this checkout")
     audit_base_match = origin_main == base_sha and bases.get("Audit base") == [origin_main]
-    entry_base_recorded = len(bases.get("Entry base", [])) == 1
-    okay = audit_base_match and entry_base_recorded and appendix_note and (accepted_stop or pending_review)
-    detail = f"base={base_sha}; plan_bases={bases}; audit_base_match={audit_base_match}; entry_base_recorded={entry_base_recorded}; accepted_stop={accepted_stop}; pending_review={pending_review}; appendix_rows={len(_appendix_labels())}"
+    entry_base_match = bases.get("Entry base") == [origin_main]
+    okay = audit_base_match and entry_base_match and appendix_note and (accepted_stop or pending_review)
+    detail = f"base={base_sha}; plan_bases={bases}; audit_base_match={audit_base_match}; entry_base_match={entry_base_match}; accepted_stop={accepted_stop}; pending_review={pending_review}; appendix_rows={len(_appendix_labels())}"
     return _check("197-PLAN", "Plan/197... § header and Appendix A", "history", "PASS" if okay else "FAIL", "git rev-parse origin/main; read Plan/197...", "build/plan-audit/lifecycle_ownership/plan.log", detail)
 
 
@@ -775,9 +782,26 @@ def _owner_map() -> audit_lib.Check:
     files = [Path(path) for path in _git_output(["git", "ls-files", "*.cs"]).splitlines() if _is_production_source(path)]
     payload: dict[str, object] = {}
     for owner, pattern in OWNER_PATTERNS.items():
-        matched = [path for path in files if fnmatch.fnmatch(path.name, pattern) or (owner == "Ros2BridgeWorkerLease" and "Ros2BridgeWorkerLease" in str(path))]
+        base_paths = _owner_base_paths(owner)
+        matched: list[Path] = []
+        untrusted_files: list[str] = []
+        for path in files:
+            filename_match = fnmatch.fnmatch(path.name, pattern) or (owner == "Ros2BridgeWorkerLease" and "Ros2BridgeWorkerLease" in str(path))
+            if not filename_match:
+                continue
+            text = (audit_lib.ROOT / path).read_text(encoding="utf-8", errors="replace")
+            if _owner_source_is_trusted(path, owner, _mask_csharp_source(text), base_paths):
+                matched.append(path)
+            elif _owner_source_is_canonical(path, owner, _mask_csharp_source(text)):
+                untrusted_files.append(path.as_posix())
         support_names = OWNER_SUPPORT_NAMES.get(owner, ())
-        matched.extend(path for path in files if path.name in support_names and path not in matched)
+        for path in files:
+            if path.name in support_names and path not in matched:
+                text = (audit_lib.ROOT / path).read_text(encoding="utf-8", errors="replace")
+                if _owner_source_is_trusted(path, owner, _mask_csharp_source(text), base_paths):
+                    matched.append(path)
+                elif _owner_source_is_canonical(path, owner, _mask_csharp_source(text)):
+                    untrusted_files.append(path.as_posix())
         fields, missing_writers = _collect_owner_fields(matched)
         field_names = {str(value["name"]) for value in fields.values()}
         locks: list[str] = []
@@ -791,6 +815,7 @@ def _owner_map() -> audit_lib.Check:
             lifetime.extend(bound_lifetime)
         payload[owner] = {
             "files": [str(path).replace("\\", "/") for path in matched],
+            "untrusted_files": sorted(set(untrusted_files)),
             "fields": fields,
             "missing_writers": missing_writers,
             "owner": owner,
