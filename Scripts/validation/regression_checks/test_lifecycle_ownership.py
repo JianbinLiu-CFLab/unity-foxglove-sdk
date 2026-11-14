@@ -149,6 +149,25 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
                 check = lifecycle_ownership._plan_check(sha)
         self.assertEqual("FAIL", check.status)
 
+    def test_plan_check_keeps_entry_base_as_historical_context(self) -> None:
+        """A historical Entry base remains valid after the audit base advances."""
+        with tempfile.TemporaryDirectory() as temp:
+            plan = Path(temp) / "Plan197.md"
+            audit_sha = "a" * 40
+            entry_sha = "b" * 40
+            plan.write_text(
+                "Status: W1 pending manual review\n"
+                f"Audit base: `origin/main == {audit_sha}`\n"
+                f"Entry base: `origin/main == {entry_sha}`\n"
+                "| #731 | fix lifecycle | Packages | local | tooling |\n",
+                encoding="utf-8",
+            )
+            with mock.patch.object(lifecycle_ownership, "PLAN", plan), mock.patch.object(
+                lifecycle_ownership, "_origin_main_sha", return_value=audit_sha
+            ):
+                check = lifecycle_ownership._plan_check(audit_sha)
+        self.assertEqual("PASS", check.status)
+
     def test_trx_coverage_requires_every_expected_test(self) -> None:
         """A single passing test cannot satisfy the lifecycle coverage gate."""
         with tempfile.TemporaryDirectory() as temp:
@@ -227,6 +246,26 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
         )
         refs = lifecycle_ownership._writer_refs(text, Path("Packages/pkg/Runtime/Owner.cs"), "_state")
         self.assertEqual(["Packages/pkg/Runtime/Owner.cs:4"], refs)
+
+    def test_writer_evidence_excludes_field_initializers(self) -> None:
+        """A declaration initializer is not a lifecycle writer."""
+        text = "private int _state = 1;\n"
+        refs = lifecycle_ownership._writer_refs(text, Path("Packages/pkg/Runtime/Owner.cs"), "_state")
+        self.assertEqual([], refs)
+
+    def test_writer_evidence_accepts_increment_writes(self) -> None:
+        """Increment and decrement operations are field writes."""
+        text = "++_state;\n_state++;\n--_state;\n_state--;\n"
+        refs = lifecycle_ownership._writer_refs(text, Path("Packages/pkg/Runtime/Owner.cs"), "_state")
+        self.assertEqual(
+            [
+                "Packages/pkg/Runtime/Owner.cs:1",
+                "Packages/pkg/Runtime/Owner.cs:2",
+                "Packages/pkg/Runtime/Owner.cs:3",
+                "Packages/pkg/Runtime/Owner.cs:4",
+            ],
+            refs,
+        )
 
     def test_writer_evidence_requires_known_ref_mutators(self) -> None:
         """Unknown ref helpers do not count as field writes."""
@@ -309,6 +348,28 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
             scopes,
         )
         self.assertEqual(["Packages/pkg/Runtime/FoxgloveManager.cs:2"], refs)
+
+    def test_lifecycle_evidence_binds_to_fields_and_methods(self) -> None:
+        """Locks and lifecycle references require declared owner evidence."""
+        text = (
+            "class Owner {\n"
+            "    private object _gate;\n"
+            "    void Dispose() { lock (_gate) { _gate = null; } }\n"
+            "    void Unrelated() { lock (local) { } }\n"
+            "    void EmptyDispose() { Dispose(); }\n"
+            "}\n"
+        )
+        masked = lifecycle_ownership._mask_csharp_source(text)
+        scopes = lifecycle_ownership._owner_type_scopes(text, masked, "Owner")
+        locks, lifetime = lifecycle_ownership._bound_lifecycle_refs(
+            text,
+            Path("Packages/pkg/Runtime/Owner.cs"),
+            masked,
+            scopes,
+            {"_gate"},
+        )
+        self.assertEqual(["Packages/pkg/Runtime/Owner.cs:3"], locks)
+        self.assertEqual(["Packages/pkg/Runtime/Owner.cs:3"], lifetime)
 
     def test_inactive_conditional_regions_do_not_create_evidence(self) -> None:
         """Explicitly inactive C# branches cannot provide owner evidence."""
@@ -461,6 +522,30 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
         self.assertEqual([], missing)
         self.assertEqual(["Packages/pkg/Runtime/Owner.Lifecycle.cs:1"], fields["Owner::_state"]["writers"])
 
+    def test_nested_receiver_inference_is_file_scoped(self) -> None:
+        """Unrelated files cannot provide nested receiver writer evidence."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            owner = Path("Packages/pkg/Runtime/Owner.cs")
+            unrelated = Path("Packages/pkg/Runtime/Other.cs")
+            (root / owner).parent.mkdir(parents=True)
+            (root / owner).write_text(
+                "class Owner {\n"
+                "    private Dictionary<int, Child> _children;\n"
+                "    private sealed class Child { private int _state; }\n"
+                "    void Set() { _children.TryGetValue(0, out var child); child._state = 1; }\n"
+                "}\n",
+                encoding="utf-8",
+            )
+            (root / unrelated).write_text(
+                "partial class Owner { void OtherSet() { Get(out var child); child._state = 2; } }\n",
+                encoding="utf-8",
+            )
+            with mock.patch.object(lifecycle_ownership.audit_lib, "ROOT", root):
+                fields, missing = lifecycle_ownership._collect_owner_fields([owner, unrelated])
+        self.assertNotIn("Owner::Child::_state", missing)
+        self.assertEqual(["Packages/pkg/Runtime/Owner.cs:4"], fields["Owner::Child::_state"]["writers"])
+
     def test_owner_fields_keep_missing_writer_evidence(self) -> None:
         """A mutable declaration without a writer remains a blocking finding."""
         with tempfile.TemporaryDirectory() as temp:
@@ -485,6 +570,35 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
         self.assertEqual([], missing)
         self.assertEqual("configuration", fields["Owner::_enabled"]["classification"])
         self.assertEqual([], fields["Owner::_enabled"]["writers"])
+
+    def test_readonly_fields_do_not_require_writer_evidence(self) -> None:
+        """Readonly fields are retained without mutable writer evidence."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            declaration = Path("Packages/pkg/Runtime/Owner.cs")
+            (root / declaration).parent.mkdir(parents=True)
+            (root / declaration).write_text("private readonly int _state = 1;\n", encoding="utf-8")
+            with mock.patch.object(lifecycle_ownership.audit_lib, "ROOT", root):
+                fields, missing = lifecycle_ownership._collect_owner_fields([declaration])
+        self.assertEqual([], missing)
+        self.assertEqual("readonly", fields["Owner::_state"]["classification"])
+
+    def test_serialize_field_attribute_requires_standalone_previous_line(self) -> None:
+        """A neighboring field declaration cannot leak SerializeField classification."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            declaration = Path("Packages/pkg/Runtime/Owner.cs")
+            (root / declaration).parent.mkdir(parents=True)
+            (root / declaration).write_text(
+                "[SerializeField] private bool _enabled;\n"
+                "private bool _other;\n",
+                encoding="utf-8",
+            )
+            with mock.patch.object(lifecycle_ownership.audit_lib, "ROOT", root):
+                fields, missing = lifecycle_ownership._collect_owner_fields([declaration])
+        self.assertEqual("configuration", fields["Owner::_enabled"]["classification"])
+        self.assertEqual("mutable", fields["Owner::_other"]["classification"])
+        self.assertIn("Owner::_other", missing)
 
     def test_field_classification_does_not_leak_attributes_or_static_state(self) -> None:
         """Only an adjacent SerializeField marks a non-static configuration field."""
