@@ -78,7 +78,7 @@ TYPE_DECLARATION_PATTERN = re.compile(
 )
 FIELD_DECLARATION_PATTERN = re.compile(
     r"\b(?P<access>private|protected|internal|public)\s+"
-    r"(?:(?:static|readonly|volatile)\s+)*"
+    r"(?P<modifiers>(?:(?:static|readonly|volatile)\s+)*)"
     r"(?!(?:const|event)\b)[A-Za-z_][A-Za-z0-9_:<>,.?()\[\]\s]*\s+"
     r"(?P<name>_?[A-Za-z][A-Za-z0-9_]*)\s*(?:=|;)"
 )
@@ -120,6 +120,7 @@ def _mask_csharp_comments_and_strings(text: str) -> str:
     index = 0
 
     def mask(position: int) -> None:
+        """Replace one non-newline source character with a space."""
         if chars[position] != "\n":
             chars[position] = " "
 
@@ -226,9 +227,9 @@ def _mask_csharp_comments_and_strings(text: str) -> str:
     return "".join(chars)
 
 
-def _type_spans(text: str) -> dict[str, tuple[int, int]]:
+def _type_spans(text: str, masked_text: str | None = None) -> dict[str, tuple[int, int]]:
     """Return source spans for nested C# declaring types."""
-    masked = _mask_csharp_comments_and_strings(text)
+    masked = masked_text if masked_text is not None else _mask_csharp_comments_and_strings(text)
     openings: dict[int, str] = {}
     for match in TYPE_DECLARATION_PATTERN.finditer(masked):
         opening = masked.find("{", match.end())
@@ -261,9 +262,14 @@ def _plan_bases(text: str) -> dict[str, list[str]]:
     return fields
 
 
-def _line_refs(text: str, relative: Path, pattern: re.Pattern[str]) -> list[str]:
+def _line_refs(
+    text: str,
+    relative: Path,
+    pattern: re.Pattern[str],
+    masked_text: str | None = None,
+) -> list[str]:
     """Return source locations matching a lifecycle evidence pattern."""
-    masked = _mask_csharp_comments_and_strings(text)
+    masked = masked_text if masked_text is not None else _mask_csharp_comments_and_strings(text)
     return [
         f"{relative.as_posix()}:{line_number}"
         for line_number, line in enumerate(masked.splitlines(), 1)
@@ -271,20 +277,32 @@ def _line_refs(text: str, relative: Path, pattern: re.Pattern[str]) -> list[str]
     ]
 
 
-def _writer_refs(text: str, relative: Path, field: str, scope: tuple[int, int] | None = None) -> list[str]:
+def _writer_refs(
+    text: str,
+    relative: Path,
+    field: str,
+    scope: tuple[int, int] | None = None,
+    masked_text: str | None = None,
+    qualified_only: bool = False,
+) -> list[str]:
     """Return source locations that prove a field write."""
-    masked = _mask_csharp_comments_and_strings(text)
+    masked = masked_text if masked_text is not None else _mask_csharp_comments_and_strings(text)
     scope_start, scope_end = scope or (0, len(masked))
     scoped_text = masked[scope_start:scope_end]
     refs: set[str] = set()
+    field_target = (
+        rf"(?:\b[A-Za-z_][A-Za-z0-9_]*\.)+{re.escape(field)}\b"
+        if qualified_only
+        else rf"\b{re.escape(field)}\b"
+    )
     assignment_pattern = re.compile(
-        rf"\b{re.escape(field)}\s*(?:(?<![=!<>])=(?!=)|\+=|-=|\?\?=)"
+        rf"{field_target}\s*(?:(?<![=!<>])=(?!=)|\+=|-=|\?\?=)"
     )
     atomic_names = "|".join(re.escape(name) for name in ATOMIC_WRITE_CALLS)
-    atomic_pattern = re.compile(rf"\b(?:{atomic_names})\s*\(\s*ref\s+{re.escape(field)}\b")
+    atomic_pattern = re.compile(rf"\b(?:{atomic_names})\s*\(\s*ref\s+{field_target}")
     mutator_names = "|".join(re.escape(name) for name in KNOWN_REF_MUTATORS)
     mutator_pattern = re.compile(
-        rf"\b(?:{mutator_names})\s*\([^;{{}}]*?(?P<ref>\bref\s+{re.escape(field)}\b)",
+        rf"\b(?:{mutator_names})\s*\([^;{{}}]*?(?P<ref>\bref\s+{field_target})",
         re.DOTALL,
     )
     for pattern in (assignment_pattern, atomic_pattern):
@@ -299,11 +317,16 @@ def _writer_refs(text: str, relative: Path, field: str, scope: tuple[int, int] |
     return sorted(refs)
 
 
-def _field_declarations(text: str, relative: Path) -> list[dict[str, str]]:
+def _field_declarations(
+    text: str,
+    relative: Path,
+    masked_text: str | None = None,
+    spans: dict[str, tuple[int, int]] | None = None,
+) -> list[dict[str, str]]:
     """Collect field declarations and classify configuration fields."""
-    masked = _mask_csharp_comments_and_strings(text)
+    masked = masked_text if masked_text is not None else _mask_csharp_comments_and_strings(text)
     lines = masked.splitlines()
-    spans = _type_spans(text)
+    spans = spans if spans is not None else _type_spans(text, masked)
     fallback_type = relative.stem.split(".", 1)[0]
     declarations: list[dict[str, str]] = []
     for match in FIELD_DECLARATION_PATTERN.finditer(masked):
@@ -331,9 +354,14 @@ def _field_declarations(text: str, relative: Path) -> list[dict[str, str]]:
             continue
         if "(" in declaration_prefix and ")" not in declaration_prefix:
             continue
-        context = "\n".join(lines[max(0, line_number - 4):line_number])
+        line_start = masked.rfind("\n", 0, match.start()) + 1
+        same_line_attributes = masked[line_start:match.start()]
+        access_line_number = masked.count("\n", 0, match.start()) + 1
+        previous_line = lines[access_line_number - 2].strip() if access_line_number >= 2 else ""
         access = match.group("access")
-        configuration = "[SerializeField]" in context or access == "public"
+        modifiers = match.group("modifiers")
+        has_serialize_field = "SerializeField" in same_line_attributes or "SerializeField" in previous_line
+        configuration = (has_serialize_field or access == "public") and "static" not in modifiers
         declaring_type = min(
             (
                 name
@@ -361,10 +389,11 @@ def _collect_owner_fields(matched: list[Path]) -> tuple[dict[str, dict[str, obje
         relative: (audit_lib.ROOT / relative).read_text(encoding="utf-8", errors="replace")
         for relative in matched
     }
-    type_spans = {relative: _type_spans(text) for relative, text in texts.items()}
+    masked_texts = {relative: _mask_csharp_comments_and_strings(text) for relative, text in texts.items()}
+    type_spans = {relative: _type_spans(text, masked_texts[relative]) for relative, text in texts.items()}
     fields: dict[str, dict[str, object]] = {}
     for relative, text in texts.items():
-        for declaration in _field_declarations(text, relative):
+        for declaration in _field_declarations(text, relative, masked_texts[relative], type_spans[relative]):
             name = declaration["name"]
             declaring_type = declaration["declaring_type"]
             field_key = f"{declaring_type}::{name}"
@@ -389,22 +418,40 @@ def _collect_owner_fields(matched: list[Path]) -> tuple[dict[str, dict[str, obje
     for field_key, field_data in fields.items():
         name = str(field_data["name"])
         declaring_type = str(field_data["declaring_type"])
+        nested_type = "::" in declaring_type
         for relative, text in texts.items():
             exact_scope = type_spans[relative].get(declaring_type)
             parent_scope = None
-            if "::" in declaring_type:
+            if nested_type:
                 parent_type = declaring_type.rsplit("::", 1)[0]
                 parent_scope = type_spans[relative].get(parent_type)
-            scope = exact_scope or parent_scope
+            scope = exact_scope if nested_type else exact_scope or parent_scope
+            qualified_scope = nested_type and exact_scope is None
+            if nested_type and scope is None:
+                scope = parent_scope
             if scope is None:
                 fallback_type = relative.stem.split(".", 1)[0]
                 if declaring_type == fallback_type:
                     scope = (0, len(text))
                 else:
                     continue
-            writer_refs = _writer_refs(text, relative, name, scope)
-            if exact_scope and parent_scope and not writer_refs:
-                writer_refs = _writer_refs(text, relative, name, parent_scope)
+            writer_refs = _writer_refs(
+                text,
+                relative,
+                name,
+                scope,
+                masked_texts[relative],
+                qualified_only=qualified_scope,
+            )
+            if nested_type and parent_scope and not writer_refs:
+                writer_refs = _writer_refs(
+                    text,
+                    relative,
+                    name,
+                    parent_scope,
+                    masked_texts[relative],
+                    qualified_only=True,
+                )
             field_data["assignments"] = int(field_data["assignments"]) + len(writer_refs)
             field_data["writers"].extend(writer_refs)
         field_data["files"] = sorted(set(field_data["files"]))
@@ -696,8 +743,9 @@ def _owner_map() -> audit_lib.Check:
         lifetime: list[str] = []
         for relative in matched:
             text = (audit_lib.ROOT / relative).read_text(encoding="utf-8", errors="replace")
-            locks.extend(_line_refs(text, relative, re.compile(r"\block\s*\(")))
-            lifetime.extend(_line_refs(text, relative, LIFETIME_WORDS))
+            masked = _mask_csharp_comments_and_strings(text)
+            locks.extend(_line_refs(text, relative, re.compile(r"\block\s*\("), masked))
+            lifetime.extend(_line_refs(text, relative, LIFETIME_WORDS, masked))
         fields, missing_writers = _collect_owner_fields(matched)
         payload[owner] = {
             "files": [str(path).replace("\\", "/") for path in matched],

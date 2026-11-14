@@ -281,6 +281,28 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
         self.assertEqual(["Packages/pkg/Runtime/Owner.cs:4"], fields["Owner::First::_state"]["writers"])
         self.assertEqual(["Packages/pkg/Runtime/Owner.cs:8"], fields["Owner::Second::_state"]["writers"])
 
+    def test_nested_field_does_not_inherit_parent_writer(self) -> None:
+        """A parent field write cannot satisfy an unwritten nested field."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = Path("Packages/pkg/Runtime/Owner.cs")
+            source_path = root / source
+            source_path.parent.mkdir(parents=True)
+            source_path.write_text(
+                "class Owner {\n"
+                "    private int _state;\n"
+                "    internal void Set() { _state = 1; }\n"
+                "    private sealed class Child {\n"
+                "        private int _state;\n"
+                "    }\n"
+                "}\n",
+                encoding="utf-8",
+            )
+            with mock.patch.object(lifecycle_ownership.audit_lib, "ROOT", root):
+                fields, missing = lifecycle_ownership._collect_owner_fields([source])
+        self.assertEqual(["Owner::Child::_state"], missing)
+        self.assertEqual([], fields["Owner::Child::_state"]["writers"])
+
     def test_owner_fields_aggregate_writers_across_partial_files(self) -> None:
         """A writer in another partial file satisfies the declared field."""
         with tempfile.TemporaryDirectory() as temp:
@@ -319,6 +341,24 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
         self.assertEqual([], missing)
         self.assertEqual("configuration", fields["Owner::_enabled"]["classification"])
         self.assertEqual([], fields["Owner::_enabled"]["writers"])
+
+    def test_field_classification_does_not_leak_attributes_or_static_state(self) -> None:
+        """Only an adjacent SerializeField marks a non-static configuration field."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            declaration = Path("Packages/pkg/Runtime/Owner.cs")
+            (root / declaration).parent.mkdir(parents=True)
+            (root / declaration).write_text(
+                "[SerializeField] private bool _enabled;\n"
+                "private static double s_lastRefresh;\n"
+                "s_lastRefresh = 1d;\n",
+                encoding="utf-8",
+            )
+            with mock.patch.object(lifecycle_ownership.audit_lib, "ROOT", root):
+                fields, missing = lifecycle_ownership._collect_owner_fields([declaration])
+        self.assertEqual("configuration", fields["Owner::_enabled"]["classification"])
+        self.assertEqual("mutable", fields["Owner::s_lastRefresh"]["classification"])
+        self.assertEqual([], missing)
 
     def test_mutation_evidence_requires_expected_test_failure(self) -> None:
         """Mutation evidence rejects compile-only or unrelated failures."""
