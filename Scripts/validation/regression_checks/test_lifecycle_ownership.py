@@ -175,6 +175,48 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
             ET.ElementTree(root).write(path, encoding="utf-8", xml_declaration=True)
             self.assertTrue(lifecycle_ownership._missing_expected_tests(path))
 
+    def test_trx_coverage_requires_the_canonical_test_class(self) -> None:
+        """Matching method names from another class cannot satisfy coverage."""
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "results.trx"
+            root = ET.Element("TestRun")
+            results = ET.SubElement(root, "Results")
+            ET.SubElement(
+                results,
+                "UnitTestResult",
+                testName=f"Other.Namespace.{lifecycle_ownership.CANONICAL_TEST_CLASS}.{lifecycle_ownership.EXPECTED_TEST_NAMES[0]}",
+                outcome="Passed",
+            )
+            ET.ElementTree(root).write(path, encoding="utf-8", xml_declaration=True)
+            self.assertTrue(lifecycle_ownership._trx_canonical_test_issues(path))
+
+    def test_canonical_test_source_is_bound_to_audited_base(self) -> None:
+        """The canonical source and unit project must match the audited base."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source_path = root / lifecycle_ownership.TEST_REL
+            project_path = root / lifecycle_ownership.TEST_PROJECT_REL
+            source_path.parent.mkdir(parents=True)
+            project_path.parent.mkdir(parents=True, exist_ok=True)
+            source = (
+                f"namespace {lifecycle_ownership.CANONICAL_TEST_NAMESPACE} {{\n"
+                f"public sealed class {lifecycle_ownership.CANONICAL_TEST_CLASS} {{\n"
+                + "\n".join(f"public void {name}() {{}}" for name in lifecycle_ownership.EXPECTED_TEST_NAMES)
+                + "\n}}\n"
+            )
+            project = '<Compile Include="**/*.cs" />\n'
+            source_path.write_text(source, encoding="utf-8")
+            project_path.write_text(project, encoding="utf-8")
+            with mock.patch.object(lifecycle_ownership.audit_lib, "ROOT", root), mock.patch.object(
+                lifecycle_ownership, "_git_output", side_effect=[source, project]
+            ):
+                self.assertEqual([], lifecycle_ownership._canonical_test_source_issues("a" * 40))
+            source_path.write_text(source + "// changed\n", encoding="utf-8")
+            with mock.patch.object(lifecycle_ownership.audit_lib, "ROOT", root), mock.patch.object(
+                lifecycle_ownership, "_git_output", side_effect=[source, project]
+            ):
+                self.assertTrue(lifecycle_ownership._canonical_test_source_issues("a" * 40))
+
     def test_writer_evidence_excludes_comparisons(self) -> None:
         """Comparison operators do not create writer evidence."""
         text = (

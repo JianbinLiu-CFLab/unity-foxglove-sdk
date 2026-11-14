@@ -21,7 +21,11 @@ OUTPUT = audit_lib.BUILD_ROOT / TOPIC
 PLAN = audit_lib.ROOT / "Plan" / "197_PHASE197_EVIDENCE_LED_LIFECYCLE_OWNERSHIP_PLAN.md"
 SCRIPT_REL = "Scripts/validation/plan_audit/lifecycle_ownership.py"
 TEST_REL = "Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxRun/FoxgloveManagerTeardownTests.cs"
+TEST_PROJECT_REL = "Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj"
 TEARDOWN_REL = "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManagerTeardownState.cs"
+CANONICAL_TEST_NAMESPACE = "Unity.FoxgloveSDK.Tests.Unit.FoxRun"
+CANONICAL_TEST_CLASS = "FoxgloveManagerTeardownTests"
+CANONICAL_TEST_PREFIX = f"{CANONICAL_TEST_NAMESPACE}.{CANONICAL_TEST_CLASS}."
 KEYWORDS = re.compile(r"fix|bug|repair|restore|regression|broken|hotfix", re.IGNORECASE)
 LIFETIME_WORDS = re.compile(
     r"\b(?:OnEnable|OnDisable|OnDestroy|StartServer|StopServer|CleanupStartupAfterFailure|Dispose|Reset|Connect|Disconnect)\b"
@@ -558,6 +562,59 @@ def _trx_outcomes(path: Path) -> dict[str, list[str]]:
     return outcomes
 
 
+def _trx_canonical_test_issues(path: Path) -> list[str]:
+    """Return lifecycle results that do not belong to the canonical test class."""
+    if not path.is_file():
+        return ["TRX_FILE_MISSING"]
+    try:
+        root = ET.fromstring(path.read_text(encoding="utf-8", errors="replace"))
+    except ET.ParseError:
+        return ["TRX_PARSE_ERROR"]
+    issues: list[str] = []
+    for result in root.iter():
+        if not result.tag.endswith("UnitTestResult"):
+            continue
+        name = result.attrib.get("testName", "")
+        if _normalise_test_name(name) in EXPECTED_TEST_NAMES and not name.startswith(CANONICAL_TEST_PREFIX):
+            issues.append(name)
+    return sorted(set(issues))
+
+
+def _canonical_test_source_issues(base_sha: str) -> list[str]:
+    """Return source or project changes that could replace the canonical suite."""
+    issues: list[str] = []
+    source_path = audit_lib.ROOT / TEST_REL
+    project_path = audit_lib.ROOT / TEST_PROJECT_REL
+    if not source_path.is_file():
+        issues.append(f"missing:{TEST_REL}")
+    if not project_path.is_file():
+        issues.append(f"missing:{TEST_PROJECT_REL}")
+    if issues:
+        return issues
+    source_text = source_path.read_text(encoding="utf-8", errors="replace")
+    project_text = project_path.read_text(encoding="utf-8", errors="replace")
+    if not re.search(rf"\bnamespace\s+{re.escape(CANONICAL_TEST_NAMESPACE)}\b", source_text):
+        issues.append("canonical namespace missing")
+    if not re.search(rf"\bclass\s+{re.escape(CANONICAL_TEST_CLASS)}\b", source_text):
+        issues.append("canonical test class missing")
+    missing_methods = [name for name in EXPECTED_TEST_NAMES if not re.search(rf"\b{re.escape(name)}\s*\(", source_text)]
+    if missing_methods:
+        issues.append(f"canonical methods missing={missing_methods}")
+    if '**/*.cs' not in project_text:
+        issues.append("unit project does not include the canonical test tree")
+    try:
+        base_source = _git_output(["git", "show", f"{base_sha}:{TEST_REL}"])
+        base_project = _git_output(["git", "show", f"{base_sha}:{TEST_PROJECT_REL}"])
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+        issues.append(f"canonical base unavailable:{exc}")
+    else:
+        if source_text != base_source:
+            issues.append(f"canonical source changed:{TEST_REL}")
+        if project_text != base_project:
+            issues.append(f"canonical project changed:{TEST_PROJECT_REL}")
+    return sorted(set(issues))
+
+
 def _missing_expected_tests(path: Path) -> list[str]:
     """Return expected lifecycle tests without exclusively passing TRX results."""
     outcomes = _trx_outcomes(path)
@@ -776,8 +833,19 @@ def _trx_passed(path: Path) -> int:
     return sum(outcome == "Passed" for outcomes in _trx_outcomes(path).values() for outcome in outcomes)
 
 
-def _tests_check() -> audit_lib.Check:
+def _tests_check(base_sha: str) -> audit_lib.Check:
     """Run Manager boundary tests and audit characterization coverage style."""
+    source_issues = _canonical_test_source_issues(base_sha)
+    if source_issues:
+        return _check(
+            "197-W1-tests",
+            "Plan/197... § 2 W1.3",
+            "auto",
+            "FAIL",
+            "verify canonical FoxgloveManagerTeardownTests source and project against audited base",
+            "build/plan-audit/lifecycle_ownership/owner-map.json",
+            f"canonical_test_issues={source_issues}",
+        )
     restore = _run(["dotnet", "restore", "Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj", "-p:IncludeManagerProductionBoundary=true"], "197-manager-restore", 300.0)
     if restore["exit_code"] != 0:
         return _check("197-W1-tests", "Plan/197... § 2 W1.3", "auto", "NOT_RUN", "dotnet restore Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj -p:IncludeManagerProductionBoundary=true", restore["log"], "restore failed; Manager boundary test was not run")
@@ -787,8 +855,9 @@ def _tests_check() -> audit_lib.Check:
     result_file = result_dir / "lifecycle-ownership.trx"
     passed = _trx_passed(result_file)
     missing = _missing_expected_tests(result_file)
-    okay = result["exit_code"] == 0 and result_file.is_file() and not missing
-    detail = f"test_exit={result['exit_code']}; passed_tests={passed}; missing_expected_tests={missing or 'none'}; pr717_test={TEST_REL}"
+    canonical_issues = _trx_canonical_test_issues(result_file)
+    okay = result["exit_code"] == 0 and result_file.is_file() and not missing and not canonical_issues
+    detail = f"test_exit={result['exit_code']}; passed_tests={passed}; missing_expected_tests={missing or 'none'}; canonical_test_issues={canonical_issues or 'none'}; pr717_test={TEST_REL}"
     return _check("197-W1-tests", "Plan/197... § 2 W1.3", "auto", "PASS" if okay else "FAIL", "dotnet restore ... -p:IncludeManagerProductionBoundary=true; dotnet test --no-restore ... --filter FullyQualifiedName~FoxgloveManagerTeardownTests", result["log"], detail)
 
 
@@ -874,7 +943,7 @@ def main() -> int:
     checks: list[audit_lib.Check] = [_plan_check(base_sha)]
     try:
         candidates, evidence = _history_candidates(base_sha)
-        checks.extend([_scope_check(candidates, evidence, base_sha), _gate_check(candidates), _owner_map(), _tests_check()])
+        checks.extend([_scope_check(candidates, evidence, base_sha), _gate_check(candidates), _owner_map(), _tests_check(base_sha)])
         checks.extend(_mutation_checks())
     except Exception as exc:
         checks.append(_check("197-W1-scope", "Plan/197... § 2 W1.1", "history", "NOT_RUN", "python -B -m Scripts.validation.plan_audit.lifecycle_ownership", "build/plan-audit/lifecycle_ownership/logs/exception.log", str(exc)))
