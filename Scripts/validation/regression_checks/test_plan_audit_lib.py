@@ -394,7 +394,7 @@ class PlanAuditLibraryTests(unittest.TestCase):
 
             checks: list[audit_lib.Check] = []
             with mock.patch.object(unity_coverage.audit_lib, "run", side_effect=fake_audit_run):
-                unity_coverage._w4_mutation(checks, output, "head")
+                unity_coverage._w4_mutation(checks, output, "head", expected_worktree_sha=current_worktree_sha)
         self.assertEqual("PASS", checks[0].status)
         self.assertTrue(checks[0].evidence.endswith("/w4-mutation.json"))
 
@@ -624,9 +624,9 @@ class PlanAuditLibraryTests(unittest.TestCase):
                 unity_acceptance, "_write_manual"
             ):
                 self.assertEqual(1, unity_acceptance.main())
+            coverage.assert_called_once_with(Path(temp) / "output", "base", worktree_sha="sha")
             bridge.assert_called_once()
             lane.assert_called_once()
-            coverage.assert_called_once()
 
     def test_acceptance_main_rejects_manual_w4_mutation(self) -> None:
         """The complete audit exit code rejects the explicit manual W4 mutation check."""

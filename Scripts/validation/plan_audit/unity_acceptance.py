@@ -148,7 +148,7 @@ def main() -> int:
     checks.append(trusted)
     checks.extend(bridge_history.bridge_checks(OUTPUT))
     checks.extend(unity_lane.lane_checks(OUTPUT))
-    checks.extend(unity_coverage.coverage_checks(OUTPUT, base_sha))
+    checks.extend(unity_coverage.coverage_checks(OUTPUT, base_sha, worktree_sha=before_sha))
     checks.append(_dod_check(checks))
     after, after_sha = audit_lib.worktree_snapshot(exclude=("build/",))
     (OUTPUT / "state-after.txt").write_text(after, encoding="utf-8")
