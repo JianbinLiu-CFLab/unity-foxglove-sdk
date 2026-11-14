@@ -345,6 +345,27 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
         self.assertEqual(["Owner::Child::_state"], missing)
         self.assertEqual([], fields["Owner::Child::_state"]["writers"])
 
+    def test_sibling_nested_field_does_not_inherit_qualified_writer(self) -> None:
+        """A qualified writer is attributed only to its receiver type."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = Path("Packages/pkg/Runtime/Owner.cs")
+            source_path = root / source
+            source_path.parent.mkdir(parents=True)
+            source_path.write_text(
+                "class Owner {\n"
+                "    private sealed class First { private int _state; }\n"
+                "    private sealed class Second { private int _state; }\n"
+                "    internal void Set(First first) { first._state = 1; }\n"
+                "}\n",
+                encoding="utf-8",
+            )
+            with mock.patch.object(lifecycle_ownership.audit_lib, "ROOT", root):
+                fields, missing = lifecycle_ownership._collect_owner_fields([source])
+        self.assertIn("Owner::Second::_state", missing)
+        self.assertEqual([], fields["Owner::Second::_state"]["writers"])
+        self.assertEqual(["Packages/pkg/Runtime/Owner.cs:4"], fields["Owner::First::_state"]["writers"])
+
     def test_owner_fields_aggregate_writers_across_partial_files(self) -> None:
         """A writer in another partial file satisfies the declared field."""
         with tempfile.TemporaryDirectory() as temp:

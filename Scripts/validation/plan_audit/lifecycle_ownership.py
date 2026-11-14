@@ -281,24 +281,37 @@ def _line_refs(
     ]
 
 
+def _nested_receiver_names(masked_texts: dict[Path, str], declaring_type: str) -> tuple[str, ...]:
+    """Infer receiver expressions whose static type matches a nested declaring type."""
+    leaf = declaring_type.rsplit("::", 1)[-1]
+    text = "\n".join(masked_texts.values())
+    receivers = set(re.findall(rf"\b{re.escape(leaf)}\s+([A-Za-z_][A-Za-z0-9_]*)\b", text))
+    receivers.update(
+        re.findall(rf"\b([A-Za-z_][A-Za-z0-9_]*)\s*=\s*new\s+{re.escape(leaf)}\b", text)
+    )
+    dictionary_value = bool(re.search(rf"\bDictionary\s*<[^;\n]*,\s*{re.escape(leaf)}\s*>", text))
+    if dictionary_value:
+        receivers.update(re.findall(r"\bout\s+var\s+([A-Za-z_][A-Za-z0-9_]*)\b", text))
+        receivers.update(re.findall(r"\bforeach\s*\(\s*var\s+([A-Za-z_][A-Za-z0-9_]*)\s+in\s+[^)]*\.Values", text))
+        receivers.update(f"{name}.Value" for name in re.findall(r"\bforeach\s*\(\s*var\s+([A-Za-z_][A-Za-z0-9_]*)\s+in\s+[^)]*\)", text))
+    return tuple(sorted(receivers))
+
+
 def _writer_refs(
     text: str,
     relative: Path,
     field: str,
     scope: tuple[int, int] | None = None,
     masked_text: str | None = None,
-    qualified_only: bool = False,
+    qualified_receivers: tuple[str, ...] | None = None,
 ) -> list[str]:
     """Return source locations that prove a field write."""
     masked = masked_text if masked_text is not None else _mask_csharp_comments_and_strings(text)
     scope_start, scope_end = scope or (0, len(masked))
     scoped_text = masked[scope_start:scope_end]
     refs: set[str] = set()
-    field_target = (
-        rf"(?:\b[A-Za-z_][A-Za-z0-9_]*\.)+{re.escape(field)}\b"
-        if qualified_only
-        else rf"\b{re.escape(field)}\b"
-    )
+    receiver_pattern = "|".join(re.escape(receiver) for receiver in qualified_receivers or ())
+    field_target = rf"(?:{receiver_pattern})\.{re.escape(field)}\b" if receiver_pattern else rf"\b{re.escape(field)}\b"
     assignment_pattern = re.compile(
         rf"{field_target}\s*(?:(?<![=!<>])=(?!=)|\+=|-=|\?\?=)"
     )
@@ -423,6 +436,7 @@ def _collect_owner_fields(matched: list[Path]) -> tuple[dict[str, dict[str, obje
         name = str(field_data["name"])
         declaring_type = str(field_data["declaring_type"])
         nested_type = "::" in declaring_type
+        nested_receivers = _nested_receiver_names(masked_texts, declaring_type) if nested_type else ()
         for relative, text in texts.items():
             exact_scope = type_spans[relative].get(declaring_type)
             parent_scope = None
@@ -430,31 +444,33 @@ def _collect_owner_fields(matched: list[Path]) -> tuple[dict[str, dict[str, obje
                 parent_type = declaring_type.rsplit("::", 1)[0]
                 parent_scope = type_spans[relative].get(parent_type)
             scope = exact_scope if nested_type else exact_scope or parent_scope
-            qualified_scope = nested_type and exact_scope is None
-            if nested_type and scope is None:
-                scope = parent_scope
             if scope is None:
+                if nested_type and parent_scope and nested_receivers:
+                    writer_refs = _writer_refs(
+                        text,
+                        relative,
+                        name,
+                        parent_scope,
+                        masked_texts[relative],
+                        qualified_receivers=nested_receivers,
+                    )
+                    field_data["assignments"] = int(field_data["assignments"]) + len(writer_refs)
+                    field_data["writers"].extend(writer_refs)
+                    continue
                 fallback_type = relative.stem.split(".", 1)[0]
                 if declaring_type == fallback_type:
                     scope = (0, len(text))
                 else:
                     continue
-            writer_refs = _writer_refs(
-                text,
-                relative,
-                name,
-                scope,
-                masked_texts[relative],
-                qualified_only=qualified_scope,
-            )
-            if nested_type and parent_scope and not writer_refs:
+            writer_refs = _writer_refs(text, relative, name, scope, masked_texts[relative])
+            if nested_type and parent_scope and not writer_refs and nested_receivers:
                 writer_refs = _writer_refs(
                     text,
                     relative,
                     name,
                     parent_scope,
                     masked_texts[relative],
-                    qualified_only=True,
+                    qualified_receivers=nested_receivers,
                 )
             field_data["assignments"] = int(field_data["assignments"]) + len(writer_refs)
             field_data["writers"].extend(writer_refs)
