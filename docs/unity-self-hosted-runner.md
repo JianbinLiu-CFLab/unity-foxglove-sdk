@@ -49,7 +49,7 @@ setting is needed.
    running it as a Windows service has not been validated for Unity licensing.
 
 3. Make sure the repository variable `UNITY_SELF_HOSTED_RUNNER` is `enabled`. It is set once per repository, not per
-   machine: `gh variable set UNITY_SELF_HOSTED_RUNNER --body enabled`.
+   machine: `gh variable set UNITY_SELF_HOSTED_RUNNER --repo JianbinLiu-CFLab/unity-foxglove-sdk --body enabled`.
 
 ## Start the runner at logon
 
@@ -59,15 +59,17 @@ Save this as `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\actions-ru
 ```vbscript
 Option Explicit
 
-Dim shell, runnerRoot, processes, process
+Dim shell, runnerRoot, runnerPrefix, processes, process
 Set shell = CreateObject("WScript.Shell")
 runnerRoot = shell.ExpandEnvironmentStrings("%SystemDrive%\actions-runner")
+runnerPrefix = LCase(runnerRoot)
+If Right(runnerPrefix, 1) <> "\" Then runnerPrefix = runnerPrefix & "\"
 
 Set processes = GetObject("winmgmts:").ExecQuery( _
     "SELECT ExecutablePath FROM Win32_Process WHERE Name = 'Runner.Listener.exe'")
 For Each process In processes
     If Not IsNull(process.ExecutablePath) Then
-        If LCase(Left(process.ExecutablePath, Len(runnerRoot))) = LCase(runnerRoot) Then
+        If LCase(Left(process.ExecutablePath, Len(runnerPrefix))) = runnerPrefix Then
             WScript.Quit 0
         End If
     End If
