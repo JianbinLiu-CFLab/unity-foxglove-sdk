@@ -34,6 +34,14 @@ class Phase186PackageMatrixTests(
         self.assertTrue((package / "__main__.py").is_file())
         self.assertTrue(package.with_suffix(".py").is_file())
 
+    def test_load_tests_is_idempotent(self) -> None:
+        """Repeated unittest discovery keeps the split package suite populated."""
+        package = importlib.import_module("Scripts.package.regression_checks.test_validate_phase186_package_matrix")
+        loader = unittest.TestLoader()
+        first = package.load_tests(loader, unittest.TestSuite([self]), "test*.py")
+        second = package.load_tests(loader, unittest.TestSuite([self]), "test*.py")
+        self.assertEqual(first.countTestCases(), second.countTestCases())
+
     def test_nu1101_is_not_transient(self) -> None:
         """NU1101 package-not-found errors must not trigger an automatic retry."""
         self.assertFalse(
