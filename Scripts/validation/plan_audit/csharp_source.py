@@ -323,7 +323,7 @@ def imported_project_issues(
         candidates = [(current_path.parent / value).resolve() for value in imports if "$" not in value]
         cursor = current_path.parent.resolve()
         while cursor == root or root in cursor.parents:
-            candidates.append(cursor / "Directory.Build.props")
+            candidates.extend((cursor / "Directory.Build.props", cursor / "Directory.Build.targets"))
             if cursor == root:
                 break
             cursor = cursor.parent
@@ -726,6 +726,28 @@ def _method_contexts(masked_text: str) -> list[tuple[int, int, str]]:
     return contexts
 
 
+def _mask_deferred_callable_bodies(body: str) -> str:
+    """Mask lambda and local-function bodies deferred beyond a lock scope."""
+    chars = list(re.sub(r"=>\s*[^;{}]+;", lambda match: "".join("\n" if char == "\n" else " " for char in match.group()), body))
+    openings = [match.end() - 1 for match in re.finditer(r"=>\s*\{", body)]
+    openings.extend(body.find("{", match.end()) for match in METHOD_DECLARATION_PATTERN.finditer(body))
+    for opening in openings:
+        if opening < 0:
+            continue
+        depth = 0
+        for index in range(opening, len(body)):
+            if body[index] == "{":
+                depth += 1
+            elif body[index] == "}":
+                depth -= 1
+                if depth == 0:
+                    for position in range(opening, index + 1):
+                        if chars[position] != "\n":
+                            chars[position] = " "
+                    break
+    return "".join(chars)
+
+
 def _method_body_writes_field(
     body: str,
     field_names: set[str],
@@ -733,11 +755,12 @@ def _method_body_writes_field(
     source_offset: int = 0,
 ) -> bool:
     """Return whether a method body changes one of the declared fields."""
+    body = _mask_deferred_callable_bodies(body)
     for field in field_names:
         escaped = re.escape(field)
         field_target = rf"(?:\bthis\s*\.\s*{escaped}\b|(?<![.?A-Za-z0-9_]){escaped}\b)"
         pattern = re.compile(
-            rf"(?:{field_target}\s*(?:(?<![=!<>])=(?!=)|\+=|-=|\?\?=|\+\+|--)|(?:\+\+|--)\s*{field_target}|\bref\s+{field_target})"
+            rf"(?:{field_target}\s*(?:(?<![=!<>])=(?!=)|\+=|-=|\?\?=|\+\+|--)|(?:\+\+|--)\s*{field_target}|\b(?:Interlocked\.[A-Za-z_][A-Za-z0-9_]*|Volatile\.Write)\s*\(\s*ref\s+{field_target})"
         )
         for match in pattern.finditer(body):
             if source_text is None or not field_name_is_shadowed(source_text, field, source_offset + match.start()):
@@ -766,25 +789,12 @@ def method_body_contains_field(masked_text: str, position: int, field_names: set
     else:
         return False
     body_offset = arrow + 2 if arrow >= 0 else opening
+    body = _mask_deferred_callable_bodies(body)
     return any(
         not field_name_is_shadowed(masked_text, field, body_offset + match.start())
         for field in field_names
-        for match in re.finditer(rf"\b{re.escape(field)}\b", body)
+        for match in re.finditer(rf"(?:\bthis\s*\.\s*{re.escape(field)}\b|(?<![.?A-Za-z0-9_]){re.escape(field)}\b)", body)
     )
-
-
-def lifecycle_called_method_names(masked_text: str) -> set[str]:
-    """Return method names called from lifecycle-named methods."""
-    ignored = {"if", "for", "foreach", "while", "switch", "catch", "using", "lock", "nameof", "typeof", "new"}
-    names: set[str] = set()
-    for start, end, method_name in _method_contexts(masked_text):
-        if not LIFECYCLE_METHOD_PATTERN.search(method_name):
-            continue
-        body = masked_text[start:end]
-        for match in re.finditer(r"(?<!\.)\b([A-Za-z_][A-Za-z0-9_]*)\s*\(", body):
-            if match.group(1) not in ignored:
-                names.add(match.group(1))
-    return names
 
 
 def receiver_called_method_signatures(
@@ -825,6 +835,7 @@ def _lifecycle_reachable_contexts(masked_text: str, default_type: str | None = N
         context_type = context_types[context[0]]
         if context_type is not None:
             by_signature.setdefault((context_type, context[2], method_arity(masked_text, context[0])), []).append(context)
+    by_signature = {key: values for key, values in by_signature.items() if len(values) == 1}
     queue = [context for context in contexts if LIFECYCLE_METHOD_PATTERN.search(context[2])]
     reachable: list[tuple[int, int, str]] = []
     seen: set[int] = set()
@@ -894,6 +905,17 @@ def _lock_block_writes_field(masked_text: str, position: int, field_names: set[s
     return _method_body_writes_field(masked_text[opening:closing], field_names, masked_text, opening)
 
 
+def _lock_method_signature_is_unambiguous(
+    masked_text: str, contexts: list[tuple[int, int, str]], lock_context: tuple[int, int, str]
+) -> bool:
+    """Return whether an overloaded lock helper has a reachable target."""
+    arity = method_arity(masked_text, lock_context[0])
+    candidates = [context for context in contexts if context[2] == lock_context[2] and method_arity(masked_text, context[0]) == arity]
+    if len(candidates) == 1:
+        return True
+    return any(candidate[0] != lock_context[0] and re.search(rf"(?<!\.)\b{re.escape(lock_context[2])}\s*\(", masked_text[masked_text.find("{", candidate[0]):candidate[1]]) for candidate in candidates)
+
+
 def bound_lifecycle_refs(
     text: str,
     relative: Path,
@@ -935,6 +957,7 @@ def bound_lifecycle_refs(
             lock_match
             and lock_match.group("name") in field_names
             and lock_context is not None
+            and _lock_method_signature_is_unambiguous(masked_text, contexts, lock_context)
             and any(start <= lock_position < end for start, end in scopes)
             and (
                 LIFECYCLE_METHOD_PATTERN.search(lock_context[2])

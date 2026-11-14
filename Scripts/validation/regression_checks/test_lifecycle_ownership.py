@@ -465,7 +465,7 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
             "class Owner {\n"
             "    private object _gate;\n"
             "    private int _state;\n"
-            "    void Dispose() { lock (_gate) { int _state = 0; _other._state = 1; _state = 2; } }\n"
+            "    void Dispose() { lock (_gate) { Action later = () => { _other._state = 1; }; } }\n"
             "}\n"
         )
         shadowed_masked = lifecycle_ownership._mask_csharp_source(shadowed)
@@ -490,7 +490,7 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
             "class ClientEventAdmissionState {\n"
             "    private object _gate;\n"
             "    private int _state;\n"
-            "    void Worker() { lock (_gate) { _state = 1; } }\n"
+            "    void Dispose() { lock (_gate) { ReadOnly(ref _state); Action later = () => { _state = 1; }; } }\n    void Worker() { lock (_gate) { _state = 1; } }\n"
             "}\n"
         )
         support_masked = lifecycle_ownership._mask_csharp_source(support)
