@@ -280,7 +280,13 @@ class PlanAuditLibraryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=audit_lib.BUILD_ROOT) as temp:
             output = Path(temp)
             mutation_patch = output / "mutation.patch"
-            mutation_patch.write_bytes(b"deliberate compile error")
+            mutation_patch.write_bytes(
+                json.dumps(
+                    [{"filename": "Packages/dev.unity2foxglove.ros2forunity.runtime.lyrical.win64/Runtime/CompileError.cs", "patch": "@@\n+error CS1002\n"}],
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+            )
             restored_state = output / "restored.json"
             restored_state.write_text(json.dumps({"worktree_unchanged": True}), encoding="utf-8")
             (output / "w4-mutation.json").write_text(
@@ -324,6 +330,12 @@ class PlanAuditLibraryTests(unittest.TestCase):
                         "exit_code": 0,
                         "timed_out": False,
                         "output": json.dumps({"sha": "a" * 40, "parents": [{"sha": "head"}]}),
+                    }
+                if command[1] == "api" and "/compare/" in command[2]:
+                    return {
+                        "exit_code": 0,
+                        "timed_out": False,
+                        "output": json.dumps({"files": [{"filename": "Packages/dev.unity2foxglove.ros2forunity.runtime.lyrical.win64/Runtime/CompileError.cs", "patch": "@@\n+error CS1002\n"}]}),
                     }
                 self.assertEqual(
                     [

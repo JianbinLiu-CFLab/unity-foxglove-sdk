@@ -16,6 +16,10 @@ PLAN_PATH = "Plan/195_PHASE195_WORKSTREAM_E_UNITY_ACCEPTANCE_HARDENING_PLAN.md"
 WORKFLOW_NAME = "Unity batch compile and path-aware gate"
 WORKFLOW_PATH = ".github/workflows/unity-compile.yml"
 REPOSITORY = "JianbinLiu-CFLab/unity-foxglove-sdk"
+LYRICAL_PACKAGE_PREFIXES = (
+    "Packages/dev.unity2foxglove.ros2forunity.runtime.lyrical.win64/",
+    "Packages/dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.lyrical.win64/",
+)
 EXPECTED_CASES = {
     "W2": frozenset(
         {
@@ -270,6 +274,37 @@ def _artifact_file(value: object, output: Path) -> Path | None:
     return path
 
 
+def _verify_mutation_patch(output: Path, audited_head: str, mutation_head: str, patch_file: Path, expected_sha: str) -> tuple[bool, str]:
+    """Verify that the recorded mutation patch exactly matches the remote commit diff."""
+    result = audit_lib.run(
+        ["gh", "api", f"repos/{REPOSITORY}/compare/{audited_head}...{mutation_head}"],
+        output / "logs" / "w4-mutation-compare.log",
+        120,
+    )
+    if result.get("timed_out") or result.get("exit_code") != 0:
+        return False, "mutation commit comparison could not be read"
+    try:
+        comparison = json.loads(str(result.get("output", "")))
+    except json.JSONDecodeError:
+        return False, "mutation commit comparison was not valid JSON"
+    files = comparison.get("files") if isinstance(comparison, dict) else None
+    if not isinstance(files, list) or len(files) != 1:
+        return False, "mutation commit must change exactly one Lyrical package file"
+    entry = files[0]
+    filename = entry.get("filename") if isinstance(entry, dict) else None
+    patch = entry.get("patch") if isinstance(entry, dict) else None
+    if not isinstance(filename, str) or not any(filename.startswith(prefix) for prefix in LYRICAL_PACKAGE_PREFIXES):
+        return False, "mutation commit changed a path outside the Lyrical package"
+    if not isinstance(patch, str):
+        return False, "mutation commit patch text is unavailable"
+    canonical = json.dumps([{"filename": filename, "patch": patch}], sort_keys=True, separators=(",", ":")).encode("utf-8")
+    if patch_file.read_bytes() != canonical:
+        return False, "mutation patch artifact does not match the remote commit diff"
+    if hashlib.sha256(canonical).hexdigest() != expected_sha:
+        return False, "mutation patch hash does not match the remote commit diff"
+    return True, f"mutation path={filename}; patch_sha256={expected_sha}"
+
+
 def _w4_mutation(checks: list[audit_lib.Check], output: Path, head_sha: str) -> None:
     """Require revision-bound evidence verified against the recorded workflow run."""
     evidence = output / "w4-mutation.json"
@@ -340,6 +375,13 @@ def _w4_mutation(checks: list[audit_lib.Check], output: Path, head_sha: str) -> 
                     status = "FAIL"
                     detail = f"head={payload.get('audited_head_sha', 'missing')}; run_id={run_id or 'missing'}; mismatches={mismatches}"
                 else:
+                    patch_valid, patch_detail = _verify_mutation_patch(output, head_sha, mutation_head_sha, mutation_patch, payload["mutation_patch_sha256"])
+                    if not patch_valid:
+                        status = "FAIL"
+                        detail = f"head={head_sha}; run_id={run_id}; {patch_detail}"
+                        log.write_text(detail + "\n", encoding="utf-8")
+                        _record(checks, "195-W4-mutation", "mutation", status, "read build/plan-audit/unity_acceptance/w4-mutation.json", evidence, detail)
+                        return
                     workflow_identity = audit_lib.run(
                         ["gh", "api", f"repos/{REPOSITORY}/actions/workflows/unity-compile.yml"],
                         output / "logs" / "w4-mutation-workflow.log",
