@@ -333,9 +333,20 @@ def _w4_mutation(checks: list[audit_lib.Check], output: Path, head_sha: str, tru
     evidence = output / "w4-mutation.json"
     log = output / "logs" / "w4-mutation.log"
     log.parent.mkdir(parents=True, exist_ok=True)
+    workflow_mismatch = None
+    if head_sha and trusted_base_sha:
+        workflow_valid, workflow_detail = _trusted_workflow_matches_base(
+            trusted_base_sha,
+            audit_lib.ROOT / WORKFLOW_PATH,
+        )
+        if not workflow_valid:
+            workflow_mismatch = workflow_detail
     if not head_sha:
         status = "FAIL"
         detail = "current HEAD revision could not be resolved"
+    elif workflow_mismatch is not None:
+        status = "FAIL"
+        detail = f"head={head_sha}; {workflow_mismatch}"
     elif not evidence.is_file():
         status = "MANUAL"
         detail = f"manual mutation evidence is not recorded: {evidence}"
@@ -404,17 +415,6 @@ def _w4_mutation(checks: list[audit_lib.Check], output: Path, head_sha: str, tru
                     status = "FAIL"
                     detail = f"head={payload.get('audited_head_sha', 'missing')}; run_id={run_id or 'missing'}; mismatches={mismatches}"
                 else:
-                    if trusted_base_sha:
-                        workflow_valid, workflow_detail = _trusted_workflow_matches_base(
-                            trusted_base_sha,
-                            audit_lib.ROOT / WORKFLOW_PATH,
-                        )
-                        if not workflow_valid:
-                            status = "FAIL"
-                            detail = f"head={head_sha}; run_id={run_id}; {workflow_detail}"
-                            log.write_text(detail + "\n", encoding="utf-8")
-                            _record(checks, "195-W4-mutation", "mutation", status, "read build/plan-audit/unity_acceptance/w4-mutation.json", evidence, detail)
-                            return
                     patch_valid, patch_detail = _verify_mutation_patch(output, head_sha, mutation_head_sha, mutation_patch, payload["mutation_patch_sha256"])
                     if not patch_valid:
                         status = "FAIL"

@@ -289,6 +289,17 @@ class PlanAuditLibraryTests(unittest.TestCase):
         self.assertFalse(valid)
         self.assertIn("differs", detail)
 
+    def test_w4_mutation_rejects_dirty_workflow_without_evidence(self) -> None:
+        """Missing mutation evidence cannot downgrade a dirty workflow to manual status."""
+        with tempfile.TemporaryDirectory(dir=audit_lib.BUILD_ROOT) as temp:
+            output = Path(temp)
+            checks: list[audit_lib.Check] = []
+            with mock.patch.object(
+                unity_coverage, "_trusted_workflow_matches_base", return_value=(False, "checked-out workflow differs from trusted base")
+            ):
+                unity_coverage._w4_mutation(checks, output, "head", "base")
+        self.assertEqual("FAIL", checks[0].status)
+
     def test_w4_mutation_accepts_matching_evidence(self) -> None:
         """W4 mutation evidence passes only after the recorded workflow run is verified."""
         with tempfile.TemporaryDirectory(dir=audit_lib.BUILD_ROOT) as temp:
