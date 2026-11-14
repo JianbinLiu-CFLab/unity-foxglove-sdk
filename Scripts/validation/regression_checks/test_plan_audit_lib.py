@@ -282,7 +282,7 @@ class PlanAuditLibraryTests(unittest.TestCase):
             mutation_patch = output / "mutation.patch"
             mutation_patch.write_bytes(
                 json.dumps(
-                    [{"filename": "Packages/dev.unity2foxglove.ros2forunity.runtime.lyrical.win64/Runtime/CompileError.cs", "patch": "@@\n+error CS1002\n"}],
+                    [{"filename": "Packages/dev.unity2foxglove.ros2forunity.runtime.lyrical.win64/Runtime/CompileError.cs", "patch": "@@\n+#error UNITY_FOXGLOVE_PHASE195_MUTATION\n"}],
                     sort_keys=True,
                     separators=(",", ":"),
                 ).encode("utf-8")
@@ -318,7 +318,7 @@ class PlanAuditLibraryTests(unittest.TestCase):
                 del timeout, cwd
                 log_path.parent.mkdir(parents=True, exist_ok=True)
                 if "--log-failed" in command:
-                    return {"exit_code": 0, "timed_out": False, "output": "error CS1002: compile error"}
+                    return {"exit_code": 0, "timed_out": False, "output": "error CS1029: #error: UNITY_FOXGLOVE_PHASE195_MUTATION"}
                 if command[1] == "api" and "actions/workflows" in command[2]:
                     self.assertEqual(["gh", "api", "repos/JianbinLiu-CFLab/unity-foxglove-sdk/actions/workflows/unity-compile.yml"], command)
                     return {
@@ -337,7 +337,7 @@ class PlanAuditLibraryTests(unittest.TestCase):
                     return {
                         "exit_code": 0,
                         "timed_out": False,
-                        "output": json.dumps({"files": [{"filename": "Packages/dev.unity2foxglove.ros2forunity.runtime.lyrical.win64/Runtime/CompileError.cs", "patch": "@@\n+error CS1002\n"}]}),
+                        "output": json.dumps({"files": [{"filename": "Packages/dev.unity2foxglove.ros2forunity.runtime.lyrical.win64/Runtime/CompileError.cs", "patch": "@@\n+#error UNITY_FOXGLOVE_PHASE195_MUTATION\n"}]}),
                     }
                 self.assertEqual(
                     [

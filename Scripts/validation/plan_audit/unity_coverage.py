@@ -16,6 +16,7 @@ PLAN_PATH = "Plan/195_PHASE195_WORKSTREAM_E_UNITY_ACCEPTANCE_HARDENING_PLAN.md"
 WORKFLOW_NAME = "Unity batch compile and path-aware gate"
 WORKFLOW_PATH = ".github/workflows/unity-compile.yml"
 REPOSITORY = "JianbinLiu-CFLab/unity-foxglove-sdk"
+MUTATION_MARKER = "UNITY_FOXGLOVE_PHASE195_MUTATION"
 LYRICAL_PACKAGE_PREFIXES = (
     "Packages/dev.unity2foxglove.ros2forunity.runtime.lyrical.win64/",
     "Packages/dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.lyrical.win64/",
@@ -293,10 +294,12 @@ def _verify_mutation_patch(output: Path, audited_head: str, mutation_head: str, 
     entry = files[0]
     filename = entry.get("filename") if isinstance(entry, dict) else None
     patch = entry.get("patch") if isinstance(entry, dict) else None
-    if not isinstance(filename, str) or not any(filename.startswith(prefix) for prefix in LYRICAL_PACKAGE_PREFIXES):
+    if not isinstance(filename, str) or not filename.endswith(".cs") or not any(filename.startswith(prefix) for prefix in LYRICAL_PACKAGE_PREFIXES):
         return False, "mutation commit changed a path outside the Lyrical package"
     if not isinstance(patch, str):
         return False, "mutation commit patch text is unavailable"
+    if not re.search(rf"^\+\s*#error\s+{re.escape(MUTATION_MARKER)}\s*$", patch, re.MULTILINE):
+        return False, "mutation patch does not contain the required compile-error marker"
     canonical = json.dumps([{"filename": filename, "patch": patch}], sort_keys=True, separators=(",", ":")).encode("utf-8")
     if patch_file.read_bytes() != canonical:
         return False, "mutation patch artifact does not match the remote commit diff"
@@ -471,7 +474,7 @@ def _w4_mutation(checks: list[audit_lib.Check], output: Path, head_sha: str) -> 
                                 if log_result.get("timed_out") or log_result.get("exit_code") != 0:
                                     status = "FAIL"
                                     detail = f"head={head_sha}; run_id={run_id}; failed-job log could not be read"
-                                elif not compile_error:
+                                elif not compile_error or MUTATION_MARKER not in str(log_result.get("output", "")):
                                     status = "FAIL"
                                     detail = f"head={head_sha}; run_id={run_id}; expected compile-error marker was not observed"
                                 else:
@@ -599,5 +602,5 @@ def manual_steps(checks: list[audit_lib.Check]) -> str:
 1. Obtain approval to dispatch one run for Humble and one for Lyrical on `main`.
 2. Record selected package, runner path on `D:`, independent `Library` directory, compile command, and run id.
 3. Verify the manifest is restored in an `if: always()` step and `git status --porcelain` is clean.
-4. Treat the disposable Lyrical compile-error run as manual acceptance. If recording it, use a branch based directly on the audited `HEAD`, inject one compile error, confirm batch compile fails, save the mutation patch and a JSON restore record with `worktree_unchanged=true` and `worktree_sha256` equal to the audited checkout snapshot under the audit output, and write `build/plan-audit/unity_acceptance/w4-mutation.json` with `audited_head_sha`, `mutation_head_sha`, `mutation_parent_sha`, numeric `run_id`, `distro=lyrical`, `mutation=compile-error`, `compile_error_observed=true`, `mutation_patch_file`, `mutation_patch_sha256`, `restored_state_file`, `restored_state_sha256`, `restored_worktree_sha256`, and `restored=true`. The audit verifies the canonical workflow, failed Lyrical job log, direct parent, artifact hashes, and current worktree snapshot, and requires a fresh record for every new audited commit. This manual check is reported separately from the automatic DoD.
+4. Treat the disposable Lyrical compile-error run as manual acceptance. If recording it, use a branch based directly on the audited `HEAD`, add the exact C# line `#error UNITY_FOXGLOVE_PHASE195_MUTATION` to one Lyrical package source file, confirm batch compile fails, save the mutation patch and a JSON restore record with `worktree_unchanged=true` and `worktree_sha256` equal to the audited checkout snapshot under the audit output, and write `build/plan-audit/unity_acceptance/w4-mutation.json` with `audited_head_sha`, `mutation_head_sha`, `mutation_parent_sha`, numeric `run_id`, `distro=lyrical`, `mutation=compile-error`, `compile_error_observed=true`, `mutation_patch_file`, `mutation_patch_sha256`, `restored_state_file`, `restored_state_sha256`, `restored_worktree_sha256`, and `restored=true`. The audit verifies the canonical workflow, failed Lyrical job log, direct parent, marker, artifact hashes, and current worktree snapshot, and requires a fresh record for every new audited commit. This manual check is reported separately from the automatic DoD.
 """
