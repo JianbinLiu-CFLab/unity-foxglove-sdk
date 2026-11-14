@@ -17,6 +17,7 @@ from Scripts.validation.plan_audit import unity_coverage
 from Scripts.validation.plan_audit import unity_acceptance
 from Scripts.validation.plan_audit import unity_lane
 from Scripts.validation.plan_audit import performance_evidence
+from Scripts.validation.plan_audit import structure_guard_audit
 
 
 class PlanAuditLibraryTests(unittest.TestCase):
@@ -154,15 +155,126 @@ class PlanAuditLibraryTests(unittest.TestCase):
                 checks = source_text_rules._transfer_checks([{"comment_only": "True"}])
         self.assertEqual("MANUAL", checks[-1].status)
 
-    def test_structure_guard_handles_missing_agents_file(self) -> None:
-        """A missing ignored AGENTS.md is a controlled missing audit input."""
-        from Scripts.validation.plan_audit import structure_guard_audit
-
+    def test_structure_guard_handles_missing_local_inputs(self) -> None:
+        """Missing ignored audit inputs are controlled environment results."""
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            with mock.patch.object(structure_guard_audit.audit_lib, "ROOT", root):
+            with mock.patch.object(structure_guard_audit.audit_lib, "ROOT", root), mock.patch.object(
+                structure_guard_audit, "PLAN", root / "Plan196.md"
+            ), mock.patch.object(structure_guard_audit, "PLAN194", root / "Plan194.md"):
+                self.assertEqual("NOT_RUN", structure_guard_audit._plan_check("base").status)
+                self.assertEqual("NOT_RUN", structure_guard_audit._plan194_check().status)
                 check = structure_guard_audit._agents_check()
-        self.assertEqual("MISSING", check.status)
+        self.assertEqual("NOT_RUN", check.status)
+
+    def test_structure_guard_plan_check_rejects_negative_status(self) -> None:
+        """A negative plan status cannot pass through substring matching."""
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "Plan196.md"
+            path.write_text("Entry base: base\nStatus: Not implemented\n", encoding="utf-8")
+            with mock.patch.object(structure_guard_audit, "PLAN", path):
+                self.assertEqual("FAIL", structure_guard_audit._plan_check("base").status)
+                path.write_text("Entry base: base\nStatus: Unimplemented\n", encoding="utf-8")
+                self.assertEqual("FAIL", structure_guard_audit._plan_check("base").status)
+                path.write_text("Entry base: base\nStatus: implemented\n", encoding="utf-8")
+                self.assertEqual("PASS", structure_guard_audit._plan_check("base").status)
+
+    def test_structure_guard_required_status_names_are_exact(self) -> None:
+        """Required-check parsing does not accept unrelated substrings."""
+        names, valid = structure_guard_audit._required_status_names(
+            {"contexts": ["test-helper"], "checks": [{"context": "other"}]}
+        )
+        self.assertTrue(valid)
+        self.assertNotIn("test", names)
+        names, valid = structure_guard_audit._required_status_names(
+            {"contexts": ["test"], "checks": [{"context": "test"}]}
+        )
+        self.assertTrue(valid)
+        self.assertIn("test", names)
+        names, valid = structure_guard_audit._required_status_names(
+            {"contexts": [42], "checks": []}
+        )
+        self.assertFalse(valid)
+        self.assertEqual(set(), names)
+        names, valid = structure_guard_audit._required_status_names(
+            {"contexts": [], "checks": [{}]}
+        )
+        self.assertFalse(valid)
+        self.assertEqual(set(), names)
+        names, valid = structure_guard_audit._required_status_names({})
+        self.assertFalse(valid)
+        self.assertEqual(set(), names)
+
+    def test_structure_guard_ci_placement_marks_api_failures_not_run(self) -> None:
+        """Unavailable or malformed GitHub status data is reported as NOT_RUN."""
+        workflow = """\
+jobs:
+  linux-python-regressions:
+    steps:
+      - uses: actions/setup-python@v5
+      - name: Run structural source guards
+        run: python3 -B -m Scripts.architecture.structure_guards
+      - name: Install pinned Python test dependencies
+        run: python3 -m pip install psutil
+      - uses: actions/setup-dotnet@v4
+  next-job:
+    steps: []
+"""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            workflow_path = root / ".github" / "workflows" / "dotnet-tests.yml"
+            workflow_path.parent.mkdir(parents=True)
+            workflow_path.write_text(workflow, encoding="utf-8")
+
+            def fake_run(command, identifier, cwd=audit_lib.ROOT, timeout=120.0):
+                """Return malformed required-status output for the probe."""
+                del command, identifier, cwd
+                self.assertEqual(120.0, timeout)
+                return {"exit_code": 0, "output": "not-json", "log": "build/status.log"}
+
+            with mock.patch.object(structure_guard_audit.audit_lib, "ROOT", root), mock.patch.object(
+                structure_guard_audit, "_run", side_effect=fake_run
+            ):
+                check = structure_guard_audit._ci_placement()
+        self.assertEqual("NOT_RUN", check.status)
+
+    def test_structure_guard_baseline_history_allows_only_narrowing(self) -> None:
+        """Baseline history permits shrinkage and existing phase prefixes only."""
+        base = {
+            "files": {"old.py": 1001},
+            "partial_types": {"pkg|Demo|Thing": 2001},
+            "phase_paths": ["Scripts/phase1"],
+        }
+        narrowed = {
+            "files": {},
+            "partial_types": {"pkg|Demo|Thing": 2000},
+            "phase_paths": ["Scripts/phase1", "Scripts/phase2"],
+        }
+        self.assertEqual(
+            [],
+            structure_guard_audit._baseline_history_violations(
+                base, narrowed, {"Scripts/phase1", "Scripts/phase2"}
+            ),
+        )
+        widened = {
+            "files": {"old.py": 1002, "new.py": 1001},
+            "partial_types": {"pkg|Demo|Thing": 2001},
+            "phase_paths": ["Scripts/phase1", "Scripts/phase3"],
+        }
+        errors = structure_guard_audit._baseline_history_violations(base, widened, {"Scripts/phase1"})
+        self.assertTrue(any("raised=old.py" in error for error in errors))
+        self.assertTrue(any("added=new.py" in error for error in errors))
+        self.assertTrue(any("added=Scripts/phase3" in error for error in errors))
+
+    def test_structure_guard_baseline_history_handles_malformed_values(self) -> None:
+        """Malformed baseline values become a controlled unavailable result."""
+        with mock.patch.object(structure_guard_audit, "_load_guard_module") as load_guard:
+            guard = load_guard.return_value
+            guard.tracked_paths_at_revision.return_value = []
+            guard.load_baseline_at_revision.side_effect = TypeError("invalid ceiling")
+            check = structure_guard_audit._baseline_history("head")
+        self.assertEqual("NOT_RUN", check.status)
+        self.assertIn("invalid ceiling", check.detail)
 
     def test_plan_check_rejects_missing_or_unrecognized_status(self) -> None:
         """A plan must declare a recognized delivered status before passing."""
