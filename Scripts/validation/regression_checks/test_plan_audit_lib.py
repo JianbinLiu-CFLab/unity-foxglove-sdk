@@ -300,6 +300,14 @@ class PlanAuditLibraryTests(unittest.TestCase):
                 unity_coverage._w4_mutation(checks, output, "head", "base")
         self.assertEqual("FAIL", checks[0].status)
 
+    def test_w4_mutation_rejects_trusted_base_equal_to_head(self) -> None:
+        """A trusted base that equals the audited head cannot authorize W4 evidence."""
+        with tempfile.TemporaryDirectory(dir=audit_lib.BUILD_ROOT) as temp:
+            output = Path(temp)
+            checks: list[audit_lib.Check] = []
+            unity_coverage._w4_mutation(checks, output, "head", "head")
+        self.assertEqual("FAIL", checks[0].status)
+
     def test_w4_mutation_accepts_matching_evidence(self) -> None:
         """W4 mutation evidence passes only after the recorded workflow run is verified."""
         with tempfile.TemporaryDirectory(dir=audit_lib.BUILD_ROOT) as temp:

@@ -493,9 +493,12 @@ def _w4_mutation(
     log.parent.mkdir(parents=True, exist_ok=True)
     workflow_mismatch = None
     if head_sha and trusted_base_sha:
-        workflow_valid, workflow_detail = _trusted_workflow_matches_base(trusted_base_sha, audit_lib.ROOT / WORKFLOW_PATH)
-        if not workflow_valid:
-            workflow_mismatch = workflow_detail
+        if trusted_base_sha == head_sha:
+            workflow_mismatch = "trusted base revision equals audited HEAD"
+        else:
+            workflow_valid, workflow_detail = _trusted_workflow_matches_base(trusted_base_sha, audit_lib.ROOT / WORKFLOW_PATH)
+            if not workflow_valid:
+                workflow_mismatch = workflow_detail
     if not head_sha:
         status, detail = "FAIL", "current HEAD revision could not be resolved"
     elif workflow_mismatch is not None:
