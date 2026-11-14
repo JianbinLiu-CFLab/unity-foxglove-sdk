@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import Callable
 
 PREPROCESSOR_SYMBOLS = {"UNITY_EDITOR": False, "UNITY_2020_3_OR_NEWER": True}
 
@@ -292,6 +293,46 @@ def source_declares_type(masked_text: str, type_names: set[str]) -> bool:
     )
 
 
+def imported_project_issues(
+    project_path: Path,
+    project_text: str,
+    root: Path,
+    base_reader: Callable[[str], str],
+) -> list[str]:
+    """Return imported project files whose current bytes differ from base."""
+    root = root.resolve()
+    pending = [(project_path, project_text)]
+    seen: set[str] = set()
+    issues: list[str] = []
+    while pending:
+        current_path, current_text = pending.pop()
+        try:
+            relative = current_path.resolve().relative_to(root).as_posix()
+        except ValueError:
+            continue
+        if relative in seen:
+            continue
+        seen.add(relative)
+        if relative != project_path.resolve().relative_to(root).as_posix():
+            try:
+                if current_text != base_reader(relative):
+                    issues.append(f"canonical import changed:{relative}")
+            except Exception as exc:
+                issues.append(f"canonical import unavailable:{relative}:{exc}")
+        imports = re.findall(r"<Import\s+Project=\"([^\"]+)\"", current_text)
+        candidates = [(current_path.parent / value).resolve() for value in imports if "$" not in value]
+        cursor = current_path.parent.resolve()
+        while cursor == root or root in cursor.parents:
+            candidates.append(cursor / "Directory.Build.props")
+            if cursor == root:
+                break
+            cursor = cursor.parent
+        for candidate in candidates:
+            if candidate.is_file():
+                pending.append((candidate, candidate.read_text(encoding="utf-8", errors="replace")))
+    return sorted(set(issues))
+
+
 def _line_refs(
     text: str,
     relative: Path,
@@ -470,10 +511,22 @@ def is_declaration_assignment(masked_text: str, position: int) -> bool:
     return bool(re.search(r"\b(?:private|protected|internal|public)\b|\busing\s+var\b", prefix))
 
 
-def ref_helper_mutates_parameter(masked_text: str, name: str, arity: int) -> bool:
+def _top_level_argument_index(text: str, opening: int, target: int) -> int:
+    """Return the zero-based argument index containing one target position."""
+    depth = 0
+    index = 0
+    for character in text[opening + 1:target]:
+        if character in "([{<":
+            depth += 1
+        elif character in ")]}>":
+            depth = max(0, depth - 1)
+        elif character == "," and depth == 0:
+            index += 1
+    return index
+
+
+def ref_helper_mutates_parameter(masked_text: str, name: str, arity: int, parameter_index: int) -> bool:
     """Return whether one exact ref-helper declaration mutates a ref parameter."""
-    if name == "WarningDebouncer.TryUpdateCooldown" and arity == 3:
-        return True
     short_name = name.rsplit(".", 1)[-1]
     declaration_pattern = re.compile(
         rf"(?m)^[ \t]*(?:(?:public|private|protected|internal|static|async|virtual|override|sealed|new)\s+)*"
@@ -484,12 +537,14 @@ def ref_helper_mutates_parameter(masked_text: str, name: str, arity: int) -> boo
     for declaration in declaration_pattern.finditer(masked_text):
         if method_arity(masked_text, declaration.start()) != arity:
             continue
-        ref_parameters = re.findall(
-            r"\bref\s+[A-Za-z_][A-Za-z0-9_<>,.?\[\]]*\s+([A-Za-z_][A-Za-z0-9_]*)\b",
-            declaration.group("params"),
-        )
+        parameters = declaration.group("params").split(",")
+        ref_parameters = {
+            index: match.group(1)
+            for index, parameter in enumerate(parameters)
+            if (match := re.search(r"\bref\s+[A-Za-z_][A-Za-z0-9_<>,.?\[\]]*\s+([A-Za-z_][A-Za-z0-9_]*)\b", parameter))
+        }
         opening = masked_text.find("{", declaration.end())
-        if not ref_parameters or opening < 0:
+        if parameter_index not in ref_parameters or opening < 0:
             continue
         depth = 0
         closing = len(masked_text)
@@ -502,13 +557,13 @@ def ref_helper_mutates_parameter(masked_text: str, name: str, arity: int) -> boo
                     closing = index
                     break
         body = masked_text[opening:closing]
+        parameter = ref_parameters[parameter_index]
         matches.append(
-            any(
+            bool(
                 re.search(
                     rf"(?:\b{re.escape(parameter)}\b\s*(?:(?<![=!<>])=(?!=)|\+=|-=|\?\?=|\+\+|--)|(?:\+\+|--)\s*\b{re.escape(parameter)}\b|\b(?:Interlocked\.[A-Za-z_][A-Za-z0-9_]*|Volatile\.Write)\s*\(\s*ref\s+{re.escape(parameter)}\b)",
                     body,
                 )
-                for parameter in ref_parameters
             )
         )
     return len(matches) == 1 and matches[0]
@@ -576,7 +631,10 @@ def writer_refs(
         call_arity = method_arity(scoped_text, match.start())
         if allowed_arities is not None and call_arity not in allowed_arities:
             continue
-        if not ref_helper_mutates_parameter(masked, match.group("name"), call_arity):
+        opening = scoped_text.find("(", match.start())
+        parameter_index = _top_level_argument_index(scoped_text, opening, match.start("ref"))
+        helper_text = receiver_type_context if "." in match.group("name") and receiver_type_context else masked
+        if not ref_helper_mutates_parameter(helper_text, match.group("name"), call_arity, parameter_index):
             continue
         absolute = scope_start + match.start("ref")
         receiver = receiver_from_match(masked, absolute, scope_start + match.end(), receiver_pattern, field) if receiver_pattern else None
@@ -677,8 +735,9 @@ def _method_body_writes_field(
     """Return whether a method body changes one of the declared fields."""
     for field in field_names:
         escaped = re.escape(field)
+        field_target = rf"(?:\bthis\s*\.\s*{escaped}\b|(?<![.?A-Za-z0-9_]){escaped}\b)"
         pattern = re.compile(
-            rf"(?:\b{escaped}\b\s*(?:(?<![=!<>])=(?!=)|\+=|-=|\?\?=|\+\+|--)|(?:\+\+|--)\s*\b{escaped}\b|\bref\s+\b{escaped}\b)"
+            rf"(?:{field_target}\s*(?:(?<![=!<>])=(?!=)|\+=|-=|\?\?=|\+\+|--)|(?:\+\+|--)\s*{field_target}|\bref\s+{field_target})"
         )
         for match in pattern.finditer(body):
             if source_text is None or not field_name_is_shadowed(source_text, field, source_offset + match.start()):
@@ -731,6 +790,7 @@ def lifecycle_called_method_names(masked_text: str) -> set[str]:
 def receiver_called_method_signatures(
     masked_text: str,
     type_context: str | None = None,
+    default_type: str | None = None,
 ) -> set[tuple[str, str, int]]:
     """Return lifecycle receiver calls bound to declared receiver types."""
     declaration_text = type_context or masked_text
@@ -745,7 +805,7 @@ def receiver_called_method_signatures(
     }
     declared_types = {match.group("name") for match in TYPE_DECLARATION_PATTERN.finditer(declaration_text)}
     signatures: set[tuple[str, str, int]] = set()
-    for start, end, method_name in _lifecycle_reachable_contexts(masked_text):
+    for start, end, method_name in _lifecycle_reachable_contexts(masked_text, default_type):
         body = masked_text[start:end]
         for match in re.finditer(r"\b(?P<receiver>_[A-Za-z_][A-Za-z0-9_]*)\s*\.\s*(?P<name>[A-Za-z_][A-Za-z0-9_]*)\s*\(", body):
             receiver_type = receiver_types.get(match.group("receiver"))
@@ -755,12 +815,16 @@ def receiver_called_method_signatures(
     return signatures
 
 
-def _lifecycle_reachable_contexts(masked_text: str) -> tuple[tuple[int, int, str], ...]:
+def _lifecycle_reachable_contexts(masked_text: str, default_type: str | None = None) -> tuple[tuple[int, int, str], ...]:
     """Return lifecycle methods and helpers reachable by exact name and arity."""
     contexts = _method_contexts(masked_text)
-    by_signature: dict[tuple[str, int], list[tuple[int, int, str]]] = {}
+    type_spans = _type_spans(masked_text, masked_text)
+    context_types = {context[0]: _context_type(masked_text, context[0], type_spans) or default_type for context in contexts}
+    by_signature: dict[tuple[str, str, int], list[tuple[int, int, str]]] = {}
     for context in contexts:
-        by_signature.setdefault((context[2], method_arity(masked_text, context[0])), []).append(context)
+        context_type = context_types[context[0]]
+        if context_type is not None:
+            by_signature.setdefault((context_type, context[2], method_arity(masked_text, context[0])), []).append(context)
     queue = [context for context in contexts if LIFECYCLE_METHOD_PATTERN.search(context[2])]
     reachable: list[tuple[int, int, str]] = []
     seen: set[int] = set()
@@ -775,7 +839,9 @@ def _lifecycle_reachable_contexts(masked_text: str) -> tuple[tuple[int, int, str
         for match in re.finditer(r"(?<!\.)\b([A-Za-z_][A-Za-z0-9_]*)\s*\(", body):
             if match.group(1) in ignored:
                 continue
-            queue.extend(by_signature.get((match.group(1), method_arity(body, match.start())), ()))
+            context_type = context_types[context[0]]
+            if context_type is not None:
+                queue.extend(by_signature.get((context_type, match.group(1), method_arity(body, match.start())), ()))
     return tuple(reachable)
 
 
@@ -790,7 +856,7 @@ def _context_type(masked_text: str, position: int, type_spans: dict[str, tuple[i
     return min(candidates, key=lambda item: item[1])[0] if candidates else None
 
 
-def lifecycle_called_method_signatures(masked_text: str) -> set[tuple[str, str, int]]:
+def lifecycle_called_method_signatures(masked_text: str, default_type: str | None = None) -> set[tuple[str, str, int]]:
     """Return called lifecycle helper signatures bound to declaring types."""
     ignored = {"if", "for", "foreach", "while", "switch", "catch", "using", "lock", "nameof", "typeof", "new"}
     signatures: set[tuple[str, str, int]] = set()
@@ -798,7 +864,7 @@ def lifecycle_called_method_signatures(masked_text: str) -> set[tuple[str, str, 
     for start, end, method_name in _method_contexts(masked_text):
         if not LIFECYCLE_METHOD_PATTERN.search(method_name):
             continue
-        context_type = _context_type(masked_text, start, type_spans)
+        context_type = _context_type(masked_text, start, type_spans) or default_type
         if context_type is None:
             continue
         body = masked_text[start:end]
@@ -835,7 +901,7 @@ def bound_lifecycle_refs(
     scopes: tuple[tuple[int, int], ...],
     field_names: set[str],
     lifetime_pattern: re.Pattern[str],
-    approved_method_signatures: set[tuple[str, int] | tuple[str, str, int]] | None = None,
+    approved_method_signatures: set[tuple[str, str, int]] | None = None,
 ) -> tuple[list[str], list[str]]:
     """Return lock and lifecycle references bound to declared owner fields."""
     lock_pattern = re.compile(r"\block\s*\(\s*(?:this\.)?(?P<name>[A-Za-z_][A-Za-z0-9_]*)")

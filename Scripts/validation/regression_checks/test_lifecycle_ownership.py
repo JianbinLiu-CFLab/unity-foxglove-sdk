@@ -320,18 +320,18 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
             "TryCleanup(\n"
             "    ref _state,\n"
             "    ref failure);\n"
-            "static void TryCleanup(ref int value, ref int failure) { value = 1; }\nWarningDebouncer.TryUpdateCooldown(\n"
+            "static void TryCleanup(ref int value, ref int failure) { value = 1; }\nTryCleanup(ref failure, ref _state);\nWarningDebouncer.TryUpdateCooldown(\n"
             "    ref _state,\n"
             "    now,\n"
             "    interval);\n"
             "AddHandler(ref _state, 1, 2);\n"
-            "static void AddHandler(ref int value, int first, int second) { }\n"
+            "static void AddHandler(ref int value, int first, int second) { }\ninternal static class WarningDebouncer\n{\n    internal static bool TryUpdateCooldown(ref int value, int now, int interval) { value = 1; }\n}\n"
         )
         refs = lifecycle_ownership._writer_refs(text, Path("Packages/pkg/Runtime/Owner.cs"), "_state")
         self.assertEqual(
             [
                 "Packages/pkg/Runtime/Owner.cs:3",
-                "Packages/pkg/Runtime/Owner.cs:7",
+                "Packages/pkg/Runtime/Owner.cs:8",
             ],
             refs,
         )
@@ -465,7 +465,7 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
             "class Owner {\n"
             "    private object _gate;\n"
             "    private int _state;\n"
-            "    void Dispose() { lock (_gate) { int _state = 0; _state = 1; } }\n"
+            "    void Dispose() { lock (_gate) { int _state = 0; _other._state = 1; _state = 2; } }\n"
             "}\n"
         )
         shadowed_masked = lifecycle_ownership._mask_csharp_source(shadowed)
@@ -860,8 +860,8 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
             (root / declaration).write_text("[SerializeField] private bool _enabled;\n", encoding="utf-8")
             with mock.patch.object(lifecycle_ownership.audit_lib, "ROOT", root):
                 fields, missing = lifecycle_ownership._collect_owner_fields([declaration])
-        self.assertEqual([], missing)
-        self.assertEqual("configuration", fields["Owner::_enabled"]["classification"])
+        self.assertEqual(["Owner::_enabled"], missing)
+        self.assertEqual("mutable", fields["Owner::_enabled"]["classification"])
         self.assertEqual([], fields["Owner::_enabled"]["writers"])
 
     def test_editor_only_writer_is_explicitly_classified(self) -> None:
@@ -910,7 +910,7 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
             )
             with mock.patch.object(lifecycle_ownership.audit_lib, "ROOT", root):
                 fields, missing = lifecycle_ownership._collect_owner_fields([declaration])
-        self.assertEqual("configuration", fields["Owner::_enabled"]["classification"])
+        self.assertEqual("mutable", fields["Owner::_enabled"]["classification"])
         self.assertEqual("mutable", fields["Owner::_other"]["classification"])
         self.assertIn("Owner::_other", missing)
 
@@ -928,9 +928,9 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
             )
             with mock.patch.object(lifecycle_ownership.audit_lib, "ROOT", root):
                 fields, missing = lifecycle_ownership._collect_owner_fields([declaration])
-        self.assertEqual("configuration", fields["Owner::_enabled"]["classification"])
+        self.assertEqual("mutable", fields["Owner::_enabled"]["classification"])
         self.assertEqual("mutable", fields["Owner::s_lastRefresh"]["classification"])
-        self.assertEqual([], missing)
+        self.assertEqual(["Owner::_enabled"], missing)
 
     def test_mutation_evidence_requires_expected_test_failure(self) -> None:
         """Mutation evidence rejects compile-only or unrelated failures."""

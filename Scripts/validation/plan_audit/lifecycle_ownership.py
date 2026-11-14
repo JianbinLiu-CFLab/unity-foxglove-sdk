@@ -67,7 +67,7 @@ OWNER_PATTERNS = {
     "Ros2BridgeWorkerLease": "Ros2BridgeWorkerLease*.cs",
 }
 OWNER_SUPPORT_NAMES = {
-    "FoxgloveManager": ("ClientEventAdmissionState.cs", "ReplaySubscriberFanoutState.cs"),
+    "FoxgloveManager": ("ClientEventAdmissionState.cs", "ReplaySubscriberFanoutState.cs", "WarningDebouncer.cs"),
     "Ros2BridgeWorkerLease": ("Ros2BridgeRuntime.cs",),
 }
 OWNER_NAMESPACES = {
@@ -88,6 +88,7 @@ OWNER_SYNC_MODES = {
     "ReplayController": "replay locks",
     "Ros2BridgeWorkerLease": "worker lease locks",
 }
+EXPLICIT_CONFIGURATION_FIELDS = set("FoxgloveManager::_publishCadenceDiagnosticsEnabled FoxgloveManager::_publishCadenceDiagnosticsSummaryIntervalSeconds FoxgloveManager::_frameStallDiagnosticsEnabled FoxgloveManager::_frameStallDiagnosticsThresholdMs FoxgloveManager::_frameStallStageTimingDiagnosticsEnabled FoxgloveManager::_foxRunPolicySerializationVersion FoxgloveManager::_coordinateTransportPolicySerializationVersion FoxgloveManager::_defaultFoxRunPublishEncoding FoxgloveManager::_foxRunPublishTransportIds FoxgloveManager::_foxRunSubscribeTransportId FoxgloveManager::_defaultFoxRunEncoding FoxgloveManager::_defaultFoxRunSubscriptionEncoding FoxgloveManager::_enableFoxRunInbound FoxgloveManager::_allowRemoteFoxRunInboundWithSharedToken FoxgloveManager::_foxRunInboundMaxPayloadBytes FoxgloveManager::_foxRunInboundMaxMessagesPerSecondPerTopic FoxgloveManager::_foxRunDefaultSubscribeRateHz FoxgloveManager::_serverName FoxgloveManager::_host FoxgloveManager::_port FoxgloveManager::_startOnEnable FoxgloveManager::_runInBackground FoxgloveManager::_transportMode FoxgloveManager::_transportModeBeforeOutputDisabled FoxgloveManager::_foxgloveOutputEnabled FoxgloveManager::_profilingEnabled FoxgloveManager::_defaultPublishRateHz FoxgloveManager::_defaultPublisherEncoding FoxgloveManager::_allowPublisherOverride FoxgloveManager::_coordinateMode FoxgloveManager::_outputCoordinateMode FoxgloveManager::_inputCoordinateMode FoxgloveManager::_assetRoots FoxgloveManager::_enablePlaybackControl FoxgloveManager::_playbackStartOffsetSeconds FoxgloveManager::_playbackDurationSeconds FoxgloveManager::_enableRecording FoxgloveManager::_recordingPrefix FoxgloveManager::_recordingDirectory FoxgloveManager::_recordingChunkSizeKB FoxgloveManager::_recordingCompression FoxgloveManager::_enableReplay FoxgloveManager::_replayFilePath FoxgloveManager::_replayAutoPlay FoxgloveManager::_disableLivePublishers FoxgloveManager::_enableRemoteMcapFileServer FoxgloveManager::_remoteMcapFileServerHost FoxgloveManager::_remoteMcapFileServerPort FoxgloveManager::_remoteMcapFileServerSourceId FoxgloveManager::_remoteMcapFileServerToken FoxgloveManager::_enableReplayCursorBridge FoxgloveManager::_replayCursorBridgeHost FoxgloveManager::_replayCursorBridgePort FoxgloveManager::_replayCursorBridgeToken FoxgloveManager::_identityModeSource FoxgloveManager::_identityModeOverride FoxgloveManager::_projectSettingsIdentityMode FoxgloveManager::_schemaEvidenceRoot FoxgloveManager::_allowHostedFoxgloveWeb FoxgloveManager::_allowedBrowserOrigins FoxgloveManager::_certificatePfxPath FoxgloveManager::_certificatePassword FoxgloveManager::_rootCaDistributorEnabled FoxgloveManager::_rootCaDistributorHost FoxgloveManager::_rootCaDistributorPort FoxgloveManager::_rootCaFilePath FoxgloveManager::_sharedToken AssetRootDefinition::uriPrefix AssetRootDefinition::localRoot AssetRootDefinition::maxMB".split())
 KNOWN_REF_MUTATORS = {"TryCleanup": {2, 3}, "WarningDebouncer.TryUpdateCooldown": {3}, "AddHandler": {3}, "RemoveHandler": {3}}
 ATOMIC_WRITE_CALLS = (
     "Interlocked.Add",
@@ -154,7 +155,7 @@ def _bound_lifecycle_refs(
     masked_text: str,
     scopes: tuple[tuple[int, int], ...],
     field_names: set[str],
-    approved_method_signatures: set[tuple[str, int] | tuple[str, str, int]] | None = None,
+    approved_method_signatures: set[tuple[str, str, int]] | None = None,
 ) -> tuple[list[str], list[str]]:
     """Return lock and lifecycle references bound to declared owner fields."""
     return csharp_source.bound_lifecycle_refs(text, relative, masked_text, scopes, field_names, LIFETIME_WORDS, approved_method_signatures)
@@ -273,9 +274,6 @@ def _field_declarations(
             and attribute_lines[-1].endswith("]")
             and any("SerializeField" in line for line in attribute_lines)
         )
-        configuration = (has_serialize_field or access == "public") and "static" not in modifiers
-        is_readonly = "readonly" in modifiers
-        classification = "readonly" if is_readonly else "configuration" if configuration else "mutable"
         declaring_type = min(
             (
                 name
@@ -285,6 +283,9 @@ def _field_declarations(
             key=lambda name: spans[name][1] - spans[name][0],
             default=fallback_type,
         )
+        configuration = (has_serialize_field or access == "public") and "static" not in modifiers and all(f"{declaring_type}::{name}" in EXPLICIT_CONFIGURATION_FIELDS for name in declarator_names)
+        is_readonly = "readonly" in modifiers
+        classification = "readonly" if is_readonly else "configuration" if configuration else "mutable"
         declarations.extend(
             {
                 "name": name,
@@ -377,7 +378,7 @@ def _collect_owner_fields(matched: list[Path]) -> tuple[dict[str, dict[str, obje
                     scope = (0, len(text))
                 else:
                     continue
-            writer_refs = _writer_refs(text, relative, field_name, scope, masked_map[relative])
+            writer_refs = _writer_refs(text, relative, field_name, scope, masked_map[relative], receiver_type_context=receiver_type_context)
             if nested_type and parent_scope and not writer_refs and nested_receivers:
                 writer_refs = _writer_refs(
                     text,
@@ -552,6 +553,7 @@ def _canonical_test_source_issues(base_sha: str) -> list[str]:
         return issues
     source_text = source_path.read_text(encoding="utf-8", errors="replace")
     project_text = project_path.read_text(encoding="utf-8", errors="replace")
+    issues.extend(csharp_source.imported_project_issues(project_path, project_text, audit_lib.ROOT, lambda relative: _git_output(["git", "show", f"{base_sha}:{relative}"])))
     if not re.search(rf"\bnamespace\s+{re.escape(CANONICAL_TEST_NAMESPACE)}\b", source_text):
         issues.append("canonical namespace missing")
     if not re.search(rf"\bclass\s+{re.escape(CANONICAL_TEST_CLASS)}\b", source_text):
@@ -814,7 +816,7 @@ def _owner_map(base_sha: str | None = None) -> audit_lib.Check:
             for path in matched
             if path.name not in support_names
         )
-        approved_method_signatures = _lifecycle_called_method_signatures(owner_method_masked) | csharp_source.receiver_called_method_signatures(owner_method_masked, "\n".join(_mask_csharp_source((audit_lib.ROOT / path).read_text(encoding="utf-8", errors="replace")) for path in matched))
+        approved_method_signatures = _lifecycle_called_method_signatures(owner_method_masked, owner) | csharp_source.receiver_called_method_signatures(owner_method_masked, "\n".join(_mask_csharp_source((audit_lib.ROOT / path).read_text(encoding="utf-8", errors="replace")) for path in matched), owner)
         locks: list[str] = []
         lifetime: list[str] = []
         for relative in matched:
