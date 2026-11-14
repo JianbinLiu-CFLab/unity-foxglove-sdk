@@ -243,6 +243,46 @@ def _workflow_w4(checks: list[audit_lib.Check], output: Path) -> None:
     _record(checks, "195-W4", "history", status, " ".join(command), output / "logs" / "w4-history.log", detail)
 
 
+def _w4_mutation(checks: list[audit_lib.Check], output: Path, head_sha: str) -> None:
+    """Require revision-bound evidence that the deliberate Lyrical compile failure was observed."""
+    evidence = output / "w4-mutation.json"
+    log = output / "logs" / "w4-mutation.log"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    if not head_sha:
+        status = "FAIL"
+        detail = "current HEAD revision could not be resolved"
+    elif not evidence.is_file():
+        status = "NOT_RUN"
+        detail = f"required mutation evidence is missing: {evidence}"
+    else:
+        try:
+            payload = json.loads(evidence.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            payload = {}
+            detail = f"mutation evidence is not valid JSON: {exc}"
+            status = "FAIL"
+        else:
+            if not isinstance(payload, dict):
+                detail = "mutation evidence must be a JSON object"
+                status = "FAIL"
+            else:
+                expected = {
+                    "base_sha": head_sha,
+                    "distro": "lyrical",
+                    "mutation": "compile-error",
+                    "job_name": "unity-distro-compile (lyrical)",
+                    "job_conclusion": "failure",
+                    "restored": True,
+                }
+                mismatches = [key for key, value in expected.items() if payload.get(key) != value]
+                if not payload.get("run_id"):
+                    mismatches.append("run_id")
+                status = "PASS" if not mismatches else "FAIL"
+                detail = f"base={payload.get('base_sha', 'missing')}; run_id={payload.get('run_id', 'missing')}; mismatches={mismatches or 'none'}"
+    log.write_text(detail + "\n", encoding="utf-8")
+    _record(checks, "195-W4-mutation", "mutation", status, "read build/plan-audit/unity_acceptance/w4-mutation.json", log, detail)
+
+
 def _manifest_roots() -> list[Path]:
     """Resolve manifest-enabled local packages and the Unity Assets tree."""
     project = audit_lib.ROOT / "Unity2Foxglove"
@@ -258,10 +298,18 @@ def _manifest_roots() -> list[Path]:
     return [path for path in roots if path.is_dir()]
 
 
-def _guid_audit(checks: list[audit_lib.Check], output: Path) -> None:
+def _guid_audit(checks: list[audit_lib.Check], output: Path, base_sha: str, head_sha: str) -> None:
     """Classify dirty metadata, enabled-scope GUID duplicates, and Editor.log conflicts."""
     package = "Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64"
-    diff = subprocess.run(["git", "diff", "--", package], cwd=audit_lib.ROOT, capture_output=True, text=True, check=False)
+    diff_command = ["git", "diff", f"{base_sha}...{head_sha}", "--", package]
+    diff = subprocess.run(diff_command, cwd=audit_lib.ROOT, capture_output=True, text=True, check=False)
+    if diff.returncode != 0:
+        evidence = output / "logs" / "jazzy-meta.log"
+        evidence.parent.mkdir(parents=True, exist_ok=True)
+        detail = f"unable to read committed metadata diff base={base_sha} head={head_sha}; exit={diff.returncode}"
+        evidence.write_text(detail + "\n", encoding="utf-8")
+        _record(checks, "195-OBS-jazzy-meta", "auto", "FAIL", " ".join(diff_command), evidence, detail)
+        return
     changed_meta = sorted({line[6:] for line in diff.stdout.splitlines() if line.startswith("+++ b/") and line.endswith(".meta")})
     guid_changes = len(re.findall(r"^[+-]guid:\s*\S+", diff.stdout, re.MULTILINE))
     importer_changes = len([line for line in diff.stdout.splitlines() if (line.startswith("+") or line.startswith("-")) and not line.startswith(("+++", "---")) and not re.match(r"^[+-]guid:", line) and not line.startswith(("diff ", "index "))])
@@ -279,15 +327,19 @@ def _guid_audit(checks: list[audit_lib.Check], output: Path) -> None:
     conflict_lines = [line.strip() for line in log_text.splitlines() if re.search(r"guid", line, re.IGNORECASE) and re.search(r"conflict|duplicat|already", line, re.IGNORECASE)]
     evidence = output / "logs" / "jazzy-meta.log"
     evidence.parent.mkdir(parents=True, exist_ok=True)
-    evidence.write_text(json.dumps({"changed_meta": changed_meta, "guid_changes": guid_changes, "importer_changes": importer_changes, "duplicates": duplicates, "editor_log": str(editor_log), "conflict_lines": conflict_lines[:20]}, indent=2) + "\n", encoding="utf-8")
+    evidence.write_text(json.dumps({"base_sha": base_sha, "head_sha": head_sha, "changed_meta": changed_meta, "guid_changes": guid_changes, "importer_changes": importer_changes, "duplicates": duplicates, "editor_log": str(editor_log), "conflict_lines": conflict_lines[:20]}, indent=2) + "\n", encoding="utf-8")
     status = "FAIL" if duplicates or conflict_lines else "PASS"
-    detail = f"changed_meta={len(changed_meta)}; guid_changes={guid_changes}; importer_changes={importer_changes}; enabled-scope duplicates={len(duplicates)}; Editor.log conflict lines={len(conflict_lines)}"
-    _record(checks, "195-OBS-jazzy-meta", "auto", status, "git diff -- Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64; scan manifest-enabled package and Assets .meta GUIDs", evidence, detail)
+    detail = f"base={base_sha}; head={head_sha}; changed_meta={len(changed_meta)}; guid_changes={guid_changes}; importer_changes={importer_changes}; enabled-scope duplicates={len(duplicates)}; Editor.log conflict lines={len(conflict_lines)}"
+    _record(checks, "195-OBS-jazzy-meta", "auto", status, " ".join(diff_command) + "; scan manifest-enabled package and Assets .meta GUIDs", evidence, detail)
 
 
-def coverage_checks(output: Path) -> list[audit_lib.Check]:
+def coverage_checks(output: Path, base_sha: str | None = None, head_sha: str | None = None) -> list[audit_lib.Check]:
     """Return honest W2, W3, W4, and metadata coverage checks."""
     output.mkdir(parents=True, exist_ok=True)
+    base_sha = base_sha or audit_lib.resolve_revision()
+    if head_sha is None:
+        result = subprocess.run(["git", "rev-parse", "HEAD"], cwd=audit_lib.ROOT, capture_output=True, text=True, check=False)
+        head_sha = result.stdout.strip() if result.returncode == 0 else ""
     checks: list[audit_lib.Check] = []
     _coverage(checks, output, "W2", ("Camera", "Readback"), "PlayMode")
     _coverage(checks, output, "W3", ("Lidar", "LiDAR"), "PlayMode")
@@ -296,7 +348,8 @@ def coverage_checks(output: Path) -> list[audit_lib.Check]:
     if any(check.id == "195-W3" and check.status == "PASS" for check in checks):
         _w3_mutation(checks, output)
     _workflow_w4(checks, output)
-    _guid_audit(checks, output)
+    _w4_mutation(checks, output, head_sha)
+    _guid_audit(checks, output, base_sha, head_sha)
     return checks
 
 
@@ -329,5 +382,5 @@ def manual_steps(checks: list[audit_lib.Check]) -> str:
 1. Obtain approval to dispatch one run for Humble and one for Lyrical on `main`.
 2. Record selected package, runner path on `D:`, independent `Library` directory, compile command, and run id.
 3. Verify the manifest is restored in an `if: always()` step and `git status --porcelain` is clean.
-4. In a disposable test branch, inject one compile error into the Lyrical copy and confirm batch compile fails.
+4. In a disposable test branch, inject one compile error into the Lyrical copy and confirm batch compile fails. Record `build/plan-audit/unity_acceptance/w4-mutation.json` with `base_sha`, `run_id`, `distro=lyrical`, `mutation=compile-error`, `job_name=unity-distro-compile (lyrical)`, `job_conclusion=failure`, and `restored=true`.
 """

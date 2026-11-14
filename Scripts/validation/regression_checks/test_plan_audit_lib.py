@@ -253,6 +253,124 @@ class PlanAuditLibraryTests(unittest.TestCase):
             self.assertEqual("195-W4", checks[0].id)
             self.assertEqual("PASS", checks[0].status)
 
+    def test_w4_mutation_requires_revision_bound_evidence(self) -> None:
+        """W4 mutation evidence is required before the acceptance gate can pass."""
+        with tempfile.TemporaryDirectory(dir=audit_lib.BUILD_ROOT) as temp:
+            output = Path(temp)
+            checks: list[audit_lib.Check] = []
+            unity_coverage._w4_mutation(checks, output, "head")
+        self.assertEqual("195-W4-mutation", checks[0].id)
+        self.assertEqual("NOT_RUN", checks[0].status)
+
+    def test_w4_mutation_accepts_matching_evidence(self) -> None:
+        """W4 mutation evidence passes only when it identifies the audited revision and failure."""
+        with tempfile.TemporaryDirectory(dir=audit_lib.BUILD_ROOT) as temp:
+            output = Path(temp)
+            output.mkdir(parents=True, exist_ok=True)
+            (output / "w4-mutation.json").write_text(
+                json.dumps(
+                    {
+                        "base_sha": "head",
+                        "run_id": 123,
+                        "distro": "lyrical",
+                        "mutation": "compile-error",
+                        "job_name": "unity-distro-compile (lyrical)",
+                        "job_conclusion": "failure",
+                        "restored": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            checks: list[audit_lib.Check] = []
+            unity_coverage._w4_mutation(checks, output, "head")
+        self.assertEqual("PASS", checks[0].status)
+
+    def test_w4_mutation_rejects_non_object_evidence(self) -> None:
+        """Malformed W4 evidence produces a controlled failure."""
+        with tempfile.TemporaryDirectory(dir=audit_lib.BUILD_ROOT) as temp:
+            output = Path(temp)
+            (output / "w4-mutation.json").write_text("[]", encoding="utf-8")
+            checks: list[audit_lib.Check] = []
+            unity_coverage._w4_mutation(checks, output, "head")
+        self.assertEqual("FAIL", checks[0].status)
+
+    def test_definition_of_done_requires_w4_mutation(self) -> None:
+        """W4 compile success does not satisfy DoD without mutation evidence."""
+        required = (
+            "195-PLAN",
+            "195-W0-local100",
+            "195-W1-assets",
+            "195-W1-script",
+            "195-W1-workflow",
+            "195-W1-dispatch",
+            "195-W1-zero-tests",
+            "195-W1-red",
+            "195-OBS-jazzy-meta",
+            "195-W2",
+            "195-W2-mutation",
+            "195-W3",
+            "195-W3-mutation",
+            "195-W4",
+            "195-W4-mutation",
+        )
+        checks = [
+            audit_lib.Check(check_id, "Plan", "auto", "NOT_RUN" if check_id == "195-W4-mutation" else "PASS", "true", "build/x", "")
+            for check_id in required
+        ]
+        check = unity_acceptance._dod_check(checks)
+        self.assertEqual("FAIL", check.status)
+        self.assertIn("195-W4-mutation", check.detail)
+
+    def test_guid_audit_compares_base_and_head_revisions(self) -> None:
+        """Jazzy metadata evidence uses the committed base-to-head diff."""
+        with tempfile.TemporaryDirectory(dir=audit_lib.BUILD_ROOT) as temp:
+            root = Path(temp)
+            output = root / "output"
+            calls: list[list[str]] = []
+
+            def fake_run(command, **kwargs):
+                """Record the git diff command and return an empty diff."""
+                del kwargs
+                calls.append(command)
+                return SimpleNamespace(returncode=0, stdout="")
+
+            with mock.patch.object(unity_coverage.audit_lib, "ROOT", root), mock.patch.object(
+                unity_coverage, "_manifest_roots", return_value=[]
+            ), mock.patch.object(unity_coverage.subprocess, "run", side_effect=fake_run):
+                checks: list[audit_lib.Check] = []
+                unity_coverage._guid_audit(checks, output, "base", "head")
+
+        self.assertEqual(
+            ["git", "diff", "base...head", "--", "Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64"],
+            calls[0],
+        )
+
+    def test_guid_audit_records_committed_metadata_changes(self) -> None:
+        """Jazzy metadata evidence reports files changed between the audited revisions."""
+        with tempfile.TemporaryDirectory(dir=audit_lib.BUILD_ROOT) as temp:
+            root = Path(temp)
+            output = root / "output"
+            diff_text = "diff --git a/Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/package.meta b/Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/package.meta\n--- a/Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/package.meta\n+++ b/Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/package.meta\n@@\n-guid: old\n+guid: new\n"
+
+            def fake_run(command, **kwargs):
+                """Return one committed metadata diff."""
+                del command, kwargs
+                return SimpleNamespace(returncode=0, stdout=diff_text)
+
+            with mock.patch.object(unity_coverage.audit_lib, "ROOT", root), mock.patch.object(
+                unity_coverage, "_manifest_roots", return_value=[]
+            ), mock.patch.object(unity_coverage.subprocess, "run", side_effect=fake_run):
+                checks: list[audit_lib.Check] = []
+                unity_coverage._guid_audit(checks, output, "base", "head")
+
+            evidence = json.loads((output / "logs" / "jazzy-meta.log").read_text(encoding="utf-8"))
+        self.assertEqual("PASS", checks[0].status)
+        self.assertEqual(
+            ["Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/package.meta"],
+            evidence["changed_meta"],
+        )
+        self.assertEqual(2, evidence["guid_changes"])
+
     def test_acceptance_audit_runs_checks_when_trusted_source_changes(self) -> None:
         """A trusted-source mismatch must not silently skip the remaining audit checks."""
         self.assertIn("Scripts/release/run_unity_tests.py", unity_acceptance.TRUSTED_AUDIT_MODULES)

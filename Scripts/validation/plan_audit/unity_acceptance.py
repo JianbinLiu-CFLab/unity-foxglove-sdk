@@ -114,6 +114,7 @@ def _dod_check(checks: list[audit_lib.Check]) -> audit_lib.Check:
         "195-W3",
         "195-W3-mutation",
         "195-W4",
+        "195-W4-mutation",
     )
     missing = [check_id for check_id in required if check_id not in by_id]
     failed = [check_id for check_id in required if check_id in by_id and by_id[check_id].status != "PASS"]
@@ -149,7 +150,7 @@ def main() -> int:
     checks.append(trusted)
     checks.extend(bridge_history.bridge_checks(OUTPUT))
     checks.extend(unity_lane.lane_checks(OUTPUT))
-    checks.extend(unity_coverage.coverage_checks(OUTPUT))
+    checks.extend(unity_coverage.coverage_checks(OUTPUT, base_sha))
     checks.append(_dod_check(checks))
     after, after_sha = audit_lib.worktree_snapshot(exclude=("build/",))
     (OUTPUT / "state-after.txt").write_text(after, encoding="utf-8")
