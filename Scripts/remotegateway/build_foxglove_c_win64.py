@@ -131,6 +131,21 @@ def foxglove_source_revision() -> str:
             "Foxglove SDK revision mismatch: "
             f"expected {EXPECTED_FOXGLOVE_COMMIT}, got {revision or '<missing>'}"
         )
+    status = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(FOXGLOVE_ROOT),
+            "status",
+            "--porcelain=v1",
+            "--untracked-files=all",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    if status.stdout.strip():
+        raise RuntimeError("Foxglove SDK checkout is dirty; refusing to build local source changes")
     return revision
 
 
