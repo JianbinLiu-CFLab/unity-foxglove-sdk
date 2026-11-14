@@ -311,11 +311,19 @@ class PlanAuditLibraryTests(unittest.TestCase):
                 log_path.parent.mkdir(parents=True, exist_ok=True)
                 if "--log-failed" in command:
                     return {"exit_code": 0, "timed_out": False, "output": "error CS1002: compile error"}
-                if command[1:3] == ["workflow", "view"]:
+                if command[1] == "api" and "actions/workflows" in command[2]:
+                    self.assertEqual(["gh", "api", "repos/JianbinLiu-CFLab/unity-foxglove-sdk/actions/workflows/unity-compile.yml"], command)
                     return {
                         "exit_code": 0,
                         "timed_out": False,
                         "output": json.dumps({"id": 999, "path": ".github/workflows/unity-compile.yml", "name": "Unity batch compile and path-aware gate"}),
+                    }
+                if command[1] == "api" and "/commits/" in command[2]:
+                    self.assertEqual(["gh", "api", "repos/JianbinLiu-CFLab/unity-foxglove-sdk/commits/" + "a" * 40], command)
+                    return {
+                        "exit_code": 0,
+                        "timed_out": False,
+                        "output": json.dumps({"sha": "a" * 40, "parents": [{"sha": "head"}]}),
                     }
                 self.assertEqual(
                     [
@@ -326,7 +334,7 @@ class PlanAuditLibraryTests(unittest.TestCase):
                         "--repo",
                         "JianbinLiu-CFLab/unity-foxglove-sdk",
                         "--json",
-                        "databaseId,headSha,workflowDatabaseId,workflowPath,workflowName,conclusion,jobs",
+                        "databaseId,headSha,workflowDatabaseId,workflowName,conclusion,jobs",
                     ],
                     command,
                 )
@@ -338,7 +346,6 @@ class PlanAuditLibraryTests(unittest.TestCase):
                             "databaseId": 123,
                             "headSha": "a" * 40,
                             "workflowDatabaseId": 999,
-                            "workflowPath": ".github/workflows/unity-compile.yml",
                             "workflowName": "Unity batch compile and path-aware gate",
                             "conclusion": "failure",
                             "jobs": [{"databaseId": 456, "name": "unity-distro-compile (lyrical)", "conclusion": "failure"}],

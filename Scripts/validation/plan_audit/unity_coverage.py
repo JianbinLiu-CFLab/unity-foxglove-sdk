@@ -341,7 +341,7 @@ def _w4_mutation(checks: list[audit_lib.Check], output: Path, head_sha: str) -> 
                     detail = f"head={payload.get('audited_head_sha', 'missing')}; run_id={run_id or 'missing'}; mismatches={mismatches}"
                 else:
                     workflow_identity = audit_lib.run(
-                        ["gh", "workflow", "view", "unity-compile.yml", "--repo", REPOSITORY, "--json", "id,path,name"],
+                        ["gh", "api", f"repos/{REPOSITORY}/actions/workflows/unity-compile.yml"],
                         output / "logs" / "w4-mutation-workflow.log",
                         120,
                     )
@@ -368,7 +368,7 @@ def _w4_mutation(checks: list[audit_lib.Check], output: Path, head_sha: str) -> 
                         return
                     run_log = output / "logs" / f"w4-mutation-run-{run_id}.log"
                     verified_run = audit_lib.run(
-                        ["gh", "run", "view", str(run_id), "--repo", REPOSITORY, "--json", "databaseId,headSha,workflowDatabaseId,workflowPath,workflowName,conclusion,jobs"],
+                        ["gh", "run", "view", str(run_id), "--repo", REPOSITORY, "--json", "databaseId,headSha,workflowDatabaseId,workflowName,conclusion,jobs"],
                         run_log,
                         120,
                     )
@@ -400,9 +400,9 @@ def _w4_mutation(checks: list[audit_lib.Check], output: Path, head_sha: str) -> 
                             elif run_payload.get("headSha") != mutation_head_sha:
                                 status = "FAIL"
                                 detail = f"head={head_sha}; run_id={run_id}; workflow headSha mismatch"
-                            elif str(run_payload.get("workflowDatabaseId")) != str(workflow_payload["id"]) or run_payload.get("workflowPath") != WORKFLOW_PATH:
+                            elif str(run_payload.get("workflowDatabaseId")) != str(workflow_payload["id"]):
                                 status = "FAIL"
-                                detail = f"head={head_sha}; run_id={run_id}; workflow path or id mismatch"
+                                detail = f"head={head_sha}; run_id={run_id}; workflow id mismatch"
                             elif run_payload.get("workflowName") != WORKFLOW_NAME or run_payload.get("conclusion") != "failure":
                                 status = "FAIL"
                                 detail = f"head={head_sha}; run_id={run_id}; workflow identity or conclusion mismatch"
@@ -427,24 +427,27 @@ def _w4_mutation(checks: list[audit_lib.Check], output: Path, head_sha: str) -> 
                                     status = "FAIL"
                                     detail = f"head={head_sha}; run_id={run_id}; expected compile-error marker was not observed"
                                 else:
-                                    ancestry = subprocess.run(
-                                        ["git", "rev-list", "--parents", "-n", "1", mutation_head_sha],
-                                        cwd=audit_lib.ROOT,
-                                        env=audit_lib._audit_environment(),
-                                        capture_output=True,
-                                        text=True,
-                                        check=False,
+                                    commit_result = audit_lib.run(
+                                        ["gh", "api", f"repos/{REPOSITORY}/commits/{mutation_head_sha}"],
+                                        output / "logs" / f"w4-mutation-commit-{run_id}.log",
+                                        120,
                                     )
-                                    parent_tokens = str(ancestry.stdout).strip().split()
-                                    if ancestry.returncode != 0:
+                                    if commit_result.get("timed_out") or commit_result.get("exit_code") != 0:
                                         status = "FAIL"
-                                        detail = f"head={head_sha}; run_id={run_id}; mutation commit ancestry could not be verified"
-                                    elif len(parent_tokens) < 2 or parent_tokens[1] != head_sha:
-                                        status = "FAIL"
-                                        detail = f"head={head_sha}; run_id={run_id}; mutation commit is not directly based on audited HEAD"
+                                        detail = f"head={head_sha}; run_id={run_id}; mutation commit could not be read"
                                     else:
-                                        status = "PASS"
-                                        detail = f"head={head_sha}; run_id={run_id}; mutation_head={mutation_head_sha}; verified failed Lyrical compile job, compile-error log, and direct parent"
+                                        try:
+                                            commit_payload = json.loads(str(commit_result.get("output", "")))
+                                        except json.JSONDecodeError:
+                                            commit_payload = {}
+                                        parents = commit_payload.get("parents") if isinstance(commit_payload, dict) else None
+                                        parent_sha = parents[0].get("sha") if isinstance(parents, list) and parents and isinstance(parents[0], dict) else None
+                                        if parent_sha != head_sha or payload.get("mutation_parent_sha") != parent_sha:
+                                            status = "FAIL"
+                                            detail = f"head={head_sha}; run_id={run_id}; mutation commit is not directly based on audited HEAD"
+                                        else:
+                                            status = "PASS"
+                                            detail = f"head={head_sha}; run_id={run_id}; mutation_head={mutation_head_sha}; verified failed Lyrical job, compile-error log, remote commit parent, and artifact hashes"
     log.write_text(detail + "\n", encoding="utf-8")
     _record(checks, "195-W4-mutation", "mutation", status, "read build/plan-audit/unity_acceptance/w4-mutation.json", evidence, detail)
 
