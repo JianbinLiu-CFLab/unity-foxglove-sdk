@@ -444,6 +444,62 @@ class _Phase186ProvenanceTests_fixtures:
         self.assertEqual({original_path}, originals)
         self.assertEqual([], errors)
 
+    def test_decomposed_source_map_rejects_ranges_for_empty_baseline(self) -> None:
+        """An empty baseline cannot authorize a positive moved range."""
+
+        module = load_module()
+        from Scripts.smoke.foxrun.phase186_provenance import (
+            validate_repository_provenance_and_git_tree_paths as source_module,
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            repository = pathlib.Path(temporary)
+            initialize_git_repository(repository)
+            original = repository / "Protocol/Authority.cs"
+            original.parent.mkdir(parents=True)
+            original.write_text("", encoding="utf-8")
+            run_git(repository, "add", ".")
+            run_git(repository, "commit", "--quiet", "-m", "empty baseline")
+            revision = run_git(repository, "rev-parse", "HEAD")
+            part = repository / "Protocol/Decomposed/AuthorityPart.cs"
+            part.parent.mkdir(parents=True)
+            part.write_text("line one\n", encoding="utf-8")
+            original_path = "Protocol/Authority.cs"
+            part_path = "Protocol/Decomposed/AuthorityPart.cs"
+            payload = {
+                "decomposedSources": [
+                    {
+                        "originalPath": original_path,
+                        "sourceRevision": revision,
+                        "originalSha256": module._sha256_bytes(
+                            module._canonical_source_bytes(original.read_bytes())
+                        ),
+                        "parts": [
+                            {
+                                "path": part_path,
+                                "sha256": module._sha256_bytes(
+                                    module._canonical_source_bytes(part.read_bytes())
+                                ),
+                                "movedRange": {"startLine": 1, "endLine": 1},
+                            }
+                        ],
+                    }
+                ]
+            }
+            _, _, errors = getattr(
+                source_module,
+                "__validate_decomposed_source_files",
+            )(
+                repository,
+                payload,
+                {original_path, part_path},
+                {original_path: "baseline"},
+            )
+
+        self.assertTrue(
+            any("outside the baseline" in error for error in errors),
+            errors,
+        )
+
     def test_decomposed_source_schema_rejects_invalid_ranges_and_paths(self) -> None:
         """Source-map records reject malformed path and range values."""
 

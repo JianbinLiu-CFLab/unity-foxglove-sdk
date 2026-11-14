@@ -145,7 +145,7 @@ def __validate_decomposed_source_files(
                 if (
                     type(start) is int
                     and type(end) is int
-                    and (start < 1 or end < start or (line_count and end > line_count))
+                    and (start < 1 or end < start or end > line_count)
                 ):
                     errors.append(f"{path}: decomposed source movedRange is outside the baseline")
 
