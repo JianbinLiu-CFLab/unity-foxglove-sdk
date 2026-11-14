@@ -148,6 +148,11 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
                 {"Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs"},
             )
         )
+        mixed_text = (
+            "namespace Unity.FoxgloveSDK.Components { }\n"
+            "namespace Evil { public class FoxgloveManager { } }"
+        )
+        self.assertFalse(lifecycle_ownership._owner_source_is_canonical(canonical, "FoxgloveManager", mixed_text))
 
     def test_plan_check_rejects_duplicate_base_fields(self) -> None:
         """Duplicate current Plan base fields cannot satisfy the audit gate."""
@@ -265,6 +270,17 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
         )
         refs = lifecycle_ownership._writer_refs(text, Path("Packages/pkg/Runtime/Owner.cs"), "_state")
         self.assertEqual(["Packages/pkg/Runtime/Owner.cs:4"], refs)
+
+    def test_writer_evidence_excludes_other_object_fields(self) -> None:
+        """A qualified field on another object cannot satisfy an owner field."""
+        text = (
+            "class Owner {\n"
+            "    private int _state;\n"
+            "    void Set(Other other) { other._state = 1; other?._state = 2; }\n"
+            "}\n"
+        )
+        refs = lifecycle_ownership._writer_refs(text, Path("Packages/pkg/Runtime/Owner.cs"), "_state")
+        self.assertEqual([], refs)
 
     def test_writer_evidence_excludes_field_initializers(self) -> None:
         """A declaration initializer is not a lifecycle writer."""
@@ -396,7 +412,7 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
             "class Owner {\n"
             "    private object _gate;\n"
             "    private int _state;\n"
-            "    void Diagnostic() { lock (_gate) { } }\n"
+            "    void Diagnostic() { lock (_gate) { _state = 1; } }\n"
             "    void Dispose() { _state = 0; }\n"
             "}\n"
         )
@@ -411,6 +427,26 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
         )
         self.assertEqual([], locks)
         self.assertEqual(["Packages/pkg/Runtime/Owner.cs:5"], lifetime)
+
+    def test_lifecycle_lock_must_cover_transition_inside_the_lock(self) -> None:
+        """An empty lifecycle lock cannot protect a later state transition."""
+        text = (
+            "class Owner {\n"
+            "    private object _gate;\n"
+            "    private int _state;\n"
+            "    void Dispose() { lock (_gate) { } _state = 0; }\n"
+            "}\n"
+        )
+        masked = lifecycle_ownership._mask_csharp_source(text)
+        scopes = lifecycle_ownership._owner_type_scopes(text, masked, "Owner")
+        locks, _ = lifecycle_ownership._bound_lifecycle_refs(
+            text,
+            Path("Packages/pkg/Runtime/Owner.cs"),
+            masked,
+            scopes,
+            {"_gate", "_state"},
+        )
+        self.assertEqual([], locks)
 
     def test_inactive_conditional_regions_do_not_create_evidence(self) -> None:
         """Explicitly inactive C# branches cannot provide owner evidence."""
@@ -476,6 +512,28 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
             lifecycle_ownership._type_spans(text)["Owner"],
         )
         self.assertEqual(["Packages/pkg/Runtime/Owner.cs:4"], refs)
+
+    def test_writer_shadowing_covers_for_and_lambda_parameters(self) -> None:
+        """For locals and lambda parameters cannot masquerade as owner writes."""
+        text = (
+            "class Owner {\n"
+            "    private object _gate;\n"
+            "    private int _state;\n"
+            "    void Dispose() {\n"
+            "        lock (_gate) {\n"
+            "            for (int _state = 0; _state < 2; _state++) { }\n"
+            "            System.Action<int> action = (_state) => _state = 1;\n"
+            "        }\n"
+            "    }\n"
+            "}\n"
+        )
+        refs = lifecycle_ownership._writer_refs(
+            text,
+            Path("Packages/pkg/Runtime/Owner.cs"),
+            "_state",
+            lifecycle_ownership._type_spans(text)["Owner"],
+        )
+        self.assertEqual([], refs)
 
     def test_real_owner_map_uses_declared_production_synchronization(self) -> None:
         """The tracked production owner map must close without test-only evidence."""
@@ -665,6 +723,27 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
         self.assertEqual(["Owner::_state"], missing)
         self.assertEqual([], fields["Owner::_state"]["writers"])
 
+    def test_owner_fields_include_default_private_and_multiple_declarators(self) -> None:
+        """Default-private and multi-declarator fields cannot disappear from the map."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            declaration = Path("Packages/pkg/Runtime/Owner.cs")
+            (root / declaration).parent.mkdir(parents=True)
+            (root / declaration).write_text(
+                "class Owner {\n"
+                "    int _unsafe;\n"
+                "    private int _missing, _tracked;\n"
+                "    void Set() { _tracked = 1; }\n"
+                "}\n",
+                encoding="utf-8",
+            )
+            with mock.patch.object(lifecycle_ownership.audit_lib, "ROOT", root):
+                fields, missing = lifecycle_ownership._collect_owner_fields([declaration])
+        self.assertEqual({"Owner::_unsafe", "Owner::_missing", "Owner::_tracked"}, set(fields))
+        self.assertIn("Owner::_unsafe", missing)
+        self.assertIn("Owner::_missing", missing)
+        self.assertNotIn("Owner::_tracked", missing)
+
     def test_owner_fields_classify_serialized_configuration_without_writer(self) -> None:
         """Serialized configuration fields are retained with an explicit classification."""
         with tempfile.TemporaryDirectory() as temp:
@@ -759,7 +838,21 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
             ET.SubElement(
                 results,
                 "UnitTestResult",
-                testName=lifecycle_ownership.EXPECTED_TEST_NAMES[0],
+                testName="Evil.FoxgloveManagerTeardownTests.StopServerTailRunsEveryCleanupStepAfterMultipleFailures",
+                outcome="Failed",
+            )
+            ET.ElementTree(root).write(path, encoding="utf-8", xml_declaration=True)
+            self.assertFalse(
+                lifecycle_ownership._expected_test_failure(
+                    path,
+                    lifecycle_ownership.MUTATION_EXPECTED_TESTS["197-W1-mutation-order"],
+                )
+            )
+            results.clear()
+            ET.SubElement(
+                results,
+                "UnitTestResult",
+                testName=lifecycle_ownership.CANONICAL_TEST_PREFIX + lifecycle_ownership.EXPECTED_TEST_NAMES[0],
                 outcome="Failed",
             )
             ET.ElementTree(root).write(path, encoding="utf-8", xml_declaration=True)

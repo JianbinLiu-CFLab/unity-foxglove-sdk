@@ -18,9 +18,20 @@ FIELD_DECLARATION_PATTERN = re.compile(
     r"(?P<name>_?[A-Za-z][A-Za-z0-9_]*)\s*(?:=|;)"
 )
 
+DEFAULT_FIELD_DECLARATION_PATTERN = re.compile(
+    r"(?m)^[ \t]*(?!(?:private|protected|internal|public|using|namespace|return|if|else|for|foreach|while|switch|case|throw|new)\b)"
+    r"(?P<modifiers>(?:(?:static|readonly|volatile)\s+)*)"
+    r"(?P<type>[A-Za-z_][A-Za-z0-9_:<>,.?()\[\] \t]*?)\s+"
+    r"(?P<name>_?[A-Za-z][A-Za-z0-9_]*)\s*(?:=|;)"
+)
+
 METHOD_DECLARATION_PATTERN = re.compile(
     r"(?m)^[ \t]*(?:(?:public|private|protected|internal|static|async|virtual|override|sealed|new)\s+)*"
     r"(?:[A-Za-z_][A-Za-z0-9_<>,.?]*|void)\s+[A-Za-z_][A-Za-z0-9_]*\s*\([^{};]*\)\s*(?=\{)"
+)
+
+LIFECYCLE_METHOD_PATTERN = re.compile(
+    r"(?:OnEnable|OnDisable|OnDestroy|StartServer|StopServer|CleanupStartupAfterFailure|Dispose|Reset|Connect|Disconnect|Disable|Start|Stop)"
 )
 
 
@@ -217,6 +228,46 @@ def _type_spans(text: str, masked_text: str | None = None) -> dict[str, tuple[in
     return spans
 
 
+def _namespace_spans(masked_text: str) -> dict[str, tuple[int, int]]:
+    """Return lexical spans for block and file-scoped namespaces."""
+    pattern = re.compile(r"\bnamespace\s+(?P<name>[A-Za-z_][A-Za-z0-9_.]*)\s*(?P<delimiter>[{;])")
+    namespaces: dict[str, tuple[int, int]] = {}
+    for match in pattern.finditer(masked_text):
+        if match.group("delimiter") == ";":
+            namespaces[match.group("name")] = (match.end(), len(masked_text))
+            continue
+        opening = match.end() - 1
+        depth = 0
+        closing = len(masked_text)
+        for index in range(opening, len(masked_text)):
+            if masked_text[index] == "{":
+                depth += 1
+            elif masked_text[index] == "}":
+                depth -= 1
+                if depth == 0:
+                    closing = index + 1
+                    break
+        namespaces[match.group("name")] = (opening, closing)
+    return namespaces
+
+
+def owner_type_is_in_namespace(masked_text: str, namespace: str, type_names: set[str]) -> bool:
+    """Return whether canonical types occur only inside the expected namespace."""
+    namespace_spans = _namespace_spans(masked_text)
+    expected_spans = [span for name, span in namespace_spans.items() if name == namespace]
+    if not expected_spans:
+        return False
+    found_expected = False
+    found_outside = False
+    for match in TYPE_DECLARATION_PATTERN.finditer(masked_text):
+        if match.group("name") not in type_names:
+            continue
+        inside_expected = any(start <= match.start() < end for start, end in expected_spans)
+        found_expected = found_expected or inside_expected
+        found_outside = found_outside or not inside_expected
+    return found_expected and not found_outside
+
+
 def _line_refs(
     text: str,
     relative: Path,
@@ -240,8 +291,15 @@ def field_name_is_shadowed(masked_text: str, field: str, position: int) -> bool:
     """Return whether a parameter or local shadows a field in one method."""
     method_matches = list(METHOD_DECLARATION_PATTERN.finditer(masked_text, 0, position))
     method_start = method_matches[-1].start() if method_matches else 0
-    method_text = masked_text[method_start:min(len(masked_text), position + len(field) + 32)]
+    method_text = masked_text[method_start:position]
     name = re.escape(field)
+    if re.search(
+        rf"(?:^|[;{{}}(])\s*(?:var|[A-Za-z_][A-Za-z0-9_<>.,?]*)\s+{name}\s*$",
+        method_text,
+    ):
+        return True
+    if re.search(r"(?:^|[;{{}}(])\s*(?!(?:ref|out|in)\b)(?:var|[A-Za-z_][A-Za-z0-9_<>]*)\s*$", method_text):
+        return True
     parameter = re.compile(rf"\([^(){{}};]*\b(?:(?:ref|out|in)\s+[A-Za-z_][A-Za-z0-9_<>.,?]*|(?!ref\b|out\b|in\b)[A-Za-z_][A-Za-z0-9_<>.,?]*)\s+{name}\b[^(){{}};]*\)(?=\s*(?:\{{|=>|:))")
     if parameter.search(method_text):
         return True
@@ -250,6 +308,16 @@ def field_name_is_shadowed(masked_text: str, field: str, position: int) -> bool:
         prefix = method_text[max(0, match.start() - 256):match.start()]
         if not re.search(r"\b(?:private|protected|internal|public)\b[^;{}]*$", prefix):
             return True
+    extra_shadowing = (
+        rf"\bfor\s*\([^;{{}}]*\b(?:var|[A-Za-z_][A-Za-z0-9_<>.,?]*)\s+{name}\s*="
+        rf"|\bforeach\s*\(\s*(?:var|[A-Za-z_][A-Za-z0-9_<>.,?]*)\s+{name}\b"
+        rf"|\busing\s*\(\s*(?:var|[A-Za-z_][A-Za-z0-9_<>.,?]*)\s+{name}\b"
+        rf"|\bis\s+(?:[A-Za-z_][A-Za-z0-9_<>.,?]*)\s+{name}\b"
+        rf"|\bcase\s+(?:[A-Za-z_][A-Za-z0-9_<>.,?]*)\s+{name}\b"
+        rf"|(?:\(\s*[^)]*\b{name}\b[^)]*\)|\b{name}\b)\s*=>"
+    )
+    if re.search(extra_shadowing, method_text):
+        return True
     return False
 
 
@@ -304,6 +372,85 @@ def receiver_from_match(masked_text: str, start: int, end: int, receiver_pattern
     """Extract a qualified receiver from one writer match."""
     match = re.search(rf"({receiver_pattern})\.{re.escape(field)}\b", masked_text[start:end])
     return match.group(1) if match else None
+
+
+def is_declaration_assignment(masked_text: str, position: int) -> bool:
+    """Return whether an assignment target belongs to a field declaration."""
+    statement_start = max(
+        masked_text.rfind(";", 0, position),
+        masked_text.rfind("{", 0, position),
+        masked_text.rfind("}", 0, position),
+    ) + 1
+    prefix = masked_text[statement_start:position]
+    return bool(re.search(r"\b(?:private|protected|internal|public)\b", prefix))
+
+
+def writer_refs(
+    text: str,
+    relative: Path,
+    field: str,
+    atomic_write_calls: tuple[str, ...],
+    known_ref_mutators: tuple[str, ...],
+    scope: tuple[int, int] | None = None,
+    masked_text: str | None = None,
+    qualified_receivers: tuple[str, ...] | None = None,
+    receiver_type: str | None = None,
+    receiver_type_context: str | None = None,
+) -> list[str]:
+    """Return source locations that prove a field write."""
+    masked = masked_text if masked_text is not None else _mask_csharp_source(text)
+    scope_start, scope_end = scope or (0, len(masked))
+    scoped_text = masked[scope_start:scope_end]
+    refs: set[str] = set()
+    receiver_pattern = "|".join(
+        rf"(?<![A-Za-z0-9_]){re.escape(receiver)}(?![A-Za-z0-9_])"
+        for receiver in qualified_receivers or ()
+    )
+    field_target = (
+        rf"(?:{receiver_pattern})\.{re.escape(field)}\b"
+        if receiver_pattern
+        else rf"(?:\bthis\.{re.escape(field)}\b|(?<![.?A-Za-z0-9_]){re.escape(field)}\b)"
+    )
+    assignment_pattern = re.compile(
+        rf"(?:{field_target}\s*(?:(?<![=!<>])=(?!=)|\+=|-=|\?\?=|\+\+|--)|(?:\+\+|--)\s*{field_target})"
+    )
+    atomic_names = "|".join(re.escape(name) for name in atomic_write_calls)
+    atomic_pattern = re.compile(rf"\b(?:{atomic_names})\s*\(\s*ref\s+{field_target}")
+    mutator_names = "|".join(re.escape(name) for name in known_ref_mutators)
+    mutator_pattern = re.compile(
+        rf"\b(?:{mutator_names})\s*\([^;{{}}]*?(?P<ref>\bref\s+{field_target})",
+        re.DOTALL,
+    )
+    for match in assignment_pattern.finditer(scoped_text):
+        absolute = scope_start + match.start()
+        receiver = receiver_from_match(masked, absolute, scope_start + match.end(), receiver_pattern, field) if receiver_pattern else None
+        if receiver_pattern and not receiver:
+            continue
+        if receiver_pattern and not qualified_receiver_is_bound(masked, absolute, receiver, receiver_type, receiver_type_context):
+            continue
+        explicit_this = not receiver_pattern and bool(re.search(rf"\bthis\.{re.escape(field)}\b", scoped_text[match.start():match.end()]))
+        shadowed = not receiver_pattern and not explicit_this and field_name_is_shadowed(scoped_text, field, match.start())
+        if not shadowed and not is_declaration_assignment(masked, absolute):
+            refs.add(f"{relative.as_posix()}:{text.count(chr(10), 0, absolute) + 1}")
+    for match in atomic_pattern.finditer(scoped_text):
+        absolute = scope_start + match.start()
+        receiver = receiver_from_match(masked, absolute, scope_start + match.end(), receiver_pattern, field) if receiver_pattern else None
+        if receiver_pattern and (not receiver or not qualified_receiver_is_bound(masked, absolute, receiver, receiver_type, receiver_type_context)):
+            continue
+        explicit_this = not receiver_pattern and bool(re.search(rf"\bthis\.{re.escape(field)}\b", scoped_text[match.start():match.end()]))
+        shadowed = not receiver_pattern and not explicit_this and field_name_is_shadowed(scoped_text, field, match.start())
+        if not shadowed:
+            refs.add(f"{relative.as_posix()}:{text.count(chr(10), 0, absolute) + 1}")
+    for match in mutator_pattern.finditer(scoped_text):
+        absolute = scope_start + match.start("ref")
+        receiver = receiver_from_match(masked, absolute, scope_start + match.end(), receiver_pattern, field) if receiver_pattern else None
+        if receiver_pattern and (not receiver or not qualified_receiver_is_bound(masked, absolute, receiver, receiver_type, receiver_type_context)):
+            continue
+        explicit_this = not receiver_pattern and bool(re.search(rf"\bthis\.{re.escape(field)}\b", scoped_text[match.start("ref"):match.end()]))
+        shadowed = not receiver_pattern and not explicit_this and field_name_is_shadowed(scoped_text, field, match.start("ref"))
+        if not shadowed and not is_declaration_assignment(masked, absolute):
+            refs.add(f"{relative.as_posix()}:{text.count(chr(10), 0, absolute) + 1}")
+    return sorted(refs)
 
 
 def _nested_receiver_names(masked_texts: dict[Path, str], declaring_type: str) -> tuple[str, ...]:
@@ -420,6 +567,38 @@ def method_body_contains_field(masked_text: str, position: int, field_names: set
     return any(re.search(rf"\b{re.escape(field)}\b", body) for field in field_names)
 
 
+def lifecycle_called_method_names(masked_text: str) -> set[str]:
+    """Return method names called from lifecycle-named methods."""
+    ignored = {"if", "for", "foreach", "while", "switch", "catch", "using", "lock", "nameof", "typeof", "new"}
+    names: set[str] = set()
+    for start, end, method_name in _method_contexts(masked_text):
+        if not LIFECYCLE_METHOD_PATTERN.search(method_name):
+            continue
+        body = masked_text[start:end]
+        for match in re.finditer(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\(", body):
+            if match.group(1) not in ignored:
+                names.add(match.group(1))
+    return names
+
+
+def _lock_block_writes_field(masked_text: str, position: int, field_names: set[str]) -> bool:
+    """Return whether a lock block contains a write to a declared field."""
+    opening = masked_text.find("{", position)
+    if opening < 0:
+        return False
+    depth = 0
+    closing = len(masked_text)
+    for index in range(opening, len(masked_text)):
+        if masked_text[index] == "{":
+            depth += 1
+        elif masked_text[index] == "}":
+            depth -= 1
+            if depth == 0:
+                closing = index
+                break
+    return _method_body_writes_field(masked_text[opening:closing], field_names)
+
+
 def bound_lifecycle_refs(
     text: str,
     relative: Path,
@@ -427,15 +606,14 @@ def bound_lifecycle_refs(
     scopes: tuple[tuple[int, int], ...],
     field_names: set[str],
     lifetime_pattern: re.Pattern[str],
+    approved_method_names: set[str] | None = None,
 ) -> tuple[list[str], list[str]]:
     """Return lock and lifecycle references bound to declared owner fields."""
     lock_pattern = re.compile(r"\block\s*\(\s*(?:this\.)?(?P<name>[A-Za-z_][A-Za-z0-9_]*)")
     locks: set[str] = set()
     lifetime: set[str] = set()
     contexts = _method_contexts(masked_text)
-    lifecycle_method_pattern = re.compile(
-        r"(?:OnEnable|OnDisable|OnDestroy|StartServer|StopServer|CleanupStartupAfterFailure|Dispose|Reset|Connect|Disconnect|Disable)"
-    )
+    approved_method_names = approved_method_names or set()
     offset = 0
     for line_number, line in enumerate(masked_text.splitlines(keepends=True), 1):
         matches = list(lifetime_pattern.finditer(line))
@@ -454,7 +632,8 @@ def bound_lifecycle_refs(
             and lock_match.group("name") in field_names
             and lock_context is not None
             and any(start <= lock_position < end for start, end in scopes)
-            and _method_body_writes_field(masked_text[lock_context[0]:lock_context[1]], field_names)
+            and (LIFECYCLE_METHOD_PATTERN.search(lock_context[2]) or lock_context[2] in approved_method_names)
+            and _lock_block_writes_field(masked_text, lock_position, field_names)
         ):
             locks.add(f"{relative.as_posix()}:{line_number}")
         for match in matches:
@@ -462,7 +641,7 @@ def bound_lifecycle_refs(
             context = next((item for item in contexts if item[0] <= position < item[1]), None)
             if context is None or not any(start <= position < end for start, end in scopes):
                 continue
-            if not lifecycle_method_pattern.search(context[2]):
+            if not LIFECYCLE_METHOD_PATTERN.search(context[2]):
                 continue
             if method_body_contains_field(masked_text, context[0], field_names):
                 lifetime.add(f"{relative.as_posix()}:{line_number}")
@@ -482,10 +661,5 @@ def owner_source_is_canonical(
     normalized = path.as_posix()
     if not normalized.startswith(path_prefixes[owner]):
         return False
-    if not re.search(rf"\bnamespace\s+{re.escape(namespaces[owner])}\b", masked_text):
-        return False
     type_names = {owner, *(Path(name).stem for name in support_names.get(owner, ()))}
-    return any(
-        re.search(rf"\b(?:class|struct|record|interface)\s+{re.escape(type_name)}\b", masked_text)
-        for type_name in type_names
-    )
+    return owner_type_is_in_namespace(masked_text, namespaces[owner], type_names)

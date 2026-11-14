@@ -12,23 +12,18 @@ import shutil
 import subprocess
 from collections import Counter
 from pathlib import Path
-
 from . import audit_lib
 from . import csharp_source
 
 PREPROCESSOR_SYMBOLS = csharp_source.PREPROCESSOR_SYMBOLS
-TYPE_DECLARATION_PATTERN = csharp_source.TYPE_DECLARATION_PATTERN
 FIELD_DECLARATION_PATTERN = csharp_source.FIELD_DECLARATION_PATTERN
-_mask_csharp_comments_and_strings = csharp_source._mask_csharp_comments_and_strings
-_preprocessor_condition = csharp_source._preprocessor_condition
-_mask_inactive_csharp_regions = csharp_source._mask_inactive_csharp_regions
+DEFAULT_FIELD_DECLARATION_PATTERN = csharp_source.DEFAULT_FIELD_DECLARATION_PATTERN
 _mask_csharp_source = csharp_source._mask_csharp_source
 _type_spans = csharp_source._type_spans
 _line_refs = csharp_source._line_refs
 _nested_receiver_names = csharp_source._nested_receiver_names
-_field_name_is_shadowed = csharp_source.field_name_is_shadowed
-_qualified_receiver_is_bound = csharp_source.qualified_receiver_is_bound
-_receiver_from_match = csharp_source.receiver_from_match
+_method_contexts = csharp_source._method_contexts
+_lifecycle_called_method_names = csharp_source.lifecycle_called_method_names
 
 TOPIC = "lifecycle_ownership"
 PHASE = "197"
@@ -159,9 +154,10 @@ def _bound_lifecycle_refs(
     masked_text: str,
     scopes: tuple[tuple[int, int], ...],
     field_names: set[str],
+    approved_method_names: set[str] | None = None,
 ) -> tuple[list[str], list[str]]:
     """Return lock and lifecycle references bound to declared owner fields."""
-    return csharp_source.bound_lifecycle_refs(text, relative, masked_text, scopes, field_names, LIFETIME_WORDS)
+    return csharp_source.bound_lifecycle_refs(text, relative, masked_text, scopes, field_names, LIFETIME_WORDS, approved_method_names)
 
 
 def _owner_source_is_canonical(path: Path, owner: str, masked_text: str) -> bool:
@@ -185,13 +181,6 @@ def _owner_base_paths(owner: str, base_revision: str) -> set[str] | None:
         return None
 
 
-def _is_declaration_assignment(masked_text: str, position: int) -> bool:
-    """Return whether an assignment target belongs to a field declaration."""
-    statement_start = max(masked_text.rfind(";", 0, position), masked_text.rfind("{", 0, position), masked_text.rfind("}", 0, position)) + 1
-    prefix = masked_text[statement_start:position]
-    return bool(re.search(r"\b(?:private|protected|internal|public)\b", prefix))
-
-
 def _writer_refs(
     text: str,
     relative: Path,
@@ -203,52 +192,18 @@ def _writer_refs(
     receiver_type_context: str | None = None,
 ) -> list[str]:
     """Return source locations that prove a field write."""
-    masked = masked_text if masked_text is not None else _mask_csharp_source(text)
-    scope_start, scope_end = scope or (0, len(masked))
-    scoped_text = masked[scope_start:scope_end]
-    refs: set[str] = set()
-    receiver_pattern = "|".join(
-        rf"(?<![A-Za-z0-9_]){re.escape(receiver)}(?![A-Za-z0-9_])"
-        for receiver in qualified_receivers or ()
+    return csharp_source.writer_refs(
+        text,
+        relative,
+        field,
+        ATOMIC_WRITE_CALLS,
+        KNOWN_REF_MUTATORS,
+        scope,
+        masked_text,
+        qualified_receivers,
+        receiver_type,
+        receiver_type_context,
     )
-    field_target = rf"(?:{receiver_pattern})\.{re.escape(field)}\b" if receiver_pattern else rf"\b{re.escape(field)}\b"
-    assignment_pattern = re.compile(
-        rf"(?:{field_target}\s*(?:(?<![=!<>])=(?!=)|\+=|-=|\?\?=|\+\+|--)|(?:\+\+|--)\s*{field_target})"
-    )
-    atomic_names = "|".join(re.escape(name) for name in ATOMIC_WRITE_CALLS)
-    atomic_pattern = re.compile(rf"\b(?:{atomic_names})\s*\(\s*ref\s+{field_target}")
-    mutator_names = "|".join(re.escape(name) for name in KNOWN_REF_MUTATORS)
-    mutator_pattern = re.compile(
-        rf"\b(?:{mutator_names})\s*\([^;{{}}]*?(?P<ref>\bref\s+{field_target})",
-        re.DOTALL,
-    )
-    for match in assignment_pattern.finditer(scoped_text):
-        absolute = scope_start + match.start()
-        receiver = _receiver_from_match(masked, absolute, scope_start + match.end(), receiver_pattern, field) if receiver_pattern else None
-        if receiver_pattern and not receiver:
-            continue
-        if receiver_pattern and not _qualified_receiver_is_bound(masked, absolute, receiver, receiver_type, receiver_type_context):
-            continue
-        shadowed = not receiver_pattern and _field_name_is_shadowed(scoped_text, field, match.start())
-        if not shadowed and not _is_declaration_assignment(masked, absolute):
-            refs.add(f"{relative.as_posix()}:{text.count(chr(10), 0, absolute) + 1}")
-    for match in atomic_pattern.finditer(scoped_text):
-        absolute = scope_start + match.start()
-        receiver = _receiver_from_match(masked, absolute, scope_start + match.end(), receiver_pattern, field) if receiver_pattern else None
-        if receiver_pattern and (not receiver or not _qualified_receiver_is_bound(masked, absolute, receiver, receiver_type, receiver_type_context)):
-            continue
-        shadowed = not receiver_pattern and _field_name_is_shadowed(scoped_text, field, match.start())
-        if not shadowed:
-            refs.add(f"{relative.as_posix()}:{text.count(chr(10), 0, absolute) + 1}")
-    for match in mutator_pattern.finditer(scoped_text):
-        absolute = scope_start + match.start("ref")
-        receiver = _receiver_from_match(masked, absolute, scope_start + match.end(), receiver_pattern, field) if receiver_pattern else None
-        if receiver_pattern and (not receiver or not _qualified_receiver_is_bound(masked, absolute, receiver, receiver_type, receiver_type_context)):
-            continue
-        shadowed = not receiver_pattern and _field_name_is_shadowed(scoped_text, field, match.start("ref"))
-        if not shadowed and not _is_declaration_assignment(masked, absolute):
-            refs.add(f"{relative.as_posix()}:{text.count(chr(10), 0, absolute) + 1}")
-    return sorted(refs)
 
 
 def _field_declarations(
@@ -263,7 +218,24 @@ def _field_declarations(
     spans = spans if spans is not None else _type_spans(text, masked)
     fallback_type = relative.stem.split(".", 1)[0]
     declarations: list[dict[str, str]] = []
-    for match in FIELD_DECLARATION_PATTERN.finditer(masked):
+    method_spans = [(start, end) for start, end, _ in _method_contexts(masked)]
+    type_openings = {start for start, _ in spans.values()}
+    matches = list(FIELD_DECLARATION_PATTERN.finditer(masked))
+    matches.extend(DEFAULT_FIELD_DECLARATION_PATTERN.finditer(masked))
+    matches.sort(key=lambda item: item.start())
+    for match in matches:
+        is_default_access = match.groupdict().get("access") is None
+        if is_default_access and any(start < match.start() < end for start, end in method_spans):
+            continue
+        if is_default_access and masked.rfind("{", 0, match.start()) not in type_openings:
+            continue
+        if is_default_access and masked.rfind("(", 0, match.start()) > masked.rfind(")", 0, match.start()):
+            continue
+        if is_default_access and (
+            re.search(r"\b(?:private|protected|internal|public)\b", match.groupdict().get("type", ""))
+            or any(token in match.groupdict().get("type", "") for token in ("?", ":"))
+        ):
+            continue
         matched_text = match.group(0)
         if (
             "=>" in matched_text
@@ -288,6 +260,10 @@ def _field_declarations(
             continue
         if "(" in declaration_prefix and ")" not in declaration_prefix:
             continue
+        declarator_names = [match.group("name")]
+        prefix_declarators = re.search(r"((?:_[A-Za-z][A-Za-z0-9_]*\s*,\s*)+)$", declaration_prefix)
+        if prefix_declarators:
+            declarator_names = re.findall(r"_?[A-Za-z][A-Za-z0-9_]*", prefix_declarators.group(1)) + declarator_names
         line_start = masked.rfind("\n", 0, match.start()) + 1
         same_line_attributes = masked[line_start:match.start()]
         access_line_number = masked.count("\n", 0, match.start()) + 1
@@ -298,8 +274,8 @@ def _field_declarations(
             if lines[attribute_index].strip().startswith("["):
                 break
             attribute_index -= 1
-        access = match.group("access")
-        modifiers = match.group("modifiers")
+        access = match.groupdict().get("access")
+        modifiers = match.group("modifiers") or ""
         has_serialize_field = "SerializeField" in same_line_attributes or (
             attribute_lines
             and attribute_lines[0].startswith("[")
@@ -318,14 +294,15 @@ def _field_declarations(
             key=lambda name: spans[name][1] - spans[name][0],
             default=fallback_type,
         )
-        declarations.append(
+        declarations.extend(
             {
-                "name": match.group("name"),
+                "name": name,
                 "declaring_type": declaring_type,
                 "file": relative.as_posix(),
                 "declaration": f"{relative.as_posix()}:{line_number}",
                 "classification": classification,
             }
+            for name in declarator_names
         )
     return declarations
 
@@ -619,9 +596,22 @@ def _missing_expected_tests(path: Path) -> list[str]:
 
 def _expected_test_failure(path: Path, expected_names: tuple[str, ...] | None = None) -> bool:
     """Return whether a named lifecycle test failed in a mutation run."""
-    outcomes = _trx_outcomes(path)
     names = expected_names or EXPECTED_TEST_NAMES
-    return any("Failed" in outcomes.get(name, []) or "Error" in outcomes.get(name, []) for name in names)
+    if not path.is_file():
+        return False
+    try:
+        root = ET.fromstring(path.read_text(encoding="utf-8", errors="replace"))
+    except ET.ParseError:
+        return False
+    for result in root.iter():
+        if not result.tag.endswith("UnitTestResult"):
+            continue
+        name = result.attrib.get("testName", "")
+        if not name.startswith(CANONICAL_TEST_PREFIX):
+            continue
+        if _normalise_test_name(name) in names and result.attrib.get("outcome") in {"Failed", "Error"}:
+            return True
+    return False
 
 
 def _candidate_metadata_issues(candidates: list[dict[str, str]]) -> list[str]:
@@ -828,13 +818,18 @@ def _owner_map(base_sha: str | None = None) -> audit_lib.Check:
                     untrusted_files.append(path.as_posix())
         fields, missing_writers = _collect_owner_fields(matched)
         field_names = {str(value["name"]) for value in fields.values()}
+        combined_masked = "\n".join(
+            _mask_csharp_source((audit_lib.ROOT / path).read_text(encoding="utf-8", errors="replace"))
+            for path in matched
+        )
+        approved_method_names = _lifecycle_called_method_names(combined_masked)
         locks: list[str] = []
         lifetime: list[str] = []
         for relative in matched:
             text = (audit_lib.ROOT / relative).read_text(encoding="utf-8", errors="replace")
             masked = _mask_csharp_source(text)
             scopes = _owner_type_scopes(text, masked, owner)
-            bound_locks, bound_lifetime = _bound_lifecycle_refs(text, relative, masked, scopes, field_names)
+            bound_locks, bound_lifetime = _bound_lifecycle_refs(text, relative, masked, scopes, field_names, approved_method_names)
             locks.extend(bound_locks)
             lifetime.extend(bound_lifetime)
         payload[owner] = {
@@ -909,6 +904,7 @@ def _mutation_checks() -> list[audit_lib.Check]:
     baseline_file = baseline_dir / "baseline-mutation.trx"
     baseline_passed = _trx_passed(baseline_file)
     baseline_missing = _missing_expected_tests(baseline_file)
+    baseline_canonical_issues = _trx_canonical_test_issues(baseline_file)
     checks: list[audit_lib.Check] = []
     for identifier, old, new in (
         ("197-W1-mutation-order", "stopRuntime,\n                resetSensorClock,", "resetSensorClock,\n                stopRuntime,"),
@@ -930,9 +926,17 @@ def _mutation_checks() -> list[audit_lib.Check]:
             mutation_file = mutation_dir / f"{identifier}.trx"
             expected_names = MUTATION_EXPECTED_TESTS[identifier]
             expected_failure = _expected_test_failure(mutation_file, expected_names)
-            okay = baseline["exit_code"] == 0 and not baseline_missing and result["exit_code"] != 0 and expected_failure
+            mutation_canonical_issues = _trx_canonical_test_issues(mutation_file)
+            okay = (
+                baseline["exit_code"] == 0
+                and not baseline_missing
+                and not baseline_canonical_issues
+                and result["exit_code"] != 0
+                and not mutation_canonical_issues
+                and expected_failure
+            )
             status = "PASS" if okay else "FAIL"
-            detail = f"baseline_exit={baseline['exit_code']}; baseline_passed={baseline_passed}; baseline_missing={baseline_missing or 'none'}; mutated_exit={result['exit_code']}; expected_tests={expected_names}; expected_test_failure={expected_failure}"
+            detail = f"baseline_exit={baseline['exit_code']}; baseline_passed={baseline_passed}; baseline_missing={baseline_missing or 'none'}; baseline_canonical_issues={baseline_canonical_issues or 'none'}; mutated_exit={result['exit_code']}; mutation_canonical_issues={mutation_canonical_issues or 'none'}; expected_tests={expected_names}; expected_test_failure={expected_failure}"
             evidence = result["log"]
         except Exception as exc:
             status = "FAIL"
