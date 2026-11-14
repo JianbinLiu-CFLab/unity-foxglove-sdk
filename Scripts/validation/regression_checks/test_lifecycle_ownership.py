@@ -312,6 +312,30 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
             ),
         )
 
+    def test_unsupported_conditional_regions_fail_closed(self) -> None:
+        """Unsupported conditional expressions cannot provide owner evidence."""
+        text = (
+            "#if PHASE197_NEVER_DEFINED\n"
+            "private int _state;\n"
+            "void Set() { _state = 1; Dispose(); lock (_gate) { } }\n"
+            "#else\n"
+            "private int _state;\n"
+            "void Set() { _state = 2; Dispose(); lock (_gate) { } }\n"
+            "#endif\n"
+        )
+        masked = lifecycle_ownership._mask_csharp_source(text)
+        self.assertNotIn("_state", masked)
+
+    def test_writer_evidence_excludes_shadowed_names(self) -> None:
+        """Parameters and locals cannot satisfy an unqualified field writer check."""
+        text = (
+            "private int _state;\n"
+            "void Set(int _state) { _state = 1; }\n"
+            "void Reset() { var _state = 2; _state = 3; }\n"
+        )
+        refs = lifecycle_ownership._writer_refs(text, Path("Packages/pkg/Runtime/Owner.cs"), "_state")
+        self.assertEqual([], refs)
+
     def test_real_owner_map_uses_declared_production_synchronization(self) -> None:
         """The tracked production owner map must close without test-only evidence."""
         check = lifecycle_ownership._owner_map()

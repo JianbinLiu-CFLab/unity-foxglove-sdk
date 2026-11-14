@@ -77,6 +77,7 @@ ATOMIC_WRITE_CALLS = (
     "Interlocked.Or",
     "Volatile.Write",
 )
+PREPROCESSOR_SYMBOLS = {"UNITY_EDITOR": False, "UNITY_2020_3_OR_NEWER": True}
 TYPE_DECLARATION_PATTERN = re.compile(
     r"\b(?:class|struct|record|interface)\s+(?P<name>[A-Za-z_][A-Za-z0-9_]*)"
 )
@@ -87,27 +88,22 @@ FIELD_DECLARATION_PATTERN = re.compile(
     r"(?P<name>_?[A-Za-z][A-Za-z0-9_]*)\s*(?:=|;)"
 )
 
-
 def _check(identifier: str, plan_ref: str, kind: str, status: str, command: str, evidence: str, detail: str) -> audit_lib.Check:
     """Create one audit result."""
     return audit_lib.Check(identifier, plan_ref, kind, status, command, evidence, detail)
-
 
 def _log(identifier: str) -> Path:
     """Return an evidence log path."""
     return OUTPUT / "logs" / f"{identifier}.log"
 
-
 def _run(command: list[str], identifier: str, timeout: float = 180.0, cwd: Path = audit_lib.ROOT) -> dict[str, object]:
     """Run a command and save its output."""
     return audit_lib.run(command, _log(identifier), timeout, cwd)
-
 
 def _git_output(args: list[str], timeout: float = 180.0) -> str:
     """Run a read-only git command and return UTF-8 output."""
     result = subprocess.run(args, cwd=audit_lib.ROOT, env=audit_lib._audit_environment(), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout, check=True)
     return result.stdout
-
 
 def _origin_main_sha() -> str | None:
     """Resolve the fetched origin/main revision without fallback refs."""
@@ -115,7 +111,6 @@ def _origin_main_sha() -> str | None:
         return _git_output(["git", "rev-parse", "--verify", "origin/main^{commit}"]).strip()
     except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
         return None
-
 
 def _mask_csharp_comments_and_strings(text: str) -> str:
     """Mask C# comments and string literals while preserving line positions."""
@@ -229,10 +224,19 @@ def _mask_csharp_comments_and_strings(text: str) -> str:
             continue
         index += 1
     return "".join(chars)
+def _preprocessor_condition(expression: str) -> bool | None:
+    """Evaluate known audit symbols and reject unsupported conditions."""
+    value = expression.strip().lower()
+    if value in {"true", "1"}:
+        return True
+    if value in {"false", "0"}:
+        return False
+    return PREPROCESSOR_SYMBOLS.get(value.upper())
+
 def _mask_inactive_csharp_regions(masked_text: str) -> str:
     """Mask explicitly inactive C# conditional-compilation branches."""
     chars = list(masked_text)
-    frames: list[tuple[bool, bool]] = []
+    frames: list[tuple[bool, bool, bool]] = []
     active = True
     offset = 0
     for line in masked_text.splitlines(keepends=True):
@@ -240,17 +244,25 @@ def _mask_inactive_csharp_regions(masked_text: str) -> str:
         if directive:
             kind, expression = directive.groups()
             if kind == "if":
-                condition_false = expression.strip().lower() in {"false", "0"}
-                branch_active = active and not condition_false
-                frames.append((active, branch_active))
+                condition = _preprocessor_condition(expression)
+                branch_active = active and condition is True
+                frames.append((active, condition is True, condition is None))
                 active = branch_active
             elif frames and kind in {"elif", "else"}:
-                parent, taken = frames[-1]
-                condition_false = kind == "elif" and expression.strip().lower() in {"false", "0"}
-                active = parent and not taken and not condition_false
-                frames[-1] = (parent, True)
+                parent, taken, indeterminate = frames[-1]
+                if indeterminate:
+                    active = False
+                elif kind == "elif":
+                    condition = _preprocessor_condition(expression)
+                    active = parent and not taken and condition is True
+                    indeterminate = condition is None
+                    taken = taken or condition is True
+                else:
+                    active = parent and not taken
+                    taken = True
+                frames[-1] = (parent, taken, indeterminate)
             elif frames:
-                parent, _ = frames.pop()
+                parent, _, _ = frames.pop()
                 active = parent
             offset += len(line)
             continue
@@ -321,6 +333,20 @@ def _nested_receiver_names(masked_texts: dict[Path, str], declaring_type: str) -
         receivers.update(re.findall(r"\bforeach\s*\(\s*var\s+([A-Za-z_][A-Za-z0-9_]*)\s+in\s+[^)]*\.Values", text))
         receivers.update(f"{name}.Value" for name in re.findall(r"\bforeach\s*\(\s*var\s+([A-Za-z_][A-Za-z0-9_]*)\s+in\s+[^)]*\)", text))
     return tuple(sorted(receivers))
+
+def _field_name_is_shadowed(masked_text: str, field: str) -> bool:
+    """Return whether a parameter or local uses the field identifier."""
+    name = re.escape(field)
+    parameter = re.compile(rf"\([^(){{}};]*\b(?:(?:ref|out|in)\s+[A-Za-z_][A-Za-z0-9_<>.,?]*|(?!ref\b|out\b|in\b)[A-Za-z_][A-Za-z0-9_<>.,?]*)\s+{name}\b[^(){{}};]*\)(?=\s*(?:\{{|=>|:))")
+    if parameter.search(masked_text):
+        return True
+    local = re.compile(rf"(?:^|[;{{}}])\s*(?:var|(?!ref\b|out\b|in\b|return\b|if\b|else\b|for\b|foreach\b|while\b|switch\b|case\b|throw\b|new\b|lock\b|using\b|yield\b|await\b|_) [A-Za-z_][A-Za-z0-9_<>.,?]*)\s+{name}\s*(?:=|;|,)", re.MULTILINE | re.VERBOSE)
+    for match in local.finditer(masked_text):
+        prefix = masked_text[max(0, match.start() - 256):match.start()]
+        if not re.search(r"\b(?:private|protected|internal|public)\b[^;{}]*$", prefix):
+            return True
+    return False
+
 def _writer_refs(
     text: str,
     relative: Path,
@@ -339,6 +365,7 @@ def _writer_refs(
         for receiver in qualified_receivers or ()
     )
     field_target = rf"(?:{receiver_pattern})\.{re.escape(field)}\b" if receiver_pattern else rf"\b{re.escape(field)}\b"
+    shadowed = not receiver_pattern and _field_name_is_shadowed(scoped_text, field)
     assignment_pattern = re.compile(
         rf"{field_target}\s*(?:(?<![=!<>])=(?!=)|\+=|-=|\?\?=)"
     )
@@ -349,15 +376,16 @@ def _writer_refs(
         rf"\b(?:{mutator_names})\s*\([^;{{}}]*?(?P<ref>\bref\s+{field_target})",
         re.DOTALL,
     )
-    for pattern in (assignment_pattern, atomic_pattern):
+    if not shadowed:
+        for pattern in (assignment_pattern, atomic_pattern):
+            refs.update(
+                f"{relative.as_posix()}:{text.count(chr(10), 0, scope_start + match.start()) + 1}"
+                for match in pattern.finditer(scoped_text)
+            )
         refs.update(
-            f"{relative.as_posix()}:{text.count(chr(10), 0, scope_start + match.start()) + 1}"
-            for match in pattern.finditer(scoped_text)
+            f"{relative.as_posix()}:{text.count(chr(10), 0, scope_start + match.start('ref')) + 1}"
+            for match in mutator_pattern.finditer(scoped_text)
         )
-    refs.update(
-        f"{relative.as_posix()}:{text.count(chr(10), 0, scope_start + match.start('ref')) + 1}"
-        for match in mutator_pattern.finditer(scoped_text)
-    )
     return sorted(refs)
 
 def _field_declarations(
@@ -508,14 +536,12 @@ def _collect_owner_fields(matched: list[Path]) -> tuple[dict[str, dict[str, obje
             field_data["reason"] = "Unity-serialized or public configuration field"
     return fields, sorted(missing_writers)
 
-
 def _is_production_source(path: str) -> bool:
     """Return whether a source path belongs to a tracked Runtime tree."""
     normalized = path.replace("\\", "/")
     parts = normalized.split("/")
     excluded = {"Editor", "Tests", "Fixtures", "Harness"}
     return normalized.endswith(".cs") and "Runtime" in parts and not any(part in excluded for part in parts)
-
 
 def _source_paths_valid(value: object) -> bool:
     """Return whether a path list contains only production source paths."""
@@ -524,7 +550,6 @@ def _source_paths_valid(value: object) -> bool:
         and bool(value)
         and all(isinstance(path, str) and _is_production_source(path) for path in value)
     )
-
 
 def _source_refs_valid(value: object) -> bool:
     """Return whether source references use a production path and positive line number."""
@@ -537,7 +562,6 @@ def _source_refs_valid(value: object) -> bool:
         if not match or not _is_production_source(match.group(1)):
             return False
     return True
-
 
 def _owner_evidence_valid(data: object) -> bool:
     """Return whether an owner payload contains traceable lifecycle evidence."""
@@ -576,11 +600,9 @@ def _owner_evidence_valid(data: object) -> bool:
             return False
     return True
 
-
 def _normalise_test_name(name: str) -> str:
     """Reduce a TRX test name to its method name."""
     return name.split("(", 1)[0].rsplit(".", 1)[-1]
-
 
 def _trx_outcomes(path: Path) -> dict[str, list[str]]:
     """Return normalized TRX test names and all observed outcomes."""
@@ -600,7 +622,6 @@ def _trx_outcomes(path: Path) -> dict[str, list[str]]:
             outcomes.setdefault(_normalise_test_name(name), []).append(outcome)
     return outcomes
 
-
 def _trx_canonical_test_issues(path: Path) -> list[str]:
     """Return lifecycle results that do not belong to the canonical test class."""
     if not path.is_file():
@@ -617,7 +638,6 @@ def _trx_canonical_test_issues(path: Path) -> list[str]:
         if _normalise_test_name(name) in EXPECTED_TEST_NAMES and not name.startswith(CANONICAL_TEST_PREFIX):
             issues.append(name)
     return sorted(set(issues))
-
 
 def _canonical_test_source_issues(base_sha: str) -> list[str]:
     """Return source or project changes that could replace the canonical suite."""
@@ -653,7 +673,6 @@ def _canonical_test_source_issues(base_sha: str) -> list[str]:
             issues.append(f"canonical project changed:{TEST_PROJECT_REL}")
     return sorted(set(issues))
 
-
 def _missing_expected_tests(path: Path) -> list[str]:
     """Return expected lifecycle tests without exclusively passing TRX results."""
     outcomes = _trx_outcomes(path)
@@ -664,13 +683,11 @@ def _missing_expected_tests(path: Path) -> list[str]:
         or any(outcome != "Passed" for outcome in outcomes.get(name, []))
     )
 
-
 def _expected_test_failure(path: Path, expected_names: tuple[str, ...] | None = None) -> bool:
     """Return whether a named lifecycle test failed in a mutation run."""
     outcomes = _trx_outcomes(path)
     names = expected_names or EXPECTED_TEST_NAMES
     return any("Failed" in outcomes.get(name, []) or "Error" in outcomes.get(name, []) for name in names)
-
 
 def _candidate_metadata_issues(candidates: list[dict[str, str]]) -> list[str]:
     """Return candidate rows that cannot be independently reviewed."""
@@ -684,7 +701,6 @@ def _candidate_metadata_issues(candidates: list[dict[str, str]]) -> list[str]:
         if not row.get("surface") or row.get("surface") == "unknown":
             issues.append(f"{pr}:missing-surface")
     return sorted(set(issues))
-
 
 def _plan_check(base_sha: str) -> audit_lib.Check:
     """Check that the plan records the current-base decision state."""
@@ -709,7 +725,6 @@ def _plan_check(base_sha: str) -> audit_lib.Check:
     detail = f"base={base_sha}; plan_bases={bases}; recorded_base_match={recorded_match}; accepted_stop={accepted_stop}; pending_review={pending_review}; appendix_rows={len(_appendix_labels())}"
     return _check("197-PLAN", "Plan/197... § header and Appendix A", "history", "PASS" if okay else "FAIL", "git rev-parse origin/main; read Plan/197...", "build/plan-audit/lifecycle_ownership/plan.log", detail)
 
-
 def _pr_titles() -> dict[str, str]:
     """Load merged pull-request titles once from GitHub."""
     result = _run(["gh", "pr", "list", "--repo", "JianbinLiu-CFLab/unity-foxglove-sdk", "--state", "merged", "--limit", "1000", "--json", "number,title,mergedAt"], "197-gh-pr-list", 180.0)
@@ -717,7 +732,6 @@ def _pr_titles() -> dict[str, str]:
         raise RuntimeError(str(result["output"]))
     payload = json.loads(str(result["output"]))
     return {str(row["number"]): str(row["title"]) for row in payload}
-
 
 def _history_candidates(base_sha: str) -> tuple[list[dict[str, str]], str]:
     """Build the complete W1.1 candidate set through the audited main revision."""
@@ -749,7 +763,6 @@ def _history_candidates(base_sha: str) -> tuple[list[dict[str, str]], str]:
     (OUTPUT / "history-base.txt").write_text(base_sha + "\n", encoding="utf-8")
     return candidates, str(output.relative_to(audit_lib.ROOT)).replace("\\", "/")
 
-
 def _suggest_label(title: str, subjects: str, paths: list[str]) -> tuple[str, str]:
     """Suggest a root-cause class from reviewable history evidence."""
     text = f"{title}\n{subjects}".lower()
@@ -765,7 +778,6 @@ def _suggest_label(title: str, subjects: str, paths: list[str]) -> tuple[str, st
         return "config", "configuration or contract wording"
     return "local", "single-surface fallback pending human classification"
 
-
 def _appendix_labels() -> list[tuple[str, str]]:
     """Read the historical Appendix A labels when present."""
     text = PLAN.read_text(encoding="utf-8") if PLAN.is_file() else ""
@@ -776,11 +788,9 @@ def _appendix_labels() -> list[tuple[str, str]]:
             labels.append((match.group(1), match.group(2).lower()))
     return labels
 
-
 def _appendix_prs() -> list[str]:
     """Return the Appendix A candidate identifiers in recorded order."""
     return [pr for pr, _ in _appendix_labels()]
-
 
 def _gate_check(candidates: list[dict[str, str]]) -> audit_lib.Check:
     """Recompute the historical and regenerated decision-gate ratios."""
@@ -798,7 +808,6 @@ def _gate_check(candidates: list[dict[str, str]]) -> audit_lib.Check:
     pending = "pending" in plan_status or "regenerat" in plan_status or "provisional" in plan_text.lower()
     status = "NOT_RUN" if not PLAN.is_file() else "FAIL" if not labels_complete else "MANUAL" if pending else "PASS" if not threshold_reached else "FAIL"
     return _check("197-W1-gate", "Plan/197... § Decision gate", "history", status, "git log --first-parent; gh pr list; compare Appendix A with fix-candidates.csv", "build/plan-audit/lifecycle_ownership/fix-candidates.csv", detail)
-
 
 def _scope_check(candidates: list[dict[str, str]], evidence: str, base_sha: str) -> audit_lib.Check:
     """Check that the regenerated candidate identity multiset matches Appendix A."""
@@ -825,7 +834,6 @@ def _scope_check(candidates: list[dict[str, str]], evidence: str, base_sha: str)
     )
     status = "PASS" if okay else "FAIL"
     return _check("197-W1-scope", "Plan/197... § 2 W1.1", "history", status, "python -B -m Scripts.validation.plan_audit.lifecycle_ownership", evidence, detail)
-
 
 def _owner_map() -> audit_lib.Check:
     """Build a compact field, writer, lock, and lifetime map for four owners."""
@@ -857,7 +865,6 @@ def _owner_map() -> audit_lib.Check:
     status = "FAIL" if missing else "PASS"
     return _check("197-W1-ownermap", "Plan/197... § 2 W1.2 and Appendix B", "probe", status, "git ls-files '*.cs'; parse four lifecycle owner surfaces", "build/plan-audit/lifecycle_ownership/owner-map.json", f"owners={len(payload) - len(missing)}/4; missing={missing or 'none'}")
 
-
 def _fresh_results_dir(identifier: str) -> Path:
     """Create an empty per-run TRX directory under the audit output."""
     path = OUTPUT / "TestResults" / identifier
@@ -866,11 +873,9 @@ def _fresh_results_dir(identifier: str) -> Path:
     path.mkdir(parents=True, exist_ok=True)
     return path
 
-
 def _trx_passed(path: Path) -> int:
     """Count passed test results in a TRX file."""
     return sum(outcome == "Passed" for outcomes in _trx_outcomes(path).values() for outcome in outcomes)
-
 
 def _tests_check(base_sha: str) -> audit_lib.Check:
     """Run Manager boundary tests and audit characterization coverage style."""
@@ -898,7 +903,6 @@ def _tests_check(base_sha: str) -> audit_lib.Check:
     okay = result["exit_code"] == 0 and result_file.is_file() and not missing and not canonical_issues
     detail = f"test_exit={result['exit_code']}; passed_tests={passed}; missing_expected_tests={missing or 'none'}; canonical_test_issues={canonical_issues or 'none'}; pr717_test={TEST_REL}"
     return _check("197-W1-tests", "Plan/197... § 2 W1.3", "auto", "PASS" if okay else "FAIL", "dotnet restore ... -p:IncludeManagerProductionBoundary=true; dotnet test --no-restore ... --filter FullyQualifiedName~FoxgloveManagerTeardownTests", result["log"], detail)
-
 
 def _mutation_checks() -> list[audit_lib.Check]:
     """Ensure order and cleanup mutations make passing baseline tests fail."""
@@ -946,7 +950,6 @@ def _mutation_checks() -> list[audit_lib.Check]:
         checks.append(_check(identifier, "Plan/197... § 2 W1.3 mutation", "mutation", status, "dotnet test ... --filter FullyQualifiedName~FoxgloveManagerTeardownTests", evidence, detail))
     return checks
 
-
 def _stop_check() -> audit_lib.Check:
     """Record that W2 and W3 remain stopped until the corrected gate is reviewed."""
     text = PLAN.read_text(encoding="utf-8") if PLAN.is_file() else ""
@@ -956,7 +959,6 @@ def _stop_check() -> audit_lib.Check:
     status = "PASS" if stopped else "FAIL"
     detail = "decision gate stops after W1 pending manual review" if pending and stopped else "decision gate stops after W1" if stopped else "W2/W3 are not started, but the plan does not record that stop"
     return _check("197-W2-W3", "Plan/197... § Decision gate", "history", status, "read Plan/197... decision gate", "build/plan-audit/lifecycle_ownership/plan.log", detail)
-
 
 def _manual_notes(checks: list[audit_lib.Check]) -> None:
     """Write detailed manual review steps required by the plan."""
@@ -971,7 +973,6 @@ def _manual_notes(checks: list[audit_lib.Check]) -> None:
 4. If the Manager characterization tests remain source-text based or lack startup-failure and residue behavior coverage, record the missing test names and whether a separate test PR is required.
 """
     path.write_text(existing.rstrip() + "\n" + extra, encoding="utf-8")
-
 
 def main() -> int:
     """Run the complete Phase197 audit and write evidence artifacts."""
@@ -994,7 +995,6 @@ def main() -> int:
     audit_lib.write_verdict(TOPIC, PHASE, checks, base_sha, OUTPUT, unchanged)
     _manual_notes(checks)
     return 0 if unchanged and all(check.status == "PASS" for check in checks) else 1
-
 
 if __name__ == "__main__":
     raise SystemExit(main())
