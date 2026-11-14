@@ -235,6 +235,7 @@ class PlanAuditLibraryTests(unittest.TestCase):
                 log_path.parent.mkdir(parents=True, exist_ok=True)
                 if command[1:3] == ["run", "list"]:
                     self.assertIn("--commit", command)
+                    self.assertIn("--repo", command)
                     return {
                         "exit_code": 0,
                         "output": '[{"databaseId":123,"headSha":"head","conclusion":"success"}]',
@@ -278,6 +279,10 @@ class PlanAuditLibraryTests(unittest.TestCase):
         """W4 mutation evidence passes only after the recorded workflow run is verified."""
         with tempfile.TemporaryDirectory(dir=audit_lib.BUILD_ROOT) as temp:
             output = Path(temp)
+            mutation_patch = output / "mutation.patch"
+            mutation_patch.write_bytes(b"deliberate compile error")
+            restored_state = output / "restored.json"
+            restored_state.write_text(json.dumps({"worktree_unchanged": True}), encoding="utf-8")
             (output / "w4-mutation.json").write_text(
                 json.dumps(
                     {
@@ -290,8 +295,10 @@ class PlanAuditLibraryTests(unittest.TestCase):
                         "job_name": "unity-distro-compile (lyrical)",
                         "job_conclusion": "failure",
                         "compile_error_observed": True,
-                        "mutation_patch_sha256": "b" * 64,
-                        "restored_worktree_sha256": "c" * 64,
+                        "mutation_patch_file": str(mutation_patch.relative_to(audit_lib.ROOT)).replace("\\", "/"),
+                        "mutation_patch_sha256": hashlib.sha256(mutation_patch.read_bytes()).hexdigest(),
+                        "restored_state_file": str(restored_state.relative_to(audit_lib.ROOT)).replace("\\", "/"),
+                        "restored_worktree_sha256": hashlib.sha256(restored_state.read_bytes()).hexdigest(),
                         "restored": True,
                     }
                 ),
@@ -304,6 +311,12 @@ class PlanAuditLibraryTests(unittest.TestCase):
                 log_path.parent.mkdir(parents=True, exist_ok=True)
                 if "--log-failed" in command:
                     return {"exit_code": 0, "timed_out": False, "output": "error CS1002: compile error"}
+                if command[1:3] == ["workflow", "view"]:
+                    return {
+                        "exit_code": 0,
+                        "timed_out": False,
+                        "output": json.dumps({"id": 999, "path": ".github/workflows/unity-compile.yml", "name": "Unity batch compile and path-aware gate"}),
+                    }
                 self.assertEqual(
                     [
                         "gh",
@@ -313,7 +326,7 @@ class PlanAuditLibraryTests(unittest.TestCase):
                         "--repo",
                         "JianbinLiu-CFLab/unity-foxglove-sdk",
                         "--json",
-                        "databaseId,headSha,workflowName,conclusion,jobs",
+                        "databaseId,headSha,workflowDatabaseId,workflowPath,workflowName,conclusion,jobs",
                     ],
                     command,
                 )
@@ -324,9 +337,11 @@ class PlanAuditLibraryTests(unittest.TestCase):
                         {
                             "databaseId": 123,
                             "headSha": "a" * 40,
+                            "workflowDatabaseId": 999,
+                            "workflowPath": ".github/workflows/unity-compile.yml",
                             "workflowName": "Unity batch compile and path-aware gate",
                             "conclusion": "failure",
-                            "jobs": [{"name": "unity-distro-compile (lyrical)", "conclusion": "failure"}],
+                            "jobs": [{"databaseId": 456, "name": "unity-distro-compile (lyrical)", "conclusion": "failure"}],
                         }
                     ),
                 }
@@ -375,9 +390,13 @@ class PlanAuditLibraryTests(unittest.TestCase):
         self.assertEqual("FAIL", checks[0].status)
 
     def test_w4_mutation_marks_unreadable_run_manual(self) -> None:
-        """A deleted or inaccessible workflow run remains manual rather than passing."""
+        """A supplied evidence file with an inaccessible workflow run fails rather than passing."""
         with tempfile.TemporaryDirectory(dir=audit_lib.BUILD_ROOT) as temp:
             output = Path(temp)
+            mutation_patch = output / "mutation.patch"
+            mutation_patch.write_bytes(b"deliberate compile error")
+            restored_state = output / "restored.json"
+            restored_state.write_text(json.dumps({"worktree_unchanged": True}), encoding="utf-8")
             (output / "w4-mutation.json").write_text(
                 json.dumps(
                     {
@@ -390,8 +409,10 @@ class PlanAuditLibraryTests(unittest.TestCase):
                         "job_name": "unity-distro-compile (lyrical)",
                         "job_conclusion": "failure",
                         "compile_error_observed": True,
-                        "mutation_patch_sha256": "b" * 64,
-                        "restored_worktree_sha256": "c" * 64,
+                        "mutation_patch_file": str(mutation_patch.relative_to(audit_lib.ROOT)).replace("\\", "/"),
+                        "mutation_patch_sha256": hashlib.sha256(mutation_patch.read_bytes()).hexdigest(),
+                        "restored_state_file": str(restored_state.relative_to(audit_lib.ROOT)).replace("\\", "/"),
+                        "restored_worktree_sha256": hashlib.sha256(restored_state.read_bytes()).hexdigest(),
                         "restored": True,
                     }
                 ),
@@ -407,7 +428,7 @@ class PlanAuditLibraryTests(unittest.TestCase):
             checks: list[audit_lib.Check] = []
             with mock.patch.object(unity_coverage.audit_lib, "run", side_effect=fake_audit_run):
                 unity_coverage._w4_mutation(checks, output, "head")
-        self.assertEqual("MANUAL", checks[0].status)
+        self.assertEqual("FAIL", checks[0].status)
 
     def test_w4_mutation_rejects_non_object_evidence(self) -> None:
         """Malformed W4 evidence produces a controlled failure."""

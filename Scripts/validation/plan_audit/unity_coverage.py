@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import subprocess
@@ -13,6 +14,7 @@ from . import audit_lib
 
 PLAN_PATH = "Plan/195_PHASE195_WORKSTREAM_E_UNITY_ACCEPTANCE_HARDENING_PLAN.md"
 WORKFLOW_NAME = "Unity batch compile and path-aware gate"
+WORKFLOW_PATH = ".github/workflows/unity-compile.yml"
 REPOSITORY = "JianbinLiu-CFLab/unity-foxglove-sdk"
 EXPECTED_CASES = {
     "W2": frozenset(
@@ -220,7 +222,7 @@ def _workflow_w4(checks: list[audit_lib.Check], output: Path, head_sha: str | No
     if not head:
         _record(checks, "195-W4", "history", "NOT_RUN", "git rev-parse HEAD", output / "logs" / "w4-history.log", "audited HEAD could not be resolved")
         return
-    command = ["gh", "run", "list", "--workflow", "unity-compile.yml", "--commit", head, "--limit", "20", "--json", "databaseId,headSha,event,conclusion"]
+    command = ["gh", "run", "list", "--repo", REPOSITORY, "--workflow", "unity-compile.yml", "--commit", head, "--limit", "20", "--json", "databaseId,headSha,event,conclusion"]
     result = audit_lib.run(command, output / "logs" / "w4-history.log", 120)
     if result["exit_code"] != 0:
         _record(checks, "195-W4", "history", "NOT_RUN", " ".join(command), output / "logs" / "w4-history.log", "workflow history unavailable")
@@ -254,6 +256,18 @@ def _workflow_w4(checks: list[audit_lib.Check], output: Path, head_sha: str | No
     status = "PASS" if set(verified) == {"humble", "lyrical"} else "MANUAL"
     detail = f"head={head}; verified distro runs={verified or 'none'}; compile-error mutation is a separate manual acceptance"
     _record(checks, "195-W4", "history", status, " ".join(command), output / "logs" / "w4-history.log", detail)
+
+
+def _artifact_file(value: object, output: Path) -> Path | None:
+    """Resolve a manual evidence file while keeping it inside the audit output."""
+    if not isinstance(value, str) or not value.strip():
+        return None
+    path = (audit_lib.ROOT / value).resolve()
+    try:
+        path.relative_to(output.resolve())
+    except ValueError:
+        return None
+    return path
 
 
 def _w4_mutation(checks: list[audit_lib.Check], output: Path, head_sha: str) -> None:
@@ -293,9 +307,27 @@ def _w4_mutation(checks: list[audit_lib.Check], output: Path, head_sha: str) -> 
                     mismatches.append("restored")
                 if payload.get("compile_error_observed") is not True:
                     mismatches.append("compile_error_observed")
+                mutation_patch = _artifact_file(payload.get("mutation_patch_file"), output)
+                restored_state = _artifact_file(payload.get("restored_state_file"), output)
+                if mutation_patch is None or not mutation_patch.is_file():
+                    mismatches.append("mutation_patch_file")
+                if restored_state is None or not restored_state.is_file():
+                    mismatches.append("restored_state_file")
                 for key in ("mutation_patch_sha256", "restored_worktree_sha256"):
                     if not isinstance(payload.get(key), str) or not re.fullmatch(r"[0-9a-fA-F]{64}", payload[key]):
                         mismatches.append(key)
+                if mutation_patch is not None and mutation_patch.is_file() and re.fullmatch(r"[0-9a-fA-F]{64}", str(payload.get("mutation_patch_sha256", ""))):
+                    if hashlib.sha256(mutation_patch.read_bytes()).hexdigest() != payload["mutation_patch_sha256"]:
+                        mismatches.append("mutation_patch_sha256")
+                if restored_state is not None and restored_state.is_file() and re.fullmatch(r"[0-9a-fA-F]{64}", str(payload.get("restored_worktree_sha256", ""))):
+                    if hashlib.sha256(restored_state.read_bytes()).hexdigest() != payload["restored_worktree_sha256"]:
+                        mismatches.append("restored_worktree_sha256")
+                    try:
+                        restored_payload = json.loads(restored_state.read_text(encoding="utf-8"))
+                    except (OSError, json.JSONDecodeError):
+                        restored_payload = {}
+                    if not isinstance(restored_payload, dict) or restored_payload.get("worktree_unchanged") is not True:
+                        mismatches.append("restored_state")
                 run_id = payload.get("run_id")
                 if isinstance(run_id, bool) or not re.fullmatch(r"[0-9]+", str(run_id or "")) or int(run_id) <= 0:
                     mismatches.append("run_id")
@@ -308,14 +340,40 @@ def _w4_mutation(checks: list[audit_lib.Check], output: Path, head_sha: str) -> 
                     status = "FAIL"
                     detail = f"head={payload.get('audited_head_sha', 'missing')}; run_id={run_id or 'missing'}; mismatches={mismatches}"
                 else:
+                    workflow_identity = audit_lib.run(
+                        ["gh", "workflow", "view", "unity-compile.yml", "--repo", REPOSITORY, "--json", "id,path,name"],
+                        output / "logs" / "w4-mutation-workflow.log",
+                        120,
+                    )
+                    if workflow_identity.get("timed_out") or workflow_identity.get("exit_code") != 0:
+                        status = "FAIL"
+                        detail = f"head={head_sha}; run_id={run_id}; canonical workflow identity could not be read"
+                        log.write_text(detail + "\n", encoding="utf-8")
+                        _record(checks, "195-W4-mutation", "mutation", status, "read build/plan-audit/unity_acceptance/w4-mutation.json", evidence, detail)
+                        return
+                    try:
+                        workflow_payload = json.loads(str(workflow_identity.get("output", "")))
+                    except json.JSONDecodeError:
+                        workflow_payload = {}
+                    if (
+                        not isinstance(workflow_payload, dict)
+                        or workflow_payload.get("path") != WORKFLOW_PATH
+                        or workflow_payload.get("name") != WORKFLOW_NAME
+                        or not re.fullmatch(r"[0-9]+", str(workflow_payload.get("id", "")))
+                    ):
+                        status = "FAIL"
+                        detail = f"head={head_sha}; run_id={run_id}; canonical workflow identity mismatch"
+                        log.write_text(detail + "\n", encoding="utf-8")
+                        _record(checks, "195-W4-mutation", "mutation", status, "read build/plan-audit/unity_acceptance/w4-mutation.json", evidence, detail)
+                        return
                     run_log = output / "logs" / f"w4-mutation-run-{run_id}.log"
                     verified_run = audit_lib.run(
-                        ["gh", "run", "view", str(run_id), "--repo", REPOSITORY, "--json", "databaseId,headSha,workflowName,conclusion,jobs"],
+                        ["gh", "run", "view", str(run_id), "--repo", REPOSITORY, "--json", "databaseId,headSha,workflowDatabaseId,workflowPath,workflowName,conclusion,jobs"],
                         run_log,
                         120,
                     )
                     if verified_run.get("timed_out") or verified_run.get("exit_code") != 0:
-                        status = "MANUAL"
+                        status = "FAIL"
                         detail = f"head={head_sha}; run_id={run_id}; workflow run could not be read"
                     else:
                         try:
@@ -325,11 +383,16 @@ def _w4_mutation(checks: list[audit_lib.Check], output: Path, head_sha: str) -> 
                             detail = f"head={head_sha}; run_id={run_id}; workflow response is not valid JSON: {exc}"
                         else:
                             jobs = run_payload.get("jobs") if isinstance(run_payload, dict) else None
-                            job_verified = isinstance(jobs, list) and any(
-                                isinstance(job, dict)
-                                and job.get("name") == expected["job_name"]
-                                and job.get("conclusion") == expected["job_conclusion"]
-                                for job in jobs
+                            lyrical_job = next(
+                                (
+                                    job
+                                    for job in jobs or []
+                                    if isinstance(job, dict)
+                                    and job.get("name") == expected["job_name"]
+                                    and job.get("conclusion") == expected["job_conclusion"]
+                                    and re.fullmatch(r"[0-9]+", str(job.get("databaseId", "")))
+                                ),
+                                None,
                             )
                             if not isinstance(run_payload, dict) or str(run_payload.get("databaseId")) != str(run_id):
                                 status = "FAIL"
@@ -337,16 +400,19 @@ def _w4_mutation(checks: list[audit_lib.Check], output: Path, head_sha: str) -> 
                             elif run_payload.get("headSha") != mutation_head_sha:
                                 status = "FAIL"
                                 detail = f"head={head_sha}; run_id={run_id}; workflow headSha mismatch"
+                            elif str(run_payload.get("workflowDatabaseId")) != str(workflow_payload["id"]) or run_payload.get("workflowPath") != WORKFLOW_PATH:
+                                status = "FAIL"
+                                detail = f"head={head_sha}; run_id={run_id}; workflow path or id mismatch"
                             elif run_payload.get("workflowName") != WORKFLOW_NAME or run_payload.get("conclusion") != "failure":
                                 status = "FAIL"
                                 detail = f"head={head_sha}; run_id={run_id}; workflow identity or conclusion mismatch"
-                            elif not job_verified:
+                            elif lyrical_job is None:
                                 status = "FAIL"
                                 detail = f"head={head_sha}; run_id={run_id}; expected failed Lyrical compile job was not observed"
                             else:
                                 failed_log = output / "logs" / f"w4-mutation-failed-{run_id}.log"
                                 log_result = audit_lib.run(
-                                    ["gh", "run", "view", str(run_id), "--repo", REPOSITORY, "--log-failed"],
+                                    ["gh", "run", "view", str(run_id), "--repo", REPOSITORY, "--job", str(lyrical_job["databaseId"]), "--log-failed"],
                                     failed_log,
                                     120,
                                 )
@@ -355,7 +421,7 @@ def _w4_mutation(checks: list[audit_lib.Check], output: Path, head_sha: str) -> 
                                     str(log_result.get("output", "")),
                                 )
                                 if log_result.get("timed_out") or log_result.get("exit_code") != 0:
-                                    status = "MANUAL"
+                                    status = "FAIL"
                                     detail = f"head={head_sha}; run_id={run_id}; failed-job log could not be read"
                                 elif not compile_error:
                                     status = "FAIL"
@@ -371,7 +437,7 @@ def _w4_mutation(checks: list[audit_lib.Check], output: Path, head_sha: str) -> 
                                     )
                                     parent_tokens = str(ancestry.stdout).strip().split()
                                     if ancestry.returncode != 0:
-                                        status = "MANUAL"
+                                        status = "FAIL"
                                         detail = f"head={head_sha}; run_id={run_id}; mutation commit ancestry could not be verified"
                                     elif len(parent_tokens) < 2 or parent_tokens[1] != head_sha:
                                         status = "FAIL"
@@ -482,5 +548,5 @@ def manual_steps(checks: list[audit_lib.Check]) -> str:
 1. Obtain approval to dispatch one run for Humble and one for Lyrical on `main`.
 2. Record selected package, runner path on `D:`, independent `Library` directory, compile command, and run id.
 3. Verify the manifest is restored in an `if: always()` step and `git status --porcelain` is clean.
-4. Treat the disposable Lyrical compile-error run as manual acceptance. If recording it, use a branch based directly on the audited `HEAD`, inject one compile error, confirm batch compile fails, and write `build/plan-audit/unity_acceptance/w4-mutation.json` with `audited_head_sha`, `mutation_head_sha`, `mutation_parent_sha`, numeric `run_id`, `distro=lyrical`, `mutation=compile-error`, `compile_error_observed=true`, 64-character `mutation_patch_sha256`, 64-character `restored_worktree_sha256`, and `restored=true`. The audit verifies the live workflow run, failed-job log, direct parent, and requires a fresh record for every new audited commit. This manual check is reported separately from the automatic DoD.
+4. Treat the disposable Lyrical compile-error run as manual acceptance. If recording it, use a branch based directly on the audited `HEAD`, inject one compile error, confirm batch compile fails, save the mutation patch and a JSON restore record with `worktree_unchanged=true` under the audit output, and write `build/plan-audit/unity_acceptance/w4-mutation.json` with `audited_head_sha`, `mutation_head_sha`, `mutation_parent_sha`, numeric `run_id`, `distro=lyrical`, `mutation=compile-error`, `compile_error_observed=true`, `mutation_patch_file`, `mutation_patch_sha256`, `restored_state_file`, `restored_worktree_sha256`, and `restored=true`. The audit verifies the canonical workflow, failed Lyrical job log, direct parent, and artifact hashes, and requires a fresh record for every new audited commit. This manual check is reported separately from the automatic DoD.
 """
