@@ -23,6 +23,24 @@ SCRIPT_REL = "Scripts/validation/plan_audit/lifecycle_ownership.py"
 TEST_REL = "Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxRun/FoxgloveManagerTeardownTests.cs"
 TEARDOWN_REL = "Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManagerTeardownState.cs"
 KEYWORDS = re.compile(r"fix|bug|repair|restore|regression|broken|hotfix", re.IGNORECASE)
+LIFETIME_WORDS = re.compile(
+    r"\b(?:OnEnable|OnDisable|OnDestroy|StartServer|StopServer|CleanupStartupAfterFailure|Dispose|Reset|Connect|Disconnect)\b"
+)
+EXPECTED_TEST_NAMES = (
+    "DisableTeardownRunsEveryMandatoryStepInOrderAndRethrowsFirstFatal",
+    "DestroyTeardownRunsEveryMandatoryStepInOrderAndRethrowsFirstFatal",
+    "StopServerTailRunsAfterRuntimeStopFailureAndRethrowsFirstFatal",
+    "StartupFailureCleanupPolicyRunsEveryStepAndReportsFailures",
+    "StartupFailureCleanupWiringContainsEveryProductionStep",
+    "PreTailCleanupRunsEveryStepAndReturnsTheFirstFailure",
+    "StopServerTailRunsEveryCleanupStepAfterMultipleFailures",
+    "EarlyCleanupContinuesAfterSeveralRegistrationFailures",
+    "RuntimeDisposeRetryReportsTransientFailureAndReleasesReference",
+    "RuntimeDisposeRetryDoesNotRepeatSuccessfulDispose",
+    "RuntimeDisposeRetryRethrowsFirstFailureAndKeepsReferenceWhenBothAttemptsFail",
+    "RuntimeDisposeRetryDoesNotRepeatDisposeWhenReferenceReleaseFails",
+    "StopServerRunsForActiveOrPendingRuntimeOwnership",
+)
 
 
 def _check(identifier: str, plan_ref: str, kind: str, status: str, command: str, evidence: str, detail: str) -> audit_lib.Check:
@@ -46,21 +64,117 @@ def _git_output(args: list[str], timeout: float = 180.0) -> str:
     return result.stdout
 
 
+def _origin_main_sha() -> str | None:
+    """Resolve the fetched origin/main revision without fallback refs."""
+    try:
+        return _git_output(["git", "rev-parse", "--verify", "origin/main^{commit}"]).strip()
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        return None
+
+
+def _plan_bases(text: str) -> dict[str, str]:
+    """Read only the current explicit Plan base fields."""
+    fields: dict[str, str] = {}
+    for field in ("Audit base", "Entry base"):
+        pattern = re.compile(rf"^{re.escape(field)}:\s*`origin/main == ([0-9a-f]{{40}})`(?:\s*\(.*\))?\.?$")
+        for line in text.splitlines():
+            match = pattern.fullmatch(line.strip())
+            if match:
+                fields[field] = match.group(1)
+                break
+    return fields
+
+
+def _line_refs(text: str, relative: Path, pattern: re.Pattern[str]) -> list[str]:
+    """Return source locations matching a lifecycle evidence pattern."""
+    return [
+        f"{relative.as_posix()}:{line_number}"
+        for line_number, line in enumerate(text.splitlines(), 1)
+        if pattern.search(line)
+    ]
+
+
+def _owner_evidence_valid(data: object) -> bool:
+    """Return whether an owner payload contains traceable lifecycle evidence."""
+    if not isinstance(data, dict) or not data.get("files") or not data.get("fields"):
+        return False
+    fields = data["fields"]
+    if not isinstance(fields, dict) or not any(int(value.get("assignments", 0)) > 0 for value in fields.values() if isinstance(value, dict)):
+        return False
+    return bool(data.get("lifetime"))
+
+
+def _normalise_test_name(name: str) -> str:
+    """Reduce a TRX test name to its method name."""
+    return name.rsplit(".", 1)[-1].split("(", 1)[0]
+
+
+def _trx_outcomes(path: Path) -> dict[str, list[str]]:
+    """Return normalized TRX test names and all observed outcomes."""
+    if not path.is_file():
+        return {}
+    try:
+        root = ET.fromstring(path.read_text(encoding="utf-8", errors="replace"))
+    except ET.ParseError:
+        return {}
+    outcomes: dict[str, list[str]] = {}
+    for result in root.iter():
+        if not result.tag.endswith("UnitTestResult"):
+            continue
+        name = result.attrib.get("testName", "")
+        outcome = result.attrib.get("outcome", "")
+        if name and outcome:
+            outcomes.setdefault(_normalise_test_name(name), []).append(outcome)
+    return outcomes
+
+
+def _missing_expected_tests(path: Path) -> list[str]:
+    """Return expected lifecycle tests without a passing TRX result."""
+    outcomes = _trx_outcomes(path)
+    return sorted(name for name in EXPECTED_TEST_NAMES if "Passed" not in outcomes.get(name, []))
+
+
+def _expected_test_failure(path: Path) -> bool:
+    """Return whether a named lifecycle test failed in a mutation run."""
+    outcomes = _trx_outcomes(path)
+    return any("Failed" in outcomes.get(name, []) or "Error" in outcomes.get(name, []) for name in EXPECTED_TEST_NAMES)
+
+
+def _candidate_metadata_issues(candidates: list[dict[str, str]]) -> list[str]:
+    """Return candidate rows that cannot be independently reviewed."""
+    issues: list[str] = []
+    for row in candidates:
+        pr = row.get("pr", "unknown")
+        if not row.get("title"):
+            issues.append(f"{pr}:missing-title")
+        if not re.fullmatch(r"[0-9a-f]{40}", row.get("merge_sha", "")):
+            issues.append(f"{pr}:invalid-merge-sha")
+        if not row.get("surface") or row.get("surface") == "unknown":
+            issues.append(f"{pr}:missing-surface")
+    return sorted(set(issues))
+
+
 def _plan_check(base_sha: str) -> audit_lib.Check:
     """Check that the plan records the current-base decision state."""
-    text = PLAN.read_text(encoding="utf-8") if PLAN.is_file() else ""
     plan_log = _log("197-PLAN")
     plan_log.parent.mkdir(parents=True, exist_ok=True)
-    plan_log.write_text(text or "PLAN_FILE_MISSING\n", encoding="utf-8")
+    if not PLAN.is_file():
+        plan_log.write_text("PLAN_FILE_MISSING\n", encoding="utf-8")
+        return _check("197-PLAN", "Plan/197... § header and Appendix A", "environment", "NOT_RUN", "read Plan/197...", str(plan_log), "Plan197 is ignored local input and is unavailable in this checkout")
+    text = PLAN.read_text(encoding="utf-8")
+    plan_log.write_text(text, encoding="utf-8")
     status = next((line for line in text.splitlines() if line.startswith("Status:")), "")
     status_lower = status.lower()
     accepted_stop = "phase stops after w1" in status_lower and "below the 20% decision gate" in status_lower
     pending_review = "w1" in status_lower and ("pending" in status_lower or "regenerat" in status_lower)
     appendix_note = len(_appendix_labels()) > 0
-    recorded = re.search(r"Audit base: `origin/main == ([0-9a-f]{40})`", text) or re.search(r"Entry base: `origin/main == ([0-9a-f]{40})`", text)
-    recorded_match = recorded is not None and recorded.group(1) == base_sha
+    bases = _plan_bases(text)
+    origin_main = _origin_main_sha()
+    if origin_main is None:
+        return _check("197-PLAN", "Plan/197... § header and Appendix A", "environment", "NOT_RUN", "git rev-parse --verify origin/main; read Plan/197...", str(plan_log), "origin/main is unavailable in this checkout")
+    recorded_match = origin_main == base_sha and bases.get("Audit base") == origin_main and bases.get("Entry base") == origin_main
     okay = recorded_match and appendix_note and (accepted_stop or pending_review)
-    detail = f"base={base_sha}; recorded_base_match={recorded_match}; accepted_stop={accepted_stop}; pending_review={pending_review}; appendix_rows={len(_appendix_labels())}"
+    detail = f"base={base_sha}; plan_bases={bases}; recorded_base_match={recorded_match}; accepted_stop={accepted_stop}; pending_review={pending_review}; appendix_rows={len(_appendix_labels())}"
     return _check("197-PLAN", "Plan/197... § header and Appendix A", "history", "PASS" if okay else "FAIL", "git rev-parse origin/main; read Plan/197...", "build/plan-audit/lifecycle_ownership/plan.log", detail)
 
 
@@ -93,11 +207,11 @@ def _history_candidates(base_sha: str) -> tuple[list[dict[str, str]], str]:
         paths = _git_output(["git", "diff-tree", "-m", "--no-commit-id", "--name-only", "-r", merge], 180.0).splitlines()
         surface = ";".join(sorted({path.split("/")[0] for path in paths if path})) or "unknown"
         suggested, reason = _suggest_label(title, subjects, paths)
-        candidates.append({"pr": pr, "title": title, "merged_at": merged_at, "surface": surface, "suggested_label": suggested, "reason": reason})
+        candidates.append({"pr": pr, "title": title, "merge_sha": merge, "merged_at": merged_at, "surface": surface, "suggested_label": suggested, "reason": reason})
     output = OUTPUT / "fix-candidates.csv"
     output.parent.mkdir(parents=True, exist_ok=True)
     with output.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=["pr", "title", "merged_at", "surface", "suggested_label", "reason"])
+        writer = csv.DictWriter(handle, fieldnames=["pr", "title", "merge_sha", "merged_at", "surface", "suggested_label", "reason"])
         writer.writeheader()
         writer.writerows(candidates)
     (OUTPUT / "history-base.txt").write_text(base_sha + "\n", encoding="utf-8")
@@ -142,11 +256,15 @@ def _gate_check(candidates: list[dict[str, str]]) -> audit_lib.Check:
     appendix_cross = sum(label in {"cross-lifecycle", "cross-state"} for _, label in appendix)
     candidate_cross = sum(row["suggested_label"] in {"cross-lifecycle", "cross-state"} for row in candidates)
     threshold = math.ceil(len(candidates) * 0.2) if candidates else 0
-    detail = f"appendix={appendix_cross}/{len(appendix)}; regenerated={candidate_cross}/{len(candidates)}; cross_fix_needed_for_20_percent={max(0, threshold - candidate_cross)}"
+    appendix_counts = Counter(pr for pr, _ in appendix)
+    candidate_counts = Counter(row["pr"] for row in candidates)
+    labels_complete = bool(candidates) and appendix_counts == candidate_counts
+    threshold_reached = appendix_cross >= threshold if candidates else False
+    detail = f"appendix={appendix_cross}/{len(appendix)}; regenerated={candidate_cross}/{len(candidates)}; threshold={threshold}; threshold_reached={threshold_reached}; labels_complete={labels_complete}; cross_fix_needed_for_20_percent={max(0, threshold - appendix_cross)}"
     plan_text = PLAN.read_text(encoding="utf-8") if PLAN.is_file() else ""
     plan_status = next((line for line in plan_text.splitlines() if line.startswith("Status:")), "").lower()
     pending = "pending" in plan_status or "regenerat" in plan_status or "provisional" in plan_text.lower()
-    status = "NOT_RUN" if not PLAN.is_file() else "FAIL" if len(candidates) != len(appendix) else "MANUAL" if pending else "PASS" if candidate_cross < threshold else "FAIL"
+    status = "NOT_RUN" if not PLAN.is_file() else "FAIL" if not labels_complete else "MANUAL" if pending else "PASS" if not threshold_reached else "FAIL"
     return _check("197-W1-gate", "Plan/197... § Decision gate", "history", status, "git log --first-parent; gh pr list; compare Appendix A with fix-candidates.csv", "build/plan-audit/lifecycle_ownership/fix-candidates.csv", detail)
 
 
@@ -164,13 +282,14 @@ def _scope_check(candidates: list[dict[str, str]], evidence: str, base_sha: str)
     unknown_candidates = candidate_counts.get("unknown", 0)
     identity_match = appendix_counts == candidate_counts
     unknown_explicit = unknown_appendix == unknown_candidates
-    okay = bool(candidates) and identity_match and not duplicate_appendix and not duplicate_candidates and unknown_explicit
+    metadata_issues = _candidate_metadata_issues(candidates)
+    okay = bool(candidates) and identity_match and not duplicate_appendix and not duplicate_candidates and unknown_explicit and not metadata_issues
     detail = (
         f"regenerated_candidates={len(candidates)}; appendix_rows={len(appendix_prs)}; base={base_sha}; "
         f"identity_match={identity_match}; duplicate_appendix={duplicate_appendix}; "
         f"duplicate_regenerated={duplicate_candidates}; missing={missing}; extra={extra}; "
         f"unknown_appendix={unknown_appendix}; unknown_regenerated={unknown_candidates}; "
-        f"unknown_explicit={unknown_explicit}"
+        f"unknown_explicit={unknown_explicit}; metadata_issues={metadata_issues or 'none'}"
     )
     status = "PASS" if okay else "FAIL"
     return _check("197-W1-scope", "Plan/197... § 2 W1.1", "history", status, "python -B -m Scripts.validation.plan_audit.lifecycle_ownership", evidence, detail)
@@ -184,14 +303,21 @@ def _owner_map() -> audit_lib.Check:
     for owner, pattern in patterns.items():
         matched = [path for path in files if fnmatch.fnmatch(path.name, pattern) or (owner == "Ros2BridgeWorkerLease" and "Ros2BridgeWorkerLease" in str(path))]
         fields: dict[str, dict[str, object]] = {}
+        locks: list[str] = []
+        lifetime: list[str] = []
         for relative in matched:
             text = (audit_lib.ROOT / relative).read_text(encoding="utf-8", errors="replace")
+            locks.extend(_line_refs(text, relative, re.compile(r"\block\s*\(")))
+            lifetime.extend(_line_refs(text, relative, LIFETIME_WORDS))
             for field in re.findall(r"\b(?:private|protected|internal|public)\s+(?:readonly\s+)?[A-Za-z0-9_<>,.?]+\s+(_?[A-Za-z][A-Za-z0-9_]*)\s*(?:=|;)", text):
-                fields.setdefault(field, {"files": [], "assignments": 0, "locks": text.count("lock ("), "lifetime": "enable/server/replay/connection/worker (manual review)"})["files"].append(str(relative).replace("\\", "/"))
-                fields[field]["assignments"] = int(fields[field]["assignments"]) + len(re.findall(rf"\b{re.escape(field)}\s*=", text))
-        payload[owner] = {"files": [str(path).replace("\\", "/") for path in matched], "fields": fields}
+                field_data = fields.setdefault(field, {"files": [], "assignments": 0, "writers": []})
+                field_data["files"].append(str(relative).replace("\\", "/"))
+                writer_refs = _line_refs(text, relative, re.compile(rf"\b{re.escape(field)}\s*(?:=|\+=|-=|\?\?=)"))
+                field_data["assignments"] = int(field_data["assignments"]) + len(writer_refs)
+                field_data["writers"].extend(writer_refs)
+        payload[owner] = {"files": [str(path).replace("\\", "/") for path in matched], "fields": fields, "locks": locks, "lifetime": lifetime}
     (OUTPUT / "owner-map.json").write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-    missing = [owner for owner, data in payload.items() if not data["files"]]
+    missing = [owner for owner, data in payload.items() if not _owner_evidence_valid(data)]
     status = "FAIL" if missing else "PASS"
     return _check("197-W1-ownermap", "Plan/197... § 2 W1.2 and Appendix B", "probe", status, "git ls-files '*.cs'; parse four lifecycle owner surfaces", "build/plan-audit/lifecycle_ownership/owner-map.json", f"owners={len(payload) - len(missing)}/4; missing={missing or 'none'}")
 
@@ -207,13 +333,7 @@ def _fresh_results_dir(identifier: str) -> Path:
 
 def _trx_passed(path: Path) -> int:
     """Count passed test results in a TRX file."""
-    if not path.is_file():
-        return 0
-    try:
-        root = ET.fromstring(path.read_text(encoding="utf-8", errors="replace"))
-    except ET.ParseError:
-        return 0
-    return sum(1 for result in root.iter() if result.tag.endswith("UnitTestResult") and result.attrib.get("outcome") == "Passed")
+    return sum(outcome == "Passed" for outcomes in _trx_outcomes(path).values() for outcome in outcomes)
 
 
 def _tests_check() -> audit_lib.Check:
@@ -224,15 +344,11 @@ def _tests_check() -> audit_lib.Check:
     result_dir = _fresh_results_dir("focused")
     command = ["dotnet", "test", "--no-restore", "Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj", "-p:IncludeManagerProductionBoundary=true", "--filter", "FullyQualifiedName~FoxgloveManagerTeardownTests", "--logger", "trx;LogFileName=lifecycle-ownership.trx", "--results-directory", str(result_dir.relative_to(audit_lib.ROOT))]
     result = _run(command, "197-W1-tests", 600.0)
-    text = (audit_lib.ROOT / TEST_REL).read_text(encoding="utf-8", errors="replace")
     result_file = result_dir / "lifecycle-ownership.trx"
     passed = _trx_passed(result_file)
-    source_text = "TestSources.Text" in text or "ExtractMethod" in text
-    required = {"StopServer", "DisableTeardown", "DestroyTeardown", "StartupFailure", "EarlyCleanup"}
-    present = {name for name in required if name.lower() in text.lower()}
-    missing = sorted(required - present)
-    okay = result["exit_code"] == 0 and passed > 0 and not source_text and not missing
-    detail = f"test_exit={result['exit_code']}; passed_tests={passed}; source_text_checks={source_text}; missing_paths={missing}; pr717_test={TEST_REL}"
+    missing = _missing_expected_tests(result_file)
+    okay = result["exit_code"] == 0 and result_file.is_file() and not missing
+    detail = f"test_exit={result['exit_code']}; passed_tests={passed}; missing_expected_tests={missing or 'none'}; pr717_test={TEST_REL}"
     return _check("197-W1-tests", "Plan/197... § 2 W1.3", "auto", "PASS" if okay else "FAIL", "dotnet restore ... -p:IncludeManagerProductionBoundary=true; dotnet test --no-restore ... --filter FullyQualifiedName~FoxgloveManagerTeardownTests", result["log"], detail)
 
 
@@ -247,7 +363,9 @@ def _mutation_checks() -> list[audit_lib.Check]:
         str(baseline_dir.relative_to(audit_lib.ROOT)),
     ]
     baseline = _run(baseline_command, "197-W1-mutation-baseline", 600.0)
-    baseline_passed = _trx_passed(baseline_dir / "baseline-mutation.trx")
+    baseline_file = baseline_dir / "baseline-mutation.trx"
+    baseline_passed = _trx_passed(baseline_file)
+    baseline_missing = _missing_expected_tests(baseline_file)
     checks: list[audit_lib.Check] = []
     for identifier, old, new in (
         ("197-W1-mutation-order", "stopRuntime,\n                resetSensorClock,", "resetSensorClock,\n                stopRuntime,"),
@@ -266,9 +384,11 @@ def _mutation_checks() -> list[audit_lib.Check]:
                     identifier,
                     600.0,
                 )
-            okay = baseline["exit_code"] == 0 and baseline_passed > 0 and result["exit_code"] != 0
+            mutation_file = mutation_dir / f"{identifier}.trx"
+            expected_failure = _expected_test_failure(mutation_file)
+            okay = baseline["exit_code"] == 0 and not baseline_missing and result["exit_code"] != 0 and expected_failure
             status = "PASS" if okay else "FAIL"
-            detail = f"baseline_exit={baseline['exit_code']}; baseline_passed={baseline_passed}; mutated_exit={result['exit_code']}"
+            detail = f"baseline_exit={baseline['exit_code']}; baseline_passed={baseline_passed}; baseline_missing={baseline_missing or 'none'}; mutated_exit={result['exit_code']}; expected_test_failure={expected_failure}"
             evidence = result["log"]
         except Exception as exc:
             status = "FAIL"
