@@ -174,12 +174,15 @@ def _owner_source_is_trusted(path: Path, owner: str, masked_text: str, base_path
     return path.as_posix() in base_paths and _owner_source_is_canonical(path, owner, masked_text)
 
 
-def _owner_base_paths(owner: str) -> set[str]:
-    """Return canonical owner source paths tracked by origin/main."""
-    return set(
-        _git_output(["git", "ls-tree", "-r", "--name-only", "origin/main", "--", OWNER_PATH_PREFIXES[owner]])
-        .splitlines()
-    )
+def _owner_base_paths(owner: str, base_revision: str) -> set[str] | None:
+    """Return canonical owner source paths tracked by the audit base."""
+    try:
+        return set(
+            _git_output(["git", "ls-tree", "-r", "--name-only", base_revision, "--", OWNER_PATH_PREFIXES[owner]])
+            .splitlines()
+        )
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        return None
 
 
 def _is_declaration_assignment(masked_text: str, position: int) -> bool:
@@ -777,12 +780,33 @@ def _scope_check(candidates: list[dict[str, str]], evidence: str, base_sha: str)
     return _check("197-W1-scope", "Plan/197... § 2 W1.1", "history", status, "python -B -m Scripts.validation.plan_audit.lifecycle_ownership", evidence, detail)
 
 
-def _owner_map() -> audit_lib.Check:
+def _owner_map(base_sha: str | None = None) -> audit_lib.Check:
     """Build a compact field, writer, lock, and lifetime map for four owners."""
+    base_revision = base_sha or _origin_main_sha()
+    if base_revision is None:
+        return _check(
+            "197-W1-ownermap",
+            "Plan/197... § 2 W1.2 and Appendix B",
+            "environment",
+            "NOT_RUN",
+            "git rev-parse origin/main; git ls-tree origin/main",
+            "build/plan-audit/lifecycle_ownership/owner-map.json",
+            "origin/main is unavailable; owner source base cannot be verified",
+        )
     files = [Path(path) for path in _git_output(["git", "ls-files", "*.cs"]).splitlines() if _is_production_source(path)]
     payload: dict[str, object] = {}
     for owner, pattern in OWNER_PATTERNS.items():
-        base_paths = _owner_base_paths(owner)
+        base_paths = _owner_base_paths(owner, base_revision)
+        if base_paths is None:
+            return _check(
+                "197-W1-ownermap",
+                "Plan/197... § 2 W1.2 and Appendix B",
+                "environment",
+                "NOT_RUN",
+                f"git ls-tree {base_revision} {OWNER_PATH_PREFIXES[owner]}",
+                "build/plan-audit/lifecycle_ownership/owner-map.json",
+                f"owner base paths are unavailable for {owner}",
+            )
         matched: list[Path] = []
         untrusted_files: list[str] = []
         for path in files:
@@ -953,7 +977,7 @@ def main() -> int:
     checks: list[audit_lib.Check] = [_plan_check(base_sha)]
     try:
         candidates, evidence = _history_candidates(base_sha)
-        checks.extend([_scope_check(candidates, evidence, base_sha), _gate_check(candidates), _owner_map(), _tests_check(base_sha)])
+        checks.extend([_scope_check(candidates, evidence, base_sha), _gate_check(candidates), _owner_map(base_sha), _tests_check(base_sha)])
         checks.extend(_mutation_checks())
     except Exception as exc:
         checks.append(_check("197-W1-scope", "Plan/197... § 2 W1.1", "history", "NOT_RUN", "python -B -m Scripts.validation.plan_audit.lifecycle_ownership", "build/plan-audit/lifecycle_ownership/logs/exception.log", str(exc)))

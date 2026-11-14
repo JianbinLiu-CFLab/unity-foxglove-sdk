@@ -486,6 +486,13 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
         self.assertIn("FoxgloveManager::_clientConnectedForwarder", manager["fields"])
         self.assertEqual([], manager["missing_writers"])
 
+    def test_owner_map_reports_missing_audit_base(self) -> None:
+        """A checkout without the audit base returns a controlled NOT_RUN result."""
+        with mock.patch.object(lifecycle_ownership, "_origin_main_sha", return_value=None):
+            check = lifecycle_ownership._owner_map()
+        self.assertEqual("NOT_RUN", check.status)
+        self.assertIn("origin/main", check.detail)
+
     def test_owner_fields_key_same_names_by_declaring_type(self) -> None:
         """Same-named fields in nested owner types retain separate evidence."""
         with tempfile.TemporaryDirectory() as temp:
