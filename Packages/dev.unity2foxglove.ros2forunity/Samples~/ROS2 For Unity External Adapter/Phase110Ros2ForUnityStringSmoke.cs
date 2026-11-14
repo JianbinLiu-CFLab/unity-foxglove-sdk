@@ -345,7 +345,7 @@ public sealed class Phase110Ros2ForUnityStringSmoke : MonoBehaviour
 
     private void DisposeDirectEndpoints()
     {
-        if (_directRos2Unity == null)
+        if (ReferenceEquals(_directRos2Unity, null))
         {
             _directSubscription = null;
             _directPublisher = null;
@@ -384,7 +384,7 @@ public sealed class Phase110Ros2ForUnityStringSmoke : MonoBehaviour
         if (cleanupFailed || _directRos2Node != null || _directSubscription != null || _directPublisher != null)
             return;
 
-        if (_ownsDirectRos2Unity && _directRos2Unity != null)
+        if (_ownsDirectRos2Unity && !ReferenceEquals(_directRos2Unity, null))
             Destroy(_directRos2Unity);
         _directRos2Unity = null;
         _ownsDirectRos2Unity = false;
