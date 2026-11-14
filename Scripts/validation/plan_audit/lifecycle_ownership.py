@@ -62,6 +62,20 @@ OWNER_SYNC_MODES = {
     "ReplayController": "replay locks",
     "Ros2BridgeWorkerLease": "worker lease locks",
 }
+KNOWN_REF_MUTATORS = ("TryCleanup", "WarningDebouncer.TryUpdateCooldown")
+ATOMIC_WRITE_CALLS = (
+    "Interlocked.Add",
+    "Interlocked.And",
+    "Interlocked.CompareExchange",
+    "Interlocked.Decrement",
+    "Interlocked.Exchange",
+    "Interlocked.Increment",
+    "Interlocked.Or",
+    "Volatile.Write",
+)
+TYPE_DECLARATION_PATTERN = re.compile(
+    r"\b(?:class|struct|record|interface)\s+(?P<name>[A-Za-z_][A-Za-z0-9_]*)"
+)
 FIELD_DECLARATION_PATTERN = re.compile(
     r"\b(?P<access>private|protected|internal|public)\s+"
     r"(?:(?:static|readonly|volatile)\s+)*"
@@ -99,6 +113,143 @@ def _origin_main_sha() -> str | None:
         return None
 
 
+def _mask_csharp_comments_and_strings(text: str) -> str:
+    """Mask C# comments and string literals while preserving line positions."""
+    chars = list(text)
+    length = len(text)
+    index = 0
+
+    def mask(position: int) -> None:
+        if chars[position] != "\n":
+            chars[position] = " "
+
+    while index < length:
+        if text.startswith("//", index):
+            mask(index)
+            mask(index + 1)
+            index += 2
+            while index < length and text[index] != "\n":
+                mask(index)
+                index += 1
+            continue
+        if text.startswith("/*", index):
+            mask(index)
+            mask(index + 1)
+            index += 2
+            while index < length:
+                if text.startswith("*/", index):
+                    mask(index)
+                    mask(index + 1)
+                    index += 2
+                    break
+                mask(index)
+                index += 1
+            continue
+        if text.startswith("$@\"", index) or text.startswith("@$\"", index):
+            mask(index)
+            mask(index + 1)
+            mask(index + 2)
+            index += 3
+            while index < length:
+                if text.startswith("\"\"", index):
+                    mask(index)
+                    mask(index + 1)
+                    index += 2
+                    continue
+                if text[index] == "\"":
+                    mask(index)
+                    index += 1
+                    break
+                mask(index)
+                index += 1
+            continue
+        if text.startswith("@\"", index):
+            mask(index)
+            mask(index + 1)
+            index += 2
+            while index < length:
+                if text.startswith("\"\"", index):
+                    mask(index)
+                    mask(index + 1)
+                    index += 2
+                    continue
+                if text[index] == "\"":
+                    mask(index)
+                    index += 1
+                    break
+                mask(index)
+                index += 1
+            continue
+        if text.startswith("$\"", index):
+            mask(index)
+            mask(index + 1)
+            index += 2
+            escaped = False
+            while index < length:
+                character = text[index]
+                if character == "\n":
+                    escaped = False
+                    index += 1
+                    continue
+                mask(index)
+                if escaped:
+                    escaped = False
+                elif character == "\\":
+                    escaped = True
+                elif character == "\"":
+                    index += 1
+                    break
+                index += 1
+            continue
+        if text[index] in {"\"", "'"}:
+            quote = text[index]
+            mask(index)
+            index += 1
+            escaped = False
+            while index < length:
+                character = text[index]
+                if character == "\n":
+                    escaped = False
+                    index += 1
+                    continue
+                mask(index)
+                if escaped:
+                    escaped = False
+                elif character == "\\":
+                    escaped = True
+                elif character == quote:
+                    index += 1
+                    break
+                index += 1
+            continue
+        index += 1
+    return "".join(chars)
+
+
+def _type_spans(text: str) -> dict[str, tuple[int, int]]:
+    """Return source spans for nested C# declaring types."""
+    masked = _mask_csharp_comments_and_strings(text)
+    openings: dict[int, str] = {}
+    for match in TYPE_DECLARATION_PATTERN.finditer(masked):
+        opening = masked.find("{", match.end())
+        if opening >= 0:
+            openings[opening] = match.group("name")
+
+    stack: list[tuple[int, str | None, str | None]] = []
+    spans: dict[str, tuple[int, int]] = {}
+    for index, character in enumerate(masked):
+        if character == "{":
+            name = openings.get(index)
+            parent = next((item[2] for item in reversed(stack) if item[2]), None)
+            path = f"{parent}::{name}" if parent and name else name
+            stack.append((index, name, path))
+        elif character == "}" and stack:
+            start, _, path = stack.pop()
+            if path:
+                spans[path] = (start, index + 1)
+    return spans
+
+
 def _plan_bases(text: str) -> dict[str, list[str]]:
     """Read only the current explicit Plan base fields."""
     fields: dict[str, list[str]] = {}
@@ -112,33 +263,50 @@ def _plan_bases(text: str) -> dict[str, list[str]]:
 
 def _line_refs(text: str, relative: Path, pattern: re.Pattern[str]) -> list[str]:
     """Return source locations matching a lifecycle evidence pattern."""
+    masked = _mask_csharp_comments_and_strings(text)
     return [
         f"{relative.as_posix()}:{line_number}"
-        for line_number, line in enumerate(text.splitlines(), 1)
+        for line_number, line in enumerate(masked.splitlines(), 1)
         if pattern.search(line)
     ]
 
 
-def _writer_refs(text: str, relative: Path, field: str) -> list[str]:
-    """Return source locations that write a field or an atomic field reference."""
-    pattern = re.compile(
+def _writer_refs(text: str, relative: Path, field: str, scope: tuple[int, int] | None = None) -> list[str]:
+    """Return source locations that prove a field write."""
+    masked = _mask_csharp_comments_and_strings(text)
+    scope_start, scope_end = scope or (0, len(masked))
+    scoped_text = masked[scope_start:scope_end]
+    refs: set[str] = set()
+    assignment_pattern = re.compile(
         rf"\b{re.escape(field)}\s*(?:(?<![=!<>])=(?!=)|\+=|-=|\?\?=)"
-        rf"|\b(?:Interlocked|Volatile)\.\w+\(\s*ref\s+{re.escape(field)}\b"
-        rf"|\bref\s+{re.escape(field)}\b"
     )
-    return sorted(
-        {
-            f"{relative.as_posix()}:{text.count(chr(10), 0, match.start()) + 1}"
-            for match in pattern.finditer(text)
-        }
+    atomic_names = "|".join(re.escape(name) for name in ATOMIC_WRITE_CALLS)
+    atomic_pattern = re.compile(rf"\b(?:{atomic_names})\s*\(\s*ref\s+{re.escape(field)}\b")
+    mutator_names = "|".join(re.escape(name) for name in KNOWN_REF_MUTATORS)
+    mutator_pattern = re.compile(
+        rf"\b(?:{mutator_names})\s*\([^;{{}}]*?(?P<ref>\bref\s+{re.escape(field)}\b)",
+        re.DOTALL,
     )
+    for pattern in (assignment_pattern, atomic_pattern):
+        refs.update(
+            f"{relative.as_posix()}:{text.count(chr(10), 0, scope_start + match.start()) + 1}"
+            for match in pattern.finditer(scoped_text)
+        )
+    refs.update(
+        f"{relative.as_posix()}:{text.count(chr(10), 0, scope_start + match.start('ref')) + 1}"
+        for match in mutator_pattern.finditer(scoped_text)
+    )
+    return sorted(refs)
 
 
 def _field_declarations(text: str, relative: Path) -> list[dict[str, str]]:
     """Collect field declarations and classify configuration fields."""
-    lines = text.splitlines()
+    masked = _mask_csharp_comments_and_strings(text)
+    lines = masked.splitlines()
+    spans = _type_spans(text)
+    fallback_type = relative.stem.split(".", 1)[0]
     declarations: list[dict[str, str]] = []
-    for match in FIELD_DECLARATION_PATTERN.finditer(text):
+    for match in FIELD_DECLARATION_PATTERN.finditer(masked):
         matched_text = match.group(0)
         if (
             "=>" in matched_text
@@ -147,9 +315,9 @@ def _field_declarations(text: str, relative: Path) -> list[dict[str, str]]:
             or (match.end() < len(text) and text[match.end()] == ">")
         ):
             continue
-        line_number = text.count("\n", 0, match.start("name")) + 1
-        declaration_prefix = text[match.start():match.start("name")]
-        declaration_tail = text[match.start("name"):match.end()]
+        line_number = masked.count("\n", 0, match.start("name")) + 1
+        declaration_prefix = masked[match.start():match.start("name")]
+        declaration_tail = masked[match.start("name"):match.end()]
         assignment_index = len(declaration_tail)
         for terminator in ("=", ";"):
             index = declaration_tail.find(terminator)
@@ -166,9 +334,19 @@ def _field_declarations(text: str, relative: Path) -> list[dict[str, str]]:
         context = "\n".join(lines[max(0, line_number - 4):line_number])
         access = match.group("access")
         configuration = "[SerializeField]" in context or access == "public"
+        declaring_type = min(
+            (
+                name
+                for name, (start, end) in spans.items()
+                if start < match.start() < end
+            ),
+            key=lambda name: spans[name][1] - spans[name][0],
+            default=fallback_type,
+        )
         declarations.append(
             {
                 "name": match.group("name"),
+                "declaring_type": declaring_type,
                 "file": relative.as_posix(),
                 "declaration": f"{relative.as_posix()}:{line_number}",
                 "classification": "configuration" if configuration else "mutable",
@@ -183,13 +361,18 @@ def _collect_owner_fields(matched: list[Path]) -> tuple[dict[str, dict[str, obje
         relative: (audit_lib.ROOT / relative).read_text(encoding="utf-8", errors="replace")
         for relative in matched
     }
+    type_spans = {relative: _type_spans(text) for relative, text in texts.items()}
     fields: dict[str, dict[str, object]] = {}
     for relative, text in texts.items():
         for declaration in _field_declarations(text, relative):
             name = declaration["name"]
+            declaring_type = declaration["declaring_type"]
+            field_key = f"{declaring_type}::{name}"
             field_data = fields.setdefault(
-                name,
+                field_key,
                 {
+                    "name": name,
+                    "declaring_type": declaring_type,
                     "files": [],
                     "declarations": [],
                     "assignments": 0,
@@ -203,9 +386,25 @@ def _collect_owner_fields(matched: list[Path]) -> tuple[dict[str, dict[str, obje
                 field_data["classification"] = "mutable"
 
     missing_writers: list[str] = []
-    for name, field_data in fields.items():
+    for field_key, field_data in fields.items():
+        name = str(field_data["name"])
+        declaring_type = str(field_data["declaring_type"])
         for relative, text in texts.items():
-            writer_refs = _writer_refs(text, relative, name)
+            exact_scope = type_spans[relative].get(declaring_type)
+            parent_scope = None
+            if "::" in declaring_type:
+                parent_type = declaring_type.rsplit("::", 1)[0]
+                parent_scope = type_spans[relative].get(parent_type)
+            scope = exact_scope or parent_scope
+            if scope is None:
+                fallback_type = relative.stem.split(".", 1)[0]
+                if declaring_type == fallback_type:
+                    scope = (0, len(text))
+                else:
+                    continue
+            writer_refs = _writer_refs(text, relative, name, scope)
+            if exact_scope and parent_scope and not writer_refs:
+                writer_refs = _writer_refs(text, relative, name, parent_scope)
             field_data["assignments"] = int(field_data["assignments"]) + len(writer_refs)
             field_data["writers"].extend(writer_refs)
         field_data["files"] = sorted(set(field_data["files"]))
@@ -213,7 +412,7 @@ def _collect_owner_fields(matched: list[Path]) -> tuple[dict[str, dict[str, obje
         field_data["writers"] = sorted(set(field_data["writers"]))
         if field_data["classification"] == "mutable":
             if not field_data["writers"]:
-                missing_writers.append(name)
+                missing_writers.append(field_key)
             field_data["reason"] = "writer references required across owner partials"
         else:
             field_data["reason"] = "Unity-serialized or public configuration field"
