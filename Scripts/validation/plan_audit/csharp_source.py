@@ -31,7 +31,21 @@ METHOD_DECLARATION_PATTERN = re.compile(
 )
 
 LIFECYCLE_METHOD_PATTERN = re.compile(
-    r"(?:OnEnable|OnDisable|OnDestroy|StartServer|StopServer|CleanupStartupAfterFailure|Dispose|Reset|Connect|Disconnect|Disable|Start|Stop)"
+    r"^(?:OnEnable|OnDisable|OnDestroy|StartServer|StopServer|CleanupStartupAfterFailure|Dispose|DisposeResources|Reset|Connect|Disconnect|Disable|Start|Stop)$"
+)
+
+CONSTRUCTOR_DECLARATION_PATTERN = re.compile(
+    r"(?m)^[ \t]*(?P<name>[A-Za-z_][A-Za-z0-9_]*)\s*\([^{};]*\)\s*(?=\{)"
+)
+
+EXPRESSION_MEMBER_PATTERN = re.compile(
+    r"(?m)^[ \t]*(?:(?:public|private|protected|internal|static|async|virtual|override|sealed|new)\s+)*"
+    r"(?:[A-Za-z_][A-Za-z0-9_<>,.?]*|void)\s+(?P<name>[A-Za-z_][A-Za-z0-9_]*)\s*\([^{};]*\)\s*(?==>)"
+)
+
+EXPRESSION_PROPERTY_PATTERN = re.compile(
+    r"(?m)^[ \t]*(?:(?:public|private|protected|internal|static|virtual|override|sealed|new)\s+)*"
+    r"(?:[A-Za-z_][A-Za-z0-9_<>,.?]*|void)\s+(?P<name>[A-Za-z_][A-Za-z0-9_]*)\s*(?==>)"
 )
 
 
@@ -287,10 +301,44 @@ def _line_refs(
     return refs
 
 
+def member_declaration_starts(masked_text: str, position: int) -> list[int]:
+    """Return declaration starts for methods, constructors, and expression members."""
+    matches = [
+        *METHOD_DECLARATION_PATTERN.finditer(masked_text, 0, position),
+        *CONSTRUCTOR_DECLARATION_PATTERN.finditer(masked_text, 0, position),
+        *EXPRESSION_MEMBER_PATTERN.finditer(masked_text, 0, position),
+        *EXPRESSION_PROPERTY_PATTERN.finditer(masked_text, 0, position),
+    ]
+    return sorted({match.start() for match in matches})
+
+
+def method_arity(masked_text: str, start: int) -> int:
+    """Return the top-level argument count in a declaration or call header."""
+    opening = masked_text.find("(", start)
+    if opening < 0:
+        return 0
+    closing = masked_text.find(")", opening)
+    if closing < 0:
+        return 0
+    header = masked_text[opening + 1:closing].strip()
+    if not header:
+        return 0
+    depth = 0
+    count = 1
+    for character in header:
+        if character in "(<[":
+            depth += 1
+        elif character in ">)]":
+            depth = max(0, depth - 1)
+        elif character == "," and depth == 0:
+            count += 1
+    return count
+
+
 def field_name_is_shadowed(masked_text: str, field: str, position: int) -> bool:
     """Return whether a parameter or local shadows a field in one method."""
-    method_matches = list(METHOD_DECLARATION_PATTERN.finditer(masked_text, 0, position))
-    method_start = method_matches[-1].start() if method_matches else 0
+    starts = member_declaration_starts(masked_text, position)
+    method_start = starts[-1] if starts else 0
     method_text = masked_text[method_start:position]
     name = re.escape(field)
     if re.search(
@@ -332,8 +380,8 @@ def qualified_receiver_is_bound(
     if not receiver_type:
         return True
     base_receiver = receiver.split(".", 1)[0]
-    method_matches = list(METHOD_DECLARATION_PATTERN.finditer(masked_text, 0, position))
-    method_start = method_matches[-1].start() if method_matches else 0
+    starts = member_declaration_starts(masked_text, position)
+    method_start = starts[-1] if starts else 0
     prefix = masked_text[method_start:position]
     typed = [
         match
@@ -581,6 +629,22 @@ def lifecycle_called_method_names(masked_text: str) -> set[str]:
     return names
 
 
+def lifecycle_called_method_signatures(masked_text: str) -> set[tuple[str, int]]:
+    """Return called lifecycle helper names with their argument counts."""
+    ignored = {"if", "for", "foreach", "while", "switch", "catch", "using", "lock", "nameof", "typeof", "new"}
+    signatures: set[tuple[str, int]] = set()
+    for start, end, method_name in _method_contexts(masked_text):
+        if not LIFECYCLE_METHOD_PATTERN.search(method_name):
+            continue
+        body = masked_text[start:end]
+        for match in re.finditer(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\(", body):
+            name = match.group(1)
+            if name in ignored:
+                continue
+            signatures.add((name, method_arity(body, match.start())))
+    return signatures
+
+
 def _lock_block_writes_field(masked_text: str, position: int, field_names: set[str]) -> bool:
     """Return whether a lock block contains a write to a declared field."""
     opening = masked_text.find("{", position)
@@ -606,14 +670,17 @@ def bound_lifecycle_refs(
     scopes: tuple[tuple[int, int], ...],
     field_names: set[str],
     lifetime_pattern: re.Pattern[str],
-    approved_method_names: set[str] | None = None,
+    approved_method_signatures: set[tuple[str, int]] | None = None,
+    allowed_sync_types: set[str] | None = None,
 ) -> tuple[list[str], list[str]]:
     """Return lock and lifecycle references bound to declared owner fields."""
     lock_pattern = re.compile(r"\block\s*\(\s*(?:this\.)?(?P<name>[A-Za-z_][A-Za-z0-9_]*)")
     locks: set[str] = set()
     lifetime: set[str] = set()
     contexts = _method_contexts(masked_text)
-    approved_method_names = approved_method_names or set()
+    approved_method_signatures = approved_method_signatures or set()
+    allowed_sync_types = allowed_sync_types or set()
+    type_spans = _type_spans(masked_text, masked_text)
     offset = 0
     for line_number, line in enumerate(masked_text.splitlines(keepends=True), 1):
         matches = list(lifetime_pattern.finditer(line))
@@ -627,12 +694,24 @@ def bound_lifecycle_refs(
             ),
             None,
         )
+        lock_type = next(
+            (
+                name
+                for name, (start, end) in type_spans.items()
+                if lock_position is not None and start <= lock_position < end
+            ),
+            None,
+        )
         if (
             lock_match
             and lock_match.group("name") in field_names
             and lock_context is not None
             and any(start <= lock_position < end for start, end in scopes)
-            and (LIFECYCLE_METHOD_PATTERN.search(lock_context[2]) or lock_context[2] in approved_method_names)
+            and (
+                LIFECYCLE_METHOD_PATTERN.search(lock_context[2])
+                or (lock_context[2], method_arity(masked_text, lock_context[0])) in approved_method_signatures
+                or lock_type in allowed_sync_types
+            )
             and _lock_block_writes_field(masked_text, lock_position, field_names)
         ):
             locks.add(f"{relative.as_posix()}:{line_number}")

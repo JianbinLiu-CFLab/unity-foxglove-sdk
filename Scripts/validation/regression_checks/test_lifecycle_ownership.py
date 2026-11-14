@@ -141,12 +141,8 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
         canonical_text = "namespace Unity.FoxgloveSDK.Components { public partial class FoxgloveManager { } }"
         self.assertTrue(lifecycle_ownership._owner_source_is_canonical(canonical, "FoxgloveManager", canonical_text))
         self.assertFalse(
-            lifecycle_ownership._owner_source_is_trusted(
-                canonical,
-                "FoxgloveManager",
-                canonical_text,
-                {"Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs"},
-            )
+            canonical.as_posix()
+            in {"Packages/dev.unity2foxglove.sdk/Runtime/Components/Manager/FoxgloveManager.cs"}
         )
         mixed_text = (
             "namespace Unity.FoxgloveSDK.Components { }\n"
@@ -448,6 +444,49 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
         )
         self.assertEqual([], locks)
 
+    def test_lifecycle_lock_helper_signature_must_match_callsite(self) -> None:
+        """An overload not called by lifecycle code cannot provide lock evidence."""
+        text = (
+            "class Owner {\n"
+            "    private object _gate;\n"
+            "    private int _state;\n"
+            "    void Dispose() { Cleanup(); }\n"
+            "    void Cleanup(int unused) { lock (_gate) { _state = 1; } }\n"
+            "    void Cleanup() { }\n"
+            "}\n"
+        )
+        masked = lifecycle_ownership._mask_csharp_source(text)
+        scopes = lifecycle_ownership._owner_type_scopes(text, masked, "Owner")
+        locks, _ = lifecycle_ownership._bound_lifecycle_refs(
+            text,
+            Path("Packages/pkg/Runtime/Owner.cs"),
+            masked,
+            scopes,
+            {"_gate", "_state"},
+            {("Cleanup", 0)},
+        )
+        self.assertEqual([], locks)
+
+    def test_lifecycle_method_name_matching_is_anchored(self) -> None:
+        """A method such as Stopwatch is not treated as lifecycle code."""
+        text = (
+            "class Owner {\n"
+            "    private object _gate;\n"
+            "    private int _state;\n"
+            "    void Stopwatch() { lock (_gate) { _state = 1; } }\n"
+            "}\n"
+        )
+        masked = lifecycle_ownership._mask_csharp_source(text)
+        scopes = lifecycle_ownership._owner_type_scopes(text, masked, "Owner")
+        locks, _ = lifecycle_ownership._bound_lifecycle_refs(
+            text,
+            Path("Packages/pkg/Runtime/Owner.cs"),
+            masked,
+            scopes,
+            {"_gate", "_state"},
+        )
+        self.assertEqual([], locks)
+
     def test_inactive_conditional_regions_do_not_create_evidence(self) -> None:
         """Explicitly inactive C# branches cannot provide owner evidence."""
         text = (
@@ -688,6 +727,26 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
                 fields, missing = lifecycle_ownership._collect_owner_fields([source])
         self.assertNotIn("Owner::Child::_state", missing)
         self.assertEqual(["Packages/pkg/Runtime/Owner.cs:4"], fields["Owner::Child::_state"]["writers"])
+
+    def test_nested_receiver_rejects_expression_member_reusing_prior_receiver(self) -> None:
+        """An expression-bodied property cannot reuse a receiver from a prior method."""
+        text = (
+            "class Owner {\n"
+            "    private sealed class Child { private int _state; }\n"
+            "    void Good(Child child) { }\n"
+            "    private int Spoof => child._state = 2;\n"
+            "}\n"
+        )
+        refs = lifecycle_ownership._writer_refs(
+            text,
+            Path("Packages/pkg/Runtime/Owner.cs"),
+            "_state",
+            lifecycle_ownership._type_spans(text)["Owner"],
+            lifecycle_ownership._mask_csharp_source(text),
+            qualified_receivers=("child",),
+            receiver_type="Child",
+        )
+        self.assertEqual([], refs)
 
     def test_nested_receiver_inference_binds_dictionary_value_type(self) -> None:
         """A same-named dictionary receiver must match its declared value type."""
