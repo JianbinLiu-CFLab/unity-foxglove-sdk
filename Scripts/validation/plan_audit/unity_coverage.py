@@ -280,7 +280,7 @@ def _w4_mutation(checks: list[audit_lib.Check], output: Path, head_sha: str) -> 
                 status = "FAIL"
             else:
                 expected = {
-                    "head_sha": head_sha,
+                    "audited_head_sha": head_sha,
                     "distro": "lyrical",
                     "mutation": "compile-error",
                     "job_name": "unity-distro-compile (lyrical)",
@@ -291,15 +291,22 @@ def _w4_mutation(checks: list[audit_lib.Check], output: Path, head_sha: str) -> 
                     pass
                 else:
                     mismatches.append("restored")
+                if payload.get("compile_error_observed") is not True:
+                    mismatches.append("compile_error_observed")
+                for key in ("mutation_patch_sha256", "restored_worktree_sha256"):
+                    if not isinstance(payload.get(key), str) or not re.fullmatch(r"[0-9a-fA-F]{64}", payload[key]):
+                        mismatches.append(key)
                 run_id = payload.get("run_id")
-                if isinstance(run_id, bool) or not str(run_id or "").strip():
+                if isinstance(run_id, bool) or not re.fullmatch(r"[0-9]+", str(run_id or "")) or int(run_id) <= 0:
                     mismatches.append("run_id")
-                run_head_sha = payload.get("run_head_sha")
-                if not isinstance(run_head_sha, str) or not re.fullmatch(r"[0-9a-fA-F]{40}", run_head_sha):
-                    mismatches.append("run_head_sha")
+                mutation_head_sha = payload.get("mutation_head_sha")
+                if not isinstance(mutation_head_sha, str) or not re.fullmatch(r"[0-9a-fA-F]{40}", mutation_head_sha):
+                    mismatches.append("mutation_head_sha")
+                if payload.get("mutation_parent_sha") != head_sha:
+                    mismatches.append("mutation_parent_sha")
                 if mismatches:
                     status = "FAIL"
-                    detail = f"head={payload.get('head_sha', 'missing')}; run_id={run_id or 'missing'}; mismatches={mismatches}"
+                    detail = f"head={payload.get('audited_head_sha', 'missing')}; run_id={run_id or 'missing'}; mismatches={mismatches}"
                 else:
                     run_log = output / "logs" / f"w4-mutation-run-{run_id}.log"
                     verified_run = audit_lib.run(
@@ -327,7 +334,7 @@ def _w4_mutation(checks: list[audit_lib.Check], output: Path, head_sha: str) -> 
                             if not isinstance(run_payload, dict) or str(run_payload.get("databaseId")) != str(run_id):
                                 status = "FAIL"
                                 detail = f"head={head_sha}; run_id={run_id}; workflow databaseId mismatch"
-                            elif run_payload.get("headSha") != run_head_sha:
+                            elif run_payload.get("headSha") != mutation_head_sha:
                                 status = "FAIL"
                                 detail = f"head={head_sha}; run_id={run_id}; workflow headSha mismatch"
                             elif run_payload.get("workflowName") != WORKFLOW_NAME or run_payload.get("conclusion") != "failure":
@@ -337,23 +344,41 @@ def _w4_mutation(checks: list[audit_lib.Check], output: Path, head_sha: str) -> 
                                 status = "FAIL"
                                 detail = f"head={head_sha}; run_id={run_id}; expected failed Lyrical compile job was not observed"
                             else:
-                                ancestry = subprocess.run(
-                                    ["git", "merge-base", "--is-ancestor", head_sha, run_head_sha],
-                                    cwd=audit_lib.ROOT,
-                                    env=audit_lib._audit_environment(),
-                                    capture_output=True,
-                                    text=True,
-                                    check=False,
+                                failed_log = output / "logs" / f"w4-mutation-failed-{run_id}.log"
+                                log_result = audit_lib.run(
+                                    ["gh", "run", "view", str(run_id), "--repo", REPOSITORY, "--log-failed"],
+                                    failed_log,
+                                    120,
                                 )
-                                if ancestry.returncode == 0:
-                                    status = "PASS"
-                                    detail = f"head={head_sha}; run_id={run_id}; run_head={run_head_sha}; verified failed Lyrical compile job and ancestry"
-                                elif ancestry.returncode == 1:
-                                    status = "FAIL"
-                                    detail = f"head={head_sha}; run_id={run_id}; mutation run is not based on audited HEAD"
-                                else:
+                                compile_error = re.search(
+                                    r"(?i)(?:error\s+(?:CS\d+|[A-Z]{2,}\d+)|compile(?:r|ation)?\s+error|compilation failed)",
+                                    str(log_result.get("output", "")),
+                                )
+                                if log_result.get("timed_out") or log_result.get("exit_code") != 0:
                                     status = "MANUAL"
-                                    detail = f"head={head_sha}; run_id={run_id}; mutation run ancestry could not be verified"
+                                    detail = f"head={head_sha}; run_id={run_id}; failed-job log could not be read"
+                                elif not compile_error:
+                                    status = "FAIL"
+                                    detail = f"head={head_sha}; run_id={run_id}; expected compile-error marker was not observed"
+                                else:
+                                    ancestry = subprocess.run(
+                                        ["git", "rev-list", "--parents", "-n", "1", mutation_head_sha],
+                                        cwd=audit_lib.ROOT,
+                                        env=audit_lib._audit_environment(),
+                                        capture_output=True,
+                                        text=True,
+                                        check=False,
+                                    )
+                                    parent_tokens = str(ancestry.stdout).strip().split()
+                                    if ancestry.returncode != 0:
+                                        status = "MANUAL"
+                                        detail = f"head={head_sha}; run_id={run_id}; mutation commit ancestry could not be verified"
+                                    elif len(parent_tokens) < 2 or parent_tokens[1] != head_sha:
+                                        status = "FAIL"
+                                        detail = f"head={head_sha}; run_id={run_id}; mutation commit is not directly based on audited HEAD"
+                                    else:
+                                        status = "PASS"
+                                        detail = f"head={head_sha}; run_id={run_id}; mutation_head={mutation_head_sha}; verified failed Lyrical compile job, compile-error log, and direct parent"
     log.write_text(detail + "\n", encoding="utf-8")
     _record(checks, "195-W4-mutation", "mutation", status, "read build/plan-audit/unity_acceptance/w4-mutation.json", evidence, detail)
 
@@ -457,5 +482,5 @@ def manual_steps(checks: list[audit_lib.Check]) -> str:
 1. Obtain approval to dispatch one run for Humble and one for Lyrical on `main`.
 2. Record selected package, runner path on `D:`, independent `Library` directory, compile command, and run id.
 3. Verify the manifest is restored in an `if: always()` step and `git status --porcelain` is clean.
-4. Treat the disposable Lyrical compile-error run as manual acceptance. If recording it, use a branch based on the audited `HEAD`, inject one compile error, confirm batch compile fails, and write `build/plan-audit/unity_acceptance/w4-mutation.json` with `head_sha`, `run_head_sha`, `run_id`, `distro=lyrical`, `mutation=compile-error`, `job_name=unity-distro-compile (lyrical)`, `job_conclusion=failure`, and `restored=true`. The audit verifies the live workflow run and requires a fresh record for every new audited commit. This manual check is reported separately from the automatic DoD.
+4. Treat the disposable Lyrical compile-error run as manual acceptance. If recording it, use a branch based directly on the audited `HEAD`, inject one compile error, confirm batch compile fails, and write `build/plan-audit/unity_acceptance/w4-mutation.json` with `audited_head_sha`, `mutation_head_sha`, `mutation_parent_sha`, numeric `run_id`, `distro=lyrical`, `mutation=compile-error`, `compile_error_observed=true`, 64-character `mutation_patch_sha256`, 64-character `restored_worktree_sha256`, and `restored=true`. The audit verifies the live workflow run, failed-job log, direct parent, and requires a fresh record for every new audited commit. This manual check is reported separately from the automatic DoD.
 """

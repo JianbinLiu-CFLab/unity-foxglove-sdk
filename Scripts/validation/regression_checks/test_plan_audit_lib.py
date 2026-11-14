@@ -281,13 +281,17 @@ class PlanAuditLibraryTests(unittest.TestCase):
             (output / "w4-mutation.json").write_text(
                 json.dumps(
                     {
-                        "head_sha": "head",
-                        "run_head_sha": "a" * 40,
+                        "audited_head_sha": "head",
+                        "mutation_head_sha": "a" * 40,
+                        "mutation_parent_sha": "head",
                         "run_id": 123,
                         "distro": "lyrical",
                         "mutation": "compile-error",
                         "job_name": "unity-distro-compile (lyrical)",
                         "job_conclusion": "failure",
+                        "compile_error_observed": True,
+                        "mutation_patch_sha256": "b" * 64,
+                        "restored_worktree_sha256": "c" * 64,
                         "restored": True,
                     }
                 ),
@@ -298,6 +302,8 @@ class PlanAuditLibraryTests(unittest.TestCase):
                 """Return the authoritative workflow job evidence."""
                 del timeout, cwd
                 log_path.parent.mkdir(parents=True, exist_ok=True)
+                if "--log-failed" in command:
+                    return {"exit_code": 0, "timed_out": False, "output": "error CS1002: compile error"}
                 self.assertEqual(
                     [
                         "gh",
@@ -327,7 +333,7 @@ class PlanAuditLibraryTests(unittest.TestCase):
 
             checks: list[audit_lib.Check] = []
             with mock.patch.object(unity_coverage.audit_lib, "run", side_effect=fake_audit_run), mock.patch.object(
-                unity_coverage.subprocess, "run", return_value=SimpleNamespace(returncode=0)
+                unity_coverage.subprocess, "run", return_value=SimpleNamespace(returncode=0, stdout=f"{'a' * 40} head\n")
             ):
                 unity_coverage._w4_mutation(checks, output, "head")
         self.assertEqual("PASS", checks[0].status)
@@ -337,7 +343,7 @@ class PlanAuditLibraryTests(unittest.TestCase):
         """W4 evidence for another audited head cannot pass."""
         with tempfile.TemporaryDirectory(dir=audit_lib.BUILD_ROOT) as temp:
             output = Path(temp)
-            (output / "w4-mutation.json").write_text('{"head_sha":"old"}', encoding="utf-8")
+            (output / "w4-mutation.json").write_text('{"audited_head_sha":"old"}', encoding="utf-8")
             checks: list[audit_lib.Check] = []
             unity_coverage._w4_mutation(checks, output, "head")
         self.assertEqual("FAIL", checks[0].status)
@@ -346,7 +352,16 @@ class PlanAuditLibraryTests(unittest.TestCase):
         """W4 evidence without a workflow run id cannot pass."""
         with tempfile.TemporaryDirectory(dir=audit_lib.BUILD_ROOT) as temp:
             output = Path(temp)
-            (output / "w4-mutation.json").write_text('{"head_sha":"head"}', encoding="utf-8")
+            (output / "w4-mutation.json").write_text('{"audited_head_sha":"head"}', encoding="utf-8")
+            checks: list[audit_lib.Check] = []
+            unity_coverage._w4_mutation(checks, output, "head")
+        self.assertEqual("FAIL", checks[0].status)
+
+    def test_w4_mutation_rejects_non_numeric_run_id(self) -> None:
+        """W4 evidence requires a numeric GitHub Actions run id."""
+        with tempfile.TemporaryDirectory(dir=audit_lib.BUILD_ROOT) as temp:
+            output = Path(temp)
+            (output / "w4-mutation.json").write_text('{"audited_head_sha":"head","run_id":"anything"}', encoding="utf-8")
             checks: list[audit_lib.Check] = []
             unity_coverage._w4_mutation(checks, output, "head")
         self.assertEqual("FAIL", checks[0].status)
@@ -366,13 +381,17 @@ class PlanAuditLibraryTests(unittest.TestCase):
             (output / "w4-mutation.json").write_text(
                 json.dumps(
                     {
-                        "head_sha": "head",
-                        "run_head_sha": "a" * 40,
+                        "audited_head_sha": "head",
+                        "mutation_head_sha": "a" * 40,
+                        "mutation_parent_sha": "head",
                         "run_id": 123,
                         "distro": "lyrical",
                         "mutation": "compile-error",
                         "job_name": "unity-distro-compile (lyrical)",
                         "job_conclusion": "failure",
+                        "compile_error_observed": True,
+                        "mutation_patch_sha256": "b" * 64,
+                        "restored_worktree_sha256": "c" * 64,
                         "restored": True,
                     }
                 ),
@@ -416,14 +435,39 @@ class PlanAuditLibraryTests(unittest.TestCase):
             "195-W3",
             "195-W3-mutation",
             "195-W4",
+            "195-W4-mutation",
         )
         checks = [
-            audit_lib.Check(check_id, "Plan", "auto", "PASS", "true", "build/x", "")
+            audit_lib.Check(check_id, "Plan", "auto", "MANUAL" if check_id == "195-W4-mutation" else "PASS", "true", "build/x", "")
             for check_id in required
         ]
-        checks.append(audit_lib.Check("195-W4-mutation", "Plan", "mutation", "MANUAL", "true", "build/x", "manual"))
         check = unity_acceptance._dod_check(checks)
         self.assertEqual("PASS", check.status)
+
+    def test_definition_of_done_rejects_missing_w4_mutation_node(self) -> None:
+        """The manual W4 mutation check must still be present in the audit output."""
+        checks = [
+            audit_lib.Check(check_id, "Plan", "auto", "PASS", "true", "build/x", "")
+            for check_id in (
+                "195-PLAN",
+                "195-W0-local100",
+                "195-W1-assets",
+                "195-W1-script",
+                "195-W1-workflow",
+                "195-W1-dispatch",
+                "195-W1-zero-tests",
+                "195-W1-red",
+                "195-OBS-jazzy-meta",
+                "195-W2",
+                "195-W2-mutation",
+                "195-W3",
+                "195-W3-mutation",
+                "195-W4",
+            )
+        ]
+        check = unity_acceptance._dod_check(checks)
+        self.assertEqual("FAIL", check.status)
+        self.assertIn("195-W4-mutation", check.detail)
 
     def test_guid_audit_compares_base_and_head_revisions(self) -> None:
         """Jazzy metadata evidence uses the committed base-to-head diff."""
@@ -516,6 +560,43 @@ class PlanAuditLibraryTests(unittest.TestCase):
             bridge.assert_called_once()
             lane.assert_called_once()
             coverage.assert_called_once()
+
+    def test_acceptance_main_allows_manual_w4_mutation(self) -> None:
+        """The complete audit exit code allows the explicit manual W4 mutation check."""
+        def check(check_id: str, status: str = "PASS") -> audit_lib.Check:
+            """Build one synthetic audit check."""
+            return audit_lib.Check(check_id, "Plan", "auto", status, "true", "build/x", "")
+
+        bridge = [check("195-W0-history"), check("195-W0-local100")]
+        lane = [check(check_id) for check_id in ("195-W1-assets", "195-W1-script", "195-W1-workflow", "195-W1-dispatch", "195-W1-zero-tests", "195-W1-red")]
+        coverage = [
+            check("195-OBS-jazzy-meta"),
+            check("195-W2"),
+            check("195-W2-mutation"),
+            check("195-W3"),
+            check("195-W3-mutation"),
+            check("195-W4"),
+            check("195-W4-mutation", "MANUAL"),
+        ]
+        with tempfile.TemporaryDirectory(dir=audit_lib.BUILD_ROOT) as temp:
+            with mock.patch.object(unity_acceptance, "OUTPUT", Path(temp) / "output"), mock.patch.object(
+                unity_acceptance, "_plan_check", return_value=check("195-PLAN")
+            ), mock.patch.object(
+                unity_acceptance, "_trusted_source_check", return_value=check("195-AUDIT-trust")
+            ), mock.patch.object(
+                unity_acceptance.audit_lib, "resolve_revision", return_value="base"
+            ), mock.patch.object(
+                unity_acceptance.audit_lib, "worktree_snapshot", side_effect=[("", "same"), ("", "same")]
+            ), mock.patch.object(
+                unity_acceptance.bridge_history, "bridge_checks", return_value=bridge
+            ), mock.patch.object(
+                unity_acceptance.unity_lane, "lane_checks", return_value=lane
+            ), mock.patch.object(
+                unity_acceptance.unity_coverage, "coverage_checks", return_value=coverage
+            ), mock.patch.object(unity_acceptance.audit_lib, "write_verdict"), mock.patch.object(
+                unity_acceptance, "_write_manual"
+            ):
+                self.assertEqual(0, unity_acceptance.main())
 
     def test_trusted_source_check_detects_unity_helper_tamper(self) -> None:
         """Tampering with any imported Unity helper must fail the trusted-source check."""
