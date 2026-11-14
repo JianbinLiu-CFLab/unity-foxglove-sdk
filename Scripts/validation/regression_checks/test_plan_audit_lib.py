@@ -201,6 +201,9 @@ class PlanAuditLibraryTests(unittest.TestCase):
         )
         self.assertFalse(valid)
         self.assertEqual(set(), names)
+        names, valid = structure_guard_audit._required_status_names({})
+        self.assertFalse(valid)
+        self.assertEqual(set(), names)
 
     def test_structure_guard_ci_placement_marks_api_failures_not_run(self) -> None:
         """Unavailable or malformed GitHub status data is reported as NOT_RUN."""
@@ -262,6 +265,16 @@ jobs:
         self.assertTrue(any("raised=old.py" in error for error in errors))
         self.assertTrue(any("added=new.py" in error for error in errors))
         self.assertTrue(any("added=Scripts/phase3" in error for error in errors))
+
+    def test_structure_guard_baseline_history_handles_malformed_values(self) -> None:
+        """Malformed baseline values become a controlled unavailable result."""
+        with mock.patch.object(structure_guard_audit, "_load_guard_module") as load_guard:
+            guard = load_guard.return_value
+            guard.tracked_paths_at_revision.return_value = []
+            guard.load_baseline_at_revision.side_effect = TypeError("invalid ceiling")
+            check = structure_guard_audit._baseline_history("head")
+        self.assertEqual("NOT_RUN", check.status)
+        self.assertIn("invalid ceiling", check.detail)
 
     def test_plan_check_rejects_missing_or_unrecognized_status(self) -> None:
         """A plan must declare a recognized delivered status before passing."""

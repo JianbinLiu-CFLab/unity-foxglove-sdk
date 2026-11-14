@@ -80,6 +80,8 @@ def _required_status_names(payload: object) -> tuple[set[str], bool]:
     """Extract exact required-check names from the branch-protection payload."""
     if not isinstance(payload, dict):
         return set(), False
+    if "contexts" not in payload or "checks" not in payload:
+        return set(), False
     names: set[str] = set()
     for field in ("contexts", "checks"):
         values = payload.get(field, [])
@@ -254,7 +256,7 @@ def _baseline_history(base_sha: str) -> audit_lib.Check:
         log.parent.mkdir(parents=True, exist_ok=True)
         log.write_text(detail + "\n", encoding="utf-8")
         status = "PASS" if not violations else "FAIL"
-    except (OSError, RuntimeError, ValueError, subprocess.CalledProcessError) as exc:
+    except (OSError, RuntimeError, TypeError, ValueError, subprocess.CalledProcessError) as exc:
         detail = f"baseline history comparison unavailable: {exc}"
         log.parent.mkdir(parents=True, exist_ok=True)
         log.write_text(detail + "\n", encoding="utf-8")
