@@ -32,9 +32,6 @@ TRUSTED_AUDIT_MODULES = (
     "Scripts/unity_build/unity_il2cpp/parts/il2cpp_logging.py",
     "Scripts/unity_build/unity_il2cpp/parts/process.py",
 )
-NON_BLOCKING_MANUAL_CHECKS = frozenset({"195-W4-mutation"})
-
-
 def _trusted_source_check(base_sha: str) -> audit_lib.Check:
     """Refuse to execute contributor-modified audit modules in a maintainer run."""
     mismatches: list[str] = []
@@ -118,7 +115,7 @@ def _dod_check(checks: list[audit_lib.Check]) -> audit_lib.Check:
         "195-W4-mutation",
     )
     missing = [check_id for check_id in required if check_id not in by_id]
-    failed = [check_id for check_id in required if check_id in by_id and not _satisfies_gate(by_id[check_id])]
+    failed = [check_id for check_id in required if check_id in by_id and by_id[check_id].status != "PASS"]
     status = "PASS" if not missing and not failed else "FAIL"
     detail = f"missing checks={missing or 'none'}; unmet checks={failed or 'none'}"
     return audit_lib.Check(
@@ -130,11 +127,6 @@ def _dod_check(checks: list[audit_lib.Check]) -> audit_lib.Check:
         "build/plan-audit/unity_acceptance/verdict.json",
         detail,
     )
-
-
-def _satisfies_gate(check: audit_lib.Check) -> bool:
-    """Return whether a check is passing or an explicitly allowed manual check."""
-    return check.status == "PASS" or (check.id in NON_BLOCKING_MANUAL_CHECKS and check.status == "MANUAL")
 
 
 def _write_manual() -> None:
@@ -163,7 +155,7 @@ def main() -> int:
     unchanged = before_sha == after_sha
     audit_lib.write_verdict(TOPIC, "195", checks, base_sha, OUTPUT, unchanged)
     _write_manual()
-    return 0 if unchanged and all(_satisfies_gate(check) for check in checks) else 1
+    return 0 if unchanged and all(check.status == "PASS" for check in checks) else 1
 
 
 if __name__ == "__main__":

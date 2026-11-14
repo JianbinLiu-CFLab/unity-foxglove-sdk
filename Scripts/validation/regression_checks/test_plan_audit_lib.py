@@ -485,8 +485,8 @@ class PlanAuditLibraryTests(unittest.TestCase):
             unity_coverage._w4_mutation(checks, output, "head")
         self.assertEqual("FAIL", checks[0].status)
 
-    def test_definition_of_done_allows_manual_w4_mutation(self) -> None:
-        """Manual W4 mutation evidence does not block the automatic DoD."""
+    def test_definition_of_done_rejects_manual_w4_mutation(self) -> None:
+        """Manual W4 mutation evidence blocks the automatic DoD."""
         required = (
             "195-PLAN",
             "195-W0-local100",
@@ -509,7 +509,7 @@ class PlanAuditLibraryTests(unittest.TestCase):
             for check_id in required
         ]
         check = unity_acceptance._dod_check(checks)
-        self.assertEqual("PASS", check.status)
+        self.assertEqual("FAIL", check.status)
 
     def test_definition_of_done_rejects_missing_w4_mutation_node(self) -> None:
         """The manual W4 mutation check must still be present in the audit output."""
@@ -628,8 +628,8 @@ class PlanAuditLibraryTests(unittest.TestCase):
             lane.assert_called_once()
             coverage.assert_called_once()
 
-    def test_acceptance_main_allows_manual_w4_mutation(self) -> None:
-        """The complete audit exit code allows the explicit manual W4 mutation check."""
+    def test_acceptance_main_rejects_manual_w4_mutation(self) -> None:
+        """The complete audit exit code rejects the explicit manual W4 mutation check."""
         def check(check_id: str, status: str = "PASS") -> audit_lib.Check:
             """Build one synthetic audit check."""
             return audit_lib.Check(check_id, "Plan", "auto", status, "true", "build/x", "")
@@ -663,7 +663,7 @@ class PlanAuditLibraryTests(unittest.TestCase):
             ), mock.patch.object(unity_acceptance.audit_lib, "write_verdict"), mock.patch.object(
                 unity_acceptance, "_write_manual"
             ):
-                self.assertEqual(0, unity_acceptance.main())
+                self.assertEqual(1, unity_acceptance.main())
 
     def test_trusted_source_check_detects_unity_helper_tamper(self) -> None:
         """Tampering with any imported Unity helper must fail the trusted-source check."""
