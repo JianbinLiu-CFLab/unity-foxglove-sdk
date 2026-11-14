@@ -288,6 +288,28 @@ class LifecycleOwnershipAuditTests(unittest.TestCase):
             refs,
         )
 
+    def test_line_refs_stay_inside_audited_owner_type(self) -> None:
+        """Lifecycle evidence from an unrelated type is excluded."""
+        text = (
+            "class Owner {\n"
+            "    void Dispose() { lock (_gate) { } }\n"
+            "    class Nested { void Dispose() { lock (_nested) { } } }\n"
+            "}\n"
+            "class Unrelated {\n"
+            "    void Dispose() { lock (_other) { } }\n"
+            "}\n"
+        )
+        masked = lifecycle_ownership._mask_csharp_source(text)
+        scopes = lifecycle_ownership._owner_type_scopes(text, masked, "Owner")
+        refs = lifecycle_ownership._line_refs(
+            text,
+            Path("Packages/pkg/Runtime/FoxgloveManager.cs"),
+            lifecycle_ownership.LIFETIME_WORDS,
+            masked,
+            scopes,
+        )
+        self.assertEqual(["Packages/pkg/Runtime/FoxgloveManager.cs:2"], refs)
+
     def test_inactive_conditional_regions_do_not_create_evidence(self) -> None:
         """Explicitly inactive C# branches cannot provide owner evidence."""
         text = (

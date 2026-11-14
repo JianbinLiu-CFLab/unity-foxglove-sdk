@@ -313,14 +313,37 @@ def _line_refs(
     relative: Path,
     pattern: re.Pattern[str],
     masked_text: str | None = None,
+    scopes: tuple[tuple[int, int], ...] | None = None,
 ) -> list[str]:
     """Return source locations matching a lifecycle evidence pattern."""
     masked = masked_text if masked_text is not None else _mask_csharp_source(text)
-    return [
-        f"{relative.as_posix()}:{line_number}"
-        for line_number, line in enumerate(masked.splitlines(), 1)
-        if pattern.search(line)
-    ]
+    refs: list[str] = []
+    offset = 0
+    for line_number, line in enumerate(masked.splitlines(keepends=True), 1):
+        positions = [offset + match.start() for match in pattern.finditer(line)]
+        if positions and (scopes is None or any(start <= position < end for position in positions for start, end in scopes)):
+            refs.append(f"{relative.as_posix()}:{line_number}")
+        offset += len(line)
+    return refs
+
+def _owner_type_scopes(text: str, masked_text: str, owner: str) -> tuple[tuple[int, int], ...]:
+    """Return lexical spans belonging to an owner and its approved support types."""
+    support_types = {Path(path).stem for path in OWNER_SUPPORT_NAMES.get(owner, ())}
+    allowed = {owner, *support_types}
+    spans = _type_spans(text, masked_text)
+    scopes: list[tuple[int, int]] = []
+    for name, (start, end) in spans.items():
+        if name not in allowed:
+            continue
+        cursor = start
+        nested = sorted((nested_start, nested_end) for nested_name, (nested_start, nested_end) in spans.items() if nested_name not in allowed and start < nested_start and nested_end <= end)
+        for nested_start, nested_end in nested:
+            if cursor < nested_start:
+                scopes.append((cursor, nested_start))
+            cursor = max(cursor, nested_end)
+        if cursor < end:
+            scopes.append((cursor, end))
+    return tuple(scopes)
 def _nested_receiver_names(masked_texts: dict[Path, str], declaring_type: str) -> tuple[str, ...]:
     """Infer receiver expressions whose static type matches a nested declaring type."""
     leaf = declaring_type.rsplit("::", 1)[-1]
@@ -535,14 +558,12 @@ def _collect_owner_fields(matched: list[Path]) -> tuple[dict[str, dict[str, obje
         else:
             field_data["reason"] = "Unity-serialized or public configuration field"
     return fields, sorted(missing_writers)
-
 def _is_production_source(path: str) -> bool:
     """Return whether a source path belongs to a tracked Runtime tree."""
     normalized = path.replace("\\", "/")
     parts = normalized.split("/")
     excluded = {"Editor", "Tests", "Fixtures", "Harness"}
     return normalized.endswith(".cs") and "Runtime" in parts and not any(part in excluded for part in parts)
-
 def _source_paths_valid(value: object) -> bool:
     """Return whether a path list contains only production source paths."""
     return (
@@ -550,7 +571,6 @@ def _source_paths_valid(value: object) -> bool:
         and bool(value)
         and all(isinstance(path, str) and _is_production_source(path) for path in value)
     )
-
 def _source_refs_valid(value: object) -> bool:
     """Return whether source references use a production path and positive line number."""
     if not isinstance(value, list) or not value:
@@ -562,7 +582,6 @@ def _source_refs_valid(value: object) -> bool:
         if not match or not _is_production_source(match.group(1)):
             return False
     return True
-
 def _owner_evidence_valid(data: object) -> bool:
     """Return whether an owner payload contains traceable lifecycle evidence."""
     if not isinstance(data, dict) or not _source_paths_valid(data.get("files")) or not data.get("fields"):
@@ -599,11 +618,9 @@ def _owner_evidence_valid(data: object) -> bool:
         ):
             return False
     return True
-
 def _normalise_test_name(name: str) -> str:
     """Reduce a TRX test name to its method name."""
     return name.split("(", 1)[0].rsplit(".", 1)[-1]
-
 def _trx_outcomes(path: Path) -> dict[str, list[str]]:
     """Return normalized TRX test names and all observed outcomes."""
     if not path.is_file():
@@ -621,7 +638,6 @@ def _trx_outcomes(path: Path) -> dict[str, list[str]]:
         if name and outcome:
             outcomes.setdefault(_normalise_test_name(name), []).append(outcome)
     return outcomes
-
 def _trx_canonical_test_issues(path: Path) -> list[str]:
     """Return lifecycle results that do not belong to the canonical test class."""
     if not path.is_file():
@@ -638,7 +654,6 @@ def _trx_canonical_test_issues(path: Path) -> list[str]:
         if _normalise_test_name(name) in EXPECTED_TEST_NAMES and not name.startswith(CANONICAL_TEST_PREFIX):
             issues.append(name)
     return sorted(set(issues))
-
 def _canonical_test_source_issues(base_sha: str) -> list[str]:
     """Return source or project changes that could replace the canonical suite."""
     issues: list[str] = []
@@ -672,7 +687,6 @@ def _canonical_test_source_issues(base_sha: str) -> list[str]:
         if project_text != base_project:
             issues.append(f"canonical project changed:{TEST_PROJECT_REL}")
     return sorted(set(issues))
-
 def _missing_expected_tests(path: Path) -> list[str]:
     """Return expected lifecycle tests without exclusively passing TRX results."""
     outcomes = _trx_outcomes(path)
@@ -682,13 +696,11 @@ def _missing_expected_tests(path: Path) -> list[str]:
         if len(outcomes.get(name, [])) != EXPECTED_TEST_COUNTS[name]
         or any(outcome != "Passed" for outcome in outcomes.get(name, []))
     )
-
 def _expected_test_failure(path: Path, expected_names: tuple[str, ...] | None = None) -> bool:
     """Return whether a named lifecycle test failed in a mutation run."""
     outcomes = _trx_outcomes(path)
     names = expected_names or EXPECTED_TEST_NAMES
     return any("Failed" in outcomes.get(name, []) or "Error" in outcomes.get(name, []) for name in names)
-
 def _candidate_metadata_issues(candidates: list[dict[str, str]]) -> list[str]:
     """Return candidate rows that cannot be independently reviewed."""
     issues: list[str] = []
@@ -701,7 +713,6 @@ def _candidate_metadata_issues(candidates: list[dict[str, str]]) -> list[str]:
         if not row.get("surface") or row.get("surface") == "unknown":
             issues.append(f"{pr}:missing-surface")
     return sorted(set(issues))
-
 def _plan_check(base_sha: str) -> audit_lib.Check:
     """Check that the plan records the current-base decision state."""
     plan_log = _log("197-PLAN")
@@ -724,7 +735,6 @@ def _plan_check(base_sha: str) -> audit_lib.Check:
     okay = recorded_match and appendix_note and (accepted_stop or pending_review)
     detail = f"base={base_sha}; plan_bases={bases}; recorded_base_match={recorded_match}; accepted_stop={accepted_stop}; pending_review={pending_review}; appendix_rows={len(_appendix_labels())}"
     return _check("197-PLAN", "Plan/197... § header and Appendix A", "history", "PASS" if okay else "FAIL", "git rev-parse origin/main; read Plan/197...", "build/plan-audit/lifecycle_ownership/plan.log", detail)
-
 def _pr_titles() -> dict[str, str]:
     """Load merged pull-request titles once from GitHub."""
     result = _run(["gh", "pr", "list", "--repo", "JianbinLiu-CFLab/unity-foxglove-sdk", "--state", "merged", "--limit", "1000", "--json", "number,title,mergedAt"], "197-gh-pr-list", 180.0)
@@ -732,7 +742,6 @@ def _pr_titles() -> dict[str, str]:
         raise RuntimeError(str(result["output"]))
     payload = json.loads(str(result["output"]))
     return {str(row["number"]): str(row["title"]) for row in payload}
-
 def _history_candidates(base_sha: str) -> tuple[list[dict[str, str]], str]:
     """Build the complete W1.1 candidate set through the audited main revision."""
     titles = _pr_titles()
@@ -762,7 +771,6 @@ def _history_candidates(base_sha: str) -> tuple[list[dict[str, str]], str]:
         writer.writerows(candidates)
     (OUTPUT / "history-base.txt").write_text(base_sha + "\n", encoding="utf-8")
     return candidates, str(output.relative_to(audit_lib.ROOT)).replace("\\", "/")
-
 def _suggest_label(title: str, subjects: str, paths: list[str]) -> tuple[str, str]:
     """Suggest a root-cause class from reviewable history evidence."""
     text = f"{title}\n{subjects}".lower()
@@ -777,7 +785,6 @@ def _suggest_label(title: str, subjects: str, paths: list[str]) -> tuple[str, st
     if any(token in text for token in ("config", "contract", "name guard", "schema")):
         return "config", "configuration or contract wording"
     return "local", "single-surface fallback pending human classification"
-
 def _appendix_labels() -> list[tuple[str, str]]:
     """Read the historical Appendix A labels when present."""
     text = PLAN.read_text(encoding="utf-8") if PLAN.is_file() else ""
@@ -787,11 +794,9 @@ def _appendix_labels() -> list[tuple[str, str]]:
         if match:
             labels.append((match.group(1), match.group(2).lower()))
     return labels
-
 def _appendix_prs() -> list[str]:
     """Return the Appendix A candidate identifiers in recorded order."""
     return [pr for pr, _ in _appendix_labels()]
-
 def _gate_check(candidates: list[dict[str, str]]) -> audit_lib.Check:
     """Recompute the historical and regenerated decision-gate ratios."""
     appendix = _appendix_labels()
@@ -808,7 +813,6 @@ def _gate_check(candidates: list[dict[str, str]]) -> audit_lib.Check:
     pending = "pending" in plan_status or "regenerat" in plan_status or "provisional" in plan_text.lower()
     status = "NOT_RUN" if not PLAN.is_file() else "FAIL" if not labels_complete else "MANUAL" if pending else "PASS" if not threshold_reached else "FAIL"
     return _check("197-W1-gate", "Plan/197... § Decision gate", "history", status, "git log --first-parent; gh pr list; compare Appendix A with fix-candidates.csv", "build/plan-audit/lifecycle_ownership/fix-candidates.csv", detail)
-
 def _scope_check(candidates: list[dict[str, str]], evidence: str, base_sha: str) -> audit_lib.Check:
     """Check that the regenerated candidate identity multiset matches Appendix A."""
     appendix_prs = _appendix_prs()
@@ -834,7 +838,6 @@ def _scope_check(candidates: list[dict[str, str]], evidence: str, base_sha: str)
     )
     status = "PASS" if okay else "FAIL"
     return _check("197-W1-scope", "Plan/197... § 2 W1.1", "history", status, "python -B -m Scripts.validation.plan_audit.lifecycle_ownership", evidence, detail)
-
 def _owner_map() -> audit_lib.Check:
     """Build a compact field, writer, lock, and lifetime map for four owners."""
     files = [Path(path) for path in _git_output(["git", "ls-files", "*.cs"]).splitlines() if _is_production_source(path)]
@@ -848,8 +851,9 @@ def _owner_map() -> audit_lib.Check:
         for relative in matched:
             text = (audit_lib.ROOT / relative).read_text(encoding="utf-8", errors="replace")
             masked = _mask_csharp_source(text)
-            locks.extend(_line_refs(text, relative, re.compile(r"\block\s*\("), masked))
-            lifetime.extend(_line_refs(text, relative, LIFETIME_WORDS, masked))
+            scopes = _owner_type_scopes(text, masked, owner)
+            locks.extend(_line_refs(text, relative, re.compile(r"\block\s*\("), masked, scopes))
+            lifetime.extend(_line_refs(text, relative, LIFETIME_WORDS, masked, scopes))
         fields, missing_writers = _collect_owner_fields(matched)
         payload[owner] = {
             "files": [str(path).replace("\\", "/") for path in matched],
@@ -864,7 +868,6 @@ def _owner_map() -> audit_lib.Check:
     missing = [owner for owner, data in payload.items() if not _owner_evidence_valid(data)]
     status = "FAIL" if missing else "PASS"
     return _check("197-W1-ownermap", "Plan/197... § 2 W1.2 and Appendix B", "probe", status, "git ls-files '*.cs'; parse four lifecycle owner surfaces", "build/plan-audit/lifecycle_ownership/owner-map.json", f"owners={len(payload) - len(missing)}/4; missing={missing or 'none'}")
-
 def _fresh_results_dir(identifier: str) -> Path:
     """Create an empty per-run TRX directory under the audit output."""
     path = OUTPUT / "TestResults" / identifier
@@ -872,11 +875,9 @@ def _fresh_results_dir(identifier: str) -> Path:
         shutil.rmtree(path)
     path.mkdir(parents=True, exist_ok=True)
     return path
-
 def _trx_passed(path: Path) -> int:
     """Count passed test results in a TRX file."""
     return sum(outcome == "Passed" for outcomes in _trx_outcomes(path).values() for outcome in outcomes)
-
 def _tests_check(base_sha: str) -> audit_lib.Check:
     """Run Manager boundary tests and audit characterization coverage style."""
     source_issues = _canonical_test_source_issues(base_sha)
@@ -903,7 +904,6 @@ def _tests_check(base_sha: str) -> audit_lib.Check:
     okay = result["exit_code"] == 0 and result_file.is_file() and not missing and not canonical_issues
     detail = f"test_exit={result['exit_code']}; passed_tests={passed}; missing_expected_tests={missing or 'none'}; canonical_test_issues={canonical_issues or 'none'}; pr717_test={TEST_REL}"
     return _check("197-W1-tests", "Plan/197... § 2 W1.3", "auto", "PASS" if okay else "FAIL", "dotnet restore ... -p:IncludeManagerProductionBoundary=true; dotnet test --no-restore ... --filter FullyQualifiedName~FoxgloveManagerTeardownTests", result["log"], detail)
-
 def _mutation_checks() -> list[audit_lib.Check]:
     """Ensure order and cleanup mutations make passing baseline tests fail."""
     path = audit_lib.ROOT / TEARDOWN_REL
