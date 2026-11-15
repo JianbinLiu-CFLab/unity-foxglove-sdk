@@ -357,6 +357,18 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
             "    return 0\n"
             "__all__ = ['run_entrypoint']\n"
             "__all__.append('load_tests')\n",
+            "def run_entrypoint():\n"
+            "    return 0\n"
+            "_hook = lambda loader, tests, pattern: tests\n"
+            "globals()['load_tests'] = _hook\n"
+            "globals()['__all__'] = list(__all__) + ['load_tests']\n"
+            "__all__ = ['run_entrypoint']\n",
+            "import sys\n"
+            "def run_entrypoint():\n"
+            "    return 0\n"
+            "_hook = lambda loader, tests, pattern: tests\n"
+            "setattr(sys.modules[__name__], 'load_tests', _hook)\n"
+            "__all__ = ['run_entrypoint']\n",
         )
         for source in sources:
             with self.subTest(source=source), tempfile.TemporaryDirectory() as temporary:

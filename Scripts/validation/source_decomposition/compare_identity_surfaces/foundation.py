@@ -458,6 +458,25 @@ def _sections_have_no_discovery_hook(root: Path, relative: str) -> bool:
     for tree in trees:
         if "load_tests" in _top_level_names(tree, include_imports=True):
             return False
+        if any(
+            isinstance(node, ast.Call)
+            and (
+                isinstance(node.func, ast.Name)
+                and node.func.id in {"globals", "setattr"}
+                or isinstance(node.func, ast.Attribute)
+                and node.func.attr == "setattr"
+            )
+            for node in ast.walk(tree)
+        ):
+            return False
+        if any(
+            isinstance(node, ast.Attribute)
+            and node.attr == "modules"
+            and isinstance(node.value, ast.Name)
+            and node.value.id == "sys"
+            for node in ast.walk(tree)
+        ):
+            return False
         for node in tree.body:
             if isinstance(node, ast.AugAssign):
                 if isinstance(node.target, ast.Name) and node.target.id == "__all__":
