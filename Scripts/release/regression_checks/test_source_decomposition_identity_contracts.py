@@ -306,6 +306,42 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
             ):
                 self.assertFalse(surface_compare._approved_test_facade_removal(relative, base, head))
 
+    def test_discovery_contract_removal_preserves_module_entrypoint(self) -> None:
+        """Removing a test facade cannot alter the retained module entrypoint."""
+        with tempfile.TemporaryDirectory() as base_temporary, tempfile.TemporaryDirectory() as head_temporary:
+            base = Path(base_temporary)
+            head = Path(head_temporary)
+            relative = "Scripts/regression_checks/test_tool.py"
+            self._write_package(base, relative=relative)
+            self._write_package(head, relative=relative)
+            (head / relative.removesuffix(".py") / "__main__.py").write_text(
+                "from .entrypoint import run_entrypoint\n"
+                "if __name__ == '__main__':\n"
+                "    raise SystemExit(9)\n",
+                encoding="utf-8",
+            )
+            (head / relative).unlink()
+            with mock.patch(
+                "Scripts.validation.source_decomposition.compare_identity_surfaces.entrypoint_contracts._approved_initializer_contract",
+                return_value=True,
+            ):
+                self.assertFalse(surface_compare._approved_test_facade_removal(relative, base, head))
+
+    def test_discovery_contract_removal_accepts_testfoo_pattern(self) -> None:
+        """Removing any unittest-discoverable test facade uses the same contract."""
+        with tempfile.TemporaryDirectory() as base_temporary, tempfile.TemporaryDirectory() as head_temporary:
+            base = Path(base_temporary)
+            head = Path(head_temporary)
+            relative = "Scripts/regression_checks/testfoo.py"
+            self._write_package(base, relative=relative)
+            self._write_package(head, relative=relative)
+            (head / relative).unlink()
+            with mock.patch(
+                "Scripts.validation.source_decomposition.compare_identity_surfaces.entrypoint_contracts._approved_initializer_contract",
+                return_value=True,
+            ):
+                self.assertTrue(surface_compare._approved_test_facade_removal(relative, base, head))
+
     def test_discovery_contract_normalizes_directory_migration(self) -> None:
         """A supported Phase192 directory migration is compared by canonical path."""
         with tempfile.TemporaryDirectory() as base_temporary, tempfile.TemporaryDirectory() as head_temporary:
@@ -327,6 +363,30 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
                     allow_directory_migration=True,
                 ),
             )
+
+    def test_discovery_contract_rejects_migration_path_collision(self) -> None:
+        """A migration cannot retain both raw paths for one canonical facade."""
+        with tempfile.TemporaryDirectory() as base_temporary, tempfile.TemporaryDirectory() as head_temporary:
+            base = Path(base_temporary)
+            head = Path(head_temporary)
+            self._write_package(
+                base,
+                relative="Scripts/phase192/regression_checks/test_tool.py",
+            )
+            self._write_package(
+                head,
+                relative="Scripts/phase192/regression_checks/test_tool.py",
+            )
+            self._write_package(
+                head,
+                relative="Scripts/validation/source_decomposition/regression_checks/test_tool.py",
+            )
+            errors = surface_compare._discovery_contract_errors(
+                base,
+                head,
+                allow_directory_migration=True,
+            )
+            self.assertTrue(any(error.startswith("DUPLICATE_DISCOVERY_FACADE") for error in errors))
 
     def test_compare_revisions_uses_checkout_roots_before_cleanup(self) -> None:
         """The compatibility gate can approve a valid entrypoint migration end to end."""

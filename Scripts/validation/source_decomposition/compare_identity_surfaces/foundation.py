@@ -343,10 +343,18 @@ def _approved_test_facade_removal(
     head_root: Path,
 ) -> bool:
     """Return whether removing a test facade preserves every package section."""
-    if not (relative.startswith("Scripts/") and "/regression_checks/test_" in relative):
+    facade_name = Path(relative).name
+    if not (
+        relative.startswith("Scripts/")
+        and facade_name.startswith("test")
+        and facade_name.endswith(".py")
+    ):
         return False
     base_package = base_root / relative.removesuffix(".py")
     head_package = head_root / relative.removesuffix(".py")
+    if not head_package.is_dir():
+        migrated_relative = _current_source_decomposition_relative(relative)
+        head_package = head_root / migrated_relative.removesuffix(".py")
     if not base_package.is_dir() or not head_package.is_dir():
         return False
     from .entrypoint_contracts import _approved_initializer_contract
@@ -369,6 +377,12 @@ def _approved_test_facade_removal(
     if base_manifest.is_file() != head_manifest.is_file():
         return False
     if base_manifest.is_file() and base_manifest.read_bytes() != head_manifest.read_bytes():
+        return False
+    base_main = base_package / "__main__.py"
+    head_main = head_package / "__main__.py"
+    if base_main.is_file() != head_main.is_file():
+        return False
+    if base_main.is_file() and base_main.read_bytes() != head_main.read_bytes():
         return False
     excluded = {"__init__.py", "__main__.py"}
     base_sections = {
@@ -442,13 +456,14 @@ def _discovery_contract_errors(
     allow_directory_migration: bool = False,
 ) -> list[str]:
     """Reject newly retained duplicate test facades and validate intentional removals."""
-    def test_facades(root: Path) -> set[str]:
-        """Return test facade paths that have a sibling package directory."""
-        return {
-            path.relative_to(root).as_posix()
-            for path in root.joinpath("Scripts").rglob("test*.py")
-            if path.with_suffix("").is_dir()
-        }
+    def test_facades(root: Path) -> dict[str, tuple[str, ...]]:
+        """Return canonical test facade paths and every raw path that maps to them."""
+        grouped: dict[str, list[str]] = {}
+        for path in root.joinpath("Scripts").rglob("test*.py"):
+            if path.with_suffix("").is_dir():
+                raw = path.relative_to(root).as_posix()
+                grouped.setdefault(_current_source_decomposition_relative(raw), []).append(raw)
+        return {relative: tuple(sorted(paths)) for relative, paths in grouped.items()}
 
     def normalize(relative: str) -> str:
         """Normalize supported source-decomposition migration paths."""
@@ -457,18 +472,22 @@ def _discovery_contract_errors(
         return relative
 
     base_facades = {
-        normalize(relative): relative for relative in test_facades(base_root)
+        normalize(relative): paths for relative, paths in test_facades(base_root).items()
     }
     head_facades = {
-        normalize(relative): relative for relative in test_facades(head_root)
+        normalize(relative): paths for relative, paths in test_facades(head_root).items()
     }
     from .entrypoint_contracts import _approved_initializer_contract
 
     errors: list[str] = []
+    for relative, paths in sorted(head_facades.items()):
+        if len(paths) > 1:
+            errors.append(f"DUPLICATE_DISCOVERY_FACADE {relative}: {','.join(paths)}")
     for relative in sorted(set(head_facades) - set(base_facades)):
         errors.append(f"DUPLICATE_DISCOVERY_FACADE {relative}")
     for relative in sorted(set(base_facades) - set(head_facades)):
-        head_relative = head_facades.get(relative, relative)
+        head_paths = head_facades.get(relative)
+        head_relative = head_paths[0] if head_paths else relative
         if not _approved_initializer_contract(head_root, head_relative):
             errors.append(f"INVALID_DISCOVERY_FACADE_REMOVAL {relative}")
     return errors
