@@ -8,6 +8,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Text;
 using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Protocol;
 
@@ -18,6 +19,7 @@ namespace Unity.FoxgloveSDK.Core
     /// </summary>
     public class FoxgloveServiceRegistry
     {
+        private static readonly UTF8Encoding StrictUtf8 = new UTF8Encoding(false, true);
         private readonly Dictionary<uint, ServiceDescriptor> _services = new();
         // Key: (clientId, callId) — two clients may independently use the same callId
         private readonly Dictionary<(uint clientId, uint callId), FoxgloveServiceCall> _pending = new();
@@ -27,6 +29,26 @@ namespace Unity.FoxgloveSDK.Core
         private readonly Func<long> _monotonicTimestampProvider;
         private uint _nextServiceId = 1;
         private readonly Dictionary<uint, Func<Newtonsoft.Json.Linq.JToken, Newtonsoft.Json.Linq.JToken>> _handlers = new();
+
+        internal static bool TryParseJsonPayload(FoxgloveServiceCall call, out JToken payload)
+        {
+            payload = call?.JsonPayload;
+            if (payload != null)
+                return true;
+            if (call == null
+                || !string.Equals(call.Encoding, "json", StringComparison.OrdinalIgnoreCase)
+                || call.Payload == null)
+                return false;
+            try
+            {
+                payload = JToken.Parse(StrictUtf8.GetString(call.Payload));
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
 
         /// <summary>Create a service registry using the process monotonic clock.</summary>
         public FoxgloveServiceRegistry()

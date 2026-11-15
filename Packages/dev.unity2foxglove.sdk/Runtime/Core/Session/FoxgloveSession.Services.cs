@@ -43,25 +43,10 @@ namespace Unity.FoxgloveSDK.Core
 
                     try
                     {
-                        var input = call.JsonPayload;
-                        if (input == null)
+                        if (!FoxgloveServiceRegistry.TryParseJsonPayload(call, out var input))
                         {
-                            if (!string.Equals(call.Encoding, "json", StringComparison.OrdinalIgnoreCase)
-                                || call.Payload == null)
-                            {
-                                _services.Fail(call.ClientId, call.CallId, "Malformed JSON payload");
-                                continue;
-                            }
-
-                            try
-                            {
-                                input = JToken.Parse(StrictUtf8.GetString(call.Payload));
-                            }
-                            catch
-                            {
-                                _services.Fail(call.ClientId, call.CallId, "Malformed JSON payload");
-                                continue;
-                            }
+                            _services.Fail(call.ClientId, call.CallId, "Malformed JSON payload");
+                            continue;
                         }
 
                         var result = handler(input);
