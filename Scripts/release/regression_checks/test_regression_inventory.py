@@ -187,7 +187,7 @@ class RegressionInventoryTests(unittest.TestCase):
         """Explicit package loading keeps the four migrated suites complete."""
         expected = {
             "Scripts.package.regression_checks.test_validate_phase186_package_matrix": 14,
-            "Scripts.remotegateway.regression_checks.test_remote_gateway_tooling": 23,
+            "Scripts.remotegateway.regression_checks.test_remote_gateway_tooling": 24,
             "Scripts.ros2forunity.windows.humble.regression_checks.test_build_r2fu_runtime_package": 23,
             "Scripts.samples.regression_checks.test_sample_sync_tooling": 25,
         }
