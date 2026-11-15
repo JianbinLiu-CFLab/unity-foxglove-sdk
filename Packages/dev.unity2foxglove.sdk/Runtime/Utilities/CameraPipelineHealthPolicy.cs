@@ -71,6 +71,9 @@ namespace Unity.FoxgloveSDK.Util
         public static bool ShouldApplyJpegHealthGates(bool profileIsVideo, bool publishJpegOutput)
             => !profileIsVideo && publishJpegOutput;
 
+        public static int ResolveMaxPixelsPerFrame(bool profileIsVideo, int maxPixelsPerFrame)
+            => profileIsVideo ? 0 : maxPixelsPerFrame;
+
         public static CameraPipelineHealthResult Evaluate(CameraPipelineHealthInput input)
         {
             var maxReadbacks = PositiveOrDefault(input.MaxPendingReadbacks);

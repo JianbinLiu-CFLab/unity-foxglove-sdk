@@ -115,7 +115,7 @@ namespace Unity.FoxgloveSDK.Components
                 MaxVideoInputQueueDepth = profile.IsVideo ? videoPipeline?.MaxInputQueue ?? 1 : 1,
                 Width = _width,
                 Height = _height,
-                MaxPixelsPerFrame = _maxPixelsPerFrame,
+                MaxPixelsPerFrame = CameraPipelineHealthPolicy.ResolveMaxPixelsPerFrame(profile.IsVideo, _maxPixelsPerFrame),
                 RenderPressureCooldownActive = PipelineCooldownActive()
             });
             if (result.AllowCapture)

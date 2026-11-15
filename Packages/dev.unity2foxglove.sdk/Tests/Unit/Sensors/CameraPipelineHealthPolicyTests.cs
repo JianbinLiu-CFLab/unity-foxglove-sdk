@@ -84,6 +84,13 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         }
 
         [Fact]
+        public void VideoCaptureDoesNotUseJpegPixelBudget()
+        {
+            Assert.Equal(0, CameraPipelineHealthPolicy.ResolveMaxPixelsPerFrame(true, 1));
+            Assert.Equal(123, CameraPipelineHealthPolicy.ResolveMaxPixelsPerFrame(false, 123));
+        }
+
+        [Fact]
         public void EncodeResultsRefreshCameraTimingSnapshot()
         {
             CameraTimingDiagnostics.Reset();
