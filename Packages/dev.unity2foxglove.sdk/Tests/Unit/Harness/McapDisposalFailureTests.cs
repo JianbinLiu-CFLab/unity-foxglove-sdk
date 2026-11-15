@@ -12,7 +12,7 @@ namespace Unity.FoxgloveSDK.UnitTests
 {
     [Trait("Phase", "173-089")]
     [Trait("Domain", "Review")]
-    public sealed class Phase173089DisposalFailureTests
+    public sealed class McapDisposalFailureTests
     {
         [Fact]
         public void McapWriterFinalizesAfterStreamDisposeFailure()
@@ -46,3 +46,4 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
     }
 }
+
