@@ -164,22 +164,6 @@ namespace Unity.FoxgloveSDK.Components
             if (_sourceCamera == null || _captureCamera == null)
                 return;
 
-            if (!_captureCameraDirty
-                && _lastCopiedSourceCamera == _sourceCamera
-                && _lastCaptureWidth == width
-                && _lastCaptureHeight == height
-                && Mathf.Approximately(_lastFieldOfView, _sourceCamera.fieldOfView)
-                && _lastOrthographic == _sourceCamera.orthographic
-                && Mathf.Approximately(_lastOrthographicSize, _sourceCamera.orthographicSize)
-                && Mathf.Approximately(_lastNearClipPlane, _sourceCamera.nearClipPlane)
-                && Mathf.Approximately(_lastFarClipPlane, _sourceCamera.farClipPlane)
-                && _lastCullingMask == _sourceCamera.cullingMask
-                && _lastClearFlags == _sourceCamera.clearFlags
-                && _lastBackgroundColor == _sourceCamera.backgroundColor)
-            {
-                return;
-            }
-
             _captureCamera.CopyFrom(_sourceCamera);
             _lastCopiedSourceCamera = _sourceCamera;
             _lastCaptureWidth = width;

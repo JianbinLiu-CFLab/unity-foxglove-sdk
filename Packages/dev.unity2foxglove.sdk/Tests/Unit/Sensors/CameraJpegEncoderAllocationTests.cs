@@ -93,6 +93,18 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         }
 
         [Fact]
+        public void CameraReadbackTimingTracksConfiguredPendingRequestCapacity()
+        {
+            var timing = new CameraReadbackTiming();
+            var oneSecondAgo = System.Diagnostics.Stopwatch.GetTimestamp() - System.Diagnostics.Stopwatch.Frequency;
+            for (var request = 1UL; request <= 12UL; request++)
+                timing.Remember(request, oneSecondAgo, maxTrackedRequests: 12);
+
+            Assert.True(timing.TakeLatencyMs(1UL) >= 1_000d);
+            Assert.True(timing.TakeLatencyMs(12UL) >= 1_000d);
+        }
+
+        [Fact]
         public void CameraPipelineResizeMigratesNewestRequestsUnderOneQueueGate()
         {
             using var pipeline = new CameraJpegPipeline(() => 1, workerStopWaitMs: 1);

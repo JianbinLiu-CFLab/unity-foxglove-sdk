@@ -14,13 +14,23 @@ namespace Unity.FoxgloveSDK.Components
     /// </summary>
     internal sealed class CameraReadbackTiming
     {
-        private const int MaxTrackedRequests = 8;
-        private readonly ulong[] _requestKeys = new ulong[MaxTrackedRequests];
-        private readonly long[] _requestTicks = new long[MaxTrackedRequests];
+        private const int DefaultMaxTrackedRequests = 8;
+        private ulong[] _requestKeys = new ulong[DefaultMaxTrackedRequests];
+        private long[] _requestTicks = new long[DefaultMaxTrackedRequests];
         private int _nextSlot;
 
         public void Remember(ulong unixNs, long ticks)
+            => Remember(unixNs, ticks, DefaultMaxTrackedRequests);
+
+        public void Remember(ulong unixNs, long ticks, int maxTrackedRequests)
         {
+            var capacity = Math.Max(1, maxTrackedRequests);
+            if (_requestKeys.Length < capacity)
+            {
+                Array.Resize(ref _requestKeys, capacity);
+                Array.Resize(ref _requestTicks, capacity);
+            }
+
             for (var i = 0; i < _requestKeys.Length; i++)
             {
                 if (_requestKeys[i] != unixNs)
@@ -30,7 +40,7 @@ namespace Unity.FoxgloveSDK.Components
                 return;
             }
 
-            var slot = _nextSlot;
+            var slot = _nextSlot % _requestKeys.Length;
             _nextSlot = (_nextSlot + 1) % _requestKeys.Length;
             _requestKeys[slot] = unixNs;
             _requestTicks[slot] = ticks;

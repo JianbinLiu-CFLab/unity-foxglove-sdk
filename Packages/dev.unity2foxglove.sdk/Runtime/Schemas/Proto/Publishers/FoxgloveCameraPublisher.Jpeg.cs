@@ -387,7 +387,7 @@ namespace Unity.FoxgloveSDK.Components
         private void RememberReadbackStart(ulong unixNs, long ticks)
         {
             EnsureJpegPublishPipeline();
-            _jpegPublishPipeline.RememberReadbackStart(unixNs, ticks);
+            _jpegPublishPipeline.RememberReadbackStart(unixNs, ticks, Math.Max(1, _maxPendingReadbacks));
         }
 
         private double TakeReadbackLatencyMs(ulong unixNs)

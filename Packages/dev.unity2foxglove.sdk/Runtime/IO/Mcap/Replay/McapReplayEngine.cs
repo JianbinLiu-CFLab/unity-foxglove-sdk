@@ -134,7 +134,6 @@ namespace Unity.FoxgloveSDK.IO
         private bool _deferredPendingSorted = true;
         private readonly Dictionary<byte[], int> _deferredOwnerReferences = new();
         private long _deferredOwnerBytes;
-        private readonly List<McapMessage> _defaultTickBuffer = new();
         private readonly List<McapMessage> _scanBoundaryCandidates = new();
         private static readonly IComparer<McapMessage> MessageComparer =
             Comparer<McapMessage>.Create(CompareMessages);
