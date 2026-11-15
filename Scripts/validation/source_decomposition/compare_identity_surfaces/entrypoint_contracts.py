@@ -866,27 +866,13 @@ def _approved_entrypoint_section(path: Path) -> bool:
         tree = _parse_source(path.read_text(encoding="utf-8"), path)
     except (OSError, SyntaxError, ValueError):
         return False
-    bindings: list[ast.AST] = []
-    for node in tree.body:
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            if node.name == "run_entrypoint":
-                bindings.append(node)
-        elif isinstance(node, (ast.Import, ast.ImportFrom)):
-            for alias in node.names:
-                bound = alias.asname or alias.name.split(".", 1)[0]
-                if bound == "run_entrypoint":
-                    bindings.append(node)
-        elif isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
-            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
-            if any(isinstance(target, ast.Name) and target.id == "run_entrypoint" for target in targets):
-                bindings.append(node)
     definitions = [
         node
         for node in tree.body
         if isinstance(node, ast.FunctionDef)
         and node.name == "run_entrypoint"
     ]
-    if len(bindings) != 1 or len(definitions) != 1 or bindings[0] is not definitions[0]:
+    if not _single_run_entrypoint_binding(tree) or len(definitions) != 1:
         return False
     if definitions[0].decorator_list or not definitions[0].body:
         return False
@@ -969,7 +955,6 @@ def _approved_initializer_contract(root: Path, relative: str) -> bool:
     )
 
 
-
 def _initializer_has_reviewed_discovery_shape(tree: ast.Module) -> bool:
     """Return whether an initializer has no mutable one-shot discovery hook."""
     if any(isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) for node in tree.body):
@@ -999,14 +984,7 @@ def _initializer_has_reviewed_discovery_shape(tree: ast.Module) -> bool:
         for node in tree.body
     ):
         return False
-    if any(
-        isinstance(node, (ast.Import, ast.ImportFrom))
-        and any(
-            (alias.asname or alias.name.split(".", 1)[0]) == "load_tests"
-            for alias in node.names
-        )
-        for node in tree.body
-    ):
+    if not _initializer_has_no_load_tests_import(tree):
         return False
     if any(isinstance(node, ast.Global) for node in ast.walk(tree)):
         return False
