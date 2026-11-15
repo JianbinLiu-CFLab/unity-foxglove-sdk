@@ -42,6 +42,7 @@ public class ROS2UnityComponent : MonoBehaviour
     private readonly List<INode> nodesSnapshot = new List<INode>();
     private int collectionVersion = 0;
     private int snapshotVersion = -1;
+    private bool nodeSnapshotInFlight = false;
     private bool initialized = false;
     private volatile bool executorStarted = false;
     private volatile bool quitting = false;
@@ -226,6 +227,11 @@ public class ROS2UnityComponent : MonoBehaviour
                 return node.IsDisposed;
             }
 
+            if (dispose && nodeSnapshotInFlight && nodesSnapshot.Contains(node.NativeNode))
+            {
+                return false;
+            }
+
             nodeIndex = nodes.IndexOf(node);
             nativeIndex = ros2csNodes.IndexOf(node.NativeNode);
             if (nodeIndex < 0 && nativeIndex < 0)
@@ -330,6 +336,7 @@ public class ROS2UnityComponent : MonoBehaviour
                         nodesSnapshot.AddRange(ros2csNodes);
                         snapshotVersion = collectionVersion;
                     }
+                    nodeSnapshotInFlight = nodesSnapshot.Count > 0;
                     hasSnapshot = true;
                 }
                 else
@@ -340,30 +347,41 @@ public class ROS2UnityComponent : MonoBehaviour
 
             if (hasSnapshot)
             {
-                foreach (Action action in actionsSnapshot)
+                try
                 {
-                    try
+                    foreach (Action action in actionsSnapshot)
                     {
-                        action();
-                    }
-                    catch (Exception e)
-                    {
-                        Debug.LogException(e);
-                    }
-                }
-
-                if (nodesSnapshot.Count > 0)
-                {
-                    try
-                    {
-                        Ros2cs.SpinOnce(nodesSnapshot, spinTimeout);
-                    }
-                    catch (Exception e)
-                    {
-                        if (!quitting)
+                        try
+                        {
+                            action();
+                        }
+                        catch (Exception e)
                         {
                             Debug.LogException(e);
                         }
+                    }
+
+                    if (nodesSnapshot.Count > 0)
+                    {
+                        try
+                        {
+                            Ros2cs.SpinOnce(nodesSnapshot, spinTimeout);
+                        }
+                        catch (Exception e)
+                        {
+                            if (!quitting)
+                            {
+                                Debug.LogException(e);
+                            }
+                        }
+                    }
+                }
+                finally
+                {
+                    lock (mutex)
+                    {
+                        nodeSnapshotInFlight = false;
+                        Monitor.PulseAll(mutex);
                     }
                 }
             }
@@ -702,6 +720,7 @@ public class ROS2UnityComponent : MonoBehaviour
             ros2csNodes = null;
             actionsSnapshot.Clear();
             nodesSnapshot.Clear();
+            nodeSnapshotInFlight = false;
             collectionVersion++;
             snapshotVersion = -1;
         }
