@@ -37,6 +37,33 @@ namespace Unity.FoxgloveSDK.Tests.Manager
         }
 
         [Fact]
+        public void PublisherResolvesEncodingAfterLateManagerDiscovery()
+        {
+            UnityEngine.Object.ResetRegistry();
+            UnityEngine.Time.realtimeSinceStartupAsDouble = 0d;
+            var publisher = new BoundaryPublisher
+            {
+                TopicForTest = "/manager/encoding"
+            };
+            publisher.ExternalEnableForTest();
+
+            var manager = new FoxgloveManager
+            {
+                DefaultPublisherEncoding = GlobalEncoding.Protobuf,
+                AllowPublisherOverride = false
+            };
+            UnityEngine.Object.Register(manager);
+            try
+            {
+                Assert.True(publisher.PreparePublishForTest());
+            }
+            finally
+            {
+                UnityEngine.Object.ResetRegistry();
+            }
+        }
+
+        [Fact]
         public void RemoteMcapStartupRetriesAfterBoundedFailure()
         {
             var path = Path.GetTempFileName();
@@ -203,6 +230,8 @@ namespace Unity.FoxgloveSDK.Tests.Manager
             }
 
             protected override string SchemaName => "manager.boundary";
+
+            public override bool SupportsProtobufEncoding => true;
 
             public void ExternalEnableForTest()
             {
