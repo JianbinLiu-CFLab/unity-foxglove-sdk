@@ -56,7 +56,7 @@ namespace Unity.FoxgloveSDK.RemoteGateway
 
         internal bool Publish(uint channelId, ulong logTimeNs, byte[] payload)
         {
-            if (payload == null || payload.Length == 0)
+            if (payload == null)
                 return false;
 
             lock (_gate)
@@ -70,13 +70,19 @@ namespace Unity.FoxgloveSDK.RemoteGateway
 
                 // Keep the native channel handle live until ChannelLog has returned.
                 _logTimeScratch[0] = logTimeNs;
-                var payloadHandle = GCHandle.Alloc(payload, GCHandleType.Pinned);
+                var payloadHandle = default(GCHandle);
+                var payloadPointer = IntPtr.Zero;
+                if (payload.Length > 0)
+                {
+                    payloadHandle = GCHandle.Alloc(payload, GCHandleType.Pinned);
+                    payloadPointer = payloadHandle.AddrOfPinnedObject();
+                }
                 var logTimeHandle = GCHandle.Alloc(_logTimeScratch, GCHandleType.Pinned);
                 try
                 {
                     var error = RemoteGatewayNativeMethods.ChannelLog(
                         channel.Pointer,
-                        payloadHandle.AddrOfPinnedObject(),
+                        payloadPointer,
                         (UIntPtr)payload.Length,
                         logTimeHandle.AddrOfPinnedObject(),
                         sinkId);
@@ -85,7 +91,8 @@ namespace Unity.FoxgloveSDK.RemoteGateway
                 finally
                 {
                     logTimeHandle.Free();
-                    payloadHandle.Free();
+                    if (payloadHandle.IsAllocated)
+                        payloadHandle.Free();
                     _logTimeScratch[0] = 0UL;
                 }
             }
