@@ -518,7 +518,16 @@ def _compare_surfaces(
             )
         ):
             errors.append(f"RELATIVE_STAR_IMPORT_CHANGED {relative}")
-        if not strict and base_risks != head_risks and not _approved_namespace_change(relative, base_root, head_root):
+        if not strict and base_risks != head_risks and not _approved_namespace_change(
+            relative,
+            base_root,
+            head_root,
+            head_relative=(
+                _current_source_decomposition_relative(relative)
+                if migrated_relative
+                else relative
+            ),
+        ):
             errors.append(f"NAMESPACE_CONTRACT_CHANGED {relative}")
         if not strict:
             base_contract = tuple(base_conditional_contract or ())

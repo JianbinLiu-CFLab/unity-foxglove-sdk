@@ -634,6 +634,36 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
             ):
                 self.assertEqual(0, surface_compare.compare_revisions(repository, base, head, strict=False))
 
+    def test_namespace_approval_resolves_migrated_head_path(self) -> None:
+        """Namespace approval receives the current path during a supported directory migration."""
+        def surface(risks: frozenset[str]) -> tuple:
+            """Build the minimal identity surface needed by the comparison."""
+            return (
+                frozenset(), (), (), frozenset(), None, frozenset(), None, (),
+                risks, (), None, (), (), (), frozenset(), (),
+            )
+
+        relative = "Scripts/phase192/regression_checks/test_tool.py"
+        with tempfile.TemporaryDirectory() as base_temporary, tempfile.TemporaryDirectory() as head_temporary:
+            base = Path(base_temporary)
+            head = Path(head_temporary)
+            with mock.patch.object(surface_compare, "_approved_namespace_change", return_value=True) as approve:
+                errors = surface_compare._compare_surfaces(
+                    {relative: surface(frozenset({"base-risk"}))},
+                    {relative: surface(frozenset())},
+                    strict=False,
+                    allow_directory_migration=True,
+                    base_root=base,
+                    head_root=head,
+                )
+            self.assertEqual([], errors)
+            approve.assert_called_once_with(
+                relative,
+                base,
+                head,
+                head_relative="Scripts/validation/source_decomposition/regression_checks/test_tool.py",
+            )
+
     def test_entrypoint_parity_probe_matches_direct_and_module_launch(self) -> None:
         """Direct and module launches return the same injected failure code and stderr."""
         with tempfile.TemporaryDirectory() as temporary:

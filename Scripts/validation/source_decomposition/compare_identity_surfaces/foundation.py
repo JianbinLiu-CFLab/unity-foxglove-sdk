@@ -505,29 +505,36 @@ def _approved_test_facade_removal(
     )
 
 
-def _approved_namespace_change(relative: str, base_root: Path | None, head_root: Path | None) -> bool:
+def _approved_namespace_change(
+    relative: str,
+    base_root: Path | None,
+    head_root: Path | None,
+    *,
+    head_relative: str | None = None,
+) -> bool:
     """Allow namespace-risk changes only when wrapper and initializer contracts pass."""
     if base_root is None or head_root is None:
         return False
+    head_relative = head_relative or relative
     from .entrypoint_contracts import (
         _approved_entrypoint_contract,
         _approved_entrypoint_section,
         _approved_initializer_contract,
     )
 
-    if not _approved_entrypoint_contract(head_root, relative):
+    if not _approved_entrypoint_contract(head_root, head_relative):
         return False
-    if not _approved_initializer_contract(head_root, relative):
+    if not _approved_initializer_contract(head_root, head_relative):
         return False
-    facade = head_root / relative
+    facade = head_root / head_relative
     try:
         facade_tree = _parse_source(facade.read_text(encoding="utf-8"), facade)
     except (OSError, SyntaxError, ValueError):
         return False
-    if not _facade_entrypoint_is_standard(facade_tree, relative):
+    if not _facade_entrypoint_is_standard(facade_tree, head_relative):
         return False
     base_package = base_root / relative.removesuffix(".py")
-    head_package = head_root / relative.removesuffix(".py")
+    head_package = head_root / head_relative.removesuffix(".py")
     base_sections = {
         path.name
         for path in base_package.glob("*.py")
