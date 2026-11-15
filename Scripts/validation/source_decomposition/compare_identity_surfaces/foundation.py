@@ -434,6 +434,16 @@ def _entrypoint_section_imports_are_trusted(tree: ast.Module, package: Path) -> 
             return False
     return True
 
+def _function_signature_is_inert(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    """Return whether a function signature has no import-time executable expressions."""
+    arguments = node.args
+    if node.returns is not None or arguments.defaults or any(arguments.kw_defaults):
+        return False
+    return not any(
+        argument.annotation is not None or argument.type_comment
+        for argument in (*arguments.posonlyargs, *arguments.args, *arguments.kwonlyargs)
+    )
+
 def _sections_have_no_discovery_hook(root: Path, relative: str) -> bool:
     """Return whether package sections cannot export or bind unittest load_tests."""
     package = root / relative.removesuffix(".py")
@@ -526,21 +536,20 @@ def _approved_test_facade_removal(
         return False
     if base_main.is_file() and base_main.read_bytes() != head_main.read_bytes():
         return False
-    excluded = {"__init__.py"}
-    base_files = {
-        path.relative_to(base_package).as_posix()
-        for path in base_package.rglob("*.py")
-        if path.name not in excluded or path.parent != base_package
-    }
-    head_files = {
-        path.relative_to(head_package).as_posix()
-        for path in head_package.rglob("*.py")
-        if path.name not in excluded or path.parent != head_package
-    }
-    if base_files != head_files:
+    def package_files(package: Path) -> dict[str, Path]:
+        """Return every tracked package file except the generated root initializer."""
+        return {
+            path.relative_to(package).as_posix(): path
+            for path in package.rglob("*")
+            if path.is_file() and not (path == package / "__init__.py")
+        }
+
+    base_files = package_files(base_package)
+    head_files = package_files(head_package)
+    if set(base_files) != set(head_files):
         return False
     return all(
-        (base_package / name).read_bytes() == (head_package / name).read_bytes()
+        base_files[name].read_bytes() == head_files[name].read_bytes()
         for name in base_files
     )
 
@@ -737,6 +746,48 @@ def _initializer_has_generated_import_shape(tree: ast.Module) -> bool:
             and not node.keywords
         )
 
+    guard_index = next(
+        (index for index, node in enumerate(tree.body) if isinstance(node, ast.If) and exact_path_guard(node)),
+        None,
+    )
+    if guard_index is None:
+        return False
+    expected_imports = ast.parse(
+        "from __future__ import annotations\n"
+        "import sys as _phase192_sys\n"
+        "import types as _phase192_types\n"
+        "from pathlib import Path as _Phase192Path\n"
+    ).body
+    pre_guard_imports = [
+        node for index, node in enumerate(tree.body[:guard_index])
+        if isinstance(node, (ast.Import, ast.ImportFrom))
+    ]
+    expected_without_future = expected_imports[1:]
+    if not any(
+        tuple(ast.dump(node, include_attributes=False) for node in pre_guard_imports)
+        == tuple(ast.dump(node, include_attributes=False) for node in candidate)
+        for candidate in (expected_imports, expected_without_future)
+    ):
+        return False
+
+    def is_section_import(node: ast.AST) -> bool:
+        """Recognize a generated relative section import after the path guard."""
+        return (
+            isinstance(node, ast.ImportFrom)
+            and node.level == 1
+            and node.module is None
+            and len(node.names) == 1
+            and node.names[0].name != "*"
+            and re.fullmatch(r"_phase192_section_[0-9]+", node.names[0].asname or "") is not None
+        )
+
+    if any(
+        isinstance(node, (ast.Import, ast.ImportFrom))
+        and not is_section_import(node)
+        for node in tree.body[guard_index + 1:]
+    ):
+        return False
+
     for node in ast.walk(tree):
         if isinstance(node, (ast.Import, ast.ImportFrom)) and node not in tree.body:
             return False
@@ -760,4 +811,4 @@ def _initializer_has_generated_import_shape(tree: ast.Module) -> bool:
             return False
     return True
 
-__all__ = ['_REVIEWED_IDENTITY_TOOLING_SECTIONS', '_reviewed_identity_tooling_test_split', 'argparse', 'ast', 'copy', 'hashlib', 'importlib', 'json', 'keyword', 're', 'contextmanager', 'lru_cache', 'Path', 'subprocess', 'tarfile', 'tempfile', 'Iterator', 'Mapping', 'REPOSITORY_ROOT', '_TRY_TYPES', '_TYPE_ALIAS_TYPE', '_SECTION_NAME_RE', 'SPLIT_ROOTS', 'IDENTITY_WAIVER_PATH', '_legacy_relative_path', '_canonical_source_decomposition_relative', '_current_source_decomposition_relative', '_resolve_source_decomposition_path', '_load_identity_waivers', '_git', '_extract_archive_safely', '_revision_checkout', '_FUNCTION_BODY_RISK_NAMES', '_ENVIRONMENT_MUTATORS', '_without_function_bodies', '_function_body_and_environment_risk_signatures', '_parse_source', '_section_modules_for_root', '_section_package_for_facade', '_split_facades', '_top_level_names', '_direct_import_bound_names', '_declared_public_names', '_PHASE192_TEMPLATE_IMPORTS', '_PHASE192_TEMPLATE_CALLS', '_PHASE192_TEMPLATE_METHODS', '_facade_entrypoint_is_standard', '_single_run_entrypoint_binding', '_initializer_has_no_load_tests_import', '_entrypoint_section_imports_are_trusted', '_sections_have_no_discovery_hook', '_approved_test_facade_removal', '_approved_namespace_change', '_discovery_contract_errors', '_initializer_path_is_repository_rooted', '_initializer_has_generated_import_shape']
+__all__ = ['_REVIEWED_IDENTITY_TOOLING_SECTIONS', '_reviewed_identity_tooling_test_split', 'argparse', 'ast', 'copy', 'hashlib', 'importlib', 'json', 'keyword', 're', 'contextmanager', 'lru_cache', 'Path', 'subprocess', 'tarfile', 'tempfile', 'Iterator', 'Mapping', 'REPOSITORY_ROOT', '_TRY_TYPES', '_TYPE_ALIAS_TYPE', '_SECTION_NAME_RE', 'SPLIT_ROOTS', 'IDENTITY_WAIVER_PATH', '_legacy_relative_path', '_canonical_source_decomposition_relative', '_current_source_decomposition_relative', '_resolve_source_decomposition_path', '_load_identity_waivers', '_git', '_extract_archive_safely', '_revision_checkout', '_FUNCTION_BODY_RISK_NAMES', '_ENVIRONMENT_MUTATORS', '_without_function_bodies', '_function_body_and_environment_risk_signatures', '_parse_source', '_section_modules_for_root', '_section_package_for_facade', '_split_facades', '_top_level_names', '_direct_import_bound_names', '_declared_public_names', '_PHASE192_TEMPLATE_IMPORTS', '_PHASE192_TEMPLATE_CALLS', '_PHASE192_TEMPLATE_METHODS', '_facade_entrypoint_is_standard', '_single_run_entrypoint_binding', '_initializer_has_no_load_tests_import', '_entrypoint_section_imports_are_trusted', '_function_signature_is_inert', '_sections_have_no_discovery_hook', '_approved_test_facade_removal', '_approved_namespace_change', '_discovery_contract_errors', '_initializer_path_is_repository_rooted', '_initializer_has_generated_import_shape']

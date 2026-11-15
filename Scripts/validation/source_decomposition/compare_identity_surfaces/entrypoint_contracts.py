@@ -890,7 +890,7 @@ def _approved_entrypoint_section(path: Path) -> bool:
         if isinstance(node, (ast.Import, ast.ImportFrom)):
             continue
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            if node.decorator_list:
+            if node.decorator_list or not _function_signature_is_inert(node):
                 return False
             continue
         if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name) and node.targets[0].id == "__all__":

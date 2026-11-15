@@ -294,6 +294,34 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
                 )
             )
 
+    def test_entrypoint_section_rejects_executable_helper_signatures(self) -> None:
+        """Helper defaults and annotations cannot execute during section import."""
+        sources = (
+            (
+                "def helper(value=side_effect()):\n"
+                "    return value\n"
+                "def run_entrypoint():\n"
+                "    return helper()\n"
+                "__all__ = ['run_entrypoint']\n"
+            ),
+            (
+                "def helper(value: side_effect()):\n"
+                "    return value\n"
+                "def run_entrypoint():\n"
+                "    return helper(0)\n"
+                "__all__ = ['run_entrypoint']\n"
+            ),
+        )
+        for source in sources:
+            with self.subTest(source=source), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                facade = self._write_package(root, entrypoint_body=source)
+                self.assertFalse(
+                    surface_compare._approved_entrypoint_section(
+                        facade.with_suffix("") / "entrypoint.py"
+                    )
+                )
+
     def test_initializer_discovery_contract_rejects_sentinel_variants(self) -> None:
         """A mutable load-tests hook is rejected even when its sentinel is renamed."""
         accepted = ast.parse("from .entrypoint import *\n")
@@ -390,8 +418,14 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
             "if str(_PHASE192_PARENT) not in _phase192_sys.path:\n"
             "    import unittest\n"
         )
+        shadow_import = ast.parse(
+            "if str(_PHASE192_PARENT) not in _phase192_sys.path:\n"
+            "    _phase192_sys.path.insert(0, str(_PHASE192_PARENT))\n"
+            "import unittest\n"
+        )
         self.assertFalse(surface_compare._initializer_has_generated_import_shape(nested_path))
         self.assertFalse(surface_compare._initializer_has_generated_import_shape(nested_import))
+        self.assertFalse(surface_compare._initializer_has_generated_import_shape(shadow_import))
 
     def test_discovery_contract_rejects_new_duplicate_facade(self) -> None:
         """A test facade beside a test package is rejected as duplicate discovery."""
@@ -437,6 +471,13 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
                 return_value=True,
             ):
                 self.assertTrue(surface_compare._approved_test_facade_removal(relative, base, head))
+            (base / relative.removesuffix(".py") / "data.json").write_text("base\n", encoding="utf-8")
+            (head / relative.removesuffix(".py") / "data.json").write_text("head\n", encoding="utf-8")
+            with mock.patch(
+                "Scripts.validation.source_decomposition.compare_identity_surfaces.entrypoint_contracts._approved_initializer_contract",
+                return_value=True,
+            ):
+                self.assertFalse(surface_compare._approved_test_facade_removal(relative, base, head))
             (head / relative.removesuffix(".py") / "entrypoint.py").write_text(
                 "def run_entrypoint():\n    return 1\n__all__ = ['run_entrypoint']\n",
                 encoding="utf-8",
