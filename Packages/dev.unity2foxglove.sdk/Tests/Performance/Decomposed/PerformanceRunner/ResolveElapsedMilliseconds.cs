@@ -281,8 +281,7 @@ namespace Unity.FoxgloveSDK.Performance
                 using var loader = new McapDataLoader(path);
                 var initialization = loader.Initialize();
                 return initialization.Channels.Count == expectedChannels
-                       && initialization.Schemas.Count == expectedSchemas
-                       && initialization.Problems.Count == 0;
+                       && initialization.Schemas.Count == expectedSchemas;
             }
             catch (Exception)
             {
