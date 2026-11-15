@@ -154,7 +154,7 @@ namespace Foxglove.Schemas
 
             var fovRad = verticalFovDegrees * Math.PI / 180.0;
             var fy = height / (2.0 * Math.Tan(fovRad / 2.0));
-            var fx = fy;
+            var fx = fy * ((double)width / Math.Max(1.0, height));
             var cx = width / 2.0;
             var cy = height / 2.0;
 

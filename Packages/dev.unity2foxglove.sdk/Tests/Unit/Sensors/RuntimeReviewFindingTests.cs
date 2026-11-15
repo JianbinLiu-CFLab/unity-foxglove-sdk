@@ -44,6 +44,15 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
         }
 
         [Fact]
+        public void AutoIntrinsicsScalesHorizontalFocalLengthByAspectRatio()
+        {
+            var calibration = CameraCalibrationMessageBuilder.CreateAutoIntrinsics(1UL, "camera", 1920, 1080, 90.0);
+
+            Assert.Equal(960.0, calibration.K[0], precision: 6);
+            Assert.Equal(540.0, calibration.K[4], precision: 6);
+        }
+
+        [Fact]
         public void PoseHistoryIgnoresOutOfOrderSamplesWithoutDroppingLatestCoverage()
         {
             var history = new SensorMotionPoseHistory(capacity: 4, maxAgeNs: 10_000_000_000UL);

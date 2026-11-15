@@ -315,7 +315,9 @@ namespace Unity.FoxgloveSDK.Components
             if (profile == null)
                 return;
 
-            if (string.IsNullOrWhiteSpace(_topic) || _topic == "/unity/sensor/camera/camera_info")
+            if (string.IsNullOrWhiteSpace(_topic)
+                || _topic == "/unity/sensor/camera/camera_info"
+                || _topic == "/unity/camera/info")
                 _topic = profile.CameraInfoTopic;
             if (string.IsNullOrWhiteSpace(_frameId) || _frameId == "os_camera")
                 _frameId = profile.CameraFrameId;
