@@ -375,6 +375,7 @@ public sealed class Phase110Ros2ForUnityStringSmoke : MonoBehaviour
             if (ownerCleanupFailed || _directRos2Node != null || _directSubscription != null || _directPublisher != null)
                 return;
 
+            _directRos2Node = null;
             _directRos2Unity = null;
             _ownsDirectRos2Unity = false;
             _directInitializationFailed = false;
@@ -411,6 +412,7 @@ public sealed class Phase110Ros2ForUnityStringSmoke : MonoBehaviour
         if (cleanupFailed || _directRos2Node != null || _directSubscription != null || _directPublisher != null)
             return;
 
+        _directRos2Node = null;
         if (_ownsDirectRos2Unity && _directRos2Unity != null)
             Destroy(_directRos2Unity);
         _directRos2Unity = null;

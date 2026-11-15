@@ -301,8 +301,7 @@ namespace Unity.FoxgloveSDK.Components
             foreach (var directCleanup in directCleanupSources)
             {
                 Assert.Contains("if (_directRos2Unity == null)", directCleanup, StringComparison.Ordinal);
-                Assert.Contains("node => node.Dispose()", directCleanup, StringComparison.Ordinal);
-                Assert.Contains("ref _directRos2Node", directCleanup, StringComparison.Ordinal);
+                Assert.Contains("_directRos2Node = null;", directCleanup, StringComparison.Ordinal);
             }
 
             var phase110 = TestSources.Text("Unity2Foxglove/Assets/Scripts/ManualAcceptance/Phase110StringSmokeBatchAcceptance.cs");
