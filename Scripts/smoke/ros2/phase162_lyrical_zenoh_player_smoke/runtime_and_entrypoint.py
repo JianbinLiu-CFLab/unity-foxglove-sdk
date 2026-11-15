@@ -15,7 +15,7 @@ def wait_for_rviz_shutdown_before_router_cleanup(
 
     if router is None or router.poll() is not None:
         return None
-    if args.echo_only or not args.launch_rviz or args.release_router_on_exit:
+    if args.echo_only or not args.launch_rviz or args.release_router_on_exit or not getattr(args, "hold_router_for_rviz", False):
         return None
 
     running_rviz = [process for process in captured_rviz_processes if process.poll() is None]

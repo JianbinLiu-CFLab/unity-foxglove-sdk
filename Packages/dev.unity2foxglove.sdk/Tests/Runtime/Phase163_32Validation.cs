@@ -211,10 +211,13 @@ namespace Unity.FoxgloveSDK.Tests
                   && requireRouter.Contains("status.SelectedRuntime", StringComparison.Ordinal)
                   && requireRouter.Contains("communicationMode", StringComparison.Ordinal)
                   && requireRouter.Contains("Ros2ForUnityRuntimeSelection.ZenohRmwImplementation", StringComparison.Ordinal)
+                  && requireRouter.Contains("IsZenohRouterRequired(status)", StringComparison.Ordinal)
+                  && requireRouter.Contains("IsLoopbackAddress", StringComparison.Ordinal)
+                  && requireRouter.Contains("mode: \"peer\"", StringComparison.Ordinal)
                   && requireRouter.Contains("IsZenohRouterProcessRunning()", StringComparison.Ordinal)
                   && processProbe.Contains("Process.GetProcesses()", StringComparison.Ordinal)
                   && guard.Contains("rmw_zenohd", StringComparison.Ordinal),
-                "163-32F: any manifest mode backed by rmw_zenoh_cpp fails closed when no local Zenoh router is running");
+                "163-32F: Zenoh Play Mode guard accepts remote-router and peer topologies before requiring a local router");
         }
 
         private static void LyricalZenohSessionDefaultsAreUnitySafe()

@@ -6,6 +6,8 @@
 
 #if UNITY_EDITOR
 using System;
+using System.IO;
+using System.Net;
 using System.Reflection;
 using Unity.FoxgloveSDK.Components;
 using UnityEditor;
@@ -233,7 +235,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 return false;
             }
 
-            if (IsZenohRouterProcessRunning())
+            if (!IsZenohRouterRequired(status) || IsZenohRouterProcessRunning())
                 return false;
 
             diagnostic =
@@ -241,6 +243,40 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 + "Start rmw_zenohd before entering Play Mode, or switch the ROS2 For Unity Communication Mode back to FastDDS. "
                 + "The Phase162 smoke helper only keeps its auto-started router alive while that helper is running; RViz left open after the helper exits no longer has a router.";
             return true;
+        }
+
+        private static bool IsZenohRouterRequired(Ros2ForUnityRuntimeSelectionStatus status)
+        {
+            var endpoint = Ros2ForUnityZenohRouterSettings.Get(status.SelectedRuntime);
+            if (!IsLoopbackAddress(endpoint.Address))
+                return false;
+
+            var projectDirectory = Ros2ForUnityRuntimeSelection.ProjectDirectoryFromApplication();
+            var packagesDirectory = Ros2ForUnityRuntimeSelection.RepositoryPackagesDirectory(projectDirectory);
+            var packageDirectory = Path.Combine(packagesDirectory, status.SelectedRuntime.PackageName);
+            if (!Directory.Exists(packageDirectory))
+                return true;
+
+            foreach (var path in Directory.EnumerateFiles(packageDirectory, "DEFAULT_RMW_ZENOH_SESSION_CONFIG.json5", SearchOption.AllDirectories))
+            {
+                try
+                {
+                    if (File.ReadAllText(path).IndexOf("mode: \"peer\"", StringComparison.OrdinalIgnoreCase) >= 0)
+                        return false;
+                }
+                catch (IOException)
+                {
+                }
+            }
+
+            return true;
+        }
+
+        private static bool IsLoopbackAddress(string address)
+        {
+            if (string.Equals(address, "localhost", StringComparison.OrdinalIgnoreCase))
+                return true;
+            return IPAddress.TryParse(address, out var parsed) && IPAddress.IsLoopback(parsed);
         }
 
         private static bool IsZenohRouterProcessRunning()
