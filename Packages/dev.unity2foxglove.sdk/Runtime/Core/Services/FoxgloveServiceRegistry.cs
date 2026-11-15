@@ -29,6 +29,7 @@ namespace Unity.FoxgloveSDK.Core
         private readonly Func<long> _monotonicTimestampProvider;
         private uint _nextServiceId = 1;
         private readonly Dictionary<uint, Func<Newtonsoft.Json.Linq.JToken, Newtonsoft.Json.Linq.JToken>> _handlers = new();
+        private int _drainInProgress;
 
         internal static bool TryParseJsonPayload(FoxgloveServiceCall call, out JToken payload)
         {
@@ -49,6 +50,10 @@ namespace Unity.FoxgloveSDK.Core
                 return false;
             }
         }
+
+        internal bool TryBeginDrain() => Interlocked.Exchange(ref _drainInProgress, 1) == 0;
+
+        internal void EndDrain() => Volatile.Write(ref _drainInProgress, 0);
 
         /// <summary>Create a service registry using the process monotonic clock.</summary>
         public FoxgloveServiceRegistry()

@@ -26,8 +26,8 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         public void DrainServiceCalls()
         {
+            if (!_services.TryBeginDrain()) return;
             _services.SweepTimeouts(FoxgloveServiceRegistry.DefaultTimeout);
-
             _pendingServiceCallsScratch.Clear();
             _services.CopyPendingCallsToInternal(_pendingServiceCallsScratch);
             try
@@ -82,6 +82,7 @@ namespace Unity.FoxgloveSDK.Core
             finally
             {
                 _completedServiceCallsScratch.Clear();
+                _services.EndDrain();
             }
         }
 
