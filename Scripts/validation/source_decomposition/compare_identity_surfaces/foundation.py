@@ -573,6 +573,75 @@ def _initializer_exact_identity_signature(
         return None
     return tuple(signature)
 
+def _initializer_signatures_compatible(
+    base_signature: tuple[str, ...],
+    head_signature: tuple[str, ...],
+) -> bool:
+    """Return whether exact initializer wiring preserves the trusted order."""
+    def split_signature(signature: tuple[str, ...]) -> tuple[
+        tuple[str, ...], tuple[tuple[str, str], ...], tuple[str, ...]
+    ] | None:
+        """Split exact initializer skeleton and ordered section wiring."""
+        skeleton: list[str] = []
+        imports: tuple[tuple[str, str], ...] | None = None
+        modules: tuple[str, ...] | None = None
+        index = 0
+        while index < len(signature):
+            token = signature[index]
+            if token not in {"SECTION_IMPORTS", "SECTION_MODULES"}:
+                skeleton.append(token)
+                index += 1
+                continue
+            if index + 1 >= len(signature):
+                return None
+            try:
+                value = json.loads(signature[index + 1])
+            except (TypeError, ValueError, json.JSONDecodeError):
+                return None
+            if token == "SECTION_IMPORTS":
+                if imports is not None or not isinstance(value, list):
+                    return None
+                if any(
+                    not isinstance(item, list)
+                    or len(item) != 2
+                    or any(not isinstance(part, str) or not part for part in item)
+                    for item in value
+                ):
+                    return None
+                imports = tuple((item[0], item[1]) for item in value)
+            else:
+                if modules is not None or not isinstance(value, list) or any(
+                    not isinstance(item, str) or not item for item in value
+                ):
+                    return None
+                modules = tuple(value)
+            index += 2
+        if imports is None or modules is None:
+            return None
+        return tuple(skeleton), imports, modules
+
+    def preserves_order(
+        baseline: tuple[object, ...], candidate: tuple[object, ...]
+    ) -> bool:
+        """Return whether baseline section wiring remains an ordered subsequence."""
+        cursor = 0
+        for item in baseline:
+            try:
+                cursor = candidate.index(item, cursor) + 1
+            except ValueError:
+                return False
+        return True
+
+    base_parts = split_signature(base_signature)
+    head_parts = split_signature(head_signature)
+    return (
+        base_parts is not None
+        and head_parts is not None
+        and base_parts[0] == head_parts[0]
+        and preserves_order(base_parts[1], head_parts[1])
+        and preserves_order(base_parts[2], head_parts[2])
+    )
+
 
 def _approved_namespace_change(
     relative: str,
@@ -753,4 +822,4 @@ def _initializer_path_is_repository_rooted(tree: ast.Module, relative: str) -> b
     )
 
 
-__all__ = ['_REVIEWED_IDENTITY_TOOLING_SECTIONS', '_reviewed_identity_tooling_test_split', 'argparse', 'ast', 'copy', 'hashlib', 'importlib', 'json', 'keyword', 're', 'contextmanager', 'lru_cache', 'Path', 'subprocess', 'tarfile', 'tempfile', 'Iterator', 'Mapping', 'REPOSITORY_ROOT', '_TRY_TYPES', '_TYPE_ALIAS_TYPE', '_SECTION_NAME_RE', 'SPLIT_ROOTS', 'IDENTITY_WAIVER_PATH', '_legacy_relative_path', '_canonical_source_decomposition_relative', '_current_source_decomposition_relative', '_resolve_source_decomposition_path', '_load_identity_waivers', '_git', '_extract_archive_safely', '_revision_checkout', '_FUNCTION_BODY_RISK_NAMES', '_ENVIRONMENT_MUTATORS', '_without_function_bodies', '_function_body_and_environment_risk_signatures', '_parse_source', '_section_modules_for_root', '_section_package_for_facade', '_split_facades', '_top_level_names', '_direct_import_bound_names', '_declared_public_names', '_PHASE192_TEMPLATE_IMPORTS', '_PHASE192_TEMPLATE_CALLS', '_PHASE192_TEMPLATE_METHODS', '_ENTRYPOINT_SECTION_IMPORT_ROOTS', '_facade_entrypoint_is_standard', '_single_run_entrypoint_binding', '_approved_test_facade_removal', '_initializer_exact_identity_signature', '_approved_namespace_change', '_discovery_contract_errors', '_initializer_path_is_repository_rooted']
+__all__ = ['_REVIEWED_IDENTITY_TOOLING_SECTIONS', '_reviewed_identity_tooling_test_split', 'argparse', 'ast', 'copy', 'hashlib', 'importlib', 'json', 'keyword', 're', 'contextmanager', 'lru_cache', 'Path', 'subprocess', 'tarfile', 'tempfile', 'Iterator', 'Mapping', 'REPOSITORY_ROOT', '_TRY_TYPES', '_TYPE_ALIAS_TYPE', '_SECTION_NAME_RE', 'SPLIT_ROOTS', 'IDENTITY_WAIVER_PATH', '_legacy_relative_path', '_canonical_source_decomposition_relative', '_current_source_decomposition_relative', '_resolve_source_decomposition_path', '_load_identity_waivers', '_git', '_extract_archive_safely', '_revision_checkout', '_FUNCTION_BODY_RISK_NAMES', '_ENVIRONMENT_MUTATORS', '_without_function_bodies', '_function_body_and_environment_risk_signatures', '_parse_source', '_section_modules_for_root', '_section_package_for_facade', '_split_facades', '_top_level_names', '_direct_import_bound_names', '_declared_public_names', '_PHASE192_TEMPLATE_IMPORTS', '_PHASE192_TEMPLATE_CALLS', '_PHASE192_TEMPLATE_METHODS', '_ENTRYPOINT_SECTION_IMPORT_ROOTS', '_facade_entrypoint_is_standard', '_single_run_entrypoint_binding', '_approved_test_facade_removal', '_initializer_exact_identity_signature', '_initializer_signatures_compatible', '_approved_namespace_change', '_discovery_contract_errors', '_initializer_path_is_repository_rooted']

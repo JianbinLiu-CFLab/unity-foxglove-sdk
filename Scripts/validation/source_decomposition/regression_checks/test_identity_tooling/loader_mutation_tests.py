@@ -3,6 +3,41 @@ from .foundation import *
 
 class LoaderMutationTests(IdentityToolingBase):
     """Identity tooling regression tests for this contract family."""
+
+    def test_entrypoint_contract_does_not_execute_absolute_imports(self) -> None:
+        """Import resolution must remain static when a PR controls the module tree."""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            scripts = root / "Scripts"
+            package = scripts / "example_tool"
+            package.mkdir(parents=True)
+            (scripts / "__init__.py").write_text("\n", encoding="utf-8")
+            marker = root / "imported.txt"
+            (scripts / "attacker.py").write_text(
+                "from pathlib import Path\n"
+                f"Path({str(marker)!r}).write_text('executed', encoding='utf-8')\n"
+                "marker = 1\n",
+                encoding="utf-8",
+            )
+            (package / "entrypoint.py").write_text(
+                "from Scripts.attacker import marker\n"
+                "def run_entrypoint():\n"
+                "    return marker\n"
+                "__all__ = ['run_entrypoint']\n",
+                encoding="utf-8",
+            )
+            import importlib
+            scripts_module = importlib.import_module("Scripts")
+            original_scripts_path = scripts_module.__path__
+            scripts_module.__path__ = [str(scripts), *list(original_scripts_path)]
+            sys.modules.pop("Scripts.attacker", None)
+            try:
+                self.assertFalse(compare_identity_surfaces._approved_entrypoint_section(package / "entrypoint.py"))
+            finally:
+                scripts_module.__path__ = original_scripts_path
+                sys.modules.pop("Scripts.attacker", None)
+            self.assertFalse(marker.exists())
+
     def test_generated_facade_rejects_closure_mutations(self) -> None:
         """Generated facades cannot mutate protected state through wrappers or aliases."""
         for facade in (
