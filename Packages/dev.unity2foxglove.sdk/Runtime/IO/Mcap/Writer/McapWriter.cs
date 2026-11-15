@@ -390,36 +390,18 @@ namespace Unity.FoxgloveSDK.IO
 
             try
             {
-                try
-                {
-                    _stream.Flush();
-                }
-                catch (Exception ex)
-                {
-                    // Dispose is best-effort. Call Flush() explicitly when
-                    // callers need durable error reporting.
-                    Trace.TraceWarning("[MCAP] Stream flush failed during dispose: " + ex.Message);
-                }
+                _stream.Flush();
             }
-            finally
+            catch (Exception ex)
             {
-                try
-                {
-                    _recordBuffer.Dispose();
-                }
-                finally
-                {
-                    try
-                    {
-                        if (!_leaveOpen)
-                            _stream.Dispose();
-                    }
-                    finally
-                    {
-                        _disposed = true;
-                    }
-                }
+                Trace.TraceWarning("[MCAP] Stream flush failed during dispose; retry is allowed: " + ex.Message);
+                return;
             }
+
+            _recordBuffer.Dispose();
+            if (!_leaveOpen)
+                _stream.Dispose();
+            _disposed = true;
         }
 
         private void ThrowIfDisposed()

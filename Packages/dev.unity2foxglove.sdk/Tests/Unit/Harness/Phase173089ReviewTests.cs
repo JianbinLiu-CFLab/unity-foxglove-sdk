@@ -90,6 +90,19 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
+        public void McapWriterRetriesFlushAfterTransientFailure()
+        {
+            var stream = new TransientFlushStream();
+            var writer = new McapWriter(stream, leaveOpen: true);
+
+            writer.Dispose();
+            writer.Dispose();
+
+            Assert.Equal(2, stream.FlushAttempts);
+            Assert.False(stream.Disposed);
+        }
+
+        [Fact]
         public void ChunkReaderUsesOneRawRecordParserForMessagesAndPrivateRecords()
         {
             var source = Text("Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/Reader/McapChunkReader.cs");
@@ -187,6 +200,26 @@ namespace Unity.FoxgloveSDK.UnitTests
             public void BroadcastBinary(byte[] data) { }
             public void SendText(uint clientId, string json) { }
             public void SendBinary(uint clientId, byte[] data) { }
+        }
+
+        private sealed class TransientFlushStream : MemoryStream
+        {
+            public int FlushAttempts { get; private set; }
+            public bool Disposed { get; private set; }
+
+            public override void Flush()
+            {
+                FlushAttempts++;
+                if (FlushAttempts == 1)
+                    throw new IOException("transient flush failure");
+                base.Flush();
+            }
+
+            protected override void Dispose(bool disposing)
+            {
+                Disposed = true;
+                base.Dispose(disposing);
+            }
         }
     }
 }
