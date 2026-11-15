@@ -46,4 +46,3 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
     }
 }
-
