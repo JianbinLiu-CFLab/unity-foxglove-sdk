@@ -888,13 +888,18 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
             )
 
         relative = "Scripts/example_tool.py"
-        errors = surface_compare._compare_surfaces(
-            {relative: surface(("x = 1",), "base")},
-            {relative: surface(("x = 1", "y = 2"), "head")},
-            strict=False,
-            base_root=Path("base"),
-            head_root=Path("head"),
-        )
+        with mock.patch.object(
+            surface_compare,
+            "_initializer_exact_identity_signature",
+            return_value=("TEMPLATE",),
+        ), mock.patch.object(surface_compare, "_approved_initializer_contract", return_value=False):
+            errors = surface_compare._compare_surfaces(
+                {relative: surface(("x = 1",), "base")},
+                {relative: surface(("x = 1", "y = 2"), "head")},
+                strict=False,
+                base_root=Path("base"),
+                head_root=Path("head"),
+            )
         self.assertIn(f"PACKAGE_INITIALIZER_CHANGED {relative}", errors)
 
     def test_directory_migration_rejects_surface_collision(self) -> None:

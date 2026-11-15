@@ -655,21 +655,63 @@ def _compare_surfaces(
             )
         elif base_digest is not None and head_digest is not None:
             initializer_ok = base_digest == head_digest
-            if (
-                not initializer_ok
-                and head_root is not None
-                and not missing_sections
-                and not missing_symbols
-                and _approved_initializer_contract(
-                    head_root,
+            if not initializer_ok and (head_root is None or base_root is None):
+                if base_owner_map:
+                    base_external_names = {
+                        name
+                        for name, owners in base_owner_map
+                        if any(owner != "initializer" for owner in owners)
+                    }
+                else:
+                    base_external_names = set(base_symbols)
+                initializer_ok = _initializer_is_additive(
+                    base_initializer,
+                    head_initializer,
+                    frozenset(head_sections),
+                    frozenset(base_external_names)
+                    | (set(head_section_exports) - set(base_section_exports)),
+                    dict(head_section_map or ()),
+                )
+            elif not initializer_ok:
+                head_relative = (
                     _current_source_decomposition_relative(relative)
                     if migrated_relative
-                    else relative,
-                    base_root=base_root,
-                    base_relative=relative,
+                    else relative
                 )
-            ):
-                initializer_ok = True
+                base_template = _initializer_exact_identity_signature(
+                    base_root,
+                    relative,
+                    allow_legacy_hook_removal=True,
+                )
+                head_template = _initializer_exact_identity_signature(head_root, head_relative)
+                if base_template is not None and head_template is not None:
+                    initializer_ok = (
+                        not missing_sections
+                        and not missing_symbols
+                        and _approved_initializer_contract(
+                            head_root,
+                            head_relative,
+                            base_root=base_root,
+                            base_relative=relative,
+                        )
+                    )
+                else:
+                    if base_owner_map:
+                        base_external_names = {
+                            name
+                            for name, owners in base_owner_map
+                            if any(owner != "initializer" for owner in owners)
+                        }
+                    else:
+                        base_external_names = set(base_symbols)
+                    initializer_ok = _initializer_is_additive(
+                        base_initializer,
+                        head_initializer,
+                        frozenset(head_sections),
+                        frozenset(base_external_names)
+                        | (set(head_section_exports) - set(base_section_exports)),
+                        dict(head_section_map or ()),
+                    )
         else:
             if base_owner_map:
                 base_external_names = {
