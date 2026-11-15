@@ -359,7 +359,10 @@ def _approved_test_facade_removal(
         return False
     from .entrypoint_contracts import _approved_initializer_contract
 
-    if not _approved_initializer_contract(head_root, relative):
+    head_relative = relative
+    if not (head_root / relative.removesuffix(".py")).is_dir():
+        head_relative = _current_source_decomposition_relative(relative)
+    if not _approved_initializer_contract(head_root, head_relative):
         return False
     section_modules = _section_modules_for_root(base_root)
     base_declared_paths = section_modules(base_package)
@@ -384,18 +387,22 @@ def _approved_test_facade_removal(
         return False
     if base_main.is_file() and base_main.read_bytes() != head_main.read_bytes():
         return False
-    excluded = {"__init__.py", "__main__.py"}
-    base_sections = {
-        path.name for path in base_package.glob("*.py") if path.name not in excluded
+    excluded = {"__init__.py"}
+    base_files = {
+        path.relative_to(base_package).as_posix()
+        for path in base_package.rglob("*.py")
+        if path.name not in excluded or path.parent != base_package
     }
-    head_sections = {
-        path.name for path in head_package.glob("*.py") if path.name not in excluded
+    head_files = {
+        path.relative_to(head_package).as_posix()
+        for path in head_package.rglob("*.py")
+        if path.name not in excluded or path.parent != head_package
     }
-    if base_sections != head_sections:
+    if base_files != head_files:
         return False
     return all(
         (base_package / name).read_bytes() == (head_package / name).read_bytes()
-        for name in base_sections
+        for name in base_files
     )
 
 
@@ -462,7 +469,7 @@ def _discovery_contract_errors(
         for path in root.joinpath("Scripts").rglob("test*.py"):
             if path.with_suffix("").is_dir():
                 raw = path.relative_to(root).as_posix()
-                grouped.setdefault(_current_source_decomposition_relative(raw), []).append(raw)
+                grouped.setdefault(raw, []).append(raw)
         return {relative: tuple(sorted(paths)) for relative, paths in grouped.items()}
 
     def normalize(relative: str) -> str:
@@ -471,12 +478,15 @@ def _discovery_contract_errors(
             return _current_source_decomposition_relative(relative)
         return relative
 
-    base_facades = {
-        normalize(relative): paths for relative, paths in test_facades(base_root).items()
-    }
-    head_facades = {
-        normalize(relative): paths for relative, paths in test_facades(head_root).items()
-    }
+    def normalize_facades(raw_facades: dict[str, tuple[str, ...]]) -> dict[str, tuple[str, ...]]:
+        """Normalize raw facade paths only during the supported directory migration."""
+        grouped: dict[str, list[str]] = {}
+        for relative, paths in raw_facades.items():
+            grouped.setdefault(normalize(relative), []).extend(paths)
+        return {relative: tuple(sorted(paths)) for relative, paths in grouped.items()}
+
+    base_facades = normalize_facades(test_facades(base_root))
+    head_facades = normalize_facades(test_facades(head_root))
     from .entrypoint_contracts import _approved_initializer_contract
 
     errors: list[str] = []
