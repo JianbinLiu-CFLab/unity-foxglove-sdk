@@ -25,7 +25,7 @@ namespace Unity.FoxgloveSDK.Transport
     {
         private const int MaxSendBatchFrames = 32;
         private const int DisposeWaitTimeoutMs = 5000;
-        private static readonly long StopwatchTicksPerMillisecond = Math.Max(1L, Stopwatch.Frequency / 1000L);
+        private static readonly double StopwatchTicksPerMillisecond = Math.Max(1.0, Stopwatch.Frequency / 1000.0);
 
         /// <summary>Underlying TCP client owned by this connection after handshake.</summary>
         private readonly TcpClient _tcpClient;
@@ -138,7 +138,7 @@ namespace Unity.FoxgloveSDK.Transport
 
         private static long MonotonicMilliseconds()
         {
-            return Stopwatch.GetTimestamp() / StopwatchTicksPerMillisecond;
+            return (long)(Stopwatch.GetTimestamp() / StopwatchTicksPerMillisecond);
         }
 
         public void StartSendLoop(Action onSendFailed, CancellationToken parentToken)
