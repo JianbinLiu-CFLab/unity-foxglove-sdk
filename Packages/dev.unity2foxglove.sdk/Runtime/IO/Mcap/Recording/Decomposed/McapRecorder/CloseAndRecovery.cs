@@ -228,7 +228,6 @@ namespace Unity.FoxgloveSDK.IO
             lock (_lock)
             {
                 if (_disposed) return;
-                _disposed = true;
                 try
                 {
                     _writer.Dispose();
@@ -237,6 +236,11 @@ namespace Unity.FoxgloveSDK.IO
                 {
                     _log.LogWarning($"MCAP recorder writer dispose failed during shutdown: {ex.Message}");
                 }
+
+                if (!_writer.IsDisposed)
+                    return;
+
+                _disposed = true;
 
                 try
                 {

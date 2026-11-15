@@ -31,6 +31,8 @@ namespace Unity.FoxgloveSDK.IO
         public long Position => _stream.Position;
         /// <summary>Whether the underlying stream supports seeking.</summary>
         public bool CanSeek => _stream.CanSeek;
+        /// <summary>Whether the writer completed its final stream cleanup.</summary>
+        internal bool IsDisposed => _disposed;
         /// <summary>
         /// MCAP magic bytes. Returns a defensive copy so callers cannot mutate
         /// the process-wide writer/reader constant.
