@@ -163,13 +163,12 @@ namespace Unity.FoxgloveSDK.Core
                     replayEndTimeNs = _replayEngine.EndTimeNs;
                 }
 
-                _clock?.EnableRange(replayStartTimeNs, replayEndTimeNs);
-
                 lock (_replayEngineLock)
                 {
                     if (!ReferenceEquals(_replayEngine, loadedEngine))
                         return;
 
+                    _clock?.EnableRange(replayStartTimeNs, replayEndTimeNs);
                     _replaySessionId = NextReplaySessionId(_replaySessionId);
                     _replayEngine.Play();
                     Volatile.Write(ref _replayEnabled, true);

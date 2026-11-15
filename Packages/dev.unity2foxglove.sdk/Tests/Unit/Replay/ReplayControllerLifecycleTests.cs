@@ -84,6 +84,39 @@ namespace Unity.FoxgloveSDK.Tests.Replay
         }
 
         [Fact]
+        public void EnableActivatesPlaybackClockBeforeReplayIsPublished()
+        {
+            var path = Path.Combine(
+                Path.GetTempPath(),
+                "phase210-replay-clock-range-" + Guid.NewGuid().ToString("N") + ".mcap");
+            try
+            {
+                using (var stream = File.Create(path))
+                using (var recorder = new McapRecorder(stream))
+                {
+                    recorder.AddChannel(1, "/phase210/replay-clock", "json", "", "", "");
+                    recorder.WriteMessage(1, 123UL, new byte[] { 1 });
+                    recorder.Close();
+                }
+
+                var clock = new RecordingRangeClock();
+                using var controller = new ReplayController(new ConsoleLogger(), null, clock);
+
+                controller.Enable(path, SchemaIdentityMode.Off);
+
+                Assert.True(controller.IsEnabled);
+                Assert.True(clock.Enabled);
+                Assert.Equal(123UL, clock.StartNs);
+                Assert.Equal(123UL, clock.EndNs);
+            }
+            finally
+            {
+                if (File.Exists(path))
+                    File.Delete(path);
+            }
+        }
+
+        [Fact]
         public void SnapshotDropDoesNotPublishACompleteBatchBoundary()
         {
             var path = Path.Combine(
@@ -247,6 +280,21 @@ namespace Unity.FoxgloveSDK.Tests.Replay
                 ReleaseSend.Set();
                 SendEntered.Dispose();
                 ReleaseSend.Dispose();
+            }
+        }
+
+        private sealed class RecordingRangeClock : IRangePlaybackClock
+        {
+            public bool Enabled { get; private set; }
+            public ulong StartNs { get; private set; }
+            public ulong EndNs { get; private set; }
+            public ulong NowNs => StartNs;
+
+            public void EnableRange(ulong startNs, ulong endNs)
+            {
+                Enabled = true;
+                StartNs = startNs;
+                EndNs = endNs;
             }
         }
     }
