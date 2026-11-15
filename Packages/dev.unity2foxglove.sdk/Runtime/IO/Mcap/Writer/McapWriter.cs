@@ -396,8 +396,15 @@ namespace Unity.FoxgloveSDK.IO
             }
             catch (Exception ex)
             {
-                Trace.TraceWarning("[MCAP] Stream flush failed during dispose; retry is allowed: " + ex.Message);
-                return;
+                Trace.TraceWarning("[MCAP] Stream flush failed during dispose; retrying once: " + ex.Message);
+                try
+                {
+                    _stream.Flush();
+                }
+                catch (Exception retryEx)
+                {
+                    Trace.TraceWarning("[MCAP] Stream flush retry failed during dispose; forcing cleanup: " + retryEx.Message);
+                }
             }
 
             try
