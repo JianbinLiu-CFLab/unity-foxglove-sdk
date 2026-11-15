@@ -473,4 +473,42 @@ def _discovery_contract_errors(
             errors.append(f"INVALID_DISCOVERY_FACADE_REMOVAL {relative}")
     return errors
 
-__all__ = ['_REVIEWED_IDENTITY_TOOLING_SECTIONS', '_reviewed_identity_tooling_test_split', 'argparse', 'ast', 'copy', 'hashlib', 'importlib', 'json', 'keyword', 're', 'contextmanager', 'lru_cache', 'Path', 'subprocess', 'tarfile', 'tempfile', 'Iterator', 'Mapping', 'REPOSITORY_ROOT', '_TRY_TYPES', '_TYPE_ALIAS_TYPE', '_SECTION_NAME_RE', 'SPLIT_ROOTS', 'IDENTITY_WAIVER_PATH', '_legacy_relative_path', '_canonical_source_decomposition_relative', '_current_source_decomposition_relative', '_resolve_source_decomposition_path', '_load_identity_waivers', '_git', '_extract_archive_safely', '_revision_checkout', '_FUNCTION_BODY_RISK_NAMES', '_ENVIRONMENT_MUTATORS', '_without_function_bodies', '_function_body_and_environment_risk_signatures', '_parse_source', '_section_modules_for_root', '_section_package_for_facade', '_split_facades', '_top_level_names', '_direct_import_bound_names', '_declared_public_names', '_PHASE192_TEMPLATE_IMPORTS', '_PHASE192_TEMPLATE_CALLS', '_PHASE192_TEMPLATE_METHODS', '_approved_test_facade_removal', '_approved_namespace_change', '_discovery_contract_errors']
+def _initializer_path_is_repository_rooted(tree: ast.Module, relative: str) -> bool:
+    """Return whether the generated facade path is rooted at the package's repository path."""
+    expected = ast.parse(
+        "_PHASE192_FACADE_FILE = _Phase192Path(__file__).resolve().parents[1] / "
+        f"{Path(relative).name!r}\n"
+        "_PHASE192_PARENT = _PHASE192_FACADE_FILE.parent\n"
+    )
+    assignments = {
+        node.targets[0].id: node
+        for node in tree.body
+        if isinstance(node, ast.Assign)
+        and len(node.targets) == 1
+        and isinstance(node.targets[0], ast.Name)
+        and node.targets[0].id in {"_PHASE192_FACADE_FILE", "_PHASE192_PARENT"}
+    }
+    expected_assignments = {
+        node.targets[0].id: node
+        for node in expected.body
+        if isinstance(node, ast.Assign)
+    }
+    if set(assignments) != set(expected_assignments):
+        return False
+    if any(
+        ast.dump(assignments[name], include_attributes=False)
+        != ast.dump(expected_assignments[name], include_attributes=False)
+        for name in expected_assignments
+    ):
+        return False
+    return any(
+        isinstance(node, ast.ImportFrom)
+        and node.module == "pathlib"
+        and node.level == 0
+        and len(node.names) == 1
+        and node.names[0].name == "Path"
+        and node.names[0].asname == "_Phase192Path"
+        for node in tree.body
+    )
+
+__all__ = ['_REVIEWED_IDENTITY_TOOLING_SECTIONS', '_reviewed_identity_tooling_test_split', 'argparse', 'ast', 'copy', 'hashlib', 'importlib', 'json', 'keyword', 're', 'contextmanager', 'lru_cache', 'Path', 'subprocess', 'tarfile', 'tempfile', 'Iterator', 'Mapping', 'REPOSITORY_ROOT', '_TRY_TYPES', '_TYPE_ALIAS_TYPE', '_SECTION_NAME_RE', 'SPLIT_ROOTS', 'IDENTITY_WAIVER_PATH', '_legacy_relative_path', '_canonical_source_decomposition_relative', '_current_source_decomposition_relative', '_resolve_source_decomposition_path', '_load_identity_waivers', '_git', '_extract_archive_safely', '_revision_checkout', '_FUNCTION_BODY_RISK_NAMES', '_ENVIRONMENT_MUTATORS', '_without_function_bodies', '_function_body_and_environment_risk_signatures', '_parse_source', '_section_modules_for_root', '_section_package_for_facade', '_split_facades', '_top_level_names', '_direct_import_bound_names', '_declared_public_names', '_PHASE192_TEMPLATE_IMPORTS', '_PHASE192_TEMPLATE_CALLS', '_PHASE192_TEMPLATE_METHODS', '_approved_test_facade_removal', '_approved_namespace_change', '_discovery_contract_errors', '_initializer_path_is_repository_rooted']

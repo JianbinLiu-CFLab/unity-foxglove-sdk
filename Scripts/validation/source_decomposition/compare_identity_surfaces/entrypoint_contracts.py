@@ -943,7 +943,11 @@ def _approved_initializer_contract(root: Path, relative: str) -> bool:
         _phase192_template_validate_initializer(tree, str(initializer))
     except (OSError, SyntaxError, ValueError):
         return False
-    return _initializer_has_reviewed_discovery_shape(tree)
+    return (
+        _initializer_has_reviewed_discovery_shape(tree)
+        and _initializer_path_is_repository_rooted(tree, relative)
+    )
+
 
 
 def _initializer_has_reviewed_discovery_shape(tree: ast.Module) -> bool:
