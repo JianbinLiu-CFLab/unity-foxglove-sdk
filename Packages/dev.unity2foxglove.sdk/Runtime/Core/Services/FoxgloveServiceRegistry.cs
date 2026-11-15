@@ -9,6 +9,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Text;
+using System.Threading;
 using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Protocol;
 
