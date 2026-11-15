@@ -337,6 +337,73 @@ _PHASE192_TEMPLATE_CALLS = frozenset({
 _PHASE192_TEMPLATE_METHODS = frozenset({
     "__class__", "__delattr__", "__dict__", "__setattr__", "add", "get", "insert", "main", "pop", "resolve", "startswith",
 })
+
+def _facade_entrypoint_is_standard(tree: ast.Module, relative: str) -> bool:
+    """Return whether a facade bootstraps the repository before forwarding execution."""
+    body = list(tree.body)
+    if body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant):
+        if not isinstance(body[0].value.value, str):
+            return False
+        body.pop(0)
+    repository_parent_index = len(Path(relative).parts) - 1
+    package_module = ".".join(Path(relative).with_suffix("").parts)
+    expected = ast.parse(
+        "from pathlib import Path as _Phase192Path\n"
+        "import sys as _phase192_sys\n"
+        f"_PHASE192_REPOSITORY_ROOT = _Phase192Path(__file__).resolve().parents[{repository_parent_index}]\n"
+        "if str(_PHASE192_REPOSITORY_ROOT) not in _phase192_sys.path:\n"
+        "    _phase192_sys.path.insert(0, str(_PHASE192_REPOSITORY_ROOT))\n"
+        f"from {package_module}.entrypoint import run_entrypoint\n"
+        "if __name__ == '__main__':\n"
+        "    raise SystemExit(run_entrypoint())\n"
+    )
+    return ast.dump(ast.Module(body=body, type_ignores=[]), include_attributes=False) == ast.dump(
+        expected,
+        include_attributes=False,
+    )
+
+def _sections_have_no_discovery_hook(root: Path, relative: str) -> bool:
+    """Return whether package sections cannot export or bind unittest load_tests."""
+    package = root / relative.removesuffix(".py")
+    try:
+        sections = _section_modules_for_root(root)(package)
+        trees = [
+            _parse_source(path.read_text(encoding="utf-8"), path)
+            for path in sections
+        ]
+    except (OSError, SyntaxError, ValueError, FileNotFoundError):
+        return False
+    for tree in trees:
+        if "load_tests" in _top_level_names(tree, include_imports=True):
+            return False
+        for node in tree.body:
+            if isinstance(node, ast.AugAssign):
+                if isinstance(node.target, ast.Name) and node.target.id == "__all__":
+                    return False
+                continue
+            if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+                continue
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            if not any(isinstance(target, ast.Name) and target.id == "__all__" for target in targets):
+                continue
+            try:
+                names = ast.literal_eval(node.value)
+            except (TypeError, ValueError, SyntaxError):
+                return False
+            if not isinstance(names, (list, tuple, set)) or not all(isinstance(name, str) for name in names):
+                return False
+            if "load_tests" in names:
+                return False
+        if any(
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "__all__"
+            for node in ast.walk(tree)
+        ):
+            return False
+    return True
+
 def _approved_test_facade_removal(
     relative: str,
     base_root: Path,
@@ -414,7 +481,6 @@ def _approved_namespace_change(relative: str, base_root: Path | None, head_root:
         _approved_entrypoint_contract,
         _approved_entrypoint_section,
         _approved_initializer_contract,
-        _entrypoint_block_is_standard,
     )
 
     if not _approved_entrypoint_contract(head_root, relative):
@@ -426,12 +492,7 @@ def _approved_namespace_change(relative: str, base_root: Path | None, head_root:
         facade_tree = _parse_source(facade.read_text(encoding="utf-8"), facade)
     except (OSError, SyntaxError, ValueError):
         return False
-    package_module = ".".join(Path(relative).with_suffix("").parts)
-    if not _entrypoint_block_is_standard(
-        facade_tree,
-        import_level=0,
-        import_module=f"{package_module}.entrypoint",
-    ):
+    if not _facade_entrypoint_is_standard(facade_tree, relative):
         return False
     base_package = base_root / relative.removesuffix(".py")
     head_package = head_root / relative.removesuffix(".py")
@@ -496,9 +557,7 @@ def _discovery_contract_errors(
     for relative in sorted(set(head_facades) - set(base_facades)):
         errors.append(f"DUPLICATE_DISCOVERY_FACADE {relative}")
     for relative in sorted(set(base_facades) - set(head_facades)):
-        head_paths = head_facades.get(relative)
-        head_relative = head_paths[0] if head_paths else relative
-        if not _approved_initializer_contract(head_root, head_relative):
+        if not _approved_initializer_contract(head_root, relative):
             errors.append(f"INVALID_DISCOVERY_FACADE_REMOVAL {relative}")
     return errors
 
@@ -622,4 +681,4 @@ def _initializer_has_generated_import_shape(tree: ast.Module) -> bool:
             return False
     return True
 
-__all__ = ['_REVIEWED_IDENTITY_TOOLING_SECTIONS', '_reviewed_identity_tooling_test_split', 'argparse', 'ast', 'copy', 'hashlib', 'importlib', 'json', 'keyword', 're', 'contextmanager', 'lru_cache', 'Path', 'subprocess', 'tarfile', 'tempfile', 'Iterator', 'Mapping', 'REPOSITORY_ROOT', '_TRY_TYPES', '_TYPE_ALIAS_TYPE', '_SECTION_NAME_RE', 'SPLIT_ROOTS', 'IDENTITY_WAIVER_PATH', '_legacy_relative_path', '_canonical_source_decomposition_relative', '_current_source_decomposition_relative', '_resolve_source_decomposition_path', '_load_identity_waivers', '_git', '_extract_archive_safely', '_revision_checkout', '_FUNCTION_BODY_RISK_NAMES', '_ENVIRONMENT_MUTATORS', '_without_function_bodies', '_function_body_and_environment_risk_signatures', '_parse_source', '_section_modules_for_root', '_section_package_for_facade', '_split_facades', '_top_level_names', '_direct_import_bound_names', '_declared_public_names', '_PHASE192_TEMPLATE_IMPORTS', '_PHASE192_TEMPLATE_CALLS', '_PHASE192_TEMPLATE_METHODS', '_approved_test_facade_removal', '_approved_namespace_change', '_discovery_contract_errors', '_initializer_path_is_repository_rooted', '_initializer_has_generated_import_shape']
+__all__ = ['_REVIEWED_IDENTITY_TOOLING_SECTIONS', '_reviewed_identity_tooling_test_split', 'argparse', 'ast', 'copy', 'hashlib', 'importlib', 'json', 'keyword', 're', 'contextmanager', 'lru_cache', 'Path', 'subprocess', 'tarfile', 'tempfile', 'Iterator', 'Mapping', 'REPOSITORY_ROOT', '_TRY_TYPES', '_TYPE_ALIAS_TYPE', '_SECTION_NAME_RE', 'SPLIT_ROOTS', 'IDENTITY_WAIVER_PATH', '_legacy_relative_path', '_canonical_source_decomposition_relative', '_current_source_decomposition_relative', '_resolve_source_decomposition_path', '_load_identity_waivers', '_git', '_extract_archive_safely', '_revision_checkout', '_FUNCTION_BODY_RISK_NAMES', '_ENVIRONMENT_MUTATORS', '_without_function_bodies', '_function_body_and_environment_risk_signatures', '_parse_source', '_section_modules_for_root', '_section_package_for_facade', '_split_facades', '_top_level_names', '_direct_import_bound_names', '_declared_public_names', '_PHASE192_TEMPLATE_IMPORTS', '_PHASE192_TEMPLATE_CALLS', '_PHASE192_TEMPLATE_METHODS', '_facade_entrypoint_is_standard', '_sections_have_no_discovery_hook', '_approved_test_facade_removal', '_approved_namespace_change', '_discovery_contract_errors', '_initializer_path_is_repository_rooted', '_initializer_has_generated_import_shape']

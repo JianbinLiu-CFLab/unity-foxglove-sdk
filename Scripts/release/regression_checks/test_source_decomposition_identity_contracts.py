@@ -33,10 +33,16 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
         package = facade.with_suffix("")
         package.mkdir(parents=True, exist_ok=True)
         module_name = ".".join(Path(relative).with_suffix("").parts)
+        repository_parent_index = len(Path(relative).parts) - 1
         facade.parent.mkdir(parents=True, exist_ok=True)
         facade.write_text(
             facade_body
             or (
+                "from pathlib import Path as _Phase192Path\n"
+                "import sys as _phase192_sys\n"
+                f"_PHASE192_REPOSITORY_ROOT = _Phase192Path(__file__).resolve().parents[{repository_parent_index}]\n"
+                "if str(_PHASE192_REPOSITORY_ROOT) not in _phase192_sys.path:\n"
+                "    _phase192_sys.path.insert(0, str(_PHASE192_REPOSITORY_ROOT))\n"
                 f"from {module_name}.entrypoint import run_entrypoint\n"
                 "if __name__ == \"__main__\":\n"
                 "    raise SystemExit(run_entrypoint())\n"
@@ -143,6 +149,35 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
                     )
                 )
 
+    def test_forwarding_entrypoint_contract_rejects_missing_direct_execution_bootstrap(self) -> None:
+        """A facade without the repository-root bootstrap cannot be executed directly."""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            facade = self._write_package(
+                root,
+                facade_body=(
+                    "from Scripts.example_tool.entrypoint import run_entrypoint\n"
+                    "if __name__ == \"__main__\":\n"
+                    "    raise SystemExit(run_entrypoint())\n"
+                ),
+            )
+            environment = os.environ.copy()
+            environment.pop("PYTHONPATH", None)
+            direct = subprocess.run(
+                [sys.executable, "-B", str(facade)],
+                env=environment,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertNotEqual(0, direct.returncode)
+            self.assertFalse(
+                surface_compare._approved_entrypoint_contract(
+                    root,
+                    "Scripts/example_tool.py",
+                )
+            )
+
     def test_entrypoint_section_rejects_import_time_side_effect(self) -> None:
         """A newly approved entrypoint section cannot mutate process state on import."""
         with tempfile.TemporaryDirectory() as temporary:
@@ -201,6 +236,33 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
                 )
             )
 
+    def test_entrypoint_section_rejects_duplicate_run_entrypoint_bindings(self) -> None:
+        """Only one synchronous function may bind the exported entrypoint name."""
+        sources = (
+            (
+                "def run_entrypoint():\n"
+                "    return 0\n"
+                "async def run_entrypoint():\n"
+                "    return 1\n"
+                "__all__ = ['run_entrypoint']\n"
+            ),
+            (
+                "def run_entrypoint():\n"
+                "    return 0\n"
+                "from os import getpid as run_entrypoint\n"
+                "__all__ = ['run_entrypoint']\n"
+            ),
+        )
+        for source in sources:
+            with self.subTest(source=source), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                facade = self._write_package(root, entrypoint_body=source)
+                self.assertFalse(
+                    surface_compare._approved_entrypoint_section(
+                        facade.with_suffix("") / "entrypoint.py"
+                    )
+                )
+
     def test_initializer_discovery_contract_rejects_sentinel_variants(self) -> None:
         """A mutable load-tests hook is rejected even when its sentinel is renamed."""
         accepted = ast.parse("from .entrypoint import *\n")
@@ -211,11 +273,41 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
             "def load_tests_once(loader, tests, pattern):\n    return loader.suiteClass()\n",
             "load_tests = lambda loader, tests, pattern: tests\n",
             "load_tests_once = lambda loader, tests, pattern: tests\n",
+            "from .foundation import load_tests\n",
+            "from .foundation import load_tests as load_tests\n",
         ):
             with self.subTest(source=source):
                 self.assertFalse(
                     surface_compare._initializer_has_reviewed_discovery_shape(
                         ast.parse(source)
+                    )
+                )
+
+    def test_section_discovery_contract_rejects_load_tests_exports(self) -> None:
+        """Section modules cannot reintroduce a unittest discovery hook by export."""
+        sources = (
+            "def run_entrypoint():\n"
+            "    return 0\n"
+            "def load_tests(loader, tests, pattern):\n"
+            "    return tests\n"
+            "__all__ = ['run_entrypoint', 'load_tests']\n",
+            "def run_entrypoint():\n"
+            "    return 0\n"
+            "__all__ = ['run_entrypoint', 'load_tests']\n",
+            "def run_entrypoint():\n"
+            "    return 0\n"
+            "__all__ = ['run_entrypoint']\n"
+            "__all__.append('load_tests')\n",
+        )
+        for source in sources:
+            with self.subTest(source=source), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                facade = self._write_package(root)
+                (facade.with_suffix("") / "entrypoint.py").write_text(source, encoding="utf-8")
+                self.assertFalse(
+                    surface_compare._sections_have_no_discovery_hook(
+                        root,
+                        "Scripts/example_tool.py",
                     )
                 )
 
@@ -532,34 +624,24 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
                     "if __name__ == \"__main__\":\n"
                     "    raise SystemExit(run_entrypoint())\n"
                 ),
-                module_body=(
-                    "from .entrypoint import *\n"
-                    "if __name__ == \"__main__\":\n"
-                    "    raise SystemExit(run_entrypoint())\n"
-                ),
             )
             base = self._commit(repository, "base")
-            (repository / "Scripts/example_tool.py").write_text(
-                "from Scripts.example_tool.entrypoint import run_entrypoint\n"
-                "if __name__ == \"__main__\":\n"
-                "    raise SystemExit(run_entrypoint())\n",
-                encoding="utf-8",
-            )
-            (repository / "Scripts/example_tool/__main__.py").write_text(
-                "from .entrypoint import run_entrypoint\n"
-                "if __name__ == \"__main__\":\n"
-                "    raise SystemExit(run_entrypoint())\n",
-                encoding="utf-8",
-            )
+            self._write_package(repository)
             head = self._commit(repository, "head")
-            self.assertEqual(0, surface_compare.compare_revisions(repository, base, head, strict=False))
+            with mock.patch(
+                "Scripts.validation.source_decomposition.compare_identity_surfaces.entrypoint_contracts._approved_initializer_contract",
+                return_value=True,
+            ):
+                self.assertEqual(0, surface_compare.compare_revisions(repository, base, head, strict=False))
 
     def test_entrypoint_parity_probe_matches_direct_and_module_launch(self) -> None:
         """Direct and module launches return the same injected failure code and stderr."""
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
+            relative = "Scripts/example/tool.py"
             self._write_package(
                 root,
+                relative=relative,
                 entrypoint_body=(
                     "import os\n"
                     "import sys\n"
@@ -570,17 +652,17 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
                 ),
             )
             environment = os.environ.copy()
-            environment["PYTHONPATH"] = str(root)
+            environment.pop("PYTHONPATH", None)
             environment["PHASE192_PROBE"] = "probe"
             direct = subprocess.run(
-                [sys.executable, "-B", str(root / "Scripts/example_tool.py")],
+                [sys.executable, "-B", str(root / relative)],
                 env=environment,
                 capture_output=True,
                 text=True,
                 check=False,
             )
             module = subprocess.run(
-                [sys.executable, "-B", "-m", "Scripts.example_tool"],
+                [sys.executable, "-B", "-m", "Scripts.example.tool"],
                 cwd=root,
                 env=environment,
                 capture_output=True,
