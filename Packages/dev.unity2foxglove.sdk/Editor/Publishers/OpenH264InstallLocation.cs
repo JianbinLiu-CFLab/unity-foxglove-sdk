@@ -94,6 +94,15 @@ namespace Unity.FoxgloveSDK.Editor
                 return false;
             }
 
+            foreach (var projectChild in new[] { "Assets", "Packages", "ProjectSettings", ".git" })
+            {
+                if (IsSameOrChild(fullRoot, Path.Combine(projectRoot, projectChild)))
+                {
+                    reason = "Choose a cache folder outside the Unity project, not " + projectChild + ".";
+                    return false;
+                }
+            }
+
             return true;
         }
 
