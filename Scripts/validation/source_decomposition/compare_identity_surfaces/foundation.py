@@ -354,9 +354,15 @@ def _approved_test_facade_removal(
     if not _approved_initializer_contract(head_root, relative):
         return False
     section_modules = _section_modules_for_root(base_root)
-    base_declared = {path.name for path in section_modules(base_package)}
-    head_declared = {path.name for path in section_modules(head_package)}
-    if base_declared != head_declared:
+    base_declared_paths = section_modules(base_package)
+    head_declared_paths = section_modules(head_package)
+    base_declared = {path.name for path in base_declared_paths}
+    head_declared = {path.name for path in head_declared_paths}
+    if (
+        base_declared != head_declared
+        or tuple(path.name for path in base_declared_paths)
+        != tuple(path.name for path in head_declared_paths)
+    ):
         return False
     base_manifest = base_package / "sections.manifest"
     head_manifest = head_package / "sections.manifest"
