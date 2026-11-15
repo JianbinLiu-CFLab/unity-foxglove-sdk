@@ -2,23 +2,37 @@ from __future__ import annotations
 
 from .foundation import *
 
+_SAFE_STDLIB_ENTRYPOINT_SYMBOLS = {
+    "argparse": frozenset({
+        "Action", "ArgumentParser", "ArgumentTypeError", "FileType", "HelpFormatter",
+        "Namespace", "RawDescriptionHelpFormatter", "RawTextHelpFormatter", "SUPPRESS",
+    }),
+    "json": frozenset({"JSONDecodeError", "dump", "dumps", "load", "loads"}),
+    "os": frozenset({"environ", "linesep", "name", "path", "sep"}),
+    "pathlib": frozenset({
+        "Path", "PurePath", "PurePosixPath", "PureWindowsPath", "PosixPath", "WindowsPath",
+    }),
+    "subprocess": frozenset({
+        "CalledProcessError", "DEVNULL", "PIPE", "Popen", "TimeoutExpired", "run",
+    }),
+    "sys": frozenset({"argv", "executable", "path", "platform", "stderr", "stdin", "stdout"}),
+    "time": frozenset({"monotonic", "perf_counter", "sleep", "time"}),
+    "typing": frozenset({
+        "Any", "Callable", "Mapping", "Sequence", "TypeVar", "cast", "overload",
+    }),
+}
+_SAFE_STDLIB_ENTRYPOINT_MODULES = frozenset(_SAFE_STDLIB_ENTRYPOINT_SYMBOLS)
+
 def _entrypoint_section_imports_are_trusted(tree: ast.Module, package: Path) -> bool:
     """Return whether entrypoint imports use trusted roots and local modules."""
     def absolute_import_resolves(node: ast.Import | ast.ImportFrom) -> bool:
-        """Return whether an approved absolute import resolves its module and names."""
-        try:
-            if isinstance(node, ast.Import):
-                return all(importlib.util.find_spec(alias.name) is not None for alias in node.names)
-            if not node.module:
-                return False
-            module = importlib.import_module(node.module)
-            return all(
-                hasattr(module, alias.name)
-                or importlib.util.find_spec(f"{node.module}.{alias.name}") is not None
-                for alias in node.names
-            )
-        except (ImportError, ModuleNotFoundError, AttributeError, ValueError):
+        """Return whether a standard-library import is known without executing it."""
+        if isinstance(node, ast.Import):
+            return all(alias.name in _SAFE_STDLIB_ENTRYPOINT_MODULES for alias in node.names)
+        if not node.module or node.module not in _SAFE_STDLIB_ENTRYPOINT_SYMBOLS:
             return False
+        allowed = _SAFE_STDLIB_ENTRYPOINT_SYMBOLS[node.module]
+        return all(alias.name in allowed for alias in node.names)
 
     def relative_import_resolves(node: ast.ImportFrom) -> bool:
         """Return whether a relative import resolves its module and imported names."""

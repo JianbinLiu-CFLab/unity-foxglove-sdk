@@ -509,12 +509,23 @@ def _initializer_exact_identity_signature(
             section_modules = node
     if tuple(alias.name for node in section_imports for alias in node.names) != section_names:
         return None
+    section_pairs = tuple(
+        (alias.name, alias.asname or "")
+        for node in section_imports
+        for alias in node.names
+    )
+    if len({alias for _, alias in section_pairs}) != len(section_pairs):
+        return None
     if section_modules is None:
         return None
     if any(not isinstance(item, ast.Name) for item in section_modules.value.elts):
         return None
     module_aliases = tuple(item.id for item in section_modules.value.elts)
-    if len(module_aliases) != len(section_names) or set(module_aliases) != set(section_aliases.values()):
+    if (
+        len(module_aliases) != len(section_names)
+        or len(set(module_aliases)) != len(module_aliases)
+        or set(module_aliases) != set(section_aliases.values())
+    ):
         return None
 
     def is_legacy_hook_node(node: ast.AST) -> bool:
@@ -545,12 +556,14 @@ def _initializer_exact_identity_signature(
                 return None
             if not imports_marker_added:
                 signature.append("SECTION_IMPORTS")
+                signature.append(json.dumps(section_pairs, separators=(",", ":")))
                 imports_marker_added = True
             continue
         if node is section_modules:
             if modules_marker_added:
                 return None
             signature.append("SECTION_MODULES")
+            signature.append(json.dumps(module_aliases, separators=(",", ":")))
             modules_marker_added = True
             continue
         if imports_marker_added:
