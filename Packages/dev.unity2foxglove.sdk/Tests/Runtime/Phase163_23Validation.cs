@@ -42,6 +42,10 @@ namespace Unity.FoxgloveSDK.Tests
                 "163-23A-1: shared FoxRun emitter unwraps Nullable<T> before sink JSON emission");
             Check(source.Contains("__json.Append({access}.Value.ToString(global::System.Globalization.CultureInfo.InvariantCulture));", StringComparison.Ordinal),
                 "163-23A-2: nullable integral sink JSON uses invariant numeric Value formatting");
+            Check(source.Contains("case \"Vector3\":", StringComparison.Ordinal)
+                  && source.Contains("access + \".Value\"", StringComparison.Ordinal)
+                  && source.Contains("if ({access} == null) __json.Append(\"null\")", StringComparison.Ordinal),
+                "163-23A-2b: nullable Unity value sinks preserve structured object JSON or null");
             Check(golden.Contains(
                       "__foxRunCapture_3_0.Value.ToString(global::System.Globalization.CultureInfo.InvariantCulture)",
                       StringComparison.Ordinal)
