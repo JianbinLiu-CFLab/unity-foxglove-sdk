@@ -208,6 +208,13 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
             "_PHASE192_FACADE_FILE = _Phase192Path('/tmp/attacker') / 'test_tool.py'\n"
             "_PHASE192_PARENT = _PHASE192_FACADE_FILE.parent\n"
         )
+        nested = ast.parse(
+            "from pathlib import Path as _Phase192Path\n"
+            "_PHASE192_FACADE_FILE = _Phase192Path(__file__).resolve().parents[1] / 'test_tool.py'\n"
+            "_PHASE192_PARENT = _PHASE192_FACADE_FILE.parent\n"
+            "if True:\n"
+            "    _PHASE192_FACADE_FILE = _Phase192Path('/tmp/attacker') / 'test_tool.py'\n"
+        )
         self.assertTrue(
             surface_compare._initializer_path_is_repository_rooted(
                 safe,
@@ -217,6 +224,12 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
         self.assertFalse(
             surface_compare._initializer_path_is_repository_rooted(
                 shadow,
+                "Scripts/regression_checks/test_tool.py",
+            )
+        )
+        self.assertFalse(
+            surface_compare._initializer_path_is_repository_rooted(
+                nested,
                 "Scripts/regression_checks/test_tool.py",
             )
         )

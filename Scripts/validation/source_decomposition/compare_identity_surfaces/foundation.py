@@ -499,23 +499,33 @@ def _initializer_path_is_repository_rooted(tree: ast.Module, relative: str) -> b
         f"{Path(relative).name!r}\n"
         "_PHASE192_PARENT = _PHASE192_FACADE_FILE.parent\n"
     )
-    assignments = {
-        node.targets[0].id: node
-        for node in tree.body
+    assignments = [
+        node
+        for node in ast.walk(tree)
         if isinstance(node, ast.Assign)
         and len(node.targets) == 1
         and isinstance(node.targets[0], ast.Name)
         and node.targets[0].id in {"_PHASE192_FACADE_FILE", "_PHASE192_PARENT"}
-    }
+    ]
     expected_assignments = {
         node.targets[0].id: node
         for node in expected.body
         if isinstance(node, ast.Assign)
     }
-    if set(assignments) != set(expected_assignments):
+    if len(assignments) != len(expected_assignments):
+        return False
+    assignments_by_name = {
+        node.targets[0].id: node
+        for node in assignments
+        if node in tree.body
+    }
+    if (
+        set(assignments_by_name) != set(expected_assignments)
+        or len(assignments_by_name) != len(assignments)
+    ):
         return False
     if any(
-        ast.dump(assignments[name], include_attributes=False)
+        ast.dump(assignments_by_name[name], include_attributes=False)
         != ast.dump(expected_assignments[name], include_attributes=False)
         for name in expected_assignments
     ):
