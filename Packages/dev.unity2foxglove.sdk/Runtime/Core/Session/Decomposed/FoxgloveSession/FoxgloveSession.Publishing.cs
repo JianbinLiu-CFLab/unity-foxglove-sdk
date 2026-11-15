@@ -70,29 +70,32 @@ namespace Unity.FoxgloveSDK.Core
                 TryMirrorPublish(mirrorSink, channel, logTimeNs, payload);
             if (!AllowLiveWebSocket(channel))
                 return;
-            var subscribers = CopySubscribersForPublish(channelId);
-            try
+            lock (_channelLifecycleLock)
             {
-                foreach (var (clientId, subscriptionId) in subscribers)
+                var subscribers = CopySubscribersForPublish(channelId);
+                try
                 {
-                    var frame = BinaryEncoding.EncodeServerMessageData(subscriptionId, logTimeNs, payload);
-                    if (_prioritizedTransport != null)
+                    foreach (var (clientId, subscriptionId) in subscribers)
                     {
-                        if (FoxgloveReplayTrace.TryFrame("Live", channel.Topic, logTimeNs, clientId, subscriptionId, channelId, "data", out var trace))
-                            _logger.LogWarning(trace);
-                        _prioritizedTransport.SendDataBinary(clientId, frame);
-                    }
-                    else
-                    {
-                        if (FoxgloveReplayTrace.TryFrame("Live", channel.Topic, logTimeNs, clientId, subscriptionId, channelId, "fallback-control", out var trace))
-                            _logger.LogWarning(trace);
-                        _transport.SendBinary(clientId, frame);
+                        var frame = BinaryEncoding.EncodeServerMessageData(subscriptionId, logTimeNs, payload);
+                        if (_prioritizedTransport != null)
+                        {
+                            if (FoxgloveReplayTrace.TryFrame("Live", channel.Topic, logTimeNs, clientId, subscriptionId, channelId, "data", out var trace))
+                                _logger.LogWarning(trace);
+                            _prioritizedTransport.SendDataBinary(clientId, frame);
+                        }
+                        else
+                        {
+                            if (FoxgloveReplayTrace.TryFrame("Live", channel.Topic, logTimeNs, clientId, subscriptionId, channelId, "fallback-control", out var trace))
+                                _logger.LogWarning(trace);
+                            _transport.SendBinary(clientId, frame);
+                        }
                     }
                 }
-            }
-            finally
-            {
-                subscribers.Clear();
+                finally
+                {
+                    subscribers.Clear();
+                }
             }
         }
 
@@ -161,29 +164,32 @@ namespace Unity.FoxgloveSDK.Core
 
             payload ??= Array.Empty<byte>();
             topic ??= channel.Topic;
-            var subscribers = CopySubscribersForPublish(channelId);
-            try
+            lock (_channelLifecycleLock)
             {
-                foreach (var (clientId, subscriptionId) in subscribers)
+                var subscribers = CopySubscribersForPublish(channelId);
+                try
                 {
-                    var frame = BinaryEncoding.EncodeServerMessageData(subscriptionId, logTimeNs, payload);
-                    if (_prioritizedTransport != null)
+                    foreach (var (clientId, subscriptionId) in subscribers)
                     {
-                        if (FoxgloveReplayTrace.TryFrame(source, topic, logTimeNs, clientId, subscriptionId, channelId, "data", out var trace))
-                            _logger.LogWarning(trace);
-                        _prioritizedTransport.SendDataBinary(clientId, frame);
-                    }
-                    else
-                    {
-                        if (FoxgloveReplayTrace.TryFrame(source, topic, logTimeNs, clientId, subscriptionId, channelId, "fallback-control", out var trace))
-                            _logger.LogWarning(trace);
-                        _transport.SendBinary(clientId, frame);
+                        var frame = BinaryEncoding.EncodeServerMessageData(subscriptionId, logTimeNs, payload);
+                        if (_prioritizedTransport != null)
+                        {
+                            if (FoxgloveReplayTrace.TryFrame(source, topic, logTimeNs, clientId, subscriptionId, channelId, "data", out var trace))
+                                _logger.LogWarning(trace);
+                            _prioritizedTransport.SendDataBinary(clientId, frame);
+                        }
+                        else
+                        {
+                            if (FoxgloveReplayTrace.TryFrame(source, topic, logTimeNs, clientId, subscriptionId, channelId, "fallback-control", out var trace))
+                                _logger.LogWarning(trace);
+                            _transport.SendBinary(clientId, frame);
+                        }
                     }
                 }
-            }
-            finally
-            {
-                subscribers.Clear();
+                finally
+                {
+                    subscribers.Clear();
+                }
             }
         }
 
@@ -206,45 +212,48 @@ namespace Unity.FoxgloveSDK.Core
                 if (channel == null) return;
             }
 
-            var subscriptions = s_clientReplaySubscriptionScratch;
-            if (subscriptions == null)
+            lock (_channelLifecycleLock)
             {
-                subscriptions = new List<(uint subscriptionId, uint channelId)>();
-                s_clientReplaySubscriptionScratch = subscriptions;
-            }
-
-            lock (_subscriberScratchLock)
-            {
-                _subscriptions.CopySubscriptionsForClient(clientId, subscriptions);
-            }
-
-            payload ??= Array.Empty<byte>();
-            topic ??= channel.Topic;
-            try
-            {
-                foreach (var (subscriptionId, subscribedChannelId) in subscriptions)
+                var subscriptions = s_clientReplaySubscriptionScratch;
+                if (subscriptions == null)
                 {
-                    if (subscribedChannelId != channelId)
-                        continue;
+                    subscriptions = new List<(uint subscriptionId, uint channelId)>();
+                    s_clientReplaySubscriptionScratch = subscriptions;
+                }
 
-                    var frame = BinaryEncoding.EncodeServerMessageData(subscriptionId, logTimeNs, payload);
-                    if (_prioritizedTransport != null)
+                lock (_subscriberScratchLock)
+                {
+                    _subscriptions.CopySubscriptionsForClient(clientId, subscriptions);
+                }
+
+                payload ??= Array.Empty<byte>();
+                topic ??= channel.Topic;
+                try
+                {
+                    foreach (var (subscriptionId, subscribedChannelId) in subscriptions)
                     {
-                        if (FoxgloveReplayTrace.TryFrame(source, topic, logTimeNs, clientId, subscriptionId, channelId, "data", out var trace))
-                            _logger.LogWarning(trace);
-                        _prioritizedTransport.SendDataBinary(clientId, frame);
-                    }
-                    else
-                    {
-                        if (FoxgloveReplayTrace.TryFrame(source, topic, logTimeNs, clientId, subscriptionId, channelId, "fallback-control", out var trace))
-                            _logger.LogWarning(trace);
-                        _transport.SendBinary(clientId, frame);
+                        if (subscribedChannelId != channelId)
+                            continue;
+
+                        var frame = BinaryEncoding.EncodeServerMessageData(subscriptionId, logTimeNs, payload);
+                        if (_prioritizedTransport != null)
+                        {
+                            if (FoxgloveReplayTrace.TryFrame(source, topic, logTimeNs, clientId, subscriptionId, channelId, "data", out var trace))
+                                _logger.LogWarning(trace);
+                            _prioritizedTransport.SendDataBinary(clientId, frame);
+                        }
+                        else
+                        {
+                            if (FoxgloveReplayTrace.TryFrame(source, topic, logTimeNs, clientId, subscriptionId, channelId, "fallback-control", out var trace))
+                                _logger.LogWarning(trace);
+                            _transport.SendBinary(clientId, frame);
+                        }
                     }
                 }
-            }
-            finally
-            {
-                subscriptions.Clear();
+                finally
+                {
+                    subscriptions.Clear();
+                }
             }
         }
 
