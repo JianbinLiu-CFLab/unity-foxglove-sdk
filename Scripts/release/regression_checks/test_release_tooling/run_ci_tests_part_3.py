@@ -3,6 +3,31 @@ from .foundation import *
 class _RunCiTestsPart3:
     """Decomposed RunCiTests method group 3."""
 
+    def test_job_timeout_scales_with_command_timeout_when_not_overridden(self) -> None:
+        """A larger per-command budget must leave room for sequential suite commands."""
+        with mock.patch.dict(
+            os.environ,
+            {"UNITY2FOXGLOVE_CI_TIMEOUT": "1200"},
+            clear=False,
+        ) as environment:
+            environment.pop("UNITY2FOXGLOVE_CI_JOB_TIMEOUT", None)
+            self.assertGreaterEqual(
+                self.run_ci.job_timeout_seconds(),
+                1200 * self.run_ci.JOB_TIMEOUT_COMMAND_BUDGET,
+            )
+
+    def test_explicit_job_timeout_remains_authoritative(self) -> None:
+        """An explicit suite timeout remains the operator's override."""
+        with mock.patch.dict(
+            os.environ,
+            {
+                "UNITY2FOXGLOVE_CI_TIMEOUT": "1200",
+                "UNITY2FOXGLOVE_CI_JOB_TIMEOUT": "2400",
+            },
+            clear=False,
+        ):
+            self.assertEqual(2400, self.run_ci.job_timeout_seconds())
+
     def test_run_captured_bounds_large_output_with_marker(self) -> None:
         """Captured command output is bounded and marked when truncated."""
         huge = "x" * (self.run_ci.MAX_CAPTURED_OUTPUT_CHARS + 4096)
