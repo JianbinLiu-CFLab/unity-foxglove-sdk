@@ -337,4 +337,112 @@ _PHASE192_TEMPLATE_CALLS = frozenset({
 _PHASE192_TEMPLATE_METHODS = frozenset({
     "__class__", "__delattr__", "__dict__", "__setattr__", "add", "get", "insert", "main", "pop", "resolve", "startswith",
 })
-__all__ = ['_REVIEWED_IDENTITY_TOOLING_SECTIONS', '_reviewed_identity_tooling_test_split', 'argparse', 'ast', 'copy', 'hashlib', 'importlib', 'json', 'keyword', 're', 'contextmanager', 'lru_cache', 'Path', 'subprocess', 'tarfile', 'tempfile', 'Iterator', 'Mapping', 'REPOSITORY_ROOT', '_TRY_TYPES', '_TYPE_ALIAS_TYPE', '_SECTION_NAME_RE', 'SPLIT_ROOTS', 'IDENTITY_WAIVER_PATH', '_legacy_relative_path', '_canonical_source_decomposition_relative', '_current_source_decomposition_relative', '_resolve_source_decomposition_path', '_load_identity_waivers', '_git', '_extract_archive_safely', '_revision_checkout', '_FUNCTION_BODY_RISK_NAMES', '_ENVIRONMENT_MUTATORS', '_without_function_bodies', '_function_body_and_environment_risk_signatures', '_parse_source', '_section_modules_for_root', '_section_package_for_facade', '_split_facades', '_top_level_names', '_direct_import_bound_names', '_declared_public_names', '_PHASE192_TEMPLATE_IMPORTS', '_PHASE192_TEMPLATE_CALLS', '_PHASE192_TEMPLATE_METHODS']
+def _approved_test_facade_removal(
+    relative: str,
+    base_root: Path,
+    head_root: Path,
+) -> bool:
+    """Return whether removing a test facade preserves every package section."""
+    if not (relative.startswith("Scripts/") and "/regression_checks/test_" in relative):
+        return False
+    base_package = base_root / relative.removesuffix(".py")
+    head_package = head_root / relative.removesuffix(".py")
+    if not base_package.is_dir() or not head_package.is_dir():
+        return False
+    from .entrypoint_contracts import _approved_initializer_contract
+
+    if not _approved_initializer_contract(head_root, relative):
+        return False
+    section_modules = _section_modules_for_root(base_root)
+    base_declared = {path.name for path in section_modules(base_package)}
+    head_declared = {path.name for path in section_modules(head_package)}
+    if base_declared != head_declared:
+        return False
+    excluded = {"__init__.py", "__main__.py"}
+    base_sections = {
+        path.name for path in base_package.glob("*.py") if path.name not in excluded
+    }
+    head_sections = {
+        path.name for path in head_package.glob("*.py") if path.name not in excluded
+    }
+    if not base_sections <= head_sections:
+        return False
+    return all(
+        (base_package / name).read_bytes() == (head_package / name).read_bytes()
+        for name in base_sections
+    )
+
+
+def _approved_namespace_change(relative: str, base_root: Path | None, head_root: Path | None) -> bool:
+    """Allow namespace-risk changes only when wrapper and initializer contracts pass."""
+    if base_root is None or head_root is None:
+        return False
+    from .entrypoint_contracts import (
+        _approved_entrypoint_contract,
+        _approved_entrypoint_section,
+        _approved_initializer_contract,
+        _entrypoint_block_is_standard,
+    )
+
+    if not _approved_entrypoint_contract(head_root, relative):
+        return False
+    if not _approved_initializer_contract(head_root, relative):
+        return False
+    facade = head_root / relative
+    try:
+        facade_tree = _parse_source(facade.read_text(encoding="utf-8"), facade)
+    except (OSError, SyntaxError, ValueError):
+        return False
+    package_module = ".".join(Path(relative).with_suffix("").parts)
+    if not _entrypoint_block_is_standard(
+        facade_tree,
+        import_level=0,
+        import_module=f"{package_module}.entrypoint",
+    ):
+        return False
+    base_package = base_root / relative.removesuffix(".py")
+    head_package = head_root / relative.removesuffix(".py")
+    base_sections = {
+        path.name
+        for path in base_package.glob("*.py")
+        if path.name not in {"__init__.py", "__main__.py"}
+    }
+    head_sections = {
+        path.name
+        for path in head_package.glob("*.py")
+        if path.name not in {"__init__.py", "__main__.py"}
+    }
+    changed_existing = {
+        name
+        for name in base_sections & head_sections
+        if (base_package / name).read_bytes() != (head_package / name).read_bytes()
+    }
+    added_sections = head_sections - base_sections
+    if changed_existing - {"entrypoint.py"} or added_sections - {"entrypoint.py"}:
+        return False
+    return _approved_entrypoint_section(head_package / "entrypoint.py")
+
+
+def _discovery_contract_errors(base_root: Path, head_root: Path) -> list[str]:
+    """Reject newly retained duplicate test facades and validate intentional removals."""
+    def test_facades(root: Path) -> set[str]:
+        """Return test facade paths that have a sibling package directory."""
+        return {
+            path.relative_to(root).as_posix()
+            for path in root.joinpath("Scripts").rglob("test_*.py")
+            if path.with_suffix("").is_dir()
+        }
+
+    base_facades = test_facades(base_root)
+    head_facades = test_facades(head_root)
+    from .entrypoint_contracts import _approved_initializer_contract
+
+    errors: list[str] = []
+    for relative in sorted(head_facades - base_facades):
+        errors.append(f"DUPLICATE_DISCOVERY_FACADE {relative}")
+    for relative in sorted(base_facades - head_facades):
+        if not _approved_initializer_contract(head_root, relative):
+            errors.append(f"INVALID_DISCOVERY_FACADE_REMOVAL {relative}")
+    return errors
+
+__all__ = ['_REVIEWED_IDENTITY_TOOLING_SECTIONS', '_reviewed_identity_tooling_test_split', 'argparse', 'ast', 'copy', 'hashlib', 'importlib', 'json', 'keyword', 're', 'contextmanager', 'lru_cache', 'Path', 'subprocess', 'tarfile', 'tempfile', 'Iterator', 'Mapping', 'REPOSITORY_ROOT', '_TRY_TYPES', '_TYPE_ALIAS_TYPE', '_SECTION_NAME_RE', 'SPLIT_ROOTS', 'IDENTITY_WAIVER_PATH', '_legacy_relative_path', '_canonical_source_decomposition_relative', '_current_source_decomposition_relative', '_resolve_source_decomposition_path', '_load_identity_waivers', '_git', '_extract_archive_safely', '_revision_checkout', '_FUNCTION_BODY_RISK_NAMES', '_ENVIRONMENT_MUTATORS', '_without_function_bodies', '_function_body_and_environment_risk_signatures', '_parse_source', '_section_modules_for_root', '_section_package_for_facade', '_split_facades', '_top_level_names', '_direct_import_bound_names', '_declared_public_names', '_PHASE192_TEMPLATE_IMPORTS', '_PHASE192_TEMPLATE_CALLS', '_PHASE192_TEMPLATE_METHODS', '_approved_test_facade_removal', '_approved_namespace_change', '_discovery_contract_errors']

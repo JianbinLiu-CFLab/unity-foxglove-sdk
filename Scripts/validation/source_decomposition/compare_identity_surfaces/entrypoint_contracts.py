@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from .foundation import *
 from .surface_contracts import *
+from .initializer_contracts import _phase192_template_validate_initializer
 
 def _is_safe_unittest_main_call(call: ast.Call) -> bool:
     """Return whether a unittest.main call has only literal safe options."""
@@ -800,4 +801,169 @@ from Scripts.validation.source_decomposition.identity_initializer_contracts impo
     _statement_loaded_names,
 )
 
-__all__ = ['_is_safe_unittest_main_call', '_is_unittest_module_entrypoint', '_entrypoint_contract_signatures', '_reviewed_direct_entrypoint_absolute_import', '_entrypoint_contract', '_SAFE_BUILTIN_NAMES', '_SAFE_IMPORT_ROOTS', '_absolute_import_resolves', '_contract_preserves_order', '_definitely_bound_names', '_initializer_is_additive', '_initializer_statements_match', '_initializer_bound_names', '_is_docstring_statement', '_literal_assignment_target_matches', '_literal_initializer_value', '_literal_truth_value', '_loaded_names', '_module_spec_exists', '_safe_annotation_expression', '_safe_class_definition', '_safe_definition_expression', '_safe_function_definition', '_safe_inert_initializer_condition', '_safe_initializer_addition', '_safe_runtime_expression', '_section_alias_bindings', '_section_tuple_names', '_sections_preserve_order', '_statement_bound_names', '_statement_deleted_names', '_statement_loaded_names']
+def _entrypoint_block_is_standard(
+    tree: ast.Module,
+    *,
+    import_level: int,
+    import_module: str,
+) -> bool:
+    """Return whether a module is exactly the reviewed forwarding template."""
+    body = list(tree.body)
+    if body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant):
+        if not isinstance(body[0].value.value, str):
+            return False
+        body.pop(0)
+    if len(body) != 2:
+        return False
+    imported, guard = body
+    if not (
+        isinstance(imported, ast.ImportFrom)
+        and imported.level == import_level
+        and imported.module == import_module
+        and len(imported.names) == 1
+        and imported.names[0].name == "run_entrypoint"
+        and imported.names[0].asname is None
+    ):
+        return False
+    if not (
+        isinstance(guard, ast.If)
+        and isinstance(guard.test, ast.Compare)
+        and isinstance(guard.test.left, ast.Name)
+        and guard.test.left.id == "__name__"
+        and len(guard.test.ops) == 1
+        and isinstance(guard.test.ops[0], ast.Eq)
+        and len(guard.test.comparators) == 1
+        and isinstance(guard.test.comparators[0], ast.Constant)
+        and guard.test.comparators[0].value == "__main__"
+        and not guard.orelse
+        and len(guard.body) == 1
+    ):
+        return False
+    statement = guard.body[0]
+    if not isinstance(statement, ast.Raise) or not isinstance(statement.exc, ast.Call):
+        return False
+    call = statement.exc
+    if (
+        not isinstance(call.func, ast.Name)
+        or call.func.id != "SystemExit"
+        or len(call.args) != 1
+        or call.keywords
+        or not isinstance(call.args[0], ast.Call)
+    ):
+        return False
+    delegate = call.args[0]
+    return (
+        isinstance(delegate.func, ast.Name)
+        and delegate.func.id == "run_entrypoint"
+        and not delegate.args
+        and not delegate.keywords
+    )
+
+
+def _approved_entrypoint_section(path: Path) -> bool:
+    """Return whether an entrypoint section exports a safe run_entrypoint function."""
+    try:
+        tree = _parse_source(path.read_text(encoding="utf-8"), path)
+    except (OSError, SyntaxError, ValueError):
+        return False
+    definitions = [
+        node
+        for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name == "run_entrypoint"
+    ]
+    if len(definitions) != 1 or definitions[0].decorator_list or not definitions[0].body:
+        return False
+    for node in tree.body:
+        if isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
+            continue
+        if isinstance(node, (ast.Import, ast.ImportFrom, ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name) and node.targets[0].id == "__all__":
+            try:
+                names = ast.literal_eval(node.value)
+            except (TypeError, ValueError, SyntaxError):
+                return False
+            if not isinstance(names, (list, tuple, set)) or "run_entrypoint" not in names:
+                return False
+            continue
+        return False
+    if _namespace_risk_signatures(tree, allow_public_globals=True):
+        return False
+    if _function_body_and_environment_risk_signatures(tree):
+        return False
+    return True
+
+
+def _approved_entrypoint_contract(root: Path, relative: str) -> bool:
+    """Return whether a changed facade and module entrypoint use one forwarding template."""
+    facade = root / relative
+    package = facade.with_suffix("")
+    module_entrypoint = package / "__main__.py"
+    if not facade.is_file() or not module_entrypoint.is_file():
+        return False
+    try:
+        facade_tree = _parse_source(facade.read_text(encoding="utf-8"), facade)
+        module_tree = _parse_source(module_entrypoint.read_text(encoding="utf-8"), module_entrypoint)
+    except (OSError, SyntaxError, ValueError):
+        return False
+    package_module = ".".join(Path(relative).with_suffix("").parts)
+    return (
+        _entrypoint_block_is_standard(
+            facade_tree,
+            import_level=0,
+            import_module=f"{package_module}.entrypoint",
+        )
+        and _entrypoint_block_is_standard(
+            module_tree,
+            import_level=1,
+            import_module="entrypoint",
+        )
+        and _approved_entrypoint_section(package / "entrypoint.py")
+    )
+
+
+def _approved_initializer_contract(root: Path, relative: str) -> bool:
+    """Return whether a changed package initializer stays within the reviewed template."""
+    initializer = root / relative.removesuffix(".py") / "__init__.py"
+    if not initializer.is_file():
+        return False
+    try:
+        source = initializer.read_text(encoding="utf-8")
+        tree = _parse_source(source, initializer)
+        _phase192_template_validate_initializer(tree, str(initializer))
+    except (OSError, SyntaxError, ValueError):
+        return False
+    return _initializer_has_reviewed_discovery_shape(tree)
+
+
+def _initializer_has_reviewed_discovery_shape(tree: ast.Module) -> bool:
+    """Return whether an initializer has no mutable one-shot discovery hook."""
+    if any(isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) for node in tree.body):
+        return False
+    if any(
+        (
+            isinstance(node, ast.Assign)
+            and isinstance(node.value, ast.Constant)
+            and isinstance(node.value.value, bool)
+        )
+        or (
+            isinstance(node, ast.AnnAssign)
+            and isinstance(node.value, ast.Constant)
+            and isinstance(node.value.value, bool)
+        )
+        for node in tree.body
+    ):
+        return False
+    if any(isinstance(node, ast.Global) for node in ast.walk(tree)):
+        return False
+    return not any(
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "suiteClass"
+        for node in ast.walk(tree)
+    )
+
+
+
+__all__ = ['_is_safe_unittest_main_call', '_is_unittest_module_entrypoint', '_entrypoint_contract_signatures', '_reviewed_direct_entrypoint_absolute_import', '_entrypoint_contract', '_SAFE_BUILTIN_NAMES', '_SAFE_IMPORT_ROOTS', '_absolute_import_resolves', '_contract_preserves_order', '_definitely_bound_names', '_initializer_is_additive', '_initializer_statements_match', '_initializer_bound_names', '_is_docstring_statement', '_literal_assignment_target_matches', '_literal_initializer_value', '_literal_truth_value', '_loaded_names', '_module_spec_exists', '_safe_annotation_expression', '_safe_class_definition', '_safe_definition_expression', '_safe_function_definition', '_safe_inert_initializer_condition', '_safe_initializer_addition', '_safe_runtime_expression', '_section_alias_bindings', '_section_tuple_names', '_sections_preserve_order', '_statement_bound_names', '_statement_deleted_names', '_statement_loaded_names', '_entrypoint_block_is_standard', '_approved_entrypoint_section', '_approved_entrypoint_contract', '_approved_initializer_contract', '_initializer_has_reviewed_discovery_shape', ]
