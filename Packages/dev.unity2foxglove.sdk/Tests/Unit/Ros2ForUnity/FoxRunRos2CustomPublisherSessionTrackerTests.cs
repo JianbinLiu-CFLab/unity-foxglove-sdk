@@ -223,6 +223,12 @@ namespace Unity2Foxglove.Tests.Ros2ForUnity
         {
             Assert.Equal(
                 1,
+                FoxRunRos2CustomPublisherHub.CountObservedContracts(
+                    observedContracts: 0,
+                    bindingCount: 0,
+                    terminalFailureCount: 1));
+            Assert.Equal(
+                1,
                 FoxRunRos2CustomPublisherHub.CountFailedContracts(
                     bindingCount: 0,
                     readyContracts: 0,
@@ -239,6 +245,16 @@ namespace Unity2Foxglove.Tests.Ros2ForUnity
                     bindingCount: 1,
                     readyContracts: 0,
                     terminalFailureCount: 1));
+            var status = FoxRunRos2CustomPublisherHub.BuildTransportStatus(
+                sessionActive: true,
+                stopping: false,
+                scanCompleted: true,
+                observedContracts: 1,
+                readyContracts: 0,
+                failedContracts: 1);
+            Assert.Equal(FoxRunTransportObservedState.Failed, status.State);
+            Assert.Equal(1, status.ObservedContractCount);
+            Assert.Equal(1, status.FailedContractCount);
         }
 
         [Fact]
