@@ -511,11 +511,9 @@ def _initializer_exact_identity_signature(
         return None
     if section_modules is None:
         return None
-    module_aliases = tuple(
-        item.id
-        for item in section_modules.value.elts
-        if isinstance(item, ast.Name)
-    )
+    if any(not isinstance(item, ast.Name) for item in section_modules.value.elts):
+        return None
+    module_aliases = tuple(item.id for item in section_modules.value.elts)
     if len(module_aliases) != len(section_names) or set(module_aliases) != set(section_aliases.values()):
         return None
 

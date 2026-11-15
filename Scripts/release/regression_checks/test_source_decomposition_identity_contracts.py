@@ -478,6 +478,40 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
                 )
             )
 
+    def test_initializer_contract_rejects_non_name_section_tuple_element(self) -> None:
+        """Generated section tuples cannot hide executable expressions among aliases."""
+        with tempfile.TemporaryDirectory() as base_temporary, tempfile.TemporaryDirectory() as head_temporary:
+            base = Path(base_temporary)
+            head = Path(head_temporary)
+            relative = "Scripts/example_tool.py"
+            for root in (base, head):
+                facade = self._write_package(root, relative=relative)
+                package = facade.with_suffix("")
+                (package / "second.py").write_text(
+                    "VALUE = 1\n__all__ = ['VALUE']\n",
+                    encoding="utf-8",
+                )
+                (package / "__init__.py").write_text(
+                    "from . import entrypoint as _phase192_section_0\n"
+                    "from . import second as _phase192_section_1\n"
+                    "_PHASE192_SECTION_MODULES = (_phase192_section_0, _phase192_section_1)\n",
+                    encoding="utf-8",
+                )
+            (head / relative.removesuffix(".py") / "__init__.py").write_text(
+                "from . import entrypoint as _phase192_section_0\n"
+                "from . import second as _phase192_section_1\n"
+                "_PHASE192_SECTION_MODULES = (_phase192_section_0, _phase192_section_1, __import__('evil'))\n",
+                encoding="utf-8",
+            )
+            self.assertFalse(
+                surface_compare._approved_initializer_contract(
+                    head,
+                    relative,
+                    base_root=base,
+                    base_relative=relative,
+                )
+            )
+
     def test_initializer_path_contract_rejects_shadow_module_path(self) -> None:
         """A generated initializer must derive its facade path from the package location."""
         safe = ast.parse(
