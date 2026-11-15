@@ -53,9 +53,9 @@ def check_runtime_files(results: list[CheckResult]) -> None:
         add(
             results,
             f"Zenoh router open-listen profile is documented: {path.parent.parent.name}/{path.name}",
-            "tcp/[::]:7447" in text
+            '      "tcp/127.0.0.1:7447"' in text
             and "without authentication or ACLs" in text
-            and "localhost-only or ACL-protected deployment profile" in text,
+            and "External peers require an explicit ACL-protected deployment profile." in text,
             rel(path),
         )
         add(

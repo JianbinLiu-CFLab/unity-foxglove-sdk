@@ -529,11 +529,11 @@ def check_public_docs(results: list[CheckResult]) -> None:
     add(
         results,
         "README documents Zenoh router development security boundary",
-        "listens on `tcp/[::]:7447`" in readme
+        "bound to `tcp/127.0.0.1:7447`" in readme
         and "exits if port `7447` is already bound" in readme
         and "no authentication or ACLs" in readme
         and "read-only Zenoh adminspace" in readme
-        and "trusted lab networks" in readme,
+        and "External peers require an explicit ACL-protected deployment profile" in readme,
         "README.md",
     )
 
