@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .foundation import *
+from .initializer_contracts import _phase192_template_validate_initializer
 
 def _surface(
     root: Path,
@@ -392,6 +393,129 @@ def _compare_identity_helper_contracts(
 
 
 
+def _entrypoint_block_is_standard(tree: ast.Module) -> bool:
+    """Return whether a module uses the reviewed one-line entrypoint template."""
+    for node in tree.body:
+        if not (
+            isinstance(node, ast.If)
+            and isinstance(node.test, ast.Compare)
+            and isinstance(node.test.left, ast.Name)
+            and node.test.left.id == "__name__"
+            and len(node.test.ops) == 1
+            and isinstance(node.test.ops[0], ast.Eq)
+            and len(node.test.comparators) == 1
+            and isinstance(node.test.comparators[0], ast.Constant)
+            and node.test.comparators[0].value == "__main__"
+            and not node.orelse
+            and len(node.body) == 1
+        ):
+            continue
+        statement = node.body[0]
+        if not isinstance(statement, ast.Raise) or not isinstance(statement.exc, ast.Call):
+            return False
+        call = statement.exc
+        if (
+            not isinstance(call.func, ast.Name)
+            or call.func.id != "SystemExit"
+            or len(call.args) != 1
+            or call.keywords
+            or not isinstance(call.args[0], ast.Call)
+        ):
+            return False
+        delegate = call.args[0]
+        return (
+            isinstance(delegate.func, ast.Name)
+            and delegate.func.id == "run_entrypoint"
+            and not delegate.args
+            and not delegate.keywords
+        )
+    return False
+
+
+def _approved_entrypoint_contract(root: Path, relative: str) -> bool:
+    """Return whether a changed facade and module entrypoint use one forwarding template."""
+    facade = root / relative
+    package = facade.with_suffix("")
+    module_entrypoint = package / "__main__.py"
+    if not facade.is_file() or not module_entrypoint.is_file():
+        return False
+    try:
+        facade_tree = _parse_source(facade.read_text(encoding="utf-8"), facade)
+        module_tree = _parse_source(module_entrypoint.read_text(encoding="utf-8"), module_entrypoint)
+    except (OSError, SyntaxError, ValueError):
+        return False
+    return _entrypoint_block_is_standard(facade_tree) and _entrypoint_block_is_standard(module_tree)
+
+
+def _approved_initializer_contract(root: Path, relative: str) -> bool:
+    """Return whether a changed package initializer stays within the reviewed template."""
+    initializer = root / relative.removesuffix(".py") / "__init__.py"
+    if not initializer.is_file():
+        return False
+    try:
+        source = initializer.read_text(encoding="utf-8")
+        tree = _parse_source(source, initializer)
+        _phase192_template_validate_initializer(tree, str(initializer))
+    except (OSError, SyntaxError, ValueError):
+        return False
+    if any(
+        isinstance(node, ast.Name) and node.id == "_phase192_load_tests_used"
+        for node in ast.walk(tree)
+    ):
+        return False
+    return True
+
+
+def _approved_namespace_change(relative: str, base_root: Path | None, head_root: Path | None) -> bool:
+    """Allow namespace-risk changes only when wrapper and initializer contracts pass."""
+    if base_root is None or head_root is None:
+        return False
+    if not _approved_entrypoint_contract(head_root, relative):
+        return False
+    if not _approved_initializer_contract(head_root, relative):
+        return False
+    base_package = base_root / relative.removesuffix(".py")
+    head_package = head_root / relative.removesuffix(".py")
+    base_sections = {
+        path.name
+        for path in base_package.glob("*.py")
+        if path.name not in {"__init__.py", "__main__.py"}
+    }
+    head_sections = {
+        path.name
+        for path in head_package.glob("*.py")
+        if path.name not in {"__init__.py", "__main__.py"}
+    }
+    changed_existing = {
+        name
+        for name in base_sections & head_sections
+        if (base_package / name).read_bytes() != (head_package / name).read_bytes()
+    }
+    added_sections = head_sections - base_sections
+    return not changed_existing and added_sections <= {"entrypoint.py"}
+
+
+def _discovery_contract_errors(base_root: Path, head_root: Path) -> list[str]:
+    """Reject newly retained duplicate test facades and validate intentional removals."""
+    def test_facades(root: Path) -> set[str]:
+        """Return test facade paths that have a sibling package directory."""
+        return {
+            path.relative_to(root).as_posix()
+            for path in root.joinpath("Scripts").rglob("test_*.py")
+            if path.with_suffix("").is_dir()
+        }
+
+    base_facades = test_facades(base_root)
+    head_facades = test_facades(head_root)
+    errors: list[str] = []
+    for relative in sorted(head_facades - base_facades):
+        errors.append(f"DUPLICATE_DISCOVERY_FACADE {relative}")
+    for relative in sorted(base_facades - head_facades):
+        if not _approved_initializer_contract(head_root, relative):
+            errors.append(f"INVALID_DISCOVERY_FACADE_REMOVAL {relative}")
+    return errors
+
+
 def _compare_surfaces(
     base_surfaces,
     head_surfaces,
@@ -399,6 +523,8 @@ def _compare_surfaces(
     strict: bool = True,
     waived_symbols: Mapping[str, frozenset[str]] | None = None,
     allow_directory_migration: bool = False,
+    base_root: Path | None = None,
+    head_root: Path | None = None,
 ) -> list[str]:
     """Compare identity surfaces using waivers from the trusted base revision."""
     errors: list[str] = []
@@ -424,6 +550,14 @@ def _compare_surfaces(
         )
         current = head_surfaces.get(relative)
         if current is None:
+            if (
+                not strict
+                and relative.startswith("Scripts/")
+                and "/regression_checks/test_" in relative
+                and head_root is not None
+                and _approved_initializer_contract(head_root, relative)
+            ):
+                continue
             errors.append(f"REMOVED_FACADE {relative}")
             continue
         base_has_public_symbols = len(base_surface) > 14
@@ -504,7 +638,7 @@ def _compare_surfaces(
             )
         ):
             errors.append(f"RELATIVE_STAR_IMPORT_CHANGED {relative}")
-        if not strict and base_risks != head_risks:
+        if not strict and base_risks != head_risks and not _approved_namespace_change(relative, base_root, head_root):
             errors.append(f"NAMESPACE_CONTRACT_CHANGED {relative}")
         if not strict:
             base_contract = tuple(base_conditional_contract or ())
@@ -561,6 +695,7 @@ def _compare_surfaces(
                 if (
                     entrypoint_changed
                     and not migrated_relative
+                    and (head_root is None or not _approved_entrypoint_contract(head_root, relative))
                 ):
                     errors.append(f"MODULE_ENTRYPOINT_CHANGED {relative}")
         if not strict and base_owner_map and head_owner_map:
@@ -637,6 +772,8 @@ def _compare_surfaces(
                 | (set(head_section_exports) - set(base_section_exports)),
                 dict(head_section_map or ()),
             )
+            if not initializer_ok and head_root is not None and _approved_initializer_contract(head_root, relative):
+                initializer_ok = True
         if not initializer_ok and not migrated_relative:
             errors.append(f"PACKAGE_INITIALIZER_CHANGED {relative}")
         if not _sections_preserve_order(base_sections, head_sections):
@@ -705,7 +842,11 @@ def compare_revisions(repository: Path, base: str, head: str, *, strict: bool = 
         strict=strict,
         waived_symbols=base_waivers if not strict else None,
         allow_directory_migration=allow_directory_migration,
+        base_root=base_root,
+        head_root=head_root,
     )
+    if not strict:
+        errors.extend(_discovery_contract_errors(base_root, head_root))
     errors = helper_errors + errors
     if errors:
         for error in errors:
