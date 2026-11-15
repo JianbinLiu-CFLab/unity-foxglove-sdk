@@ -155,11 +155,9 @@ namespace Unity.FoxgloveSDK.Tests
                 "81D-14: installer default root is a per-user Unity2Foxglove OpenH264 cache");
             Check(location.Contains("EditorPrefs"),
                 "81D-15: installer remembers validated custom roots through EditorPrefs");
-            Check(location.Contains("GetProjectRoot")
-                  && location.Contains("IsSameOrChild(fullRoot, projectRoot)")
-                  && location.Contains("Choose a cache folder outside the Unity project.")
+            Check(ContainsAll(location, "Assets", "Packages", "ProjectSettings", ".git")
                   && (location.Contains("ProgramFiles") || location.Contains("Program Files")),
-                "81D-16: installer rejects the Unity project tree and protected system roots");
+                "81D-16: installer rejects project, package, source-control, and system roots");
             Check(location.Contains("GetFinalHelperPath") && location.Contains("GetVersionedDirectory"),
                 "81D-17: install location exposes helper and DLL targets in the same versioned directory");
 

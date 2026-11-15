@@ -175,6 +175,7 @@ namespace
 
         std::wstring wide(static_cast<size_t>(count), L'\0');
         MultiByteToWideChar(CP_UTF8, 0, value.c_str(), -1, &wide[0], count);
+        wide.resize(static_cast<size_t>(count - 1));
         return wide;
     }
 #endif
