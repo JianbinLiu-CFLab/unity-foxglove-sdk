@@ -5,6 +5,7 @@
 // Purpose: Safe per-user OpenH264 install root selection.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using UnityEditor;
 using UnityEngine;
