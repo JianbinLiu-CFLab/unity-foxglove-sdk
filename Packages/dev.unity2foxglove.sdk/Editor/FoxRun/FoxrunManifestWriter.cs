@@ -20,6 +20,7 @@ namespace Unity.FoxgloveSDK.Editor
         public const string ManifestReportFileName = "foxrun.manifest.report.json";
         public const int CurrentManifestVersion = 4;
         private const int ReplaceAttempts = 3;
+        private const int ReplaceRetryDelayMilliseconds = 50;
         private static readonly UTF8Encoding Utf8NoBom = new UTF8Encoding(false);
 
         public static FoxRunCanonicalManifest WriteManifestFiles(
@@ -171,7 +172,7 @@ namespace Unity.FoxgloveSDK.Editor
         private static void DelayBeforeRetry(int attempt)
         {
             if (attempt + 1 < ReplaceAttempts)
-                Thread.Yield();
+                Thread.Sleep(ReplaceRetryDelayMilliseconds);
         }
 
         private static void TryDeleteTempFile(string tempPath)

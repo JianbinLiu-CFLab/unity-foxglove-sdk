@@ -130,20 +130,10 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
             for (var sceneIndex = 0; sceneIndex < SceneManager.sceneCount; sceneIndex++)
             {
-                var scene = SceneManager.GetSceneAt(sceneIndex);
-                if (!scene.isLoaded)
-                    continue;
-
-                _scanRoots.Clear();
-                scene.GetRootGameObjects(_scanRoots);
-                foreach (var root in _scanRoots)
-                {
-                    _scanPublishers.Clear();
-                    root.GetComponentsInChildren(includeInactive: false, _scanPublishers);
-                    foreach (var publisher in _scanPublishers)
-                        RegisterPublisherBinding(publisher);
-                }
+                ScanScene(SceneManager.GetSceneAt(sceneIndex));
             }
+
+            ScanScene(SceneManager.GetSceneByName("DontDestroyOnLoad"));
 
             _stale.Clear();
             foreach (var pair in _bindings)
@@ -156,6 +146,22 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             {
                 if (_bindings[key].TryDispose())
                     _bindings.Remove(key);
+            }
+        }
+
+        private void ScanScene(Scene scene)
+        {
+            if (!scene.IsValid() || !scene.isLoaded)
+                return;
+
+            _scanRoots.Clear();
+            scene.GetRootGameObjects(_scanRoots);
+            foreach (var root in _scanRoots)
+            {
+                _scanPublishers.Clear();
+                root.GetComponentsInChildren(includeInactive: false, _scanPublishers);
+                foreach (var publisher in _scanPublishers)
+                    RegisterPublisherBinding(publisher);
             }
         }
 
