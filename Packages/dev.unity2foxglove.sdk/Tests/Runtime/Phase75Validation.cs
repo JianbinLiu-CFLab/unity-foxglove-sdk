@@ -257,14 +257,12 @@ namespace Unity.FoxgloveSDK.Tests
             if (!Directory.Exists(dir))
                 throw new DirectoryNotFoundException("Camera publisher directory was not found.");
 
-            var files = new[]
-            {
-                Path.Combine(dir, "FoxgloveCameraPublisher.cs"),
-                Path.Combine(dir, "FoxgloveCameraPublisher.Video.cs")
-            };
-            foreach (var file in files)
-                if (!File.Exists(file))
-                    throw new FileNotFoundException("Required camera publisher source file was not found.", file);
+            var files = Directory
+                .GetFiles(dir, "FoxgloveCameraPublisher*.cs", SearchOption.TopDirectoryOnly)
+                .OrderBy(file => file, StringComparer.Ordinal)
+                .ToArray();
+            if (files.Length == 0)
+                throw new FileNotFoundException("Camera publisher source files were not found.", dir);
 
             return string.Join(Environment.NewLine, files.Select(File.ReadAllText));
         }
