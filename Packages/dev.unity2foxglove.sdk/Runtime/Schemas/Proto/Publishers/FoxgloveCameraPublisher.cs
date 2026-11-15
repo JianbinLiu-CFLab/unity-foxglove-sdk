@@ -485,9 +485,14 @@ namespace Unity.FoxgloveSDK.Components
                 ref _frameId);
         }
 
-        private int DesiredVideoWidth => CameraVideoSidecarConfigFactory.ResolveDimension(_width);
+        private bool RequiresEvenVideoDimensions
+            => ActiveProfile.Mode == CameraOutputMode.H264OpenH264;
 
-        private int DesiredVideoHeight => CameraVideoSidecarConfigFactory.ResolveDimension(_height);
+        private int DesiredVideoWidth
+            => CameraVideoSidecarConfigFactory.ResolveDimension(_width, RequiresEvenVideoDimensions);
+
+        private int DesiredVideoHeight
+            => CameraVideoSidecarConfigFactory.ResolveDimension(_height, RequiresEvenVideoDimensions);
 
         /// <summary>
         /// Allocates Unity capture resources on the main thread using the current
@@ -495,8 +500,12 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         private void EnsureCaptureResources()
         {
-            var width = Math.Max(1, _width);
-            var height = Math.Max(1, _height);
+            var width = CameraVideoSidecarConfigFactory.ResolveDimension(
+                _width,
+                RequiresEvenVideoDimensions);
+            var height = CameraVideoSidecarConfigFactory.ResolveDimension(
+                _height,
+                RequiresEvenVideoDimensions);
             if (_captureResources.CaptureRenderTexture != null
                 && (_captureResources.CaptureRenderTexture.width != width
                     || _captureResources.CaptureRenderTexture.height != height))

@@ -104,5 +104,15 @@ namespace Unity.FoxgloveSDK.UnitTests
 
             Assert.Throws<ArgumentException>(() => options.CreateStartInfo());
         }
+
+        [Theory]
+        [InlineData(641, 640)]
+        [InlineData(640, 640)]
+        [InlineData(1, 2)]
+        public void OpenH264DimensionsAreNormalizedToEvenCaptureSizes(int requested, int expected)
+        {
+            Assert.Equal(expected, CameraVideoSidecarConfigFactory.ResolveDimension(requested, true));
+            Assert.Equal(requested, CameraVideoSidecarConfigFactory.ResolveDimension(requested, false));
+        }
     }
 }
