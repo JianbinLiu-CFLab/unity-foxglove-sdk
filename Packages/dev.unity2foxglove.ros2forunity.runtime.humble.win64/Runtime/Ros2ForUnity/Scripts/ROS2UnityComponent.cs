@@ -93,6 +93,11 @@ public class ROS2UnityComponent : MonoBehaviour
         lock (mutex)
         {
             ThrowIfDisposed();
+            if (runtimeShutdownRequested)
+            {
+                throw new ObjectDisposedException(nameof(ROS2UnityComponent));
+            }
+
             if (ros2forUnity != null)
                 return;
 
