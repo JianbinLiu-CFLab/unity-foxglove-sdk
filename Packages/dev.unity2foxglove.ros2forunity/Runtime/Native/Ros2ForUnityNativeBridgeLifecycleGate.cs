@@ -63,7 +63,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         internal static bool IsShuttingDownForBridge(Scene ownerScene)
             => _nativeReloadWindow
                || !_isStablePlayModeScene
-               || !IsActiveSceneCacheCurrent || IsBridgeSceneUnsafe(ownerScene);
+               || IsBridgeSceneUnsafe(ownerScene);
 
         internal static bool IsBridgeSceneUnsafe(Scene scene)
         {
