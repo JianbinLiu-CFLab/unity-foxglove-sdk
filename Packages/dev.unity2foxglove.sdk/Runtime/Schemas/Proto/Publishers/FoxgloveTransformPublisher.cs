@@ -163,6 +163,7 @@ namespace Unity.FoxgloveSDK.Components
 
         private string ResolveChildFrameId()
         {
+            RefreshGameObjectNameCache();
             var fallback = string.IsNullOrEmpty(_cachedGameObjectName)
                 ? nameof(FoxgloveTransformPublisher)
                 : _cachedGameObjectName;
