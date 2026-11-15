@@ -69,6 +69,12 @@ namespace Unity.FoxgloveSDK.Editor
                 return false;
             }
 
+            if (ContainsReparsePointTree(GetVersionedDirectory(fullRoot)))
+            {
+                reason = "Choose an install location whose versioned directory has no symlink or junction.";
+                return false;
+            }
+
             foreach (var protectedFolder in new[]
             {
                 Environment.SpecialFolder.ProgramFiles,
@@ -132,6 +138,38 @@ namespace Unity.FoxgloveSDK.Editor
                 {
                     if (current.Exists && (current.Attributes & FileAttributes.ReparsePoint) != 0)
                         return true;
+                }
+            }
+            catch
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool ContainsReparsePointTree(string path)
+        {
+            if (ContainsReparsePoint(path))
+                return true;
+
+            try
+            {
+                var root = new DirectoryInfo(path);
+                if (!root.Exists)
+                    return false;
+
+                var pending = new Stack<DirectoryInfo>();
+                pending.Push(root);
+                while (pending.Count > 0)
+                {
+                    foreach (var entry in pending.Pop().EnumerateFileSystemInfos())
+                    {
+                        if ((entry.Attributes & FileAttributes.ReparsePoint) != 0)
+                            return true;
+                        if (entry is DirectoryInfo directory)
+                            pending.Push(directory);
+                    }
                 }
             }
             catch
