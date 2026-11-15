@@ -142,10 +142,10 @@ namespace Unity.FoxgloveSDK.Components
         public string SensorCameraFrameId => ResolveFrameId();
 
         /// <summary>Resolved capture width used by the camera image stream.</summary>
-        public int SensorCameraCaptureWidth => Math.Max(1, _width);
+        public int SensorCameraCaptureWidth => DesiredVideoWidth;
 
         /// <summary>Resolved capture height used by the camera image stream.</summary>
-        public int SensorCameraCaptureHeight => Math.Max(1, _height);
+        public int SensorCameraCaptureHeight => DesiredVideoHeight;
 
         // Capture state
         private int _pendingRequests;

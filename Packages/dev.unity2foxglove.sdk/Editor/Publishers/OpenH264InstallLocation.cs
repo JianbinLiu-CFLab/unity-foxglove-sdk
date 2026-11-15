@@ -63,6 +63,12 @@ namespace Unity.FoxgloveSDK.Editor
                 return false;
             }
 
+            if (ContainsReparsePoint(fullRoot))
+            {
+                reason = "Choose an install location that does not traverse a symlink or junction.";
+                return false;
+            }
+
             foreach (var protectedFolder in new[]
             {
                 Environment.SpecialFolder.ProgramFiles,
@@ -116,6 +122,24 @@ namespace Unity.FoxgloveSDK.Editor
         {
             var special = Environment.GetFolderPath(folder);
             return !string.IsNullOrWhiteSpace(special) && IsSameOrChild(path, special);
+        }
+
+        private static bool ContainsReparsePoint(string path)
+        {
+            try
+            {
+                for (var current = new DirectoryInfo(path); current != null; current = current.Parent)
+                {
+                    if (current.Exists && (current.Attributes & FileAttributes.ReparsePoint) != 0)
+                        return true;
+                }
+            }
+            catch
+            {
+                return true;
+            }
+
+            return false;
         }
 
         private static bool IsSameOrChild(string path, string parent)

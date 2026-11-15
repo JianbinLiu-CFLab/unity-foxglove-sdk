@@ -400,10 +400,30 @@ namespace Unity.FoxgloveSDK.IO
                 return;
             }
 
-            _recordBuffer.Dispose();
-            if (!_leaveOpen)
-                _stream.Dispose();
-            _disposed = true;
+            try
+            {
+                _recordBuffer.Dispose();
+            }
+            catch (Exception ex)
+            {
+                Trace.TraceWarning("[MCAP] Record buffer dispose failed during dispose: " + ex.Message);
+            }
+            finally
+            {
+                try
+                {
+                    if (!_leaveOpen)
+                        _stream.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    Trace.TraceWarning("[MCAP] Stream dispose failed during dispose: " + ex.Message);
+                }
+                finally
+                {
+                    _disposed = true;
+                }
+            }
         }
 
         private void ThrowIfDisposed()
