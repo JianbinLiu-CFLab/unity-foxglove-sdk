@@ -340,6 +340,25 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
             ):
                 self.assertFalse(surface_compare._approved_test_facade_removal(relative, base, head))
 
+    def test_discovery_contract_removal_rejects_added_section(self) -> None:
+        """Removing a test facade cannot add a new package section."""
+        with tempfile.TemporaryDirectory() as base_temporary, tempfile.TemporaryDirectory() as head_temporary:
+            base = Path(base_temporary)
+            head = Path(head_temporary)
+            relative = "Scripts/regression_checks/test_tool.py"
+            self._write_package(base, relative=relative)
+            self._write_package(head, relative=relative)
+            (head / relative.removesuffix(".py") / "test_new.py").write_text(
+                "VALUE = 1\n__all__ = ['VALUE']\n",
+                encoding="utf-8",
+            )
+            (head / relative).unlink()
+            with mock.patch(
+                "Scripts.validation.source_decomposition.compare_identity_surfaces.entrypoint_contracts._approved_initializer_contract",
+                return_value=True,
+            ):
+                self.assertFalse(surface_compare._approved_test_facade_removal(relative, base, head))
+
     def test_discovery_contract_removal_accepts_testfoo_pattern(self) -> None:
         """Removing any unittest-discoverable test facade uses the same contract."""
         with tempfile.TemporaryDirectory() as base_temporary, tempfile.TemporaryDirectory() as head_temporary:

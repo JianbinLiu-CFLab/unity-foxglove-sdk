@@ -391,7 +391,7 @@ def _approved_test_facade_removal(
     head_sections = {
         path.name for path in head_package.glob("*.py") if path.name not in excluded
     }
-    if not base_sections <= head_sections:
+    if base_sections != head_sections:
         return False
     return all(
         (base_package / name).read_bytes() == (head_package / name).read_bytes()
