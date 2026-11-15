@@ -869,10 +869,19 @@ def _approved_entrypoint_section(path: Path) -> bool:
     definitions = [
         node
         for node in tree.body
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        if isinstance(node, ast.FunctionDef)
         and node.name == "run_entrypoint"
     ]
     if len(definitions) != 1 or definitions[0].decorator_list or not definitions[0].body:
+        return False
+    arguments = definitions[0].args
+    if (
+        arguments.posonlyargs
+        or arguments.args
+        or arguments.kwonlyargs
+        or arguments.vararg
+        or arguments.kwarg
+    ):
         return False
     for node in tree.body:
         if isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
@@ -951,6 +960,17 @@ def _initializer_has_reviewed_discovery_shape(tree: ast.Module) -> bool:
             isinstance(node, ast.AnnAssign)
             and isinstance(node.value, ast.Constant)
             and isinstance(node.value.value, bool)
+        )
+        for node in tree.body
+    ):
+        return False
+    if any(isinstance(node, ast.Lambda) for node in ast.walk(tree)):
+        return False
+    if any(
+        isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name) and target.id == "load_tests"
+            for target in node.targets
         )
         for node in tree.body
     ):

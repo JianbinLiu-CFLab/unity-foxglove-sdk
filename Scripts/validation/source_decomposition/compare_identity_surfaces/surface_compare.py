@@ -733,7 +733,13 @@ def compare_revisions(repository: Path, base: str, head: str, *, strict: bool = 
             head_root=head_root,
         )
         if not strict:
-            errors.extend(_discovery_contract_errors(base_root, head_root))
+            errors.extend(
+                _discovery_contract_errors(
+                    base_root,
+                    head_root,
+                    allow_directory_migration=allow_directory_migration,
+                )
+            )
     errors = helper_errors + errors
     if errors:
         for error in errors:

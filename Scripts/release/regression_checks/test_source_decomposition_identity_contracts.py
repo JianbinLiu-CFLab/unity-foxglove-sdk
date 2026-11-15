@@ -163,6 +163,21 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
                 )
             )
 
+    def test_entrypoint_section_rejects_async_and_required_arguments(self) -> None:
+        """The synchronous zero-argument wrapper contract rejects incompatible callables."""
+        for source in (
+            "async def run_entrypoint():\n    return 0\n__all__ = ['run_entrypoint']\n",
+            "def run_entrypoint(required):\n    return required\n__all__ = ['run_entrypoint']\n",
+        ):
+            with self.subTest(source=source), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                facade = self._write_package(root, entrypoint_body=source)
+                self.assertFalse(
+                    surface_compare._approved_entrypoint_section(
+                        facade.with_suffix("") / "entrypoint.py"
+                    )
+                )
+
     def test_initializer_discovery_contract_rejects_sentinel_variants(self) -> None:
         """A mutable load-tests hook is rejected even when its sentinel is renamed."""
         accepted = ast.parse("from .entrypoint import *\n")
@@ -171,6 +186,8 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
             "_phase192_load_tests_used = False\n",
             "def load_tests(loader, tests, pattern):\n    return tests\n",
             "def load_tests_once(loader, tests, pattern):\n    return loader.suiteClass()\n",
+            "load_tests = lambda loader, tests, pattern: tests\n",
+            "load_tests_once = lambda loader, tests, pattern: tests\n",
         ):
             with self.subTest(source=source):
                 self.assertFalse(
@@ -194,6 +211,18 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
             self._write_package(head, relative="Scripts/regression_checks/test_tool.py")
             self.assertEqual(
                 ["DUPLICATE_DISCOVERY_FACADE Scripts/regression_checks/test_tool.py"],
+                surface_compare._discovery_contract_errors(base, head),
+            )
+            base_package = base / "Scripts/regression_checks/testfoo"
+            base_package.mkdir(parents=True)
+            (base_package / "__init__.py").write_text("from .entrypoint import *\n", encoding="utf-8")
+            (base_package / "entrypoint.py").write_text(
+                "def run_entrypoint():\n    return 0\n__all__ = ['run_entrypoint']\n",
+                encoding="utf-8",
+            )
+            self._write_package(head, relative="Scripts/regression_checks/testfoo.py")
+            self.assertIn(
+                "DUPLICATE_DISCOVERY_FACADE Scripts/regression_checks/testfoo.py",
                 surface_compare._discovery_contract_errors(base, head),
             )
 
@@ -220,6 +249,59 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
                 return_value=True,
             ):
                 self.assertFalse(surface_compare._approved_test_facade_removal(relative, base, head))
+
+    def test_discovery_contract_removal_preserves_manifest_order(self) -> None:
+        """Removing a test facade cannot reorder manifest-backed sections."""
+        with tempfile.TemporaryDirectory() as base_temporary, tempfile.TemporaryDirectory() as head_temporary:
+            base = Path(base_temporary)
+            head = Path(head_temporary)
+            relative = "Scripts/regression_checks/test_tool.py"
+            self._write_package(base, relative=relative)
+            self._write_package(head, relative=relative)
+            for root in (base, head):
+                package = root / relative.removesuffix(".py")
+                (package / "extra.py").write_text(
+                    "VALUE = 1\n__all__ = ['VALUE']\n",
+                    encoding="utf-8",
+                )
+            base_package = base / relative.removesuffix(".py")
+            head_package = head / relative.removesuffix(".py")
+            (base_package / "sections.manifest").write_text(
+                "entrypoint.py\nextra.py\n",
+                encoding="utf-8",
+            )
+            (head_package / "sections.manifest").write_text(
+                "extra.py\nentrypoint.py\n",
+                encoding="utf-8",
+            )
+            (head / relative).unlink()
+            with mock.patch(
+                "Scripts.validation.source_decomposition.compare_identity_surfaces.entrypoint_contracts._approved_initializer_contract",
+                return_value=True,
+            ):
+                self.assertFalse(surface_compare._approved_test_facade_removal(relative, base, head))
+
+    def test_discovery_contract_normalizes_directory_migration(self) -> None:
+        """A supported Phase192 directory migration is compared by canonical path."""
+        with tempfile.TemporaryDirectory() as base_temporary, tempfile.TemporaryDirectory() as head_temporary:
+            base = Path(base_temporary)
+            head = Path(head_temporary)
+            self._write_package(
+                base,
+                relative="Scripts/phase192/regression_checks/test_tool.py",
+            )
+            self._write_package(
+                head,
+                relative="Scripts/validation/source_decomposition/regression_checks/test_tool.py",
+            )
+            self.assertEqual(
+                [],
+                surface_compare._discovery_contract_errors(
+                    base,
+                    head,
+                    allow_directory_migration=True,
+                ),
+            )
 
     def test_compare_revisions_uses_checkout_roots_before_cleanup(self) -> None:
         """The compatibility gate can approve a valid entrypoint migration end to end."""

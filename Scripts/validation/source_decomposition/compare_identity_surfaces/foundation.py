@@ -358,6 +358,12 @@ def _approved_test_facade_removal(
     head_declared = {path.name for path in section_modules(head_package)}
     if base_declared != head_declared:
         return False
+    base_manifest = base_package / "sections.manifest"
+    head_manifest = head_package / "sections.manifest"
+    if base_manifest.is_file() != head_manifest.is_file():
+        return False
+    if base_manifest.is_file() and base_manifest.read_bytes() != head_manifest.read_bytes():
+        return False
     excluded = {"__init__.py", "__main__.py"}
     base_sections = {
         path.name for path in base_package.glob("*.py") if path.name not in excluded
@@ -423,25 +429,41 @@ def _approved_namespace_change(relative: str, base_root: Path | None, head_root:
     return _approved_entrypoint_section(head_package / "entrypoint.py")
 
 
-def _discovery_contract_errors(base_root: Path, head_root: Path) -> list[str]:
+def _discovery_contract_errors(
+    base_root: Path,
+    head_root: Path,
+    *,
+    allow_directory_migration: bool = False,
+) -> list[str]:
     """Reject newly retained duplicate test facades and validate intentional removals."""
     def test_facades(root: Path) -> set[str]:
         """Return test facade paths that have a sibling package directory."""
         return {
             path.relative_to(root).as_posix()
-            for path in root.joinpath("Scripts").rglob("test_*.py")
+            for path in root.joinpath("Scripts").rglob("test*.py")
             if path.with_suffix("").is_dir()
         }
 
-    base_facades = test_facades(base_root)
-    head_facades = test_facades(head_root)
+    def normalize(relative: str) -> str:
+        """Normalize supported source-decomposition migration paths."""
+        if allow_directory_migration:
+            return _current_source_decomposition_relative(relative)
+        return relative
+
+    base_facades = {
+        normalize(relative): relative for relative in test_facades(base_root)
+    }
+    head_facades = {
+        normalize(relative): relative for relative in test_facades(head_root)
+    }
     from .entrypoint_contracts import _approved_initializer_contract
 
     errors: list[str] = []
-    for relative in sorted(head_facades - base_facades):
+    for relative in sorted(set(head_facades) - set(base_facades)):
         errors.append(f"DUPLICATE_DISCOVERY_FACADE {relative}")
-    for relative in sorted(base_facades - head_facades):
-        if not _approved_initializer_contract(head_root, relative):
+    for relative in sorted(set(base_facades) - set(head_facades)):
+        head_relative = head_facades.get(relative, relative)
+        if not _approved_initializer_contract(head_root, head_relative):
             errors.append(f"INVALID_DISCOVERY_FACADE_REMOVAL {relative}")
     return errors
 
