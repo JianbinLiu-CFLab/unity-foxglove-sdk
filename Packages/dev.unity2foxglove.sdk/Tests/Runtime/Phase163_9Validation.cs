@@ -143,8 +143,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void PhaseRegistryWiresPhase163_9()
         {
             var registry = Read("Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
-            Check(registry.Contains("Ci(\"--phase163-9\"", StringComparison.Ordinal)
-                  && registry.Contains("Phase163_9Validation.Validate", StringComparison.Ordinal),
+            Check(registry.Contains("Ci(\"--phase163-9\", \"Phase 163-9: phase163-9 review regression checks for MCAP writer internals\", Phase163_9Validation.Validate", StringComparison.Ordinal),
                 "163-9G: PhaseValidationRegistry wires --phase163-9");
         }
 
