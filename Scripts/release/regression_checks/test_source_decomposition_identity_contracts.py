@@ -346,87 +346,135 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
                     )
                 )
 
-    def test_initializer_discovery_contract_rejects_sentinel_variants(self) -> None:
-        """A mutable load-tests hook is rejected even when its sentinel is renamed."""
-        accepted = ast.parse("from .entrypoint import run_entrypoint\n")
-        self.assertTrue(surface_compare._initializer_has_reviewed_discovery_shape(accepted))
-        for source in (
-            "_phase192_load_tests_used = False\n",
-            "def load_tests(loader, tests, pattern):\n    return tests\n",
-            "def load_tests_once(loader, tests, pattern):\n    return loader.suiteClass()\n",
-            "load_tests = lambda loader, tests, pattern: tests\n",
-            "load_tests_once = lambda loader, tests, pattern: tests\n",
-            "from .foundation import load_tests\n",
-            "from .foundation import load_tests as load_tests\n",
-            "if True:\n    def load_tests(loader, tests, pattern):\n        return tests\n",
-            "for _item in ():\n    load_tests = _item\n",
-            "try:\n    from .foundation import load_tests\nexcept ImportError:\n    pass\n",
-            "from .foundation import *\n",
-        ):
-            with self.subTest(source=source):
-                self.assertFalse(
-                    surface_compare._initializer_has_reviewed_discovery_shape(
-                        ast.parse(source)
-                    )
-                )
-
-    def test_section_discovery_contract_rejects_load_tests_exports(self) -> None:
-        """Section modules cannot reintroduce a unittest discovery hook by export."""
-        sources = (
-            "def run_entrypoint():\n"
-            "    return 0\n"
-            "def load_tests(loader, tests, pattern):\n"
-            "    return tests\n"
-            "__all__ = ['run_entrypoint', 'load_tests']\n",
-            "def run_entrypoint():\n"
-            "    return 0\n"
-            "__all__ = ['run_entrypoint', 'load_tests']\n",
-            "def run_entrypoint():\n"
-            "    return 0\n"
-            "__all__ = ['run_entrypoint']\n"
-            "__all__.append('load_tests')\n",
-            "def run_entrypoint():\n"
-            "    return 0\n"
-            "_hook = lambda loader, tests, pattern: tests\n"
-            "globals()['load_tests'] = _hook\n"
-            "globals()['__all__'] = list(__all__) + ['load_tests']\n"
-            "__all__ = ['run_entrypoint']\n",
-            "import sys\n"
-            "def run_entrypoint():\n"
-            "    return 0\n"
-            "_hook = lambda loader, tests, pattern: tests\n"
-            "setattr(sys.modules[__name__], 'load_tests', _hook)\n"
-            "__all__ = ['run_entrypoint']\n",
-            "def run_entrypoint():\n"
-            "    return 0\n"
-            "_d = vars()\n"
-            "_d['load_tests'] = lambda loader, tests, pattern: tests\n"
-            "__all__ = ['run_entrypoint']\n",
+    def test_discovery_runtime_fixture_counts_each_test_once(self) -> None:
+        """Hermetic unittest discovery reports one id for each test without a hook."""
+        script = (
+            "import unittest, sys\n"
+            "suite = unittest.defaultTestLoader.discover(sys.argv[1], pattern='test*.py')\n"
+            "def flatten(value):\n"
+            "    for item in value:\n"
+            "        if isinstance(item, unittest.TestSuite):\n"
+            "            yield from flatten(item)\n"
+            "        else:\n"
+            "            yield item.id()\n"
+            "ids = list(flatten(suite))\n"
+            "print(len(ids), len(set(ids)))\n"
         )
-        for source in sources:
-            with self.subTest(source=source), tempfile.TemporaryDirectory() as temporary:
-                root = Path(temporary)
-                facade = self._write_package(root)
-                (facade.with_suffix("") / "entrypoint.py").write_text(source, encoding="utf-8")
-                self.assertFalse(
-                    surface_compare._sections_have_no_discovery_hook(
-                        root,
-                        "Scripts/example_tool.py",
-                    )
-                )
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            facade = self._write_package(root)
-            (facade.with_suffix("") / "entrypoint.py").write_text(
-                "__all__ = [name for name in globals() if not name.startswith('__')]\n"
-                "def run_entrypoint():\n"
-                "    return 0\n",
+            package = root / "test_sample"
+            package.mkdir()
+            (package / "__init__.py").write_text("\n", encoding="utf-8")
+            (package / "test_case.py").write_text(
+                "import unittest\n"
+                "class SampleTests(unittest.TestCase):\n"
+                "    def test_once(self):\n"
+                "        self.assertTrue(True)\n",
                 encoding="utf-8",
             )
+            result = subprocess.run(
+                [sys.executable, "-B", "-c", script, str(root)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertEqual("1 1", result.stdout.strip())
+
+    def test_repository_discovery_reports_unique_identity_tooling_ids(self) -> None:
+        """Repository discovery must not execute a split test facade twice."""
+        script = (
+            "import unittest, sys\n"
+            "suite = unittest.defaultTestLoader.discover(\n"
+            "    sys.argv[1], pattern=sys.argv[2], top_level_dir='.'\n"
+            ")\n"
+            "def flatten(value):\n"
+            "    for item in value:\n"
+            "        if isinstance(item, unittest.TestSuite):\n"
+            "            yield from flatten(item)\n"
+            "        else:\n"
+            "            yield item.id()\n"
+            "ids = list(flatten(suite))\n"
+            "print(len(ids), len(set(ids)))\n"
+        )
+        repository = Path(__file__).resolve().parents[3]
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-B",
+                "-c",
+                script,
+                "Scripts/validation/source_decomposition/regression_checks",
+                "test_identity_tooling.py",
+            ],
+            cwd=repository,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+        count, unique = (int(value) for value in result.stdout.strip().split())
+        self.assertGreater(count, 0)
+        self.assertEqual(count, unique)
+
+    def test_initializer_contract_requires_exact_generated_body_without_hook(self) -> None:
+        """Initializer approval allows only removal of the trusted legacy hook."""
+        generated = (
+            "from . import entrypoint as _phase192_section_0\n"
+            "_PHASE192_SECTION_MODULES = (_phase192_section_0,)\n"
+            "_phase192_load_tests_used = False\n"
+            "def load_tests(loader, tests, pattern):\n"
+            "    global _phase192_load_tests_used\n"
+            "    if pattern is None:\n"
+            "        return tests\n"
+            "    if _phase192_load_tests_used:\n"
+            "        return loader.suiteClass()\n"
+            "    _phase192_load_tests_used = True\n"
+            "    return tests\n"
+        )
+        with tempfile.TemporaryDirectory() as base_temporary, tempfile.TemporaryDirectory() as head_temporary:
+            base = Path(base_temporary)
+            head = Path(head_temporary)
+            relative = "Scripts/example_tool.py"
+            self._write_package(base, relative=relative, initializer_body=generated)
+            self._write_package(
+                head,
+                relative=relative,
+                initializer_body=(
+                    "from . import entrypoint as _phase192_section_0\n"
+                    "_PHASE192_SECTION_MODULES = (_phase192_section_0,)\n"
+                ),
+            )
             self.assertTrue(
-                surface_compare._sections_have_no_discovery_hook(
-                    root,
-                    "Scripts/example_tool.py",
+                surface_compare._approved_initializer_contract(
+                    head,
+                    relative,
+                    base_root=base,
+                    base_relative=relative,
+                )
+            )
+            (head / relative.removesuffix(".py") / "__init__.py").write_text(
+                generated + "globals()['unexpected'] = True\n",
+                encoding="utf-8",
+            )
+            self.assertFalse(
+                surface_compare._approved_initializer_contract(
+                    head,
+                    relative,
+                    base_root=base,
+                    base_relative=relative,
+                )
+            )
+            (head / relative.removesuffix(".py") / "__init__.py").write_text(
+                generated,
+                encoding="utf-8",
+            )
+            self.assertFalse(
+                surface_compare._approved_initializer_contract(
+                    head,
+                    relative,
+                    base_root=base,
+                    base_relative=relative,
                 )
             )
 
@@ -489,49 +537,6 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
                 "Scripts/regression_checks/test_tool.py",
             )
         )
-
-    def test_initializer_import_shape_rejects_nested_import_and_path_mutation(self) -> None:
-        """Generated initializers cannot add nested imports or alternate path mutations."""
-        nested_path = ast.parse(
-            "if True:\n"
-            "    _phase192_sys.path.insert(0, str(_PHASE192_PARENT))\n"
-        )
-        nested_import = ast.parse(
-            "if str(_PHASE192_PARENT) not in _phase192_sys.path:\n"
-            "    import unittest\n"
-        )
-        shadow_import = ast.parse(
-            "if str(_PHASE192_PARENT) not in _phase192_sys.path:\n"
-            "    _phase192_sys.path.insert(0, str(_PHASE192_PARENT))\n"
-            "import unittest\n"
-        )
-        self.assertFalse(surface_compare._initializer_has_generated_import_shape(nested_path))
-        self.assertFalse(surface_compare._initializer_has_generated_import_shape(nested_import))
-        self.assertFalse(surface_compare._initializer_has_generated_import_shape(shadow_import))
-        prefix = (
-            "from __future__ import annotations\n"
-            "import sys as _phase192_sys\n"
-            "import types as _phase192_types\n"
-            "from pathlib import Path as _Phase192Path\n"
-            "_PHASE192_FACADE_FILE = _Phase192Path(__file__).resolve().parents[1] / 'test_tool.py'\n"
-            "__file__ = str(_PHASE192_FACADE_FILE)\n"
-            "_PHASE192_PARENT = _PHASE192_FACADE_FILE.parent\n"
-            "if str(_PHASE192_PARENT) not in _phase192_sys.path:\n"
-            "    _phase192_sys.path.insert(0, str(_PHASE192_PARENT))\n"
-        )
-        for source in (
-            "_phase192_sys.path[:] = ['/tmp/attacker']\n",
-            "_phase192_sys.meta_path[:] = []\n",
-            "_phase192_sys.__dict__['path'] = []\n",
-            "getattr(_phase192_sys, 'path').insert(0, '/tmp/attacker')\n",
-            "_phase192_sys = None\n",
-        ):
-            with self.subTest(source=source):
-                self.assertFalse(
-                    surface_compare._initializer_has_generated_import_shape(
-                        ast.parse(prefix + source)
-                    )
-                )
 
     def test_discovery_contract_rejects_new_duplicate_facade(self) -> None:
         """A test facade beside a test package is rejected as duplicate discovery."""
@@ -678,11 +683,7 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
                 encoding="utf-8",
             )
             (head / relative).unlink()
-            with mock.patch(
-                "Scripts.validation.source_decomposition.compare_identity_surfaces.entrypoint_contracts._approved_initializer_contract",
-                return_value=True,
-            ):
-                self.assertFalse(surface_compare._approved_test_facade_removal(relative, base, head))
+            self.assertFalse(surface_compare._approved_test_facade_removal(relative, base, head))
 
     def test_discovery_contract_removal_rejects_nested_module_change(self) -> None:
         """Removing a test facade cannot hide changed nested Python modules."""
@@ -772,6 +773,8 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
             approved.assert_called_once_with(
                 head,
                 "Scripts/validation/source_decomposition/regression_checks/test_tool.py",
+                base_root=base,
+                base_relative=relative,
             )
 
     def test_discovery_contract_preserves_legacy_paths_without_migration(self) -> None:

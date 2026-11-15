@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from .foundation import *
 from .surface_contracts import *
-from .initializer_contracts import _phase192_template_validate_initializer
-
 def _is_safe_unittest_main_call(call: ast.Call) -> bool:
     """Return whether a unittest.main call has only literal safe options."""
     return (
@@ -935,66 +933,22 @@ def _approved_entrypoint_contract(root: Path, relative: str) -> bool:
     )
 
 
-def _approved_initializer_contract(root: Path, relative: str) -> bool:
-    """Return whether a changed package initializer stays within the reviewed template."""
-    initializer = root / relative.removesuffix(".py") / "__init__.py"
-    if not initializer.is_file():
+def _approved_initializer_contract(
+    root: Path,
+    relative: str,
+    *,
+    base_root: Path | None = None,
+    base_relative: str | None = None,
+) -> bool:
+    """Return whether the initializer is an exact trusted-base template match."""
+    if base_root is None:
         return False
-    try:
-        source = initializer.read_text(encoding="utf-8")
-        tree = _parse_source(source, initializer)
-        _phase192_template_validate_initializer(tree, str(initializer))
-    except (OSError, SyntaxError, ValueError):
-        return False
-    return (
-        _initializer_has_reviewed_discovery_shape(tree)
-        and _initializer_path_is_repository_rooted(tree, relative)
-        and _initializer_has_generated_import_shape(tree)
-        and _sections_have_no_discovery_hook(root, relative)
+    head_signature = _initializer_exact_identity_signature(root, relative)
+    base_signature = _initializer_exact_identity_signature(
+        base_root,
+        base_relative or relative,
+        allow_legacy_hook_removal=True,
     )
+    return head_signature is not None and head_signature == base_signature
 
-
-def _initializer_has_reviewed_discovery_shape(tree: ast.Module) -> bool:
-    """Return whether an initializer has no mutable one-shot discovery hook."""
-    if not _initializer_discovery_bindings_are_safe(tree):
-        return False
-    if any(isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) for node in tree.body):
-        return False
-    if any(
-        (
-            isinstance(node, ast.Assign)
-            and isinstance(node.value, ast.Constant)
-            and isinstance(node.value.value, bool)
-        )
-        or (
-            isinstance(node, ast.AnnAssign)
-            and isinstance(node.value, ast.Constant)
-            and isinstance(node.value.value, bool)
-        )
-        for node in tree.body
-    ):
-        return False
-    if any(isinstance(node, ast.Lambda) for node in ast.walk(tree)):
-        return False
-    if any(
-        isinstance(node, ast.Assign)
-        and any(
-            isinstance(target, ast.Name) and target.id == "load_tests"
-            for target in node.targets
-        )
-        for node in tree.body
-    ):
-        return False
-    if not _initializer_has_no_load_tests_import(tree):
-        return False
-    if any(isinstance(node, ast.Global) for node in ast.walk(tree)):
-        return False
-    return not any(
-        isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Attribute)
-        and node.func.attr == "suiteClass"
-        for node in ast.walk(tree)
-    )
-
-
-__all__ = ['_is_safe_unittest_main_call', '_is_unittest_module_entrypoint', '_entrypoint_contract_signatures', '_reviewed_direct_entrypoint_absolute_import', '_entrypoint_contract', '_SAFE_BUILTIN_NAMES', '_SAFE_IMPORT_ROOTS', '_absolute_import_resolves', '_contract_preserves_order', '_definitely_bound_names', '_initializer_is_additive', '_initializer_statements_match', '_initializer_bound_names', '_is_docstring_statement', '_literal_assignment_target_matches', '_literal_initializer_value', '_literal_truth_value', '_loaded_names', '_module_spec_exists', '_safe_annotation_expression', '_safe_class_definition', '_safe_definition_expression', '_safe_function_definition', '_safe_inert_initializer_condition', '_safe_initializer_addition', '_safe_runtime_expression', '_section_alias_bindings', '_section_tuple_names', '_sections_preserve_order', '_statement_bound_names', '_statement_deleted_names', '_statement_loaded_names', '_entrypoint_block_is_standard', '_approved_entrypoint_section', '_approved_entrypoint_contract', '_approved_initializer_contract', '_initializer_has_reviewed_discovery_shape', ]
+__all__ = ['_is_safe_unittest_main_call', '_is_unittest_module_entrypoint', '_entrypoint_contract_signatures', '_reviewed_direct_entrypoint_absolute_import', '_entrypoint_contract', '_SAFE_BUILTIN_NAMES', '_SAFE_IMPORT_ROOTS', '_absolute_import_resolves', '_contract_preserves_order', '_definitely_bound_names', '_initializer_is_additive', '_initializer_statements_match', '_initializer_bound_names', '_is_docstring_statement', '_literal_assignment_target_matches', '_literal_initializer_value', '_literal_truth_value', '_loaded_names', '_module_spec_exists', '_safe_annotation_expression', '_safe_class_definition', '_safe_definition_expression', '_safe_function_definition', '_safe_inert_initializer_condition', '_safe_initializer_addition', '_safe_runtime_expression', '_section_alias_bindings', '_section_tuple_names', '_sections_preserve_order', '_statement_bound_names', '_statement_deleted_names', '_statement_loaded_names', '_entrypoint_block_is_standard', '_approved_entrypoint_section', '_approved_entrypoint_contract', '_approved_initializer_contract', ]

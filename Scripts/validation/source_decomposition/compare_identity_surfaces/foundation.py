@@ -388,92 +388,6 @@ def _single_run_entrypoint_binding(tree: ast.Module) -> bool:
         and bindings[0].name == "run_entrypoint"
     )
 
-def _initializer_has_no_load_tests_import(tree: ast.Module) -> bool:
-    """Return whether an initializer imports no name bound as load_tests."""
-    return not any(
-        isinstance(node, (ast.Import, ast.ImportFrom))
-        and any(
-            (alias.asname or alias.name.split(".", 1)[0]) == "load_tests"
-            for alias in node.names
-        )
-        for node in tree.body
-    )
-
-def _sections_have_no_discovery_hook(root: Path, relative: str) -> bool:
-    """Return whether package sections cannot export or bind unittest load_tests."""
-    package = root / relative.removesuffix(".py")
-    try:
-        sections = _section_modules_for_root(root)(package)
-        trees = [
-            _parse_source(path.read_text(encoding="utf-8"), path)
-            for path in sections
-        ]
-    except (OSError, SyntaxError, ValueError, FileNotFoundError):
-        return False
-    for tree in trees:
-        if "load_tests" in _top_level_names(tree, include_imports=True):
-            return False
-        parents: dict[int, ast.AST] = {}
-        for parent in ast.walk(tree):
-            for child in ast.iter_child_nodes(parent):
-                parents[id(child)] = parent
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Call):
-                continue
-            if isinstance(node.func, ast.Name) and node.func.id in {"vars", "locals", "setattr"}:
-                return False
-            if isinstance(node.func, ast.Attribute) and node.func.attr == "setattr":
-                return False
-            if not isinstance(node.func, ast.Name) or node.func.id != "globals":
-                continue
-            parent = parents.get(id(node))
-            if isinstance(parent, (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.Delete, ast.Call)):
-                return False
-            if isinstance(parent, ast.Subscript):
-                grandparent = parents.get(id(parent))
-                if isinstance(grandparent, (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.Delete)):
-                    return False
-        if any(
-            isinstance(node, ast.Attribute)
-            and node.attr == "modules"
-            and isinstance(node.value, ast.Name)
-            and node.value.id == "sys"
-            for node in ast.walk(tree)
-        ):
-            return False
-        for node in tree.body:
-            if isinstance(node, ast.AugAssign):
-                if isinstance(node.target, ast.Name) and node.target.id == "__all__":
-                    return False
-                continue
-            if not isinstance(node, (ast.Assign, ast.AnnAssign)):
-                continue
-            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
-            if not any(isinstance(target, ast.Name) and target.id == "__all__" for target in targets):
-                continue
-            try:
-                names = ast.literal_eval(node.value)
-            except (TypeError, ValueError, SyntaxError):
-                if any(
-                    isinstance(candidate, ast.Constant) and candidate.value == "load_tests"
-                    for candidate in ast.walk(node.value)
-                ):
-                    return False
-                continue
-            if not isinstance(names, (list, tuple, set)) or not all(isinstance(name, str) for name in names):
-                return False
-            if "load_tests" in names:
-                return False
-        if any(
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Attribute)
-            and isinstance(node.func.value, ast.Name)
-            and node.func.value.id == "__all__"
-            for node in ast.walk(tree)
-        ):
-            return False
-    return True
-
 def _approved_test_facade_removal(
     relative: str,
     base_root: Path,
@@ -499,7 +413,12 @@ def _approved_test_facade_removal(
     head_relative = relative
     if not (head_root / relative.removesuffix(".py")).is_dir():
         head_relative = _current_source_decomposition_relative(relative)
-    if not _approved_initializer_contract(head_root, head_relative):
+    if not _approved_initializer_contract(
+        head_root,
+        head_relative,
+        base_root=base_root,
+        base_relative=relative,
+    ):
         return False
     section_modules = _section_modules_for_root(base_root)
     base_declared_paths = section_modules(base_package)
@@ -525,32 +444,6 @@ def _approved_test_facade_removal(
     if base_main.is_file() and base_main.read_bytes() != head_main.read_bytes():
         return False
 
-    def initializer_contract(package: Path) -> tuple[str, ...] | None:
-        """Return initializer AST signatures after removing the legacy discovery hook."""
-        initializer = package / "__init__.py"
-        if not initializer.is_file():
-            return None
-        try:
-            tree = _parse_source(initializer.read_text(encoding="utf-8"), initializer)
-        except (OSError, SyntaxError, ValueError):
-            return None
-        retained: list[str] = []
-        for node in tree.body:
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == "load_tests":
-                continue
-            if isinstance(node, ast.Global):
-                continue
-            if isinstance(node, ast.Assign) and any(
-                isinstance(target, ast.Name) and target.id == "_phase192_load_tests_used"
-                for target in node.targets
-            ):
-                continue
-            retained.append(ast.dump(node, include_attributes=False))
-        return tuple(retained)
-
-    if initializer_contract(base_package) != initializer_contract(head_package):
-        return False
-
     def package_files(package: Path) -> dict[str, Path]:
         """Return every tracked package file except the generated root initializer."""
         return {
@@ -567,6 +460,107 @@ def _approved_test_facade_removal(
         base_files[name].read_bytes() == head_files[name].read_bytes()
         for name in base_files
     )
+
+def _initializer_exact_identity_signature(
+    root: Path,
+    relative: str,
+    *,
+    allow_legacy_hook_removal: bool = False,
+) -> tuple[str, ...] | None:
+    """Return the exact initializer template with section names normalized."""
+    path = root / relative.removesuffix(".py") / "__init__.py"
+    package = path.parent
+    if not path.is_file():
+        return None
+    try:
+        sections = _section_modules_for_root(root)(package)
+        tree = _parse_source(path.read_text(encoding="utf-8"), path)
+    except (OSError, SyntaxError, ValueError, FileNotFoundError):
+        return None
+    section_names = tuple(section.stem for section in sections)
+    section_aliases: dict[str, str] = {}
+    section_imports: list[ast.ImportFrom] = []
+    section_modules: ast.Assign | None = None
+    for node in tree.body:
+        if (
+            isinstance(node, ast.ImportFrom)
+            and node.level == 1
+            and node.module is None
+        ):
+            if not node.names or any(
+                alias.name == "*"
+                or alias.name not in section_names
+                or not alias.asname
+                for alias in node.names
+            ):
+                return None
+            section_imports.append(node)
+            for alias in node.names:
+                if alias.name in section_aliases:
+                    return None
+                section_aliases[alias.name] = alias.asname
+            continue
+        if isinstance(node, ast.Assign) and any(
+            isinstance(target, ast.Name) and target.id == "_PHASE192_SECTION_MODULES"
+            for target in node.targets
+        ):
+            if section_modules is not None or not isinstance(node.value, (ast.Tuple, ast.List)):
+                return None
+            section_modules = node
+    if tuple(alias.name for node in section_imports for alias in node.names) != section_names:
+        return None
+    if section_modules is None:
+        return None
+    module_aliases = tuple(
+        item.id
+        for item in section_modules.value.elts
+        if isinstance(item, ast.Name)
+    )
+    if len(module_aliases) != len(section_names) or set(module_aliases) != set(section_aliases.values()):
+        return None
+
+    def is_legacy_hook_node(node: ast.AST) -> bool:
+        """Return whether a top-level node belongs to the trusted discovery hook."""
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            return node.name == "load_tests"
+        return isinstance(node, ast.Assign) and any(
+            isinstance(target, ast.Name) and target.id == "_phase192_load_tests_used"
+            for target in node.targets
+        )
+
+    body = list(tree.body)
+    if allow_legacy_hook_removal:
+        while body and is_legacy_hook_node(body[-1]):
+            body.pop()
+        if any(is_legacy_hook_node(node) for node in body):
+            return None
+    elif any(is_legacy_hook_node(node) for node in body):
+        return None
+
+    signature: list[str] = []
+    imports_marker_added = False
+    imports_closed = False
+    modules_marker_added = False
+    for node in body:
+        if node in section_imports:
+            if imports_closed:
+                return None
+            if not imports_marker_added:
+                signature.append("SECTION_IMPORTS")
+                imports_marker_added = True
+            continue
+        if node is section_modules:
+            if modules_marker_added:
+                return None
+            signature.append("SECTION_MODULES")
+            modules_marker_added = True
+            continue
+        if imports_marker_added:
+            imports_closed = True
+        signature.append(ast.dump(node, include_attributes=False))
+    if not imports_marker_added or not modules_marker_added:
+        return None
+    return tuple(signature)
 
 
 def _approved_namespace_change(
@@ -588,7 +582,12 @@ def _approved_namespace_change(
 
     if not _approved_entrypoint_contract(head_root, head_relative):
         return False
-    if not _approved_initializer_contract(head_root, head_relative):
+    if not _approved_initializer_contract(
+        head_root,
+        head_relative,
+        base_root=base_root,
+        base_relative=relative,
+    ):
         return False
     facade = head_root / head_relative
     try:
@@ -661,9 +660,17 @@ def _discovery_contract_errors(
         errors.append(f"DUPLICATE_DISCOVERY_FACADE {relative}")
     for relative in sorted(set(base_facades) - set(head_facades)):
         head_relative = relative
+        base_relative = relative
+        if allow_directory_migration and not (base_root / relative.removesuffix(".py")).is_dir():
+            base_relative = _legacy_relative_path(relative) or relative
         if allow_directory_migration and not (head_root / relative.removesuffix(".py")).is_dir():
             head_relative = _current_source_decomposition_relative(relative)
-        if not _approved_initializer_contract(head_root, head_relative):
+        if not _approved_initializer_contract(
+            head_root,
+            head_relative,
+            base_root=base_root,
+            base_relative=base_relative,
+        ):
             errors.append(f"INVALID_DISCOVERY_FACADE_REMOVAL {relative}")
     return errors
 
@@ -735,180 +742,4 @@ def _initializer_path_is_repository_rooted(tree: ast.Module, relative: str) -> b
     )
 
 
-def _initializer_has_generated_import_shape(tree: ast.Module) -> bool:
-    """Return whether initializer imports and path insertion use only the generated shape."""
-    parents: dict[int, ast.AST] = {}
-    for parent in ast.walk(tree):
-        for child in ast.iter_child_nodes(parent):
-            parents[id(child)] = parent
-
-    def exact_path_guard(node: ast.If) -> bool:
-        """Recognize the generated package-parent path guard."""
-        return (
-            isinstance(node.test, ast.Compare)
-            and isinstance(node.test.left, ast.Call)
-            and isinstance(node.test.left.func, ast.Name)
-            and node.test.left.func.id == "str"
-            and len(node.test.left.args) == 1
-            and isinstance(node.test.left.args[0], ast.Name)
-            and node.test.left.args[0].id == "_PHASE192_PARENT"
-            and len(node.test.ops) == 1
-            and isinstance(node.test.ops[0], ast.NotIn)
-            and len(node.test.comparators) == 1
-            and isinstance(node.test.comparators[0], ast.Attribute)
-            and node.test.comparators[0].attr == "path"
-            and isinstance(node.test.comparators[0].value, ast.Name)
-            and node.test.comparators[0].value.id == "_phase192_sys"
-            and not node.orelse
-        )
-
-    def exact_path_insert(node: ast.Call) -> bool:
-        """Recognize the generated sys.path.insert call."""
-        return (
-            isinstance(node.func, ast.Attribute)
-            and node.func.attr == "insert"
-            and isinstance(node.func.value, ast.Attribute)
-            and node.func.value.attr == "path"
-            and isinstance(node.func.value.value, ast.Name)
-            and node.func.value.value.id == "_phase192_sys"
-            and len(node.args) == 2
-            and isinstance(node.args[0], ast.Constant)
-            and node.args[0].value == 0
-            and isinstance(node.args[1], ast.Call)
-            and isinstance(node.args[1].func, ast.Name)
-            and node.args[1].func.id == "str"
-            and len(node.args[1].args) == 1
-            and isinstance(node.args[1].args[0], ast.Name)
-            and node.args[1].args[0].id == "_PHASE192_PARENT"
-            and not node.keywords
-        )
-
-    guard_index = next(
-        (index for index, node in enumerate(tree.body) if isinstance(node, ast.If) and exact_path_guard(node)),
-        None,
-    )
-    if guard_index is None:
-        return False
-    expected_imports = ast.parse(
-        "from __future__ import annotations\n"
-        "import sys as _phase192_sys\n"
-        "import types as _phase192_types\n"
-        "from pathlib import Path as _Phase192Path\n"
-    ).body
-    pre_guard_imports = [
-        node for index, node in enumerate(tree.body[:guard_index])
-        if isinstance(node, (ast.Import, ast.ImportFrom))
-    ]
-    expected_without_future = expected_imports[1:]
-    if not any(
-        tuple(ast.dump(node, include_attributes=False) for node in pre_guard_imports)
-        == tuple(ast.dump(node, include_attributes=False) for node in candidate)
-        for candidate in (expected_imports, expected_without_future)
-    ):
-        return False
-
-    def is_section_import(node: ast.AST) -> bool:
-        """Recognize a generated relative section import after the path guard."""
-        return (
-            isinstance(node, ast.ImportFrom)
-            and node.level == 1
-            and node.module is None
-            and len(node.names) == 1
-            and node.names[0].name != "*"
-            and re.fullmatch(r"_phase192_section_[0-9]+", node.names[0].asname or "") is not None
-        )
-
-    if any(
-        isinstance(node, (ast.Import, ast.ImportFrom))
-        and not is_section_import(node)
-        for node in tree.body[guard_index + 1:]
-    ):
-        return False
-
-    expected_file_assignment = ast.parse(
-        "__file__ = str(_PHASE192_FACADE_FILE)\n"
-    ).body[0]
-    file_assignments = [
-        node for node in tree.body
-        if isinstance(node, ast.Assign)
-        and any(isinstance(target, ast.Name) and target.id == "__file__" for target in node.targets)
-    ]
-    if len(file_assignments) != 1 or ast.dump(file_assignments[0], include_attributes=False) != ast.dump(
-        expected_file_assignment,
-        include_attributes=False,
-    ):
-        return False
-
-    reserved_names = {
-        "__file__", "_Phase192Path", "_phase192_sys", "_phase192_types",
-        "_PHASE192_FACADE_FILE", "_PHASE192_PARENT", "_PHASE192PackageModule",
-    }
-
-    def target_names(target: ast.AST) -> set[str]:
-        """Return names assigned by one target expression."""
-        if isinstance(target, ast.Name):
-            return {target.id}
-        if isinstance(target, (ast.Tuple, ast.List)):
-            names: set[str] = set()
-            for item in target.elts:
-                names.update(target_names(item))
-            return names
-        return set()
-
-    def contains_sys_mutation(node: ast.AST) -> bool:
-        """Return whether a node mutates import machinery through the generated sys alias."""
-        if isinstance(node, ast.Call):
-            if isinstance(node.func, ast.Name) and node.func.id == "getattr":
-                if node.args and isinstance(node.args[0], ast.Name) and node.args[0].id == "_phase192_sys":
-                    return True
-            if isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Attribute):
-                if isinstance(node.func.value.value, ast.Name) and node.func.value.value.id == "_phase192_sys":
-                    if node.func.attr != "insert" or not exact_path_insert(node):
-                        return True
-        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id == "_phase192_sys":
-            return node.attr in {"meta_path", "path_hooks", "path_importer_cache", "modules", "__dict__"}
-        if isinstance(node, ast.Subscript) and isinstance(node.value, ast.Attribute):
-            return (
-                isinstance(node.value.value, ast.Name)
-                and node.value.value.id == "_phase192_sys"
-                and node.value.attr in {"path", "meta_path", "path_hooks", "path_importer_cache", "modules", "__dict__"}
-            )
-        return False
-
-    for node in ast.walk(tree):
-        if isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.Delete)):
-            targets = node.targets if isinstance(node, (ast.Assign, ast.Delete)) else [node.target]
-            names = set().union(*(target_names(target) for target in targets))
-            if names & reserved_names and node not in tree.body:
-                return False
-            if names & {"_phase192_sys", "_phase192_types", "_Phase192Path", "_PHASE192PackageModule"}:
-                return False
-            if any(contains_sys_mutation(target) for target in targets):
-                return False
-        if contains_sys_mutation(node):
-            return False
-
-    for node in ast.walk(tree):
-        if isinstance(node, (ast.Import, ast.ImportFrom)) and node not in tree.body:
-            return False
-        if not isinstance(node, ast.Call):
-            continue
-        if not (
-            isinstance(node.func, ast.Attribute)
-            and isinstance(node.func.value, ast.Attribute)
-            and node.func.value.attr == "path"
-            and isinstance(node.func.value.value, ast.Name)
-            and node.func.value.value.id == "_phase192_sys"
-        ):
-            continue
-        if not exact_path_insert(node):
-            return False
-        parent = parents.get(id(node))
-        if not isinstance(parent, ast.Expr):
-            return False
-        guard = parents.get(id(parent))
-        if not isinstance(guard, ast.If) or guard not in tree.body or not exact_path_guard(guard):
-            return False
-    return True
-
-__all__ = ['_REVIEWED_IDENTITY_TOOLING_SECTIONS', '_reviewed_identity_tooling_test_split', 'argparse', 'ast', 'copy', 'hashlib', 'importlib', 'json', 'keyword', 're', 'contextmanager', 'lru_cache', 'Path', 'subprocess', 'tarfile', 'tempfile', 'Iterator', 'Mapping', 'REPOSITORY_ROOT', '_TRY_TYPES', '_TYPE_ALIAS_TYPE', '_SECTION_NAME_RE', 'SPLIT_ROOTS', 'IDENTITY_WAIVER_PATH', '_legacy_relative_path', '_canonical_source_decomposition_relative', '_current_source_decomposition_relative', '_resolve_source_decomposition_path', '_load_identity_waivers', '_git', '_extract_archive_safely', '_revision_checkout', '_FUNCTION_BODY_RISK_NAMES', '_ENVIRONMENT_MUTATORS', '_without_function_bodies', '_function_body_and_environment_risk_signatures', '_parse_source', '_section_modules_for_root', '_section_package_for_facade', '_split_facades', '_top_level_names', '_direct_import_bound_names', '_declared_public_names', '_PHASE192_TEMPLATE_IMPORTS', '_PHASE192_TEMPLATE_CALLS', '_PHASE192_TEMPLATE_METHODS', '_ENTRYPOINT_SECTION_IMPORT_ROOTS', '_facade_entrypoint_is_standard', '_single_run_entrypoint_binding', '_initializer_has_no_load_tests_import', '_sections_have_no_discovery_hook', '_approved_test_facade_removal', '_approved_namespace_change', '_discovery_contract_errors', '_initializer_path_is_repository_rooted', '_initializer_has_generated_import_shape']
+__all__ = ['_REVIEWED_IDENTITY_TOOLING_SECTIONS', '_reviewed_identity_tooling_test_split', 'argparse', 'ast', 'copy', 'hashlib', 'importlib', 'json', 'keyword', 're', 'contextmanager', 'lru_cache', 'Path', 'subprocess', 'tarfile', 'tempfile', 'Iterator', 'Mapping', 'REPOSITORY_ROOT', '_TRY_TYPES', '_TYPE_ALIAS_TYPE', '_SECTION_NAME_RE', 'SPLIT_ROOTS', 'IDENTITY_WAIVER_PATH', '_legacy_relative_path', '_canonical_source_decomposition_relative', '_current_source_decomposition_relative', '_resolve_source_decomposition_path', '_load_identity_waivers', '_git', '_extract_archive_safely', '_revision_checkout', '_FUNCTION_BODY_RISK_NAMES', '_ENVIRONMENT_MUTATORS', '_without_function_bodies', '_function_body_and_environment_risk_signatures', '_parse_source', '_section_modules_for_root', '_section_package_for_facade', '_split_facades', '_top_level_names', '_direct_import_bound_names', '_declared_public_names', '_PHASE192_TEMPLATE_IMPORTS', '_PHASE192_TEMPLATE_CALLS', '_PHASE192_TEMPLATE_METHODS', '_ENTRYPOINT_SECTION_IMPORT_ROOTS', '_facade_entrypoint_is_standard', '_single_run_entrypoint_binding', '_approved_test_facade_removal', '_initializer_exact_identity_signature', '_approved_namespace_change', '_discovery_contract_errors', '_initializer_path_is_repository_rooted']

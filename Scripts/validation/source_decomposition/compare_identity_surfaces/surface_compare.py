@@ -680,6 +680,8 @@ def _compare_surfaces(
                     _current_source_decomposition_relative(relative)
                     if migrated_relative
                     else relative,
+                    base_root=base_root,
+                    base_relative=relative,
                 )
             ):
                 initializer_ok = True

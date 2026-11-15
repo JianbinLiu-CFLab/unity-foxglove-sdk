@@ -2,24 +2,6 @@ from __future__ import annotations
 
 from .foundation import *
 
-def _initializer_discovery_bindings_are_safe(tree: ast.Module) -> bool:
-    """Return whether no nested initializer node can bind a discovery hook."""
-    for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == "load_tests":
-            return False
-        if isinstance(node, ast.Global) and "load_tests" in node.names:
-            return False
-        if isinstance(node, (ast.Import, ast.ImportFrom)):
-            if any(alias.name == "*" for alias in node.names):
-                return False
-            if any((alias.asname or alias.name.split(".", 1)[0]) == "load_tests" for alias in node.names):
-                return False
-        if isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.Delete)):
-            targets = node.targets if isinstance(node, (ast.Assign, ast.Delete)) else [node.target]
-            if any(isinstance(target, ast.Name) and target.id == "load_tests" for target in targets):
-                return False
-    return True
-
 def _entrypoint_section_imports_are_trusted(tree: ast.Module, package: Path) -> bool:
     """Return whether entrypoint imports use trusted roots and local modules."""
     def absolute_import_resolves(node: ast.Import | ast.ImportFrom) -> bool:
@@ -388,4 +370,4 @@ _REVIEWED_DIRECT_ENTRYPOINTS = frozenset({
     "Scripts/ros2forunity/windows/lyrical/regression_checks/test_validate_r2fu_runtime_package.py",
 })
 
-__all__ = ['_relative_import_contract', '_symbols', '_section_exports', '_initializer_lines', '_initializer_digest', '_NAMESPACE_RISK_ATTRIBUTES', '_NAMESPACE_RISK_MODULE_ATTRIBUTES', '_NAMESPACE_RISK_NAMES', '_namespace_risk_signatures', '_is_phase121_configuration_path', '_ENTRYPOINT_IMPORT_ROOTS', '_REVIEWED_DIRECT_ENTRYPOINTS', '_initializer_discovery_bindings_are_safe', '_entrypoint_section_imports_are_trusted', '_function_signature_is_inert']
+__all__ = ['_relative_import_contract', '_symbols', '_section_exports', '_initializer_lines', '_initializer_digest', '_NAMESPACE_RISK_ATTRIBUTES', '_NAMESPACE_RISK_MODULE_ATTRIBUTES', '_NAMESPACE_RISK_NAMES', '_namespace_risk_signatures', '_is_phase121_configuration_path', '_ENTRYPOINT_IMPORT_ROOTS', '_REVIEWED_DIRECT_ENTRYPOINTS', '_entrypoint_section_imports_are_trusted', '_function_signature_is_inert']
