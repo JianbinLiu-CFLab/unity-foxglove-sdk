@@ -14,6 +14,7 @@ namespace Unity.FoxgloveSDK.Components
     /// </summary>
     internal sealed class CameraPublishDiagnostics
     {
+        private readonly int _diagnosticsId = CameraTimingDiagnostics.RegisterPublisher();
         private double _nextCameraDiagLogSec;
         private double _lastRenderMs;
         private double _lastReadbackLatencyMs;
@@ -182,11 +183,12 @@ namespace Unity.FoxgloveSDK.Components
         public void RecordLateJpegDrop()
             => _droppedLateJpegCount++;
 
-        public void RecordJpegEncodeResult(double encodeMs, double serializeMs, int jpegBytes)
+        public void RecordJpegEncodeResult(double encodeMs, double serializeMs, int jpegBytes, double nowSeconds)
         {
             _lastJpegEncodeMs = encodeMs;
             _lastSerializeMs = serializeMs;
             _lastJpegBytes = jpegBytes;
+            PublishLastSnapshot(nowSeconds);
         }
 
         public void RecordEncodedBudgetDrop()
@@ -276,7 +278,7 @@ namespace Unity.FoxgloveSDK.Components
             _lastPendingReadbacksAfterSchedule = -1;
             _lastEncodeQueueDepth = -1;
             _lastCompletedQueueDepth = -1;
-            PublishNoFrameSnapshot();
+            CameraTimingDiagnostics.Reset(_diagnosticsId);
             ResetCameraCounters();
         }
 
@@ -404,12 +406,7 @@ namespace Unity.FoxgloveSDK.Components
                 pendingReadbacksAfter: _lastPendingReadbacksAfterSchedule,
                 encodeQueueDepth: _lastEncodeQueueDepth,
                 completedQueueDepth: _lastCompletedQueueDepth);
-            CameraTimingDiagnostics.Publish(snapshot);
-        }
-
-        private static void PublishNoFrameSnapshot()
-        {
-            CameraTimingDiagnostics.Reset();
+            CameraTimingDiagnostics.Publish(_diagnosticsId, snapshot);
         }
 
         private void ResetVideoCounters()

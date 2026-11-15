@@ -5,6 +5,7 @@
 // Purpose: Shared camera timing snapshot bridge for frame-stall diagnostics.
 
 using System;
+using System.Collections.Generic;
 
 namespace Unity.FoxgloveSDK.Components
 {
@@ -75,13 +76,15 @@ namespace Unity.FoxgloveSDK.Components
 
     internal static class CameraTimingDiagnostics
     {
-        // Main-thread diagnostics bridge: camera publishers publish from Unity callbacks and
-        // FoxgloveManager reads during its Update/stall logging path. Do not write this from
-        // background workers; CameraTimingSnapshot is intentionally a large immutable struct.
-        private static CameraTimingSnapshot s_lastSnapshot = CameraTimingSnapshot.NoFrame;
+        private static readonly Dictionary<int, CameraTimingSnapshot> s_snapshots =
+            new Dictionary<int, CameraTimingSnapshot>();
+        private static int s_nextPublisherId;
 
         public static CameraTimingSnapshot LastSnapshotOrDefault
-            => s_lastSnapshot;
+            => AggregateSnapshots();
+
+        internal static int RegisterPublisher()
+            => ++s_nextPublisherId;
 
 #if UNITY_2019_1_OR_NEWER
         [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.SubsystemRegistration)]
@@ -89,10 +92,46 @@ namespace Unity.FoxgloveSDK.Components
             => Reset();
 #endif
 
-        public static void Publish(CameraTimingSnapshot snapshot)
-            => s_lastSnapshot = snapshot;
+        public static void Publish(int publisherId, CameraTimingSnapshot snapshot)
+        {
+            if (publisherId > 0)
+                s_snapshots[publisherId] = snapshot;
+        }
 
         public static void Reset()
-            => s_lastSnapshot = CameraTimingSnapshot.NoFrame;
+            => s_snapshots.Clear();
+
+        public static void Reset(int publisherId)
+            => s_snapshots.Remove(publisherId);
+
+        private static CameraTimingSnapshot AggregateSnapshots()
+        {
+            var aggregate = CameraTimingSnapshot.NoFrame;
+            foreach (var snapshot in s_snapshots.Values)
+            {
+                if (!aggregate.HasFrame)
+                {
+                    aggregate = snapshot;
+                    continue;
+                }
+
+                aggregate = new CameraTimingSnapshot(
+                    hasFrame: true,
+                    recordedRealtimeSeconds: Math.Max(aggregate.RecordedRealtimeSeconds, snapshot.RecordedRealtimeSeconds),
+                    renderMs: Math.Max(aggregate.RenderMs, snapshot.RenderMs),
+                    readbackLatencyMs: Math.Max(aggregate.ReadbackLatencyMs, snapshot.ReadbackLatencyMs),
+                    readbackCopyMs: Math.Max(aggregate.ReadbackCopyMs, snapshot.ReadbackCopyMs),
+                    jpegEncodeMs: Math.Max(aggregate.JpegEncodeMs, snapshot.JpegEncodeMs),
+                    serializeMs: Math.Max(aggregate.SerializeMs, snapshot.SerializeMs),
+                    completedJpegDrainMs: Math.Max(aggregate.CompletedJpegDrainMs, snapshot.CompletedJpegDrainMs),
+                    jpegBytes: Math.Max(aggregate.JpegBytes, snapshot.JpegBytes),
+                    pendingReadbacksBefore: Math.Max(aggregate.PendingReadbacksBefore, snapshot.PendingReadbacksBefore),
+                    pendingReadbacksAfter: Math.Max(aggregate.PendingReadbacksAfter, snapshot.PendingReadbacksAfter),
+                    encodeQueueDepth: Math.Max(aggregate.EncodeQueueDepth, snapshot.EncodeQueueDepth),
+                    completedQueueDepth: Math.Max(aggregate.CompletedQueueDepth, snapshot.CompletedQueueDepth));
+            }
+
+            return aggregate;
+        }
     }
 }

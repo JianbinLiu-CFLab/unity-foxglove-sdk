@@ -68,6 +68,9 @@ namespace Unity.FoxgloveSDK.Util
     /// </summary>
     internal static class CameraPipelineHealthPolicy
     {
+        public static bool ShouldApplyJpegHealthGates(bool profileIsVideo, bool publishJpegOutput)
+            => !profileIsVideo && publishJpegOutput;
+
         public static CameraPipelineHealthResult Evaluate(CameraPipelineHealthInput input)
         {
             var maxReadbacks = PositiveOrDefault(input.MaxPendingReadbacks);

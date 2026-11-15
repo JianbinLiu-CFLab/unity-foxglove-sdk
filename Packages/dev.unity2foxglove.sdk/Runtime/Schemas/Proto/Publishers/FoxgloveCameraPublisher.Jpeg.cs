@@ -184,7 +184,11 @@ namespace Unity.FoxgloveSDK.Components
                 return;
             }
 
-            _diagnostics.RecordJpegEncodeResult(result.EncodeMs, result.SerializeMs, result.JpegBytes);
+            _diagnostics.RecordJpegEncodeResult(
+                result.EncodeMs,
+                result.SerializeMs,
+                result.JpegBytes,
+                Time.realtimeSinceStartupAsDouble);
 
             if (result.DroppedByEncodedBudget)
             {
