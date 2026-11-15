@@ -23,16 +23,19 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
     {
         public static IReadOnlyList<Ros2ForUnityRuntimeDescriptor> DiscoverCandidateRuntimes(string projectDirectory)
         {
+            var packagesDirectory = RepositoryPackagesDirectory(projectDirectory);
+            var fingerprint = CandidateFilesystemFingerprint(packagesDirectory);
             if (_cachedCandidates != null
-                && string.Equals(_cachedCandidatesProjectDirectory, projectDirectory, StringComparison.Ordinal))
+                && string.Equals(_cachedCandidatesProjectDirectory, projectDirectory, StringComparison.Ordinal)
+                && string.Equals(_cachedCandidatesFingerprint, fingerprint, StringComparison.Ordinal))
             {
                 return _cachedCandidates;
             }
 
-            var packagesDirectory = RepositoryPackagesDirectory(projectDirectory);
             if (string.IsNullOrWhiteSpace(packagesDirectory) || !Directory.Exists(packagesDirectory))
             {
                 _cachedCandidatesProjectDirectory = projectDirectory;
+                _cachedCandidatesFingerprint = fingerprint;
                 _cachedCandidates = Array.Empty<Ros2ForUnityRuntimeDescriptor>();
                 return _cachedCandidates;
             }
@@ -45,8 +48,49 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
                 .OrderBy(descriptor => descriptor.DisplayName, StringComparer.Ordinal)
                 .ToArray();
             _cachedCandidatesProjectDirectory = projectDirectory;
+            _cachedCandidatesFingerprint = fingerprint;
             _cachedCandidates = candidates;
             return candidates;
+        }
+
+        private static string CandidateFilesystemFingerprint(string packagesDirectory)
+        {
+            if (string.IsNullOrWhiteSpace(packagesDirectory) || !Directory.Exists(packagesDirectory))
+                return string.Empty;
+
+            var candidatePaths = Directory
+                .GetDirectories(packagesDirectory, RuntimePackagePrefix + "*", SearchOption.TopDirectoryOnly)
+                .OrderBy(path => path, StringComparer.Ordinal)
+                .ToArray();
+            var stamps = new List<string>(candidatePaths.Length);
+            foreach (var path in candidatePaths)
+            {
+                var packageJson = Path.Combine(path, "package.json");
+                var runtimeManifest = Path.Combine(path, "RuntimeSupport", "runtime-manifest.json");
+                var pluginDirectory = Path.Combine(path, WindowsNativePluginRelativeDirectory);
+                var pluginFiles = Directory.Exists(pluginDirectory)
+                    ? Directory.GetFiles(pluginDirectory, "*", SearchOption.TopDirectoryOnly)
+                        .OrderBy(file => file, StringComparer.Ordinal)
+                        .Select(FileStamp)
+                    : Enumerable.Empty<string>();
+                stamps.Add(string.Join(
+                    "|",
+                    path,
+                    FileStamp(packageJson),
+                    FileStamp(runtimeManifest),
+                    string.Join(",", pluginFiles)));
+            }
+
+            return string.Join(";", stamps);
+        }
+
+        private static string FileStamp(string path)
+        {
+            if (!File.Exists(path))
+                return path + ":missing";
+
+            var info = new FileInfo(path);
+            return path + ":" + info.Length + ":" + info.LastWriteTimeUtc.Ticks;
         }
 
         public static string RepositoryPackagesDirectory(string projectDirectory)
@@ -134,6 +178,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
         {
             Ros2ForUnityCustomTypesupportDiscovery.InvalidateCache();
             _cachedCandidatesProjectDirectory = null;
+            _cachedCandidatesFingerprint = null;
             _cachedCandidates = null;
             _cachedManifestProjectDirectory = null;
             _cachedManifestWriteTimeUtc = DateTime.MinValue;
