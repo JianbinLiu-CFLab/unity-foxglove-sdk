@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 from .foundation import *
+from .entrypoint_contracts import (
+    _approved_entrypoint_contract,
+    _approved_initializer_contract,
+)
 
 def _surface(
     root: Path,
@@ -299,16 +303,18 @@ def _normalize_migrated_source_decomposition_surfaces(
     surfaces: dict[str, tuple],
 ) -> dict[str, tuple]:
     """Map the legacy Phase192 surface prefix to its validation location."""
-    normalized = dict(surfaces)
     legacy_prefix = "Scripts/phase192/"
     current_prefix = "Scripts/validation/source_decomposition/"
-    for relative, surface in list(surfaces.items()):
-        if not relative.startswith(current_prefix):
-            continue
-        legacy = legacy_prefix + relative[len(current_prefix):]
-        if legacy not in normalized:
-            normalized[legacy] = surface
-            normalized.pop(relative, None)
+    normalized: dict[str, tuple] = {}
+    for relative, surface in surfaces.items():
+        canonical = (
+            legacy_prefix + relative[len(current_prefix):]
+            if relative.startswith(current_prefix)
+            else relative
+        )
+        if canonical in normalized:
+            raise ValueError(f"IDENTITY_MIGRATION_COLLISION {canonical}")
+        normalized[canonical] = surface
     return normalized
 
 
@@ -392,6 +398,7 @@ def _compare_identity_helper_contracts(
 
 
 
+
 def _compare_surfaces(
     base_surfaces,
     head_surfaces,
@@ -399,6 +406,8 @@ def _compare_surfaces(
     strict: bool = True,
     waived_symbols: Mapping[str, frozenset[str]] | None = None,
     allow_directory_migration: bool = False,
+    base_root: Path | None = None,
+    head_root: Path | None = None,
 ) -> list[str]:
     """Compare identity surfaces using waivers from the trusted base revision."""
     errors: list[str] = []
@@ -424,6 +433,13 @@ def _compare_surfaces(
         )
         current = head_surfaces.get(relative)
         if current is None:
+            if (
+                not strict
+                and head_root is not None
+                and base_root is not None
+                and _approved_test_facade_removal(relative, base_root, head_root)
+            ):
+                continue
             errors.append(f"REMOVED_FACADE {relative}")
             continue
         base_has_public_symbols = len(base_surface) > 14
@@ -504,7 +520,16 @@ def _compare_surfaces(
             )
         ):
             errors.append(f"RELATIVE_STAR_IMPORT_CHANGED {relative}")
-        if not strict and base_risks != head_risks:
+        if not strict and base_risks != head_risks and not _approved_namespace_change(
+            relative,
+            base_root,
+            head_root,
+            head_relative=(
+                _current_source_decomposition_relative(relative)
+                if migrated_relative
+                else relative
+            ),
+        ):
             errors.append(f"NAMESPACE_CONTRACT_CHANGED {relative}")
         if not strict:
             base_contract = tuple(base_conditional_contract or ())
@@ -560,7 +585,15 @@ def _compare_surfaces(
                 )
                 if (
                     entrypoint_changed
-                    and not migrated_relative
+                    and (
+                        head_root is None
+                        or not _approved_entrypoint_contract(
+                            head_root,
+                            _current_source_decomposition_relative(relative)
+                            if migrated_relative
+                            else relative,
+                        )
+                    )
                 ):
                     errors.append(f"MODULE_ENTRYPOINT_CHANGED {relative}")
         if not strict and base_owner_map and head_owner_map:
@@ -620,6 +653,65 @@ def _compare_surfaces(
                 if base_digest is not None and head_digest is not None
                 else base_initializer == head_initializer
             )
+        elif base_digest is not None and head_digest is not None:
+            initializer_ok = base_digest == head_digest
+            if not initializer_ok and (head_root is None or base_root is None):
+                if base_owner_map:
+                    base_external_names = {
+                        name
+                        for name, owners in base_owner_map
+                        if any(owner != "initializer" for owner in owners)
+                    }
+                else:
+                    base_external_names = set(base_symbols)
+                initializer_ok = _initializer_is_additive(
+                    base_initializer,
+                    head_initializer,
+                    frozenset(head_sections),
+                    frozenset(base_external_names)
+                    | (set(head_section_exports) - set(base_section_exports)),
+                    dict(head_section_map or ()),
+                )
+            elif not initializer_ok:
+                head_relative = (
+                    _current_source_decomposition_relative(relative)
+                    if migrated_relative
+                    else relative
+                )
+                base_template = _initializer_exact_identity_signature(
+                    base_root,
+                    relative,
+                    allow_legacy_hook_removal=True,
+                )
+                head_template = _initializer_exact_identity_signature(head_root, head_relative)
+                if base_template is not None and head_template is not None:
+                    initializer_ok = (
+                        not missing_sections
+                        and not missing_symbols
+                        and _approved_initializer_contract(
+                            head_root,
+                            head_relative,
+                            base_root=base_root,
+                            base_relative=relative,
+                        )
+                    )
+                else:
+                    if base_owner_map:
+                        base_external_names = {
+                            name
+                            for name, owners in base_owner_map
+                            if any(owner != "initializer" for owner in owners)
+                        }
+                    else:
+                        base_external_names = set(base_symbols)
+                    initializer_ok = _initializer_is_additive(
+                        base_initializer,
+                        head_initializer,
+                        frozenset(head_sections),
+                        frozenset(base_external_names)
+                        | (set(head_section_exports) - set(base_section_exports)),
+                        dict(head_section_map or ()),
+                    )
         else:
             if base_owner_map:
                 base_external_names = {
@@ -637,7 +729,7 @@ def _compare_surfaces(
                 | (set(head_section_exports) - set(base_section_exports)),
                 dict(head_section_map or ()),
             )
-        if not initializer_ok and not migrated_relative:
+        if not initializer_ok:
             errors.append(f"PACKAGE_INITIALIZER_CHANGED {relative}")
         if not _sections_preserve_order(base_sections, head_sections):
             errors.append(f"SECTION_ORDER_CHANGED {relative}")
@@ -669,6 +761,7 @@ def compare_revisions(repository: Path, base: str, head: str, *, strict: bool = 
     """Internal helper for compare_revisions."""
     base = _git(repository, "rev-parse", "--verify", base + "^{commit}").strip()
     head = _git(repository, "rev-parse", "--verify", head + "^{commit}").strip()
+    errors: list[str] = []
     with _revision_checkout(repository, base) as base_root, _revision_checkout(repository, head) as head_root:
         base_surfaces = _surfaces(base_root, strict=strict)
         head_surfaces = _surfaces(head_root, strict=strict)
@@ -678,7 +771,11 @@ def compare_revisions(repository: Path, base: str, head: str, *, strict: bool = 
             strict=strict,
         )
         if allow_directory_migration:
-            head_surfaces = _normalize_migrated_source_decomposition_surfaces(head_surfaces)
+            try:
+                head_surfaces = _normalize_migrated_source_decomposition_surfaces(head_surfaces)
+            except ValueError as exc:
+                print(str(exc))
+                return 1
         base_helper_contract = _identity_helper_source_contract(base_root)
         head_helper_contract = _identity_helper_source_contract(head_root)
         helper_errors = _compare_identity_helper_contracts(
@@ -699,13 +796,23 @@ def compare_revisions(repository: Path, base: str, head: str, *, strict: bool = 
                 base_surfaces,
                 head_surfaces,
             )
-    errors = _compare_surfaces(
-        base_surfaces,
-        head_surfaces,
-        strict=strict,
-        waived_symbols=base_waivers if not strict else None,
-        allow_directory_migration=allow_directory_migration,
-    )
+        errors = _compare_surfaces(
+            base_surfaces,
+            head_surfaces,
+            strict=strict,
+            waived_symbols=base_waivers if not strict else None,
+            allow_directory_migration=allow_directory_migration,
+            base_root=base_root,
+            head_root=head_root,
+        )
+        if not strict:
+            errors.extend(
+                _discovery_contract_errors(
+                    base_root,
+                    head_root,
+                    allow_directory_migration=allow_directory_migration,
+                )
+            )
     errors = helper_errors + errors
     if errors:
         for error in errors:

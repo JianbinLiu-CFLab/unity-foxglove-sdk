@@ -2,6 +2,65 @@ from __future__ import annotations
 
 from .foundation import *
 
+_SAFE_STDLIB_ENTRYPOINT_SYMBOLS = {
+    "argparse": frozenset({
+        "Action", "ArgumentParser", "ArgumentTypeError", "FileType", "HelpFormatter",
+        "Namespace", "RawDescriptionHelpFormatter", "RawTextHelpFormatter", "SUPPRESS",
+    }),
+    "json": frozenset({"JSONDecodeError", "dump", "dumps", "load", "loads"}),
+    "os": frozenset({"environ", "linesep", "name", "path", "sep"}),
+    "pathlib": frozenset({
+        "Path", "PurePath", "PurePosixPath", "PureWindowsPath", "PosixPath", "WindowsPath",
+    }),
+    "sys": frozenset({"argv", "executable", "path", "platform", "stderr", "stdin", "stdout"}),
+    "time": frozenset({"monotonic", "perf_counter", "sleep", "time"}),
+    "typing": frozenset({
+        "Any", "Callable", "Mapping", "Sequence", "TypeVar", "cast", "overload",
+    }),
+}
+_SAFE_STDLIB_ENTRYPOINT_MODULES = frozenset(_SAFE_STDLIB_ENTRYPOINT_SYMBOLS)
+
+def _entrypoint_section_imports_are_trusted(tree: ast.Module, package: Path) -> bool:
+    """Return whether entrypoint imports use the approved standard library set."""
+    def absolute_import_resolves(node: ast.Import | ast.ImportFrom) -> bool:
+        """Return whether a standard-library import is known without executing it."""
+        if isinstance(node, ast.Import):
+            return all(
+                alias.name in _SAFE_STDLIB_ENTRYPOINT_MODULES
+                for alias in node.names
+            )
+        if not node.module or node.module not in _SAFE_STDLIB_ENTRYPOINT_SYMBOLS:
+            return False
+        allowed = _SAFE_STDLIB_ENTRYPOINT_SYMBOLS[node.module]
+        return all(alias.name in allowed for alias in node.names)
+
+    for node in tree.body:
+        if isinstance(node, ast.Import):
+            if any(alias.name == "*" for alias in node.names) or not absolute_import_resolves(node):
+                return False
+            continue
+        if not isinstance(node, ast.ImportFrom):
+            continue
+        if node.module == "__future__":
+            if node.level or any(alias.name != "annotations" for alias in node.names):
+                return False
+            continue
+        if node.level:
+            return False
+        if any(alias.name == "*" for alias in node.names) or not absolute_import_resolves(node):
+            return False
+    return True
+
+def _function_signature_is_inert(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    """Return whether a function signature has no import-time executable expressions."""
+    arguments = node.args
+    if node.returns is not None or arguments.defaults or any(arguments.kw_defaults):
+        return False
+    return not any(
+        argument.annotation is not None or argument.type_comment
+        for argument in (*arguments.posonlyargs, *arguments.args, *arguments.kwonlyargs)
+    )
+
 def _relative_import_contract(
     tree: ast.Module,
     package_dir: Path,
@@ -281,4 +340,4 @@ _REVIEWED_DIRECT_ENTRYPOINTS = frozenset({
     "Scripts/ros2forunity/windows/lyrical/regression_checks/test_validate_r2fu_runtime_package.py",
 })
 
-__all__ = ['_relative_import_contract', '_symbols', '_section_exports', '_initializer_lines', '_initializer_digest', '_NAMESPACE_RISK_ATTRIBUTES', '_NAMESPACE_RISK_MODULE_ATTRIBUTES', '_NAMESPACE_RISK_NAMES', '_namespace_risk_signatures', '_is_phase121_configuration_path', '_ENTRYPOINT_IMPORT_ROOTS', '_REVIEWED_DIRECT_ENTRYPOINTS']
+__all__ = ['_relative_import_contract', '_symbols', '_section_exports', '_initializer_lines', '_initializer_digest', '_NAMESPACE_RISK_ATTRIBUTES', '_NAMESPACE_RISK_MODULE_ATTRIBUTES', '_NAMESPACE_RISK_NAMES', '_namespace_risk_signatures', '_is_phase121_configuration_path', '_ENTRYPOINT_IMPORT_ROOTS', '_REVIEWED_DIRECT_ENTRYPOINTS', '_entrypoint_section_imports_are_trusted', '_function_signature_is_inert']

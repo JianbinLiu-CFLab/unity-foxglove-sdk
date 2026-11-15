@@ -3,6 +3,100 @@ from .foundation import *
 
 class SplitContractTests(IdentityToolingBase):
     """Identity tooling regression tests for this contract family."""
+
+    def test_initializer_contract_rejects_non_name_section_tuple_element(self) -> None:
+        """Generated section tuples cannot hide executable expressions among aliases."""
+        with tempfile.TemporaryDirectory() as base_temporary, tempfile.TemporaryDirectory() as head_temporary:
+            base = Path(base_temporary)
+            head = Path(head_temporary)
+            relative = "Scripts/example_tool.py"
+            for root in (base, head):
+                package = root / relative.removesuffix(".py")
+                package.mkdir(parents=True)
+                (root / relative).write_text("PUBLIC = 1\n", encoding="utf-8")
+                (package / "entrypoint.py").write_text("VALUE = 1\n", encoding="utf-8")
+                (package / "second.py").write_text("VALUE = 1\n", encoding="utf-8")
+                (package / "__init__.py").write_text(
+                    "from . import entrypoint as _phase192_section_0\n"
+                    "from . import second as _phase192_section_1\n"
+                    "_PHASE192_SECTION_MODULES = (_phase192_section_0, _phase192_section_1)\n",
+                    encoding="utf-8",
+                )
+            (head / relative.removesuffix(".py") / "__init__.py").write_text(
+                "from . import entrypoint as _phase192_section_0\n"
+                "from . import second as _phase192_section_1\n"
+                "_PHASE192_SECTION_MODULES = (_phase192_section_0, _phase192_section_1, __import__('evil'))\n",
+                encoding="utf-8",
+            )
+            self.assertFalse(
+                compare_identity_surfaces._approved_initializer_contract(
+                    head,
+                    relative,
+                    base_root=base,
+                    base_relative=relative,
+                )
+            )
+
+    def test_initializer_contract_preserves_section_alias_and_tuple_order(self) -> None:
+        """Generated section wiring preserves source-to-alias and tuple order."""
+        with tempfile.TemporaryDirectory() as base_temporary, tempfile.TemporaryDirectory() as head_temporary:
+            base = Path(base_temporary)
+            head = Path(head_temporary)
+            relative = "Scripts/example_tool.py"
+            baseline = (
+                "from . import entrypoint as _phase192_section_0\n"
+                "from . import second as _phase192_section_1\n"
+                "_PHASE192_SECTION_MODULES = (_phase192_section_0, _phase192_section_1)\n"
+            )
+            for root in (base, head):
+                package = root / relative.removesuffix(".py")
+                package.mkdir(parents=True)
+                (root / relative).write_text("PUBLIC = 1\n", encoding="utf-8")
+                (package / "entrypoint.py").write_text("VALUE = 1\n", encoding="utf-8")
+                (package / "second.py").write_text("VALUE = 1\n", encoding="utf-8")
+                (package / "__init__.py").write_text(baseline, encoding="utf-8")
+            self.assertTrue(
+                compare_identity_surfaces._approved_initializer_contract(
+                    head,
+                    relative,
+                    base_root=base,
+                    base_relative=relative,
+                )
+            )
+            head_init = head / relative.removesuffix(".py") / "__init__.py"
+            head_init.write_text(
+                baseline.replace(
+                    "entrypoint as _phase192_section_0",
+                    "entrypoint as _phase192_section_1",
+                ).replace(
+                    "second as _phase192_section_1",
+                    "second as _phase192_section_0",
+                ),
+                encoding="utf-8",
+            )
+            self.assertFalse(
+                compare_identity_surfaces._approved_initializer_contract(
+                    head,
+                    relative,
+                    base_root=base,
+                    base_relative=relative,
+                )
+            )
+            head_init.write_text(
+                baseline.replace(
+                    "(_phase192_section_0, _phase192_section_1)",
+                    "(_phase192_section_1, _phase192_section_0)",
+                ),
+                encoding="utf-8",
+            )
+            self.assertFalse(
+                compare_identity_surfaces._approved_initializer_contract(
+                    head,
+                    relative,
+                    base_root=base,
+                    base_relative=relative,
+                )
+            )
     def test_identity_surface_rejects_missing_decomposed_manifest(self) -> None:
         """A discovered Decomposed facade must declare its section manifest."""
         with tempfile.TemporaryDirectory() as temp:

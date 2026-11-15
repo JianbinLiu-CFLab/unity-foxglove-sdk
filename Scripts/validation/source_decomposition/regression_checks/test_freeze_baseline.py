@@ -25,7 +25,7 @@ class FreezeBaselineTests(unittest.TestCase):
                 self.assertLess(len(section.read_text(encoding="utf-8").splitlines()), 1000)
 
     def test_identity_tooling_discovery_preserves_test_names(self) -> None:
-        """The decomposed facade discovers its 329 test names once."""
+        """The decomposed facade discovers every test name exactly once."""
         relative = "Scripts/validation/source_decomposition/regression_checks/test_identity_tooling.py"
         source = freeze_baseline.REPOSITORY_ROOT / relative
         rows = identity_contracts.python_test_rows(
@@ -33,7 +33,8 @@ class FreezeBaselineTests(unittest.TestCase):
             source.read_text(encoding="utf-8"),
             freeze_baseline.REPOSITORY_ROOT,
         )
-        self.assertEqual(329, len(rows))
+        self.assertGreaterEqual(len(rows), 329)
+        self.assertEqual(len(rows), len({row[1] for row in rows}))
         self.assertEqual({"IdentityToolingTests"}, {row[1].split(".")[-2] for row in rows})
 
     def test_measured_lane_result_is_fail_closed(self) -> None:
