@@ -91,6 +91,22 @@ namespace Unity.FoxgloveSDK.Util
         /// <summary>Returns the image source whenever one is present.</summary>
         public static T Select<T>(bool hasImageSource, T imageSource, T configuredSource)
             => hasImageSource ? imageSource : configuredSource;
+
+        /// <summary>Retries fallback discovery until a usable source is found.</summary>
+        public static T ResolveFallback<T>(
+            ref T cached,
+            ref bool resolved,
+            Func<T> resolve,
+            Func<T, bool> isUsable)
+        {
+            if (!resolved || !isUsable(cached))
+            {
+                cached = resolve();
+                resolved = isUsable(cached);
+            }
+
+            return cached;
+        }
     }
 
     /// <summary>Chooses the actual sensor transform over a publisher fallback.</summary>

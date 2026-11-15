@@ -204,15 +204,15 @@ namespace Unity.FoxgloveSDK.Components
                 return selectedCamera;
             }
 
-            if (!_sourceCameraCacheResolved)
-            {
-                _cachedSourceCamera = GetComponent<Camera>();
-                if (_cachedSourceCamera == null)
-                    _cachedSourceCamera = Camera.main;
-                _sourceCameraCacheResolved = true;
-            }
-
-            return _cachedSourceCamera;
+            return CameraInfoAuthorityPolicy.ResolveFallback(
+                ref _cachedSourceCamera,
+                ref _sourceCameraCacheResolved,
+                () =>
+                {
+                    var componentCamera = GetComponent<Camera>();
+                    return componentCamera != null ? componentCamera : Camera.main;
+                },
+                camera => camera != null);
         }
 
         private FoxgloveCameraPublisher ResolveImagePublisher()

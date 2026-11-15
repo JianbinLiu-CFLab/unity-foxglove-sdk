@@ -239,6 +239,35 @@ public sealed partial class RuntimeReviewFindingTests
         }
 
         [Fact]
+        public void CameraInfoFallbackRetriesAfterAnInitiallyUnavailableCamera()
+        {
+            var resolved = false;
+            var cached = default(CameraAuthorityProbe);
+            var available = false;
+
+            var first = CameraInfoAuthorityPolicy.ResolveFallback(
+                ref cached,
+                ref resolved,
+                () => available
+                    ? new CameraAuthorityProbe(640, 480, 300, 301, 320, 240, false)
+                    : default,
+                probe => probe.Width != 0);
+
+            Assert.Equal(0U, first.Width);
+            Assert.False(resolved);
+
+            available = true;
+            var second = CameraInfoAuthorityPolicy.ResolveFallback(
+                ref cached,
+                ref resolved,
+                () => new CameraAuthorityProbe(640, 480, 300, 301, 320, 240, false),
+                probe => probe.Width != 0);
+
+            Assert.Equal(640U, second.Width);
+            Assert.True(resolved);
+        }
+
+        [Fact]
         public void LidarTransformAuthorityUsesSensorPoseInsteadOfPublisherPose()
         {
             var selected = SensorTransformAuthorityPolicy.Select(
