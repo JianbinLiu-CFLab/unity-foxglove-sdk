@@ -204,8 +204,21 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             for (var index = 0; index < _bindings.Count; index++)
                 if (!_bindings[index].IsStopped)
                     ready++;
-            var failed = _bindings.Count - ready;
-            var observed = Math.Max(_observedNativeContractCount, _bindings.Count);
+            var retainedTerminalFailures = CountUnboundTerminalFailures(
+                _terminalRegistrationFailures,
+                _bindings);
+            var unobservedTerminalFailures = CountUnobservedTerminalFailures(
+                _terminalRegistrationFailures,
+                _bindings,
+                _nativeDemand);
+            var failed = CountFailedContracts(
+                _bindings.Count,
+                ready,
+                retainedTerminalFailures);
+            var observed = CountObservedContracts(
+                _observedNativeContractCount,
+                _bindings.Count,
+                unobservedTerminalFailures);
             return BuildTransportStatus(
                 _providerSessionActive,
                 _stopping,
@@ -213,6 +226,73 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 observed,
                 ready,
                 failed);
+        }
+
+        internal static int CountFailedContracts(
+            int bindingCount,
+            int readyContracts,
+            int terminalFailureCount)
+            => Math.Max(0, bindingCount - readyContracts)
+               + Math.Max(0, terminalFailureCount);
+
+        internal static int CountObservedContracts(
+            int observedContracts,
+            int bindingCount,
+            int terminalFailureCount)
+            => Math.Max(observedContracts, bindingCount)
+               + Math.Max(0, terminalFailureCount);
+
+        internal static int CountUnobservedTerminalFailures(
+            ISet<string> terminalFailures,
+            IReadOnlyList<IFoxRunRos2CustomPublisherHostedBinding> bindings,
+            ISet<string> nativeDemand)
+        {
+            if (terminalFailures == null || terminalFailures.Count == 0)
+                return 0;
+
+            var observed = new HashSet<string>(StringComparer.Ordinal);
+            if (nativeDemand != null)
+                observed.UnionWith(nativeDemand);
+            if (bindings != null)
+            {
+                for (var index = 0; index < bindings.Count; index++)
+                {
+                    var identity = bindings[index]?.Identity;
+                    if (!string.IsNullOrEmpty(identity))
+                        observed.Add(identity);
+                }
+            }
+
+            var unobserved = 0;
+            foreach (var identity in terminalFailures)
+                if (!observed.Contains(identity))
+                    unobserved++;
+            return unobserved;
+        }
+
+        internal static int CountUnboundTerminalFailures(
+            ISet<string> terminalFailures,
+            IReadOnlyList<IFoxRunRos2CustomPublisherHostedBinding> bindings)
+        {
+            if (terminalFailures == null || terminalFailures.Count == 0)
+                return 0;
+
+            var bound = new HashSet<string>(StringComparer.Ordinal);
+            if (bindings != null)
+            {
+                for (var index = 0; index < bindings.Count; index++)
+                {
+                    var identity = bindings[index]?.Identity;
+                    if (!string.IsNullOrEmpty(identity))
+                        bound.Add(identity);
+                }
+            }
+
+            var unbound = 0;
+            foreach (var identity in terminalFailures)
+                if (!bound.Contains(identity))
+                    unbound++;
+            return unbound;
         }
 
         internal static FoxRunTransportDirectionStatus BuildTransportStatus(

@@ -347,10 +347,38 @@ public sealed class Phase110Ros2ForUnityStringSmoke : MonoBehaviour
     {
         if (_directRos2Unity == null)
         {
-            _directSubscription = null;
-            _directPublisher = null;
+            var ownerCleanupFailed = false;
+            if (_directRos2Node != null)
+            {
+                ownerCleanupFailed |= !RetryableNativeCleanup.TryRemove(
+                    ref _directSubscription,
+                    subscription => _directRos2Node.RemoveSubscription<std_msgs.msg.String>(subscription),
+                    ex => Debug.LogWarning(LogPrefix + "subscription cleanup failed; retaining handle for retry: " + ex.Message));
+            }
+
+            if (_directRos2Node != null)
+            {
+                ownerCleanupFailed |= !RetryableNativeCleanup.TryRemove(
+                    ref _directPublisher,
+                    publisher => _directRos2Node.RemovePublisher<std_msgs.msg.String>(publisher),
+                    ex => Debug.LogWarning(LogPrefix + "publisher cleanup failed; retaining handle for retry: " + ex.Message));
+            }
+
+            if (!ownerCleanupFailed && _directRos2Node != null)
+            {
+                ownerCleanupFailed = !RetryableNativeCleanup.TryRemove(
+                    ref _directRos2Node,
+                    node => node.Dispose(),
+                    ex => Debug.LogWarning(LogPrefix + "node cleanup failed; retaining handle for retry: " + ex.Message));
+            }
+
+            if (ownerCleanupFailed || _directRos2Node != null || _directSubscription != null || _directPublisher != null)
+                return;
+
             _directRos2Node = null;
+            _directRos2Unity = null;
             _ownsDirectRos2Unity = false;
+            _directInitializationFailed = false;
             lock (_directReceiveGate)
                 _directReceived.Clear();
             return;
@@ -384,6 +412,7 @@ public sealed class Phase110Ros2ForUnityStringSmoke : MonoBehaviour
         if (cleanupFailed || _directRos2Node != null || _directSubscription != null || _directPublisher != null)
             return;
 
+        _directRos2Node = null;
         if (_ownsDirectRos2Unity && _directRos2Unity != null)
             Destroy(_directRos2Unity);
         _directRos2Unity = null;

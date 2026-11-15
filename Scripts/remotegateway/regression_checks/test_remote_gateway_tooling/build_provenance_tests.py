@@ -68,5 +68,18 @@ class RemoteGatewayBuildProvenanceTests:
             with self.assertRaisesRegex(RuntimeError, "revision mismatch"):
                 self.build.foxglove_source_revision()
 
+    def test_build_rejects_a_dirty_foxglove_checkout(self) -> None:
+        """Native builds must not hash a source checkout with local changes."""
+        with mock.patch.object(
+            self.build.subprocess,
+            "run",
+            side_effect=[
+                SimpleNamespace(stdout=self.build.EXPECTED_FOXGLOVE_COMMIT + "\n"),
+                SimpleNamespace(stdout=" M c/include/foxglove.h\n"),
+            ],
+        ):
+            with self.assertRaisesRegex(RuntimeError, "dirty"):
+                self.build.foxglove_source_revision()
+
 
 __all__ = ["RemoteGatewayBuildProvenanceTests"]

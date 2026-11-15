@@ -426,6 +426,8 @@ def _compare_surfaces(
         if current is None:
             errors.append(f"REMOVED_FACADE {relative}")
             continue
+        base_has_public_symbols = len(base_surface) > 14
+        head_has_public_symbols = len(current) > 14
         (
             base_symbols,
             base_sections,
@@ -462,11 +464,11 @@ def _compare_surfaces(
             head_public_symbols,
             head_nested_contract,
         ) = unpack(current)
-        if not base_public_symbols and base_symbols:
+        if not base_has_public_symbols and not base_public_symbols and base_symbols:
             base_public_symbols = frozenset(
                 name for name in base_symbols if not name.startswith("_")
             )
-        if not head_public_symbols and head_symbols:
+        if not head_has_public_symbols and not head_public_symbols and head_symbols:
             head_public_symbols = frozenset(
                 name for name in head_symbols if not name.startswith("_")
             )

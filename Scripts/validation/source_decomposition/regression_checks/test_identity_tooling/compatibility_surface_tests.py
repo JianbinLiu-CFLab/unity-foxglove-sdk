@@ -350,6 +350,48 @@ class CompatibilitySurfaceTests(IdentityToolingBase):
         }
         self.assertEqual([], compare_identity_surfaces._compare_surfaces(base, head, strict=False))
 
+    def test_split_identity_surface_preserves_explicit_empty_public_symbol_set(self) -> None:
+        """An explicit empty public-symbol set must not fall back to imported names."""
+        base = {
+            "fixture.py": (
+                frozenset({"Imported"}),
+                ("live",),
+                (),
+                frozenset({"Imported"}),
+                None,
+                frozenset(),
+                True,
+                (),
+                frozenset(),
+                (),
+                None,
+                (),
+                (),
+                (),
+                frozenset(),
+            )
+        }
+        head = {
+            "fixture.py": (
+                frozenset(),
+                ("live",),
+                (),
+                frozenset(),
+                None,
+                frozenset(),
+                True,
+                (),
+                frozenset(),
+                (),
+                None,
+                (),
+                (),
+                (),
+                frozenset(),
+            )
+        }
+        self.assertEqual([], compare_identity_surfaces._compare_surfaces(base, head, strict=False))
+
     def test_split_identity_surface_accepts_pending_public_removal_waiver(self) -> None:
         """A base waiver may remain pending until its public symbol is removed."""
         base = {"fixture.py": (frozenset({"PUBLIC"}), ("live",), ())}
