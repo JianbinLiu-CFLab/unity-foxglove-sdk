@@ -12,9 +12,6 @@ _SAFE_STDLIB_ENTRYPOINT_SYMBOLS = {
     "pathlib": frozenset({
         "Path", "PurePath", "PurePosixPath", "PureWindowsPath", "PosixPath", "WindowsPath",
     }),
-    "subprocess": frozenset({
-        "CalledProcessError", "DEVNULL", "PIPE", "Popen", "TimeoutExpired", "run",
-    }),
     "sys": frozenset({"argv", "executable", "path", "platform", "stderr", "stdin", "stdout"}),
     "time": frozenset({"monotonic", "perf_counter", "sleep", "time"}),
     "typing": frozenset({

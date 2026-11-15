@@ -62,6 +62,19 @@ class LoaderMutationTests(IdentityToolingBase):
             self.assertFalse(compare_identity_surfaces._approved_entrypoint_section(entrypoint))
             self.assertFalse(marker.exists())
 
+    def test_entrypoint_contract_rejects_subprocess_imports(self) -> None:
+        """Entrypoint sections cannot add process-launching standard library imports."""
+        with tempfile.TemporaryDirectory() as temporary:
+            entrypoint = Path(temporary) / "entrypoint.py"
+            entrypoint.write_text(
+                "from subprocess import run\n"
+                "def run_entrypoint():\n"
+                "    return run(['unexpected'])\n"
+                "__all__ = ['run_entrypoint']\n",
+                encoding="utf-8",
+            )
+            self.assertFalse(compare_identity_surfaces._approved_entrypoint_section(entrypoint))
+
     def test_generated_facade_rejects_closure_mutations(self) -> None:
         """Generated facades cannot mutate protected state through wrappers or aliases."""
         for facade in (
