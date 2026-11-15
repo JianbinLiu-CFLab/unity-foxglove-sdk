@@ -583,8 +583,15 @@ def _compare_surfaces(
                 )
                 if (
                     entrypoint_changed
-                    and not migrated_relative
-                    and (head_root is None or not _approved_entrypoint_contract(head_root, relative))
+                    and (
+                        head_root is None
+                        or not _approved_entrypoint_contract(
+                            head_root,
+                            _current_source_decomposition_relative(relative)
+                            if migrated_relative
+                            else relative,
+                        )
+                    )
                 ):
                     errors.append(f"MODULE_ENTRYPOINT_CHANGED {relative}")
         if not strict and base_owner_map and head_owner_map:

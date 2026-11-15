@@ -73,10 +73,7 @@ def _is_unittest_module_entrypoint(tree: ast.Module) -> bool:
 
 def _entrypoint_contract_signatures(tree: ast.Module) -> tuple[str, ...]:
     """Return ordered normalized top-level AST signatures for entrypoint compatibility."""
-    return tuple(
-        ast.dump(statement, include_attributes=False)
-        for statement in tree.body
-    )
+    return tuple(ast.dump(statement, include_attributes=False) for statement in tree.body)
 
 
 
@@ -866,6 +863,8 @@ def _approved_entrypoint_section(path: Path) -> bool:
         tree = _parse_source(path.read_text(encoding="utf-8"), path)
     except (OSError, SyntaxError, ValueError):
         return False
+    if not _entrypoint_section_imports_are_trusted(tree, path.parent):
+        return False
     definitions = [
         node
         for node in tree.body
@@ -994,7 +993,6 @@ def _initializer_has_reviewed_discovery_shape(tree: ast.Module) -> bool:
         and node.func.attr == "suiteClass"
         for node in ast.walk(tree)
     )
-
 
 
 __all__ = ['_is_safe_unittest_main_call', '_is_unittest_module_entrypoint', '_entrypoint_contract_signatures', '_reviewed_direct_entrypoint_absolute_import', '_entrypoint_contract', '_SAFE_BUILTIN_NAMES', '_SAFE_IMPORT_ROOTS', '_absolute_import_resolves', '_contract_preserves_order', '_definitely_bound_names', '_initializer_is_additive', '_initializer_statements_match', '_initializer_bound_names', '_is_docstring_statement', '_literal_assignment_target_matches', '_literal_initializer_value', '_literal_truth_value', '_loaded_names', '_module_spec_exists', '_safe_annotation_expression', '_safe_class_definition', '_safe_definition_expression', '_safe_function_definition', '_safe_inert_initializer_condition', '_safe_initializer_addition', '_safe_runtime_expression', '_section_alias_bindings', '_section_tuple_names', '_sections_preserve_order', '_statement_bound_names', '_statement_deleted_names', '_statement_loaded_names', '_entrypoint_block_is_standard', '_approved_entrypoint_section', '_approved_entrypoint_contract', '_approved_initializer_contract', '_initializer_has_reviewed_discovery_shape', ]

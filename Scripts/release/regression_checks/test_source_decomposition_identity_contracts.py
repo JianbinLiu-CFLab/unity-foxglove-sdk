@@ -252,6 +252,18 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
                 "from os import getpid as run_entrypoint\n"
                 "__all__ = ['run_entrypoint']\n"
             ),
+            (
+                "def run_entrypoint():\n"
+                "    return 0\n"
+                "from .foundation import *\n"
+                "__all__ = ['run_entrypoint']\n"
+            ),
+            (
+                "import attacker\n"
+                "def run_entrypoint():\n"
+                "    return 0\n"
+                "__all__ = ['run_entrypoint']\n"
+            ),
         )
         for source in sources:
             with self.subTest(source=source), tempfile.TemporaryDirectory() as temporary:
@@ -652,6 +664,26 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
                 return_value=True,
             ):
                 self.assertEqual(0, surface_compare.compare_revisions(repository, base, head, strict=False))
+
+    def test_migrated_module_entrypoint_changes_are_not_waived(self) -> None:
+        """Directory migration does not waive a changed retained module entrypoint."""
+        def surface(digest: str) -> tuple:
+            """Build a minimal surface with one module entrypoint digest."""
+            return (
+                frozenset(), (), (), frozenset(), None, frozenset(), True, (),
+                frozenset(), (), digest, ("entrypoint",), (), (), frozenset(), (),
+            )
+
+        relative = "Scripts/phase192/regression_checks/test_tool.py"
+        errors = surface_compare._compare_surfaces(
+            {relative: surface("base")},
+            {relative: surface("head")},
+            strict=False,
+            allow_directory_migration=True,
+            base_root=Path("base"),
+            head_root=Path("head"),
+        )
+        self.assertEqual([f"MODULE_ENTRYPOINT_CHANGED {relative}"], errors)
 
     def test_namespace_approval_resolves_migrated_head_path(self) -> None:
         """Namespace approval receives the current path during a supported directory migration."""
