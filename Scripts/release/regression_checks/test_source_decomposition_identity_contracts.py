@@ -264,6 +264,30 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
                 "    return 0\n"
                 "__all__ = ['run_entrypoint']\n"
             ),
+            (
+                "import Scripts.nonexistent_module\n"
+                "def run_entrypoint():\n"
+                "    return 0\n"
+                "__all__ = ['run_entrypoint']\n"
+            ),
+            (
+                "from pathlib import nonexistent_name\n"
+                "def run_entrypoint():\n"
+                "    return 0\n"
+                "__all__ = ['run_entrypoint']\n"
+            ),
+            (
+                "from .entrypoint import missing_name\n"
+                "def run_entrypoint():\n"
+                "    return 0\n"
+                "__all__ = ['run_entrypoint']\n"
+            ),
+            (
+                "from Scripts.some_module import *\n"
+                "def run_entrypoint():\n"
+                "    return 0\n"
+                "__all__ = ['run_entrypoint']\n"
+            ),
         )
         for source in sources:
             with self.subTest(source=source), tempfile.TemporaryDirectory() as temporary:
@@ -324,7 +348,7 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
 
     def test_initializer_discovery_contract_rejects_sentinel_variants(self) -> None:
         """A mutable load-tests hook is rejected even when its sentinel is renamed."""
-        accepted = ast.parse("from .entrypoint import *\n")
+        accepted = ast.parse("from .entrypoint import run_entrypoint\n")
         self.assertTrue(surface_compare._initializer_has_reviewed_discovery_shape(accepted))
         for source in (
             "_phase192_load_tests_used = False\n",
@@ -334,6 +358,10 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
             "load_tests_once = lambda loader, tests, pattern: tests\n",
             "from .foundation import load_tests\n",
             "from .foundation import load_tests as load_tests\n",
+            "if True:\n    def load_tests(loader, tests, pattern):\n        return tests\n",
+            "for _item in ():\n    load_tests = _item\n",
+            "try:\n    from .foundation import load_tests\nexcept ImportError:\n    pass\n",
+            "from .foundation import *\n",
         ):
             with self.subTest(source=source):
                 self.assertFalse(
@@ -401,6 +429,10 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
             "if True:\n"
             "    _PHASE192_FACADE_FILE = _Phase192Path('/tmp/attacker') / 'test_tool.py'\n"
         )
+        reordered = ast.parse(
+            "_PHASE192_PARENT = _PHASE192_FACADE_FILE.parent\n"
+            "_PHASE192_FACADE_FILE = _Phase192Path(__file__).resolve().parents[1] / 'test_tool.py'\n"
+        )
         self.assertTrue(
             surface_compare._initializer_path_is_repository_rooted(
                 safe,
@@ -416,6 +448,12 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
         self.assertFalse(
             surface_compare._initializer_path_is_repository_rooted(
                 nested,
+                "Scripts/regression_checks/test_tool.py",
+            )
+        )
+        self.assertFalse(
+            surface_compare._initializer_path_is_repository_rooted(
+                reordered,
                 "Scripts/regression_checks/test_tool.py",
             )
         )
@@ -571,6 +609,25 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
             ):
                 self.assertFalse(surface_compare._approved_test_facade_removal(relative, base, head))
 
+    def test_discovery_contract_removal_rejects_initializer_change(self) -> None:
+        """Removing a facade cannot hide an unrelated retained initializer change."""
+        with tempfile.TemporaryDirectory() as base_temporary, tempfile.TemporaryDirectory() as head_temporary:
+            base = Path(base_temporary)
+            head = Path(head_temporary)
+            relative = "Scripts/regression_checks/test_tool.py"
+            self._write_package(base, relative=relative)
+            self._write_package(head, relative=relative)
+            (head / relative.removesuffix(".py") / "__init__.py").write_text(
+                "from .entrypoint import *\nBROKEN = 1\n",
+                encoding="utf-8",
+            )
+            (head / relative).unlink()
+            with mock.patch(
+                "Scripts.validation.source_decomposition.compare_identity_surfaces.entrypoint_contracts._approved_initializer_contract",
+                return_value=True,
+            ):
+                self.assertFalse(surface_compare._approved_test_facade_removal(relative, base, head))
+
     def test_discovery_contract_removal_rejects_nested_module_change(self) -> None:
         """Removing a test facade cannot hide changed nested Python modules."""
         with tempfile.TemporaryDirectory() as base_temporary, tempfile.TemporaryDirectory() as head_temporary:
@@ -647,7 +704,7 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
             with mock.patch(
                 "Scripts.validation.source_decomposition.compare_identity_surfaces.entrypoint_contracts._approved_initializer_contract",
                 return_value=True,
-            ):
+            ) as approved:
                 self.assertEqual(
                     [],
                     surface_compare._discovery_contract_errors(
@@ -656,6 +713,10 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
                         allow_directory_migration=True,
                     ),
                 )
+            approved.assert_called_once_with(
+                head,
+                "Scripts/validation/source_decomposition/regression_checks/test_tool.py",
+            )
 
     def test_discovery_contract_preserves_legacy_paths_without_migration(self) -> None:
         """Legacy paths stay raw when directory migration is disabled."""
@@ -737,6 +798,36 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
             head_root=Path("head"),
         )
         self.assertEqual([f"MODULE_ENTRYPOINT_CHANGED {relative}"], errors)
+
+    def test_migrated_initializer_changes_are_not_waived(self) -> None:
+        """Directory migration does not waive a changed retained initializer."""
+        def surface(initializer: tuple[str, ...], digest: str) -> tuple:
+            """Build a minimal surface with one initializer contract."""
+            return (
+                frozenset(), (), initializer, frozenset(), digest, frozenset(), None, (),
+                frozenset(), (), None, (), (), (), frozenset(), (),
+            )
+
+        relative = "Scripts/phase192/regression_checks/test_tool.py"
+        errors = surface_compare._compare_surfaces(
+            {relative: surface(("BASE",), "base")},
+            {relative: surface(("HEAD",), "head")},
+            strict=False,
+            allow_directory_migration=True,
+            base_root=Path("base"),
+            head_root=Path("head"),
+        )
+        self.assertIn(f"PACKAGE_INITIALIZER_CHANGED {relative}", errors)
+
+    def test_directory_migration_rejects_surface_collision(self) -> None:
+        """Directory migration rejects retaining both physical facade paths."""
+        with self.assertRaisesRegex(ValueError, "IDENTITY_MIGRATION_COLLISION"):
+            surface_compare._normalize_migrated_source_decomposition_surfaces(
+                {
+                    "Scripts/phase192/source_layout.py": ("legacy",),
+                    "Scripts/validation/source_decomposition/source_layout.py": ("current",),
+                }
+            )
 
     def test_namespace_approval_resolves_migrated_head_path(self) -> None:
         """Namespace approval receives the current path during a supported directory migration."""

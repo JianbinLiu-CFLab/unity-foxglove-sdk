@@ -303,16 +303,18 @@ def _normalize_migrated_source_decomposition_surfaces(
     surfaces: dict[str, tuple],
 ) -> dict[str, tuple]:
     """Map the legacy Phase192 surface prefix to its validation location."""
-    normalized = dict(surfaces)
     legacy_prefix = "Scripts/phase192/"
     current_prefix = "Scripts/validation/source_decomposition/"
-    for relative, surface in list(surfaces.items()):
-        if not relative.startswith(current_prefix):
-            continue
-        legacy = legacy_prefix + relative[len(current_prefix):]
-        if legacy not in normalized:
-            normalized[legacy] = surface
-            normalized.pop(relative, None)
+    normalized: dict[str, tuple] = {}
+    for relative, surface in surfaces.items():
+        canonical = (
+            legacy_prefix + relative[len(current_prefix):]
+            if relative.startswith(current_prefix)
+            else relative
+        )
+        if canonical in normalized:
+            raise ValueError(f"IDENTITY_MIGRATION_COLLISION {canonical}")
+        normalized[canonical] = surface
     return normalized
 
 
@@ -673,10 +675,15 @@ def _compare_surfaces(
                 and head_root is not None
                 and not missing_sections
                 and not missing_symbols
-                and _approved_initializer_contract(head_root, relative)
+                and _approved_initializer_contract(
+                    head_root,
+                    _current_source_decomposition_relative(relative)
+                    if migrated_relative
+                    else relative,
+                )
             ):
                 initializer_ok = True
-        if not initializer_ok and not migrated_relative:
+        if not initializer_ok:
             errors.append(f"PACKAGE_INITIALIZER_CHANGED {relative}")
         if not _sections_preserve_order(base_sections, head_sections):
             errors.append(f"SECTION_ORDER_CHANGED {relative}")
@@ -718,7 +725,11 @@ def compare_revisions(repository: Path, base: str, head: str, *, strict: bool = 
             strict=strict,
         )
         if allow_directory_migration:
-            head_surfaces = _normalize_migrated_source_decomposition_surfaces(head_surfaces)
+            try:
+                head_surfaces = _normalize_migrated_source_decomposition_surfaces(head_surfaces)
+            except ValueError as exc:
+                print(str(exc))
+                return 1
         base_helper_contract = _identity_helper_source_contract(base_root)
         head_helper_contract = _identity_helper_source_contract(head_root)
         helper_errors = _compare_identity_helper_contracts(

@@ -956,6 +956,8 @@ def _approved_initializer_contract(root: Path, relative: str) -> bool:
 
 def _initializer_has_reviewed_discovery_shape(tree: ast.Module) -> bool:
     """Return whether an initializer has no mutable one-shot discovery hook."""
+    if not _initializer_discovery_bindings_are_safe(tree):
+        return False
     if any(isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) for node in tree.body):
         return False
     if any(

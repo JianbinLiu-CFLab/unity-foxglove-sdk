@@ -399,8 +399,75 @@ def _initializer_has_no_load_tests_import(tree: ast.Module) -> bool:
         for node in tree.body
     )
 
+def _initializer_discovery_bindings_are_safe(tree: ast.Module) -> bool:
+    """Return whether no nested initializer node can bind a discovery hook."""
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == "load_tests":
+            return False
+        if isinstance(node, ast.Global) and "load_tests" in node.names:
+            return False
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            if any(alias.name == "*" for alias in node.names):
+                return False
+            if any((alias.asname or alias.name.split(".", 1)[0]) == "load_tests" for alias in node.names):
+                return False
+        if isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.Delete)):
+            targets = node.targets if isinstance(node, (ast.Assign, ast.Delete)) else [node.target]
+            if any(isinstance(target, ast.Name) and target.id == "load_tests" for target in targets):
+                return False
+    return True
+
 def _entrypoint_section_imports_are_trusted(tree: ast.Module, package: Path) -> bool:
     """Return whether entrypoint imports use trusted roots and local modules."""
+    def absolute_import_resolves(node: ast.Import | ast.ImportFrom) -> bool:
+        """Return whether an approved absolute import resolves its module and names."""
+        try:
+            if isinstance(node, ast.Import):
+                return all(importlib.util.find_spec(alias.name) is not None for alias in node.names)
+            if not node.module:
+                return False
+            module = importlib.import_module(node.module)
+            return all(
+                hasattr(module, alias.name)
+                or importlib.util.find_spec(f"{node.module}.{alias.name}") is not None
+                for alias in node.names
+            )
+        except (ImportError, ModuleNotFoundError, AttributeError, ValueError):
+            return False
+
+    def relative_import_resolves(node: ast.ImportFrom) -> bool:
+        """Return whether a relative import resolves its module and imported names."""
+        modules = [node.module] if node.module else [alias.name for alias in node.names]
+        for module_name in modules:
+            if not module_name:
+                return False
+            candidate = package / f"{module_name}.py"
+            if not candidate.is_file():
+                candidate = package / module_name / "__init__.py"
+            if not candidate.is_file():
+                return False
+            if node.module is None:
+                continue
+            try:
+                target = _parse_source(candidate.read_text(encoding="utf-8"), candidate)
+            except (OSError, SyntaxError, ValueError):
+                return False
+            exports = _top_level_names(target, include_imports=True)
+            for statement in target.body:
+                if not isinstance(statement, ast.Assign):
+                    continue
+                if not any(isinstance(target_node, ast.Name) and target_node.id == "__all__" for target_node in statement.targets):
+                    continue
+                try:
+                    literal = ast.literal_eval(statement.value)
+                except (TypeError, ValueError, SyntaxError):
+                    return False
+                if isinstance(literal, (list, tuple, set)) and all(isinstance(name, str) for name in literal):
+                    exports = set(literal)
+            if any(alias.name not in exports for alias in node.names):
+                return False
+        return True
+
     for node in tree.body:
         if isinstance(node, ast.Import):
             if any(
@@ -408,6 +475,8 @@ def _entrypoint_section_imports_are_trusted(tree: ast.Module, package: Path) -> 
                 or alias.name.split(".", 1)[0] not in _ENTRYPOINT_SECTION_IMPORT_ROOTS
                 for alias in node.names
             ):
+                return False
+            if not absolute_import_resolves(node):
                 return False
             continue
         if not isinstance(node, ast.ImportFrom):
@@ -419,18 +488,12 @@ def _entrypoint_section_imports_are_trusted(tree: ast.Module, package: Path) -> 
         if node.level:
             if node.level != 1 or any(alias.name == "*" for alias in node.names):
                 return False
-            modules = [node.module] if node.module else [alias.name for alias in node.names]
-            if any(
-                not module
-                or not (
-                    (package / f"{module}.py").is_file()
-                    or (package / module / "__init__.py").is_file()
-                )
-                for module in modules
-            ):
+            if not relative_import_resolves(node):
                 return False
             continue
         if not node.module or node.module.split(".", 1)[0] not in _ENTRYPOINT_SECTION_IMPORT_ROOTS:
+            return False
+        if any(alias.name == "*" for alias in node.names) or not absolute_import_resolves(node):
             return False
     return True
 
@@ -555,6 +618,33 @@ def _approved_test_facade_removal(
         return False
     if base_main.is_file() and base_main.read_bytes() != head_main.read_bytes():
         return False
+
+    def initializer_contract(package: Path) -> tuple[str, ...] | None:
+        """Return initializer AST signatures after removing the legacy discovery hook."""
+        initializer = package / "__init__.py"
+        if not initializer.is_file():
+            return None
+        try:
+            tree = _parse_source(initializer.read_text(encoding="utf-8"), initializer)
+        except (OSError, SyntaxError, ValueError):
+            return None
+        retained: list[str] = []
+        for node in tree.body:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == "load_tests":
+                continue
+            if isinstance(node, ast.Global):
+                continue
+            if isinstance(node, ast.Assign) and any(
+                isinstance(target, ast.Name) and target.id == "_phase192_load_tests_used"
+                for target in node.targets
+            ):
+                continue
+            retained.append(ast.dump(node, include_attributes=False))
+        return tuple(retained)
+
+    if initializer_contract(base_package) != initializer_contract(head_package):
+        return False
+
     def package_files(package: Path) -> dict[str, Path]:
         """Return every tracked package file except the generated root initializer."""
         return {
@@ -664,7 +754,10 @@ def _discovery_contract_errors(
     for relative in sorted(set(head_facades) - set(base_facades)):
         errors.append(f"DUPLICATE_DISCOVERY_FACADE {relative}")
     for relative in sorted(set(base_facades) - set(head_facades)):
-        if not _approved_initializer_contract(head_root, relative):
+        head_relative = relative
+        if allow_directory_migration and not (head_root / relative.removesuffix(".py")).is_dir():
+            head_relative = _current_source_decomposition_relative(relative)
+        if not _approved_initializer_contract(head_root, head_relative):
             errors.append(f"INVALID_DISCOVERY_FACADE_REMOVAL {relative}")
     return errors
 
@@ -699,6 +792,12 @@ def _initializer_path_is_repository_rooted(tree: ast.Module, relative: str) -> b
         set(assignments_by_name) != set(expected_assignments)
         or len(assignments_by_name) != len(assignments)
     ):
+        return False
+    if [
+        node.targets[0].id
+        for node in tree.body
+        if node in assignments
+    ] != ["_PHASE192_FACADE_FILE", "_PHASE192_PARENT"]:
         return False
     if any(
         ast.dump(assignments_by_name[name], include_attributes=False)
@@ -830,4 +929,4 @@ def _initializer_has_generated_import_shape(tree: ast.Module) -> bool:
             return False
     return True
 
-__all__ = ['_REVIEWED_IDENTITY_TOOLING_SECTIONS', '_reviewed_identity_tooling_test_split', 'argparse', 'ast', 'copy', 'hashlib', 'importlib', 'json', 'keyword', 're', 'contextmanager', 'lru_cache', 'Path', 'subprocess', 'tarfile', 'tempfile', 'Iterator', 'Mapping', 'REPOSITORY_ROOT', '_TRY_TYPES', '_TYPE_ALIAS_TYPE', '_SECTION_NAME_RE', 'SPLIT_ROOTS', 'IDENTITY_WAIVER_PATH', '_legacy_relative_path', '_canonical_source_decomposition_relative', '_current_source_decomposition_relative', '_resolve_source_decomposition_path', '_load_identity_waivers', '_git', '_extract_archive_safely', '_revision_checkout', '_FUNCTION_BODY_RISK_NAMES', '_ENVIRONMENT_MUTATORS', '_without_function_bodies', '_function_body_and_environment_risk_signatures', '_parse_source', '_section_modules_for_root', '_section_package_for_facade', '_split_facades', '_top_level_names', '_direct_import_bound_names', '_declared_public_names', '_PHASE192_TEMPLATE_IMPORTS', '_PHASE192_TEMPLATE_CALLS', '_PHASE192_TEMPLATE_METHODS', '_facade_entrypoint_is_standard', '_single_run_entrypoint_binding', '_initializer_has_no_load_tests_import', '_entrypoint_section_imports_are_trusted', '_function_signature_is_inert', '_sections_have_no_discovery_hook', '_approved_test_facade_removal', '_approved_namespace_change', '_discovery_contract_errors', '_initializer_path_is_repository_rooted', '_initializer_has_generated_import_shape']
+__all__ = ['_REVIEWED_IDENTITY_TOOLING_SECTIONS', '_reviewed_identity_tooling_test_split', 'argparse', 'ast', 'copy', 'hashlib', 'importlib', 'json', 'keyword', 're', 'contextmanager', 'lru_cache', 'Path', 'subprocess', 'tarfile', 'tempfile', 'Iterator', 'Mapping', 'REPOSITORY_ROOT', '_TRY_TYPES', '_TYPE_ALIAS_TYPE', '_SECTION_NAME_RE', 'SPLIT_ROOTS', 'IDENTITY_WAIVER_PATH', '_legacy_relative_path', '_canonical_source_decomposition_relative', '_current_source_decomposition_relative', '_resolve_source_decomposition_path', '_load_identity_waivers', '_git', '_extract_archive_safely', '_revision_checkout', '_FUNCTION_BODY_RISK_NAMES', '_ENVIRONMENT_MUTATORS', '_without_function_bodies', '_function_body_and_environment_risk_signatures', '_parse_source', '_section_modules_for_root', '_section_package_for_facade', '_split_facades', '_top_level_names', '_direct_import_bound_names', '_declared_public_names', '_PHASE192_TEMPLATE_IMPORTS', '_PHASE192_TEMPLATE_CALLS', '_PHASE192_TEMPLATE_METHODS', '_facade_entrypoint_is_standard', '_single_run_entrypoint_binding', '_initializer_has_no_load_tests_import', '_initializer_discovery_bindings_are_safe', '_entrypoint_section_imports_are_trusted', '_function_signature_is_inert', '_sections_have_no_discovery_hook', '_approved_test_facade_removal', '_approved_namespace_change', '_discovery_contract_errors', '_initializer_path_is_repository_rooted', '_initializer_has_generated_import_shape']
