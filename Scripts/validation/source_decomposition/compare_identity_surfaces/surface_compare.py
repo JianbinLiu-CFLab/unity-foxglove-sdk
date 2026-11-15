@@ -653,6 +653,23 @@ def _compare_surfaces(
                 if base_digest is not None and head_digest is not None
                 else base_initializer == head_initializer
             )
+        elif base_digest is not None and head_digest is not None:
+            initializer_ok = base_digest == head_digest
+            if (
+                not initializer_ok
+                and head_root is not None
+                and not missing_sections
+                and not missing_symbols
+                and _approved_initializer_contract(
+                    head_root,
+                    _current_source_decomposition_relative(relative)
+                    if migrated_relative
+                    else relative,
+                    base_root=base_root,
+                    base_relative=relative,
+                )
+            ):
+                initializer_ok = True
         else:
             if base_owner_map:
                 base_external_names = {
@@ -670,21 +687,6 @@ def _compare_surfaces(
                 | (set(head_section_exports) - set(base_section_exports)),
                 dict(head_section_map or ()),
             )
-            if (
-                not initializer_ok
-                and head_root is not None
-                and not missing_sections
-                and not missing_symbols
-                and _approved_initializer_contract(
-                    head_root,
-                    _current_source_decomposition_relative(relative)
-                    if migrated_relative
-                    else relative,
-                    base_root=base_root,
-                    base_relative=relative,
-                )
-            ):
-                initializer_ok = True
         if not initializer_ok:
             errors.append(f"PACKAGE_INITIALIZER_CHANGED {relative}")
         if not _sections_preserve_order(base_sections, head_sections):

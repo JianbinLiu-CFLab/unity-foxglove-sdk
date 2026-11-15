@@ -878,6 +878,25 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
         )
         self.assertIn(f"PACKAGE_INITIALIZER_CHANGED {relative}", errors)
 
+    def test_compatibility_requires_exact_initializer_contract_for_real_packages(self) -> None:
+        """A real package initializer cannot pass through the additive fallback."""
+        def surface(initializer: tuple[str, ...], digest: str) -> tuple:
+            """Build a standard package surface with an initializer digest."""
+            return (
+                frozenset(), ("entrypoint",), initializer, frozenset(), digest,
+                frozenset(), None, (), frozenset(), (), None, (), (), (), frozenset(), (),
+            )
+
+        relative = "Scripts/example_tool.py"
+        errors = surface_compare._compare_surfaces(
+            {relative: surface(("x = 1",), "base")},
+            {relative: surface(("x = 1", "y = 2"), "head")},
+            strict=False,
+            base_root=Path("base"),
+            head_root=Path("head"),
+        )
+        self.assertIn(f"PACKAGE_INITIALIZER_CHANGED {relative}", errors)
+
     def test_directory_migration_rejects_surface_collision(self) -> None:
         """Directory migration rejects retaining both physical facade paths."""
         with self.assertRaisesRegex(ValueError, "IDENTITY_MIGRATION_COLLISION"):
