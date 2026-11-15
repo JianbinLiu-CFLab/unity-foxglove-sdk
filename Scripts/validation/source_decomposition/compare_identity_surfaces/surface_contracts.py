@@ -24,56 +24,22 @@ _SAFE_STDLIB_ENTRYPOINT_SYMBOLS = {
 _SAFE_STDLIB_ENTRYPOINT_MODULES = frozenset(_SAFE_STDLIB_ENTRYPOINT_SYMBOLS)
 
 def _entrypoint_section_imports_are_trusted(tree: ast.Module, package: Path) -> bool:
-    """Return whether entrypoint imports use trusted roots and local modules."""
+    """Return whether entrypoint imports use the approved standard library set."""
     def absolute_import_resolves(node: ast.Import | ast.ImportFrom) -> bool:
         """Return whether a standard-library import is known without executing it."""
         if isinstance(node, ast.Import):
-            return all(alias.name in _SAFE_STDLIB_ENTRYPOINT_MODULES for alias in node.names)
+            return all(
+                alias.name in _SAFE_STDLIB_ENTRYPOINT_MODULES
+                for alias in node.names
+            )
         if not node.module or node.module not in _SAFE_STDLIB_ENTRYPOINT_SYMBOLS:
             return False
         allowed = _SAFE_STDLIB_ENTRYPOINT_SYMBOLS[node.module]
         return all(alias.name in allowed for alias in node.names)
 
-    def relative_import_resolves(node: ast.ImportFrom) -> bool:
-        """Return whether a relative import resolves its module and imported names."""
-        modules = [node.module] if node.module else [alias.name for alias in node.names]
-        for module_name in modules:
-            if not module_name:
-                return False
-            candidate = package / f"{module_name}.py"
-            if not candidate.is_file():
-                candidate = package / module_name / "__init__.py"
-            if not candidate.is_file():
-                return False
-            if node.module is None:
-                continue
-            try:
-                target = _parse_source(candidate.read_text(encoding="utf-8"), candidate)
-            except (OSError, SyntaxError, ValueError):
-                return False
-            exports = _top_level_names(target, include_imports=True)
-            for statement in target.body:
-                if not isinstance(statement, ast.Assign):
-                    continue
-                if not any(isinstance(target_node, ast.Name) and target_node.id == "__all__" for target_node in statement.targets):
-                    continue
-                try:
-                    literal = ast.literal_eval(statement.value)
-                except (TypeError, ValueError, SyntaxError):
-                    return False
-                if isinstance(literal, (list, tuple, set)) and all(isinstance(name, str) for name in literal):
-                    exports = set(literal)
-            if any(alias.name not in exports for alias in node.names):
-                return False
-        return True
-
     for node in tree.body:
         if isinstance(node, ast.Import):
-            if any(
-                alias.name == "*"
-                or alias.name.split(".", 1)[0] not in _ENTRYPOINT_SECTION_IMPORT_ROOTS
-                for alias in node.names
-            ) or not absolute_import_resolves(node):
+            if any(alias.name == "*" for alias in node.names) or not absolute_import_resolves(node):
                 return False
             continue
         if not isinstance(node, ast.ImportFrom):
@@ -83,15 +49,8 @@ def _entrypoint_section_imports_are_trusted(tree: ast.Module, package: Path) -> 
                 return False
             continue
         if node.level:
-            if node.level != 1 or any(alias.name == "*" for alias in node.names) or not relative_import_resolves(node):
-                return False
-            continue
-        if (
-            not node.module
-            or node.module.split(".", 1)[0] not in _ENTRYPOINT_SECTION_IMPORT_ROOTS
-            or any(alias.name == "*" for alias in node.names)
-            or not absolute_import_resolves(node)
-        ):
+            return False
+        if any(alias.name == "*" for alias in node.names) or not absolute_import_resolves(node):
             return False
     return True
 

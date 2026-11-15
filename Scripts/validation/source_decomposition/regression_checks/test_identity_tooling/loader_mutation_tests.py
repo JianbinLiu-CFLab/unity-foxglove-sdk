@@ -38,6 +38,30 @@ class LoaderMutationTests(IdentityToolingBase):
                 sys.modules.pop("Scripts.attacker", None)
             self.assertFalse(marker.exists())
 
+    def test_entrypoint_contract_rejects_relative_imports(self) -> None:
+        """Entrypoint sections cannot import repository modules during approval."""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            package = root / "Scripts" / "example_tool"
+            package.mkdir(parents=True)
+            marker = root / "relative_imported.txt"
+            (package / "attacker.py").write_text(
+                "from pathlib import Path\n"
+                f"Path({str(marker)!r}).write_text('executed', encoding='utf-8')\n"
+                "marker = 1\n",
+                encoding="utf-8",
+            )
+            entrypoint = package / "entrypoint.py"
+            entrypoint.write_text(
+                "from .attacker import marker\n"
+                "def run_entrypoint():\n"
+                "    return marker\n"
+                "__all__ = ['run_entrypoint']\n",
+                encoding="utf-8",
+            )
+            self.assertFalse(compare_identity_surfaces._approved_entrypoint_section(entrypoint))
+            self.assertFalse(marker.exists())
+
     def test_generated_facade_rejects_closure_mutations(self) -> None:
         """Generated facades cannot mutate protected state through wrappers or aliases."""
         for facade in (

@@ -337,12 +337,6 @@ _PHASE192_TEMPLATE_CALLS = frozenset({
 _PHASE192_TEMPLATE_METHODS = frozenset({
     "__class__", "__delattr__", "__dict__", "__setattr__", "add", "get", "insert", "main", "pop", "resolve", "startswith",
 })
-_ENTRYPOINT_SECTION_IMPORT_ROOTS = frozenset({
-    "Scripts", "argparse", "ast", "collections", "dataclasses", "datetime", "functools", "json",
-    "math", "operator", "os", "pathlib", "re", "sys", "tempfile", "textwrap", "time", "types",
-    "typing", "unittest",
-})
-
 def _facade_entrypoint_is_standard(tree: ast.Module, relative: str) -> bool:
     """Return whether a facade bootstraps the repository before forwarding execution."""
     body = list(tree.body)
@@ -822,4 +816,4 @@ def _initializer_path_is_repository_rooted(tree: ast.Module, relative: str) -> b
     )
 
 
-__all__ = ['_REVIEWED_IDENTITY_TOOLING_SECTIONS', '_reviewed_identity_tooling_test_split', 'argparse', 'ast', 'copy', 'hashlib', 'importlib', 'json', 'keyword', 're', 'contextmanager', 'lru_cache', 'Path', 'subprocess', 'tarfile', 'tempfile', 'Iterator', 'Mapping', 'REPOSITORY_ROOT', '_TRY_TYPES', '_TYPE_ALIAS_TYPE', '_SECTION_NAME_RE', 'SPLIT_ROOTS', 'IDENTITY_WAIVER_PATH', '_legacy_relative_path', '_canonical_source_decomposition_relative', '_current_source_decomposition_relative', '_resolve_source_decomposition_path', '_load_identity_waivers', '_git', '_extract_archive_safely', '_revision_checkout', '_FUNCTION_BODY_RISK_NAMES', '_ENVIRONMENT_MUTATORS', '_without_function_bodies', '_function_body_and_environment_risk_signatures', '_parse_source', '_section_modules_for_root', '_section_package_for_facade', '_split_facades', '_top_level_names', '_direct_import_bound_names', '_declared_public_names', '_PHASE192_TEMPLATE_IMPORTS', '_PHASE192_TEMPLATE_CALLS', '_PHASE192_TEMPLATE_METHODS', '_ENTRYPOINT_SECTION_IMPORT_ROOTS', '_facade_entrypoint_is_standard', '_single_run_entrypoint_binding', '_approved_test_facade_removal', '_initializer_exact_identity_signature', '_initializer_signatures_compatible', '_approved_namespace_change', '_discovery_contract_errors', '_initializer_path_is_repository_rooted']
+__all__ = ['_REVIEWED_IDENTITY_TOOLING_SECTIONS', '_reviewed_identity_tooling_test_split', 'argparse', 'ast', 'copy', 'hashlib', 'importlib', 'json', 'keyword', 're', 'contextmanager', 'lru_cache', 'Path', 'subprocess', 'tarfile', 'tempfile', 'Iterator', 'Mapping', 'REPOSITORY_ROOT', '_TRY_TYPES', '_TYPE_ALIAS_TYPE', '_SECTION_NAME_RE', 'SPLIT_ROOTS', 'IDENTITY_WAIVER_PATH', '_legacy_relative_path', '_canonical_source_decomposition_relative', '_current_source_decomposition_relative', '_resolve_source_decomposition_path', '_load_identity_waivers', '_git', '_extract_archive_safely', '_revision_checkout', '_FUNCTION_BODY_RISK_NAMES', '_ENVIRONMENT_MUTATORS', '_without_function_bodies', '_function_body_and_environment_risk_signatures', '_parse_source', '_section_modules_for_root', '_section_package_for_facade', '_split_facades', '_top_level_names', '_direct_import_bound_names', '_declared_public_names', '_PHASE192_TEMPLATE_IMPORTS', '_PHASE192_TEMPLATE_CALLS', '_PHASE192_TEMPLATE_METHODS', '_facade_entrypoint_is_standard', '_single_run_entrypoint_binding', '_approved_test_facade_removal', '_initializer_exact_identity_signature', '_initializer_signatures_compatible', '_approved_namespace_change', '_discovery_contract_errors', '_initializer_path_is_repository_rooted']
