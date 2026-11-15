@@ -103,6 +103,10 @@ PHASE161_ADDED_DLLS = (
 PHASE161_SUPPLEMENTAL_RUNTIME_DLLS = (
     "rosidl_dynamic_typesupport_fastrtps.dll",
 )
+PHASE161_SUPPLEMENTAL_RUNTIME_DLL_SHA256 = {
+    "rosidl_dynamic_typesupport_fastrtps.dll":
+        "0b09eda95a4f6b92bc7a0776818214b79a79edf77386465086423457eda07998",
+}
 V083_EXCLUDED_TEST_TYPESUPPORT_DLLS = (
     "Ros2ForUnity/Plugins/Windows/x86_64/test_msgs_complex_nested_key__rosidl_typesupport_c_native.dll",
     "Ros2ForUnity/Plugins/Windows/x86_64/test_msgs_complex_nested_key__rosidl_typesupport_fastrtps_c_native.dll",
