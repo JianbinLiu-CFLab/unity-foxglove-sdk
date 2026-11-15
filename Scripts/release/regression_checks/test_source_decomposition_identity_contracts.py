@@ -397,6 +397,11 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
             "_hook = lambda loader, tests, pattern: tests\n"
             "setattr(sys.modules[__name__], 'load_tests', _hook)\n"
             "__all__ = ['run_entrypoint']\n",
+            "def run_entrypoint():\n"
+            "    return 0\n"
+            "_d = vars()\n"
+            "_d['load_tests'] = lambda loader, tests, pattern: tests\n"
+            "__all__ = ['run_entrypoint']\n",
         )
         for source in sources:
             with self.subTest(source=source), tempfile.TemporaryDirectory() as temporary:
@@ -409,6 +414,21 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
                         "Scripts/example_tool.py",
                     )
                 )
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            facade = self._write_package(root)
+            (facade.with_suffix("") / "entrypoint.py").write_text(
+                "__all__ = [name for name in globals() if not name.startswith('__')]\n"
+                "def run_entrypoint():\n"
+                "    return 0\n",
+                encoding="utf-8",
+            )
+            self.assertTrue(
+                surface_compare._sections_have_no_discovery_hook(
+                    root,
+                    "Scripts/example_tool.py",
+                )
+            )
 
     def test_initializer_path_contract_rejects_shadow_module_path(self) -> None:
         """A generated initializer must derive its facade path from the package location."""
@@ -457,6 +477,18 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
                 "Scripts/regression_checks/test_tool.py",
             )
         )
+        bad_file = ast.parse(
+            "from pathlib import Path as _Phase192Path\n"
+            "_PHASE192_FACADE_FILE = _Phase192Path(__file__).resolve().parents[1] / 'test_tool.py'\n"
+            "__file__ = '/tmp/attacker/__init__.py'\n"
+            "_PHASE192_PARENT = _PHASE192_FACADE_FILE.parent\n"
+        )
+        self.assertFalse(
+            surface_compare._initializer_path_is_repository_rooted(
+                bad_file,
+                "Scripts/regression_checks/test_tool.py",
+            )
+        )
 
     def test_initializer_import_shape_rejects_nested_import_and_path_mutation(self) -> None:
         """Generated initializers cannot add nested imports or alternate path mutations."""
@@ -476,6 +508,30 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
         self.assertFalse(surface_compare._initializer_has_generated_import_shape(nested_path))
         self.assertFalse(surface_compare._initializer_has_generated_import_shape(nested_import))
         self.assertFalse(surface_compare._initializer_has_generated_import_shape(shadow_import))
+        prefix = (
+            "from __future__ import annotations\n"
+            "import sys as _phase192_sys\n"
+            "import types as _phase192_types\n"
+            "from pathlib import Path as _Phase192Path\n"
+            "_PHASE192_FACADE_FILE = _Phase192Path(__file__).resolve().parents[1] / 'test_tool.py'\n"
+            "__file__ = str(_PHASE192_FACADE_FILE)\n"
+            "_PHASE192_PARENT = _PHASE192_FACADE_FILE.parent\n"
+            "if str(_PHASE192_PARENT) not in _phase192_sys.path:\n"
+            "    _phase192_sys.path.insert(0, str(_PHASE192_PARENT))\n"
+        )
+        for source in (
+            "_phase192_sys.path[:] = ['/tmp/attacker']\n",
+            "_phase192_sys.meta_path[:] = []\n",
+            "_phase192_sys.__dict__['path'] = []\n",
+            "getattr(_phase192_sys, 'path').insert(0, '/tmp/attacker')\n",
+            "_phase192_sys = None\n",
+        ):
+            with self.subTest(source=source):
+                self.assertFalse(
+                    surface_compare._initializer_has_generated_import_shape(
+                        ast.parse(prefix + source)
+                    )
+                )
 
     def test_discovery_contract_rejects_new_duplicate_facade(self) -> None:
         """A test facade beside a test package is rejected as duplicate discovery."""

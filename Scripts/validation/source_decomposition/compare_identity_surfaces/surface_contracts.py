@@ -2,6 +2,113 @@ from __future__ import annotations
 
 from .foundation import *
 
+def _initializer_discovery_bindings_are_safe(tree: ast.Module) -> bool:
+    """Return whether no nested initializer node can bind a discovery hook."""
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == "load_tests":
+            return False
+        if isinstance(node, ast.Global) and "load_tests" in node.names:
+            return False
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            if any(alias.name == "*" for alias in node.names):
+                return False
+            if any((alias.asname or alias.name.split(".", 1)[0]) == "load_tests" for alias in node.names):
+                return False
+        if isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.Delete)):
+            targets = node.targets if isinstance(node, (ast.Assign, ast.Delete)) else [node.target]
+            if any(isinstance(target, ast.Name) and target.id == "load_tests" for target in targets):
+                return False
+    return True
+
+def _entrypoint_section_imports_are_trusted(tree: ast.Module, package: Path) -> bool:
+    """Return whether entrypoint imports use trusted roots and local modules."""
+    def absolute_import_resolves(node: ast.Import | ast.ImportFrom) -> bool:
+        """Return whether an approved absolute import resolves its module and names."""
+        try:
+            if isinstance(node, ast.Import):
+                return all(importlib.util.find_spec(alias.name) is not None for alias in node.names)
+            if not node.module:
+                return False
+            module = importlib.import_module(node.module)
+            return all(
+                hasattr(module, alias.name)
+                or importlib.util.find_spec(f"{node.module}.{alias.name}") is not None
+                for alias in node.names
+            )
+        except (ImportError, ModuleNotFoundError, AttributeError, ValueError):
+            return False
+
+    def relative_import_resolves(node: ast.ImportFrom) -> bool:
+        """Return whether a relative import resolves its module and imported names."""
+        modules = [node.module] if node.module else [alias.name for alias in node.names]
+        for module_name in modules:
+            if not module_name:
+                return False
+            candidate = package / f"{module_name}.py"
+            if not candidate.is_file():
+                candidate = package / module_name / "__init__.py"
+            if not candidate.is_file():
+                return False
+            if node.module is None:
+                continue
+            try:
+                target = _parse_source(candidate.read_text(encoding="utf-8"), candidate)
+            except (OSError, SyntaxError, ValueError):
+                return False
+            exports = _top_level_names(target, include_imports=True)
+            for statement in target.body:
+                if not isinstance(statement, ast.Assign):
+                    continue
+                if not any(isinstance(target_node, ast.Name) and target_node.id == "__all__" for target_node in statement.targets):
+                    continue
+                try:
+                    literal = ast.literal_eval(statement.value)
+                except (TypeError, ValueError, SyntaxError):
+                    return False
+                if isinstance(literal, (list, tuple, set)) and all(isinstance(name, str) for name in literal):
+                    exports = set(literal)
+            if any(alias.name not in exports for alias in node.names):
+                return False
+        return True
+
+    for node in tree.body:
+        if isinstance(node, ast.Import):
+            if any(
+                alias.name == "*"
+                or alias.name.split(".", 1)[0] not in _ENTRYPOINT_SECTION_IMPORT_ROOTS
+                for alias in node.names
+            ) or not absolute_import_resolves(node):
+                return False
+            continue
+        if not isinstance(node, ast.ImportFrom):
+            continue
+        if node.module == "__future__":
+            if node.level or any(alias.name != "annotations" for alias in node.names):
+                return False
+            continue
+        if node.level:
+            if node.level != 1 or any(alias.name == "*" for alias in node.names) or not relative_import_resolves(node):
+                return False
+            continue
+        if (
+            not node.module
+            or node.module.split(".", 1)[0] not in _ENTRYPOINT_SECTION_IMPORT_ROOTS
+            or any(alias.name == "*" for alias in node.names)
+            or not absolute_import_resolves(node)
+        ):
+            return False
+    return True
+
+def _function_signature_is_inert(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    """Return whether a function signature has no import-time executable expressions."""
+    arguments = node.args
+    if node.returns is not None or arguments.defaults or any(arguments.kw_defaults):
+        return False
+    return not any(
+        argument.annotation is not None or argument.type_comment
+        for argument in (*arguments.posonlyargs, *arguments.args, *arguments.kwonlyargs)
+    )
+
 def _relative_import_contract(
     tree: ast.Module,
     package_dir: Path,
@@ -281,4 +388,4 @@ _REVIEWED_DIRECT_ENTRYPOINTS = frozenset({
     "Scripts/ros2forunity/windows/lyrical/regression_checks/test_validate_r2fu_runtime_package.py",
 })
 
-__all__ = ['_relative_import_contract', '_symbols', '_section_exports', '_initializer_lines', '_initializer_digest', '_NAMESPACE_RISK_ATTRIBUTES', '_NAMESPACE_RISK_MODULE_ATTRIBUTES', '_NAMESPACE_RISK_NAMES', '_namespace_risk_signatures', '_is_phase121_configuration_path', '_ENTRYPOINT_IMPORT_ROOTS', '_REVIEWED_DIRECT_ENTRYPOINTS']
+__all__ = ['_relative_import_contract', '_symbols', '_section_exports', '_initializer_lines', '_initializer_digest', '_NAMESPACE_RISK_ATTRIBUTES', '_NAMESPACE_RISK_MODULE_ATTRIBUTES', '_NAMESPACE_RISK_NAMES', '_namespace_risk_signatures', '_is_phase121_configuration_path', '_ENTRYPOINT_IMPORT_ROOTS', '_REVIEWED_DIRECT_ENTRYPOINTS', '_initializer_discovery_bindings_are_safe', '_entrypoint_section_imports_are_trusted', '_function_signature_is_inert']
