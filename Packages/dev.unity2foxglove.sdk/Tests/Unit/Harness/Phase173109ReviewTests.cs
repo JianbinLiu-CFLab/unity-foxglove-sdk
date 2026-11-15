@@ -152,8 +152,10 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         {
             var query = new McapDataLoaderBackfillQuery();
 
-            Assert.Null(query.ChannelIds);
-            Assert.Null(query.Topics);
+            query.ChannelIds.Add(1);
+            query.Topics.Add("/phase173109/default");
+            Assert.Equal(new ushort[] { 1 }, query.ChannelIds);
+            Assert.Equal(new[] { "/phase173109/default" }, query.Topics);
 
             var source = TestSources.Text(
                 "Packages/dev.unity2foxglove.sdk/Runtime/IO/Mcap/DataLoader/McapDataLoader.cs");
