@@ -41,7 +41,7 @@ namespace Unity.FoxgloveSDK.Tests
             var source = Read("Packages/dev.unity2foxglove.sdk/Runtime/Core/Replay/ReplayPropertyCache.cs");
             var resolve = SourceMethod(source, "Resolve(Type type, string propertyName, BindingFlags bindingFlags)");
 
-            Check(source.Contains("ConcurrentDictionary<PropertyCacheKey, PropertyInfo>", StringComparison.Ordinal)
+            Check(source.Contains("ConcurrentDictionary<PropertyCacheKey, PropertyCacheEntry>", StringComparison.Ordinal)
                   && resolve.Contains("Cache.GetOrAdd(key", StringComparison.Ordinal)
                   && !resolve.Contains("lock (Gate)", StringComparison.Ordinal)
                   && !source.Contains("new Dictionary<PropertyCacheKey, PropertyInfo>", StringComparison.Ordinal),
