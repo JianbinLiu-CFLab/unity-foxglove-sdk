@@ -31,6 +31,8 @@ namespace Unity.FoxgloveSDK.IO
         public long Position => _stream.Position;
         /// <summary>Whether the underlying stream supports seeking.</summary>
         public bool CanSeek => _stream.CanSeek;
+        /// <summary>Whether the writer completed its final stream cleanup.</summary>
+        internal bool IsDisposed => _disposed;
         /// <summary>
         /// MCAP magic bytes. Returns a defensive copy so callers cannot mutate
         /// the process-wide writer/reader constant.
@@ -390,34 +392,36 @@ namespace Unity.FoxgloveSDK.IO
 
             try
             {
-                try
-                {
-                    _stream.Flush();
-                }
-                catch (Exception ex)
-                {
-                    // Dispose is best-effort. Call Flush() explicitly when
-                    // callers need durable error reporting.
-                    Trace.TraceWarning("[MCAP] Stream flush failed during dispose: " + ex.Message);
-                }
+                _stream.Flush();
+            }
+            catch (Exception ex)
+            {
+                Trace.TraceWarning("[MCAP] Stream flush failed during dispose; retry is allowed: " + ex.Message);
+                return;
+            }
+
+            try
+            {
+                _recordBuffer.Dispose();
+            }
+            catch (Exception ex)
+            {
+                Trace.TraceWarning("[MCAP] Record buffer dispose failed during dispose: " + ex.Message);
             }
             finally
             {
                 try
                 {
-                    _recordBuffer.Dispose();
+                    if (!_leaveOpen)
+                        _stream.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    Trace.TraceWarning("[MCAP] Stream dispose failed during dispose: " + ex.Message);
                 }
                 finally
                 {
-                    try
-                    {
-                        if (!_leaveOpen)
-                            _stream.Dispose();
-                    }
-                    finally
-                    {
-                        _disposed = true;
-                    }
+                    _disposed = true;
                 }
             }
         }

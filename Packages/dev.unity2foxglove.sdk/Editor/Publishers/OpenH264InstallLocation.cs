@@ -5,6 +5,7 @@
 // Purpose: Safe per-user OpenH264 install root selection.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using UnityEditor;
 using UnityEngine;
@@ -63,6 +64,18 @@ namespace Unity.FoxgloveSDK.Editor
                 return false;
             }
 
+            if (ContainsReparsePoint(fullRoot))
+            {
+                reason = "Choose an install location that does not traverse a symlink or junction.";
+                return false;
+            }
+
+            if (ContainsReparsePointTree(GetVersionedDirectory(fullRoot)))
+            {
+                reason = "Choose an install location whose versioned directory has no symlink or junction.";
+                return false;
+            }
+
             foreach (var protectedFolder in new[]
             {
                 Environment.SpecialFolder.ProgramFiles,
@@ -88,6 +101,12 @@ namespace Unity.FoxgloveSDK.Editor
             }
 
             var projectRoot = GetProjectRoot();
+            if (IsSameOrChild(fullRoot, projectRoot))
+            {
+                reason = "Choose a cache folder outside the Unity project.";
+                return false;
+            }
+
             foreach (var projectChild in new[] { "Assets", "Packages", "ProjectSettings", ".git" })
             {
                 if (IsSameOrChild(fullRoot, Path.Combine(projectRoot, projectChild)))
@@ -110,6 +129,56 @@ namespace Unity.FoxgloveSDK.Editor
         {
             var special = Environment.GetFolderPath(folder);
             return !string.IsNullOrWhiteSpace(special) && IsSameOrChild(path, special);
+        }
+
+        private static bool ContainsReparsePoint(string path)
+        {
+            try
+            {
+                for (var current = new DirectoryInfo(path); current != null; current = current.Parent)
+                {
+                    if (current.Exists && (current.Attributes & FileAttributes.ReparsePoint) != 0)
+                        return true;
+                }
+            }
+            catch
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool ContainsReparsePointTree(string path)
+        {
+            if (ContainsReparsePoint(path))
+                return true;
+
+            try
+            {
+                var root = new DirectoryInfo(path);
+                if (!root.Exists)
+                    return false;
+
+                var pending = new Stack<DirectoryInfo>();
+                pending.Push(root);
+                while (pending.Count > 0)
+                {
+                    foreach (var entry in pending.Pop().EnumerateFileSystemInfos())
+                    {
+                        if ((entry.Attributes & FileAttributes.ReparsePoint) != 0)
+                            return true;
+                        if (entry is DirectoryInfo directory)
+                            pending.Push(directory);
+                    }
+                }
+            }
+            catch
+            {
+                return true;
+            }
+
+            return false;
         }
 
         private static bool IsSameOrChild(string path, string parent)

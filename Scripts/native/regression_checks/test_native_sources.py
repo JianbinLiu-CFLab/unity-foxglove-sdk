@@ -59,6 +59,14 @@ class NativeSourceTests(unittest.TestCase):
         self.assertIn("std::signal(SIGPIPE, SIG_IGN)", source)
         self.assertIn("OpenH264 stdout write failed.", source)
 
+    def test_openh264_windows_path_conversion_allocates_the_terminator(self) -> None:
+        """The Windows UTF-16 conversion buffer must include its terminator slot."""
+        script = ROOT / "Scripts/native/openh264_probe/openh264_probe_encoder.cpp"
+        source = script.read_text(encoding="utf-8")
+
+        self.assertNotIn("std::wstring wide(static_cast<size_t>(count - 1), L'\\0');", source)
+        self.assertIn("std::wstring wide(static_cast<size_t>(count), L'\\0');", source)
+
     def test_draco_probe_zero_point_success_is_not_reported_as_a_warning(self) -> None:
         """The documented empty response is successful and should leave stderr clean."""
         source = (ROOT / "Scripts/native/draco_probe/draco_probe_encoder.cpp").read_text(encoding="utf-8")

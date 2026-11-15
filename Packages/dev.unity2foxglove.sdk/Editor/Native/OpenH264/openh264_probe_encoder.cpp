@@ -173,7 +173,7 @@ namespace
         if (count <= 0)
             return std::wstring();
 
-        std::wstring wide(static_cast<size_t>(count - 1), L'\0');
+        std::wstring wide(static_cast<size_t>(count), L'\0');
         MultiByteToWideChar(CP_UTF8, 0, value.c_str(), -1, &wide[0], count);
         return wide;
     }

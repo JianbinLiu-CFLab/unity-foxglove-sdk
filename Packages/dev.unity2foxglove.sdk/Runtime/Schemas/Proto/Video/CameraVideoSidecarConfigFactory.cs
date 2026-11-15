@@ -27,13 +27,14 @@ namespace Foxglove.Schemas.Video
             int keyframeInterval,
             int maxPendingReadbacks,
             int openH264MaxInputQueue,
-            int maxOutputQueue)
+            int maxOutputQueue,
+            bool requireEvenDimensions = false)
             => new CameraVideoSidecarConfig(
                 ffmpegPath,
                 openH264HelperPath,
                 openH264DllPath,
-                ResolveDimension(width),
-                ResolveDimension(height),
+                ResolveDimension(width, requireEvenDimensions),
+                ResolveDimension(height, requireEvenDimensions),
                 ResolveFrameRate(effectivePublishRateHz),
                 bitrateKbps,
                 keyframeInterval,
@@ -43,6 +44,15 @@ namespace Foxglove.Schemas.Video
 
         public static int ResolveDimension(int requestedPixels)
             => Math.Max(1, requestedPixels);
+
+        public static int ResolveDimension(int requestedPixels, bool requireEvenDimensions)
+        {
+            var resolved = ResolveDimension(requestedPixels);
+            if (!requireEvenDimensions)
+                return resolved;
+
+            return Math.Max(2, resolved & ~1);
+        }
 
         public static int ResolveFrameRate(float effectivePublishRateHz)
         {

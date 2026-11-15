@@ -101,7 +101,8 @@ namespace Unity.FoxgloveSDK.Components
                     _videoKeyframeInterval,
                     Math.Max(1, _maxPendingReadbacks),
                     _openH264MaxInputQueue,
-                    _videoMaxOutputQueue),
+                    _videoMaxOutputQueue,
+                    requireEvenDimensions: profile.Mode == CameraOutputMode.H264OpenH264),
                 DrainEncodedAccessUnits,
                 out var error))
             {

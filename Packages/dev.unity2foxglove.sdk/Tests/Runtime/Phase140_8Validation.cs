@@ -89,8 +89,8 @@ namespace Unity.FoxgloveSDK.Tests
             writer.Dispose();
             writer.Dispose();
 
-            Check(stream.FlushAttempts == 1,
-                "140-8C-1: McapWriter Dispose attempts one flush before marking disposed");
+            Check(stream.FlushAttempts == 2,
+                "140-8C-1: McapWriter Dispose retries a failed flush before marking disposed");
             Check(!stream.Disposed,
                 "140-8C-2: McapWriter leaveOpen=true still leaves the stream open after flush failure");
         }
