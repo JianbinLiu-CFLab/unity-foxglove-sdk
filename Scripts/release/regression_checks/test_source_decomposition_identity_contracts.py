@@ -234,6 +234,19 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
             )
         )
 
+    def test_initializer_import_shape_rejects_nested_import_and_path_mutation(self) -> None:
+        """Generated initializers cannot add nested imports or alternate path mutations."""
+        nested_path = ast.parse(
+            "if True:\n"
+            "    _phase192_sys.path.insert(0, str(_PHASE192_PARENT))\n"
+        )
+        nested_import = ast.parse(
+            "if str(_PHASE192_PARENT) not in _phase192_sys.path:\n"
+            "    import unittest\n"
+        )
+        self.assertFalse(surface_compare._initializer_has_generated_import_shape(nested_path))
+        self.assertFalse(surface_compare._initializer_has_generated_import_shape(nested_import))
+
     def test_discovery_contract_rejects_new_duplicate_facade(self) -> None:
         """A test facade beside a test package is rejected as duplicate discovery."""
         with tempfile.TemporaryDirectory() as base_temporary, tempfile.TemporaryDirectory() as head_temporary:

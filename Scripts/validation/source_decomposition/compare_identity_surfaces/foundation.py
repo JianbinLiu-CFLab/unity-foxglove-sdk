@@ -540,4 +540,76 @@ def _initializer_path_is_repository_rooted(tree: ast.Module, relative: str) -> b
         for node in tree.body
     )
 
-__all__ = ['_REVIEWED_IDENTITY_TOOLING_SECTIONS', '_reviewed_identity_tooling_test_split', 'argparse', 'ast', 'copy', 'hashlib', 'importlib', 'json', 'keyword', 're', 'contextmanager', 'lru_cache', 'Path', 'subprocess', 'tarfile', 'tempfile', 'Iterator', 'Mapping', 'REPOSITORY_ROOT', '_TRY_TYPES', '_TYPE_ALIAS_TYPE', '_SECTION_NAME_RE', 'SPLIT_ROOTS', 'IDENTITY_WAIVER_PATH', '_legacy_relative_path', '_canonical_source_decomposition_relative', '_current_source_decomposition_relative', '_resolve_source_decomposition_path', '_load_identity_waivers', '_git', '_extract_archive_safely', '_revision_checkout', '_FUNCTION_BODY_RISK_NAMES', '_ENVIRONMENT_MUTATORS', '_without_function_bodies', '_function_body_and_environment_risk_signatures', '_parse_source', '_section_modules_for_root', '_section_package_for_facade', '_split_facades', '_top_level_names', '_direct_import_bound_names', '_declared_public_names', '_PHASE192_TEMPLATE_IMPORTS', '_PHASE192_TEMPLATE_CALLS', '_PHASE192_TEMPLATE_METHODS', '_approved_test_facade_removal', '_approved_namespace_change', '_discovery_contract_errors', '_initializer_path_is_repository_rooted']
+
+def _initializer_has_generated_import_shape(tree: ast.Module) -> bool:
+    """Return whether initializer imports and path insertion use only the generated shape."""
+    parents: dict[int, ast.AST] = {}
+    for parent in ast.walk(tree):
+        for child in ast.iter_child_nodes(parent):
+            parents[id(child)] = parent
+
+    def exact_path_guard(node: ast.If) -> bool:
+        """Recognize the generated package-parent path guard."""
+        return (
+            isinstance(node.test, ast.Compare)
+            and isinstance(node.test.left, ast.Call)
+            and isinstance(node.test.left.func, ast.Name)
+            and node.test.left.func.id == "str"
+            and len(node.test.left.args) == 1
+            and isinstance(node.test.left.args[0], ast.Name)
+            and node.test.left.args[0].id == "_PHASE192_PARENT"
+            and len(node.test.ops) == 1
+            and isinstance(node.test.ops[0], ast.NotIn)
+            and len(node.test.comparators) == 1
+            and isinstance(node.test.comparators[0], ast.Attribute)
+            and node.test.comparators[0].attr == "path"
+            and isinstance(node.test.comparators[0].value, ast.Name)
+            and node.test.comparators[0].value.id == "_phase192_sys"
+            and not node.orelse
+        )
+
+    def exact_path_insert(node: ast.Call) -> bool:
+        """Recognize the generated sys.path.insert call."""
+        return (
+            isinstance(node.func, ast.Attribute)
+            and node.func.attr == "insert"
+            and isinstance(node.func.value, ast.Attribute)
+            and node.func.value.attr == "path"
+            and isinstance(node.func.value.value, ast.Name)
+            and node.func.value.value.id == "_phase192_sys"
+            and len(node.args) == 2
+            and isinstance(node.args[0], ast.Constant)
+            and node.args[0].value == 0
+            and isinstance(node.args[1], ast.Call)
+            and isinstance(node.args[1].func, ast.Name)
+            and node.args[1].func.id == "str"
+            and len(node.args[1].args) == 1
+            and isinstance(node.args[1].args[0], ast.Name)
+            and node.args[1].args[0].id == "_PHASE192_PARENT"
+            and not node.keywords
+        )
+
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Import, ast.ImportFrom)) and node not in tree.body:
+            return False
+        if not isinstance(node, ast.Call):
+            continue
+        if not (
+            isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Attribute)
+            and node.func.value.attr == "path"
+            and isinstance(node.func.value.value, ast.Name)
+            and node.func.value.value.id == "_phase192_sys"
+        ):
+            continue
+        if not exact_path_insert(node):
+            return False
+        parent = parents.get(id(node))
+        if not isinstance(parent, ast.Expr):
+            return False
+        guard = parents.get(id(parent))
+        if not isinstance(guard, ast.If) or guard not in tree.body or not exact_path_guard(guard):
+            return False
+    return True
+
+__all__ = ['_REVIEWED_IDENTITY_TOOLING_SECTIONS', '_reviewed_identity_tooling_test_split', 'argparse', 'ast', 'copy', 'hashlib', 'importlib', 'json', 'keyword', 're', 'contextmanager', 'lru_cache', 'Path', 'subprocess', 'tarfile', 'tempfile', 'Iterator', 'Mapping', 'REPOSITORY_ROOT', '_TRY_TYPES', '_TYPE_ALIAS_TYPE', '_SECTION_NAME_RE', 'SPLIT_ROOTS', 'IDENTITY_WAIVER_PATH', '_legacy_relative_path', '_canonical_source_decomposition_relative', '_current_source_decomposition_relative', '_resolve_source_decomposition_path', '_load_identity_waivers', '_git', '_extract_archive_safely', '_revision_checkout', '_FUNCTION_BODY_RISK_NAMES', '_ENVIRONMENT_MUTATORS', '_without_function_bodies', '_function_body_and_environment_risk_signatures', '_parse_source', '_section_modules_for_root', '_section_package_for_facade', '_split_facades', '_top_level_names', '_direct_import_bound_names', '_declared_public_names', '_PHASE192_TEMPLATE_IMPORTS', '_PHASE192_TEMPLATE_CALLS', '_PHASE192_TEMPLATE_METHODS', '_approved_test_facade_removal', '_approved_namespace_change', '_discovery_contract_errors', '_initializer_path_is_repository_rooted', '_initializer_has_generated_import_shape']
