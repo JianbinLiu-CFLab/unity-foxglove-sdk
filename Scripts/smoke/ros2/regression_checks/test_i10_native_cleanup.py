@@ -25,17 +25,18 @@ class I10NativeCleanupTests(unittest.TestCase):
         self.assertIn("if (!RemoveSubscriptionSafely(subscription))", source)
 
     def test_direct_node_removal_waits_for_child_cleanup(self):
-        """Ensure missing owners clear already-invalid native handles."""
+        """Ensure destroyed owners use the surviving node cleanup path."""
         source = (ROOT / "Packages/dev.unity2foxglove.ros2forunity/Samples~/ROS2 For Unity External Adapter/Phase110Ros2ForUnityStringSmoke.cs").read_text(encoding="utf-8")
-        self.assertIn("if (ReferenceEquals(_directRos2Unity, null))", source)
-        self.assertIn("_directSubscription = null", source)
-        self.assertIn("_directPublisher = null", source)
-        self.assertIn("_directRos2Node = null", source)
+        self.assertIn("if (_directRos2Unity == null)", source)
+        self.assertNotIn("if (ReferenceEquals(_directRos2Unity, null))", source)
+        self.assertIn("ref _directRos2Node", source)
         self.assertIn("_directReceived.Clear()", source)
         self.assertIn("if (!cleanupFailed && _directRos2Node != null)", source)
-        self.assertIn("ref _directRos2Node", source)
         self.assertIn("_directRos2Node != null || _directSubscription != null || _directPublisher != null", source)
-        self.assertIn("!ReferenceEquals(_directRos2Unity, null)", source)
+        self.assertIn("_ownsDirectRos2Unity && _directRos2Unity != null", source)
+        self.assertNotIn("!ReferenceEquals(_directRos2Unity, null)", source)
+        self.assertIn("node => node.Dispose()", source)
+        self.assertIn("_directRos2Unity.RemoveNode(node)", source)
         self.assertIn("ref _directSubscription", source)
         self.assertIn("ref _directPublisher", source)
 
