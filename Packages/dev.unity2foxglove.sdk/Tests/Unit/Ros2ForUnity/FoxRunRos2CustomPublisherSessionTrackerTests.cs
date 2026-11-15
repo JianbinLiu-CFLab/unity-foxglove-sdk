@@ -234,17 +234,42 @@ namespace Unity2Foxglove.Tests.Ros2ForUnity
                     readyContracts: 0,
                     terminalFailureCount: 1));
             Assert.Equal(
-                2,
+                3,
                 FoxRunRos2CustomPublisherHub.CountFailedContracts(
                     bindingCount: 1,
                     readyContracts: 0,
                     terminalFailureCount: 2));
             Assert.Equal(
-                1,
+                2,
                 FoxRunRos2CustomPublisherHub.CountFailedContracts(
                     bindingCount: 1,
                     readyContracts: 0,
                     terminalFailureCount: 1));
+            var terminalFailures = new HashSet<string>(StringComparer.Ordinal)
+            {
+                "terminal-1",
+                "terminal-2"
+            };
+            var bindings = new IFoxRunRos2CustomPublisherHostedBinding[]
+            {
+                new FakeHostedBinding("terminal-1", new List<string>(), throws: false),
+                new FakeHostedBinding("live", new List<string>(), throws: false)
+            };
+            var nativeDemand = new HashSet<string>(StringComparer.Ordinal)
+            {
+                "live"
+            };
+            Assert.Equal(
+                1,
+                FoxRunRos2CustomPublisherHub.CountUnboundTerminalFailures(
+                    terminalFailures,
+                    bindings));
+            Assert.Equal(
+                1,
+                FoxRunRos2CustomPublisherHub.CountUnobservedTerminalFailures(
+                    terminalFailures,
+                    bindings,
+                    nativeDemand));
             var status = FoxRunRos2CustomPublisherHub.BuildTransportStatus(
                 sessionActive: true,
                 stopping: false,
