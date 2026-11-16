@@ -38,6 +38,29 @@ namespace Unity2Foxglove.Tests.Ros2ForUnity
         }
 
         [Fact]
+        public void BindingConstructionFailureDoesNotRetainAdmissionReference()
+        {
+            const long scope = 297002L;
+            const string topic = "/phase297/construction-failure";
+            FoxRunTopicAdmissionRegistry.Reset(scope);
+
+            Assert.Throws<ArgumentNullException>(() => CreateBinding(
+                null,
+                FoxRunResolvedQos.Default,
+                new RecordingFactory(),
+                topic,
+                scope));
+
+            var gate = new FoxRunRos2TransportAdmissionGate(1, topic, scope: scope);
+            Assert.True(gate.TryAccept(100L));
+            gate.Release();
+            var retryGate = new FoxRunRos2TransportAdmissionGate(1, topic, scope: scope);
+            Assert.True(retryGate.TryAccept(100L));
+            retryGate.Release();
+            FoxRunTopicAdmissionRegistry.Remove(scope, topic);
+        }
+
+        [Fact]
         public void MapperContainsNoDistroOrRmwSpecificBranch()
         {
             var source = File.ReadAllText(Path.Combine(
@@ -131,9 +154,11 @@ namespace Unity2Foxglove.Tests.Ros2ForUnity
         }
 
         private static FoxRunRos2SubscriptionBinding<QosMessage> CreateBinding(
-            RecordingBackend backend,
+            IFoxRunRos2NativeBackend backend,
             FoxRunResolvedQos qos,
-            RecordingFactory factory)
+            RecordingFactory factory,
+            string topic = null,
+            long scope = 0L)
             => new FoxRunRos2SubscriptionBinding<QosMessage>(
                 new FoxRunRos2GeneratedContract(
                     "qos-contract",
@@ -163,7 +188,10 @@ namespace Unity2Foxglove.Tests.Ros2ForUnity
                 _ => false,
                 backend,
                 qos,
-                factory);
+                factory,
+                transportAdmissionRateLimitHz: 1,
+                transportAdmissionTopic: topic,
+                transportAdmissionScope: scope);
 
         private sealed class RecordingFactory : IFoxRunRos2NativeQosProfileFactory
         {

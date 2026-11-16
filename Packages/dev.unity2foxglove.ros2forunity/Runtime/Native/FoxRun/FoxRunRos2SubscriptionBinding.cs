@@ -342,10 +342,6 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             _valuesEqual = valuesEqual;
             _consumeTrigger = consumeTrigger;
             _canApply = canApply;
-            _transportAdmission = new FoxRunRos2TransportAdmissionGate(
-                transportAdmissionRateLimitHz,
-                transportAdmissionTopic,
-                transportAdmissionScope);
             _admissionTimestamp = admissionTimestamp ?? Stopwatch.GetTimestamp;
             _backend = backend ?? throw new ArgumentNullException(nameof(backend));
             _qos = qos ?? FoxRunResolvedQos.Default;
@@ -357,6 +353,10 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             _clearOwned = ClearOwned;
             _decideOwned = DecideOwned;
             _slot = new FoxRunRos2OwnedLatestSlot<object>(_disposeOwned);
+            _transportAdmission = new FoxRunRos2TransportAdmissionGate(
+                transportAdmissionRateLimitHz,
+                transportAdmissionTopic,
+                transportAdmissionScope);
             _state = (int)FoxRunRos2SubscriptionBindingState.Configured;
             _lastRegistration = FoxRunRos2RegistrationResult.Failure(
                 FoxRunRos2RegistrationError.RuntimeUnavailable,
