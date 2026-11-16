@@ -231,24 +231,39 @@ namespace Unity2Foxglove.Ros2Bridge
             if (timeoutMs <= 0)
                 throw new ArgumentOutOfRangeException(nameof(timeoutMs));
 
-            PendingRequest pending;
-            lock (_requestAdmissionGate)
+            Ros2BridgeV2SessionSnapshot snapshot = null;
+            ulong requestId = 0;
+            var admissionAcquired = false;
+            while (!admissionAcquired)
             {
-                Ros2BridgeV2SessionSnapshot snapshot;
-                lock (_gate)
+                lock (_requestAdmissionGate)
                 {
-                    ThrowIfDisposedLocked();
-                    if (_lifecycleState
-                        != Ros2BridgeSessionLifecycleState.Ready
-                        || _snapshot == null)
+                    lock (_gate)
                     {
-                        throw new InvalidOperationException(
-                            "Normal Bridge work requires a correlated hello_ack.");
+                        if (!_requestConstructionInProgress)
+                        {
+                            ThrowIfDisposedLocked();
+                            if (_lifecycleState
+                                != Ros2BridgeSessionLifecycleState.Ready
+                                || _snapshot == null)
+                            {
+                                throw new InvalidOperationException(
+                                    "Normal Bridge work requires a correlated hello_ack.");
+                            }
+                            snapshot = _snapshot;
+                            requestId = _requestIds.Next();
+                            _requestConstructionInProgress = true;
+                            admissionAcquired = true;
+                        }
                     }
-                    snapshot = _snapshot;
                 }
+                if (!admissionAcquired)
+                    Thread.Yield();
+            }
 
-                var requestId = _requestIds.Next();
+            PendingRequest pending = null;
+            try
+            {
                 var request = requestFactory(requestId, snapshot)
                     ?? throw new InvalidOperationException(
                         "The Bridge request factory returned null.");
@@ -267,7 +282,29 @@ namespace Unity2Foxglove.Ros2Bridge
                         terminal: true);
                 }
 
-                pending = Enqueue(request);
+                lock (_requestAdmissionGate)
+                {
+                    lock (_gate)
+                    {
+                        if (_lifecycleState
+                            != Ros2BridgeSessionLifecycleState.Ready
+                            || !ReferenceEquals(_snapshot, snapshot))
+                        {
+                            throw new InvalidOperationException(
+                                "The Bridge session changed while preparing a request.");
+                        }
+
+                        pending = Enqueue(request);
+                    }
+                }
+            }
+            finally
+            {
+                lock (_gate)
+                {
+                    _requestConstructionInProgress = false;
+                    Monitor.PulseAll(_gate);
+                }
             }
 
             var response = WaitForResponse(pending, timeoutMs);

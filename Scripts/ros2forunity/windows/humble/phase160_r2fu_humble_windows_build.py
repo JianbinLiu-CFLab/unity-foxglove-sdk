@@ -20,6 +20,7 @@ import os
 import pathlib
 import queue
 import re
+import signal
 import shutil
 import stat
 import subprocess
@@ -168,6 +169,11 @@ def run_command(
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             errors="replace",
+            **(
+                {"creationflags": getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)}
+                if os.name == "nt"
+                else {"start_new_session": True}
+            ),
         )
         output_parts: list[str] = []
         deadline = time.monotonic() + timeout if timeout is not None else None
@@ -195,11 +201,11 @@ def run_command(
                     timed_out = True
                     kill_process_tree_windows(process.pid)
                     try:
-                        process.wait(timeout=5)
+                        process.wait(timeout=5 if os.name == "nt" else 1)
                     except subprocess.TimeoutExpired:
                         process.kill()
                         try:
-                            process.wait(timeout=5)
+                            process.wait(timeout=5 if os.name == "nt" else 1)
                         except subprocess.TimeoutExpired:
                             pass
                 wait_seconds = 0.1 if remaining is None else max(0.0, min(0.1, remaining))
@@ -210,7 +216,7 @@ def run_command(
                     log.flush()
                 except queue.Empty:
                     pass
-                if process.poll() is not None and reader_done.is_set() and output_queue.empty():
+                if process.poll() is not None and output_queue.empty():
                     break
             if timed_out:
                 output_parts.append("\nCOMMAND_TIMEOUT\n")

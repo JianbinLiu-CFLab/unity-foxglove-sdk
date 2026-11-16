@@ -76,7 +76,11 @@ namespace Unity2Foxglove.Ros2Bridge
                             {
                                 if (_stopRequested)
                                     return;
-                                if (_writerQueue.Count != 0)
+                                if (_requestConstructionInProgress)
+                                {
+                                    waitMilliseconds = 50;
+                                }
+                                else if (_writerQueue.Count != 0)
                                 {
                                     request = _writerQueue.Dequeue();
                                 }

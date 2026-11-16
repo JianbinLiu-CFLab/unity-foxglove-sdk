@@ -9,10 +9,12 @@ from __future__ import annotations
 import importlib.util
 import inspect
 import os
+import signal
 import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 from pathlib import Path
 
 
@@ -92,6 +94,19 @@ class Phase160BuildDefaultsTests(unittest.TestCase):
         self.assertIn("partial", result.output)
         self.assertIn("COMMAND_TIMEOUT", result.output)
         self.assertLess(time.monotonic() - started, 10.0)
+
+    def test_non_windows_process_cleanup_uses_the_owned_process_group(self) -> None:
+        """Non-Windows timeout cleanup must terminate the owned process group."""
+        module = load_build_module()
+
+        with mock.patch.object(module.os, "name", "posix"):
+            with mock.patch.object(module.os, "killpg", create=True) as killpg:
+                module.kill_process_tree_windows(4321)
+
+        killpg.assert_called_once_with(
+            4321,
+            getattr(signal, "SIGKILL", signal.SIGTERM),
+        )
 
 
 if __name__ == "__main__":

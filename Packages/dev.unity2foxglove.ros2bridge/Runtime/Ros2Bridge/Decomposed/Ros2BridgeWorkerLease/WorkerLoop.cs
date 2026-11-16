@@ -130,58 +130,57 @@ namespace Unity2Foxglove.Ros2Bridge
                                 var messageId = v2MessageIds.Next();
                                 if (duplexConnection != null)
                                 {
-                                    var publishReserve = U2R2FrameSize.Create(
-                                        v2Session.Limits,
-                                        v2Session.Limits.MaxHeaderBytes,
-                                        checked((ulong)outboundLease
-                                            .SourceFrame.PayloadLength));
-                                    var responseReserve = U2R2FrameSize.Create(
-                                        v2Session.Limits,
-                                        v2Session.Limits.MaxHeaderBytes,
-                                        payloadBytes: 0);
-                                    var transientBytes = checked(
-                                        publishReserve.TotalBytes
-                                        + responseReserve.TotalBytes);
-                                    U2R2ByteLease transient;
-                                    while (!outboundLease.TryReserveTransient(
-                                               transientBytes,
-                                               out transient))
+                                    U2R2ByteLease transient = null;
+                                    U2R2Message response;
+                                    try
                                     {
-                                        if (ShouldStop(generation))
-                                            return;
-                                        if (TryHandleOutboundTerminal(
-                                                generation))
-                                        {
-                                            return;
-                                        }
-                                        _signal.WaitOne(10);
+                                        response = duplexConnection.Exchange(
+                                            (requestId, snapshot) =>
+                                            {
+                                                var measurement =
+                                                    Ros2BridgeV2SessionCodec
+                                                        .MeasurePublish(
+                                                            outboundLease.SourceFrame,
+                                                            snapshot,
+                                                            requestId,
+                                                            messageId);
+                                                var responseReserve = U2R2FrameSize.Create(
+                                                    snapshot.Limits,
+                                                    snapshot.Limits.MaxHeaderBytes,
+                                                    payloadBytes: 0);
+                                                var transientBytes = checked(
+                                                    (ulong)measurement.TotalWireBytes
+                                                    + responseReserve.TotalBytes);
+                                                while (!outboundLease.TryReserveTransient(
+                                                           transientBytes,
+                                                           out transient))
+                                                {
+                                                    if (ShouldStop(generation)
+                                                        || TryHandleOutboundTerminal(generation))
+                                                    {
+                                                        throw new OperationCanceledException();
+                                                    }
+                                                    _signal.WaitOne(10);
+                                                }
+
+                                                return Ros2BridgeV2SessionCodec
+                                                    .EncodePublish(
+                                                        outboundLease.SourceFrame,
+                                                        snapshot,
+                                                        requestId,
+                                                        messageId,
+                                                        measurement);
+                                            },
+                                            _sendTimeoutMs);
+                                    }
+                                    catch
+                                    {
+                                        transient?.Dispose();
+                                        throw;
                                     }
 
                                     using (transient)
                                     {
-                                        var response =
-                                            duplexConnection.Exchange(
-                                                (requestId, snapshot) =>
-                                                {
-                                                    var measurement =
-                                                        Ros2BridgeV2SessionCodec
-                                                            .MeasurePublish(
-                                                                outboundLease
-                                                                    .SourceFrame,
-                                                                snapshot,
-                                                                requestId,
-                                                                messageId);
-                                                    return
-                                                        Ros2BridgeV2SessionCodec
-                                                            .EncodePublish(
-                                                                outboundLease
-                                                                    .SourceFrame,
-                                                                snapshot,
-                                                                requestId,
-                                                                messageId,
-                                                                measurement);
-                                                },
-                                                _sendTimeoutMs);
                                         Ros2BridgeV2SessionCodec
                                             .ValidateAcceptedResponse(
                                                 response);
