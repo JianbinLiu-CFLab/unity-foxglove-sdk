@@ -408,9 +408,13 @@ public class ROS2UnityComponent : MonoBehaviour
                         nodeSnapshotInFlight = false;
                         Monitor.PulseAll(mutex);
                     }
-            RetryPendingNodeDisposals();
+                    RetryPendingNodeDisposals();
                 }
             }
+
+            Thread.Sleep(interval);
+        }
+    }
 
     private void RetryPendingNodeDisposals()
     {
@@ -444,9 +448,6 @@ public class ROS2UnityComponent : MonoBehaviour
                         pendingNodeDisposals.Add(node);
                 }
             }
-        }
-    }
-            Thread.Sleep(interval);
         }
     }
 
