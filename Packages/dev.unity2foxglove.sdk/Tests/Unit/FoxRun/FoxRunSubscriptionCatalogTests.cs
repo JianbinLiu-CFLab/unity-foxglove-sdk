@@ -179,6 +179,87 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        public void ProtobufCatalogAcceptsEnumFieldsAsDirectlyWritable()
+        {
+            var enumShape = new FoxRunTypeShapeInfo(
+                FoxRunTypeShapeInfoKind.Enum,
+                "Demo.Mode",
+                "",
+                false,
+                FoxRunCollectionInfoKind.None,
+                null,
+                Array.Empty<FoxRunTypeFieldInfo>(),
+                new[]
+                {
+                    new FoxRunEnumValueInfo("Unknown", 0),
+                    new FoxRunEnumValueInfo("Active", 1)
+                },
+                canConstruct: true,
+                isValueType: true);
+            var fields = new[]
+            {
+                new FoxRunSchemaFieldInfo(
+                    "mode",
+                    "_mode",
+                    "field",
+                    "Demo.Mode",
+                    false,
+                    false,
+                    false,
+                    1,
+                    enumShape)
+            };
+            var manifest = new FoxRunSchemaManifestInfo(
+                FoxrunManifestWriter.CurrentManifestVersion,
+                "Unity2Foxglove",
+                "FoxRun",
+                1,
+                "global",
+                "foxrun",
+                new[]
+                {
+                    new FoxRunSchemaTypeInfo(
+                        "Demo.Contracts",
+                        new[]
+                        {
+                            new FoxRunSchemaContractInfo(
+                                "Demo.Input",
+                                "/phase292/enum",
+                                "Demo.Mode",
+                                "protobuf",
+                                "protobuf",
+                                "protobuf",
+                                "policy",
+                                "FixedRate",
+                                10f,
+                                0f,
+                                fields,
+                                flow: "Subscribe",
+                                protobufDescriptorSet: new byte[] { 1 },
+                                logicalSchemaName: "Demo.Mode")
+                        })
+                },
+                subscriptionManifestHash: "subscriptions",
+                subscriptionBindings: new[]
+                {
+                    WebSocketBinding("Demo.Input", "_mode", "/phase292/enum")
+                });
+
+            var response = FoxRunSubscriptionCatalog.BuildResponse(
+                manifest,
+                subscriptionsEnabled: true,
+                FoxRunEncoding.Protobuf,
+                FoxRunEncoding.Protobuf,
+                subscriptionRateLimitHz: 60,
+                requestedTopic: "/phase292/enum",
+                includeDescriptor: true);
+
+            var contract = Assert.Single((JArray)response["contracts"]);
+            Assert.True(contract.Value<bool>("subscribeAvailable"));
+            Assert.Equal(string.Empty, contract.Value<string>("unavailableDiagnosticId"));
+        }
+
+        [Fact]
         public void CatalogIgnoresNativeOnlyBindingsWhenProjectingWebSocketContracts()
         {
             var fields = new[]

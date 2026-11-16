@@ -185,6 +185,8 @@ namespace Unity.FoxgloveSDK.Components
                 {
                     return false;
                 }
+                if (field.TypeShape?.Kind == FoxRunTypeShapeInfoKind.Enum)
+                    continue;
                 if (!IsDirectProtobufScalar(field.Type))
                     return false;
             }

@@ -202,14 +202,11 @@ namespace Unity.FoxgloveSDK.Core
             string topic = null)
         {
             AdvertiseChannel channel;
+            List<(uint subscriptionId, uint channelId)> subscriptions;
             lock (_channelLifecycleLock)
             {
                 channel = _channels.Get(channelId);
                 if (channel == null) return;
-            }
-            List<(uint subscriptionId, uint channelId)> subscriptions;
-            lock (_channelLifecycleLock)
-            {
                 subscriptions = s_clientReplaySubscriptionScratch;
                 if (subscriptions == null || subscriptions.Count != 0)
                 {
@@ -220,36 +217,35 @@ namespace Unity.FoxgloveSDK.Core
                 {
                     _subscriptions.CopySubscriptionsForClient(clientId, subscriptions);
                 }
+                Monitor.Enter(_publishQueueLock);
             }
             payload ??= Array.Empty<byte>();
             topic ??= channel.Topic;
-            lock (_publishQueueLock)
+            try
             {
-                try
+                foreach (var (subscriptionId, subscribedChannelId) in subscriptions)
                 {
-                    foreach (var (subscriptionId, subscribedChannelId) in subscriptions)
+                    if (subscribedChannelId != channelId)
+                        continue;
+                    var frame = BinaryEncoding.EncodeServerMessageData(subscriptionId, logTimeNs, payload);
+                    if (_prioritizedTransport != null)
                     {
-                        if (subscribedChannelId != channelId)
-                            continue;
-                        var frame = BinaryEncoding.EncodeServerMessageData(subscriptionId, logTimeNs, payload);
-                        if (_prioritizedTransport != null)
-                        {
-                            if (FoxgloveReplayTrace.TryFrame(source, topic, logTimeNs, clientId, subscriptionId, channelId, "data", out var trace))
-                                _logger.LogWarning(trace);
-                            _prioritizedTransport.SendDataBinary(clientId, frame);
-                        }
-                        else
-                        {
-                            if (FoxgloveReplayTrace.TryFrame(source, topic, logTimeNs, clientId, subscriptionId, channelId, "fallback-control", out var trace))
-                                _logger.LogWarning(trace);
-                            _transport.SendBinary(clientId, frame);
-                        }
+                        if (FoxgloveReplayTrace.TryFrame(source, topic, logTimeNs, clientId, subscriptionId, channelId, "data", out var trace))
+                            _logger.LogWarning(trace);
+                        _prioritizedTransport.SendDataBinary(clientId, frame);
+                    }
+                    else
+                    {
+                        if (FoxgloveReplayTrace.TryFrame(source, topic, logTimeNs, clientId, subscriptionId, channelId, "fallback-control", out var trace))
+                            _logger.LogWarning(trace);
+                        _transport.SendBinary(clientId, frame);
                     }
                 }
-                finally
-                {
-                    subscriptions.Clear();
-                }
+            }
+            finally
+            {
+                subscriptions.Clear();
+                Monitor.Exit(_publishQueueLock);
             }
         }
         /// <summary>Serialize an object to JSON and publish to the channel at the current clock time.</summary>

@@ -66,6 +66,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             ExceptionDispatchInfo fatal = null;
             if (beginStop)
             {
+                _transportAdmission.Release();
                 try
                 {
                     _slot.BeginStop(_clearOwned);

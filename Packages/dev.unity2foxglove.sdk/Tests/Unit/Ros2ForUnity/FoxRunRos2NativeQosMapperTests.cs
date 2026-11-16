@@ -276,6 +276,22 @@ namespace Unity2Foxglove.Tests.Ros2ForUnity
         }
 
         [Fact]
+        public void NativeTransportAdmissionReleaseClearsItsScopedTopicQuota()
+        {
+            const long scope = 297001L;
+            const string topic = "/phase297/release";
+            FoxRunTopicAdmissionRegistry.Remove(scope, topic);
+            var gate = new FoxRunRos2TransportAdmissionGate(1, topic, scope: scope);
+
+            Assert.True(gate.TryAccept(100L));
+            Assert.False(gate.TryAccept(100L));
+            gate.Release();
+            Assert.True(gate.TryAccept(100L));
+
+            FoxRunTopicAdmissionRegistry.Remove(scope, topic);
+        }
+
+        [Fact]
         public void ProfileDisposeFailureRollsBackTheSingleCreatedSubscription()
         {
             var factory = new RecordingFactory

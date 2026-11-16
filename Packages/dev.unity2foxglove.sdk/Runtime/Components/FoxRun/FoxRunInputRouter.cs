@@ -63,7 +63,7 @@ namespace Unity.FoxgloveSDK.Components
         {
             _rateLimitScope = Interlocked.Increment(ref NextRateLimitScope);
 #if !UNITY_5_3_OR_NEWER
-            FoxRunTopicAdmissionRegistry.Reset();
+            FoxRunTopicAdmissionRegistry.Reset(_rateLimitScope);
 #endif
             MaxPayloadBytes = Math.Max(1, maxPayloadBytes);
             MaxMessagesPerSecondPerTopic = Math.Max(1, maxMessagesPerSecondPerTopic);
@@ -71,6 +71,9 @@ namespace Unity.FoxgloveSDK.Components
 
         public int MaxPayloadBytes { get; set; }
         public int MaxMessagesPerSecondPerTopic { get; set; }
+
+        internal void ResetRateLimitScope()
+            => FoxRunTopicAdmissionRegistry.Reset(_rateLimitScope);
 
         /// <summary>Manager-resolved transport used when declarations inherit.</summary>
         public string DefaultSubscribeTransportId
@@ -525,6 +528,8 @@ namespace Unity.FoxgloveSDK.Components
         private static readonly object Sync = new object();
         private static readonly Dictionary<AdmissionKey, Queue<double>> Arrivals =
             new Dictionary<AdmissionKey, Queue<double>>();
+        private static readonly Dictionary<AdmissionKey, int> References =
+            new Dictionary<AdmissionKey, int>();
         private static bool UnityClockOffsetSet;
         private static double UnityClockOffset;
 
@@ -589,7 +594,40 @@ namespace Unity.FoxgloveSDK.Components
             if (string.IsNullOrEmpty(topic))
                 return;
             lock (Sync)
-                Arrivals.Remove(new AdmissionKey(scope, topic));
+            {
+                var key = new AdmissionKey(scope, topic);
+                Arrivals.Remove(key);
+                References.Remove(key);
+            }
+        }
+
+        public static void Acquire(long scope, string topic)
+        {
+            if (string.IsNullOrEmpty(topic))
+                return;
+            lock (Sync)
+            {
+                var key = new AdmissionKey(scope, topic);
+                References.TryGetValue(key, out var count);
+                References[key] = count + 1;
+            }
+        }
+
+        public static void Release(long scope, string topic)
+        {
+            if (string.IsNullOrEmpty(topic))
+                return;
+            lock (Sync)
+            {
+                var key = new AdmissionKey(scope, topic);
+                if (!References.TryGetValue(key, out var count) || count <= 1)
+                {
+                    References.Remove(key);
+                    Arrivals.Remove(key);
+                }
+                else
+                    References[key] = count - 1;
+            }
         }
 
         private static bool TryAcceptUnderLock(
@@ -620,8 +658,32 @@ namespace Unity.FoxgloveSDK.Components
             lock (Sync)
             {
                 Arrivals.Clear();
+                References.Clear();
                 UnityClockOffsetSet = false;
                 UnityClockOffset = 0d;
+            }
+        }
+
+        public static void Reset(long scope)
+        {
+            lock (Sync)
+            {
+                var keys = new List<AdmissionKey>();
+                foreach (var key in Arrivals.Keys)
+                {
+                    if (key.Scope == scope)
+                        keys.Add(key);
+                }
+                foreach (var key in References.Keys)
+                {
+                    if (key.Scope == scope && !keys.Contains(key))
+                        keys.Add(key);
+                }
+                foreach (var key in keys)
+                {
+                    Arrivals.Remove(key);
+                    References.Remove(key);
+                }
             }
         }
     }

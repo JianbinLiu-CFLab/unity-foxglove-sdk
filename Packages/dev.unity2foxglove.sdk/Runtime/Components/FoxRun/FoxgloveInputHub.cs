@@ -32,7 +32,7 @@ namespace Unity.FoxgloveSDK.Components
         private static void ResetStaticState()
         {
             _instance = null;
-            FoxRunTopicAdmissionRegistry.Reset();
+            _router.ResetRateLimitScope();
         }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -104,7 +104,7 @@ namespace Unity.FoxgloveSDK.Components
                 _manager.OnClientMessageWithEncoding -= OnClientMessage;
                 _manager.FoxRunSubscriptionSessionChanged -= OnFoxRunSubscriptionSessionChanged;
             }
-            FoxRunTopicAdmissionRegistry.Reset();
+            _router.ResetRateLimitScope();
             _manager = manager;
             if (_manager != null)
             {
@@ -128,7 +128,7 @@ namespace Unity.FoxgloveSDK.Components
 
         private void OnFoxRunSubscriptionSessionChanged(FoxRunSubscriptionSessionPolicy policy)
         {
-            FoxRunTopicAdmissionRegistry.Reset();
+            _router.ResetRateLimitScope();
             ApplySubscriptionSessionPolicy(policy);
             RebuildRouterRegistrationsForActiveSession();
         }
