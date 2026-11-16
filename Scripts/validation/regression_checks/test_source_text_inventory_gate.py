@@ -196,7 +196,7 @@ class SourceTextRatchetTests(unittest.TestCase):
             self.assertIn("SOURCE_TEXT_RATCHET_CLASS_C_INCREASE", output)
 
     def test_removed_class_c_row_passes_as_improved(self):
-        """Allow removal of a Class C row and report an improvement."""
+        """Reject removal of a Class C row instead of treating it as an improvement."""
         with tempfile.TemporaryDirectory() as directory:
             root = self._git_fixture(directory)
             validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
@@ -207,8 +207,64 @@ class SourceTextRatchetTests(unittest.TestCase):
                 encoding="utf-8",
             )
             code, output = self._run_fixture_gate(root)
-            self.assertEqual(0, code, output)
-            self.assertIn("SOURCE_TEXT_RATCHET_IMPROVED class=C", output)
+            self.assertEqual(1, code, output)
+            self.assertIn("SOURCE_TEXT_RATCHET_CLASS_C_DECREASE", output)
+
+    def test_class_c_noop_substitution_fails_closed(self):
+        """Reject replacing a Class C assertion with an unconditional truth value."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(directory)
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace(
+                    'source.Contains("Product")', "true"
+                ),
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code, output)
+            self.assertIn("SOURCE_TEXT_RATCHET_CLASS_C_DECREASE", output)
+
+    def test_control_dependency_change_fails_closed(self):
+        """Reject changing a local control dependency that can bypass an assertion."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(
+                directory,
+                validation_text=(
+                    "public static class FixtureValidation {\n"
+                    "    public static void Validate() {\n"
+                    '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                    "        bool bypass = false;\n"
+                    '        Check(bypass || source.Contains("Product"));\n'
+                    "    }\n}\n"
+                ),
+            )
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace(
+                    "bool bypass = false", "bool bypass = true"
+                ),
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code, output)
+            self.assertIn("SOURCE_TEXT_RATCHET_ASSERTION_CHANGED", output)
+
+    def test_dispatch_change_fails_closed(self):
+        """Reject moving a validation out of the default dispatch lane."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(directory)
+            registry = root / "Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs"
+            registry.write_text(
+                registry.read_text(encoding="utf-8").replace(
+                    "evidence: ValidationEvidence.Behavior",
+                    "includeInDefault: false, evidence: ValidationEvidence.Behavior",
+                ),
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code, output)
+            self.assertIn("SOURCE_TEXT_RATCHET_ASSERTION_CHANGED", output)
 
     def test_in_place_class_c_edit_passes_and_reports_changed_key(self):
         """Reject an in-place Class C assertion edit while reporting its changed key."""

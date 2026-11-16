@@ -734,8 +734,8 @@ def _verify_count_ratchet(
                 f"flag={validation_flag} base={base_c} head={head_c}"
             )
         elif head_c < base_c:
-            improvements.append(
-                f"SOURCE_TEXT_RATCHET_IMPROVED class=C file={file_name} "
+            failures.append(
+                f"SOURCE_TEXT_RATCHET_CLASS_C_DECREASE file={file_name} "
                 f"flag={validation_flag} base={base_c} head={head_c}"
             )
         for row_class in ("A", "B"):

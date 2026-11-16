@@ -169,6 +169,9 @@ def _ratchet_assertion_semantics(
         "assertion_polarity",
         "checked_expression",
         "reachability",
+        "assertion_signature",
+        "dispatch",
+        "call_path",
     )
     semantics: dict[tuple[str, str, str], Counter[tuple[str, ...]]] = {}
     for row in rows:
