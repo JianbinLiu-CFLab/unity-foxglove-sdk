@@ -306,6 +306,39 @@ class Ros2WindowsEnvTests(unittest.TestCase):
             self.assertIsNotNone(captured_stdout)
             self.assertTrue(captured_stdout.closed)
 
+    def test_launch_rviz_registers_process_before_startup_checks(self) -> None:
+        """A startup-check failure must leave RViz available to cleanup."""
+        class FakeProcess:
+            """Process that exits during the startup check."""
+
+            pid = 9876
+
+            def poll(self):
+                """Report the simulated early exit."""
+                return 1
+
+        with tempfile.TemporaryDirectory() as temp:
+            ros2_root = Path(temp) / "ros2_lyrical"
+            rviz_exe = ros2_root / "bin" / "rviz2.exe"
+            rviz_exe.parent.mkdir(parents=True)
+            rviz_exe.write_bytes(b"")
+            config = Path(temp) / "view.rviz"
+            config.write_text("Visualization Manager: {}\n", encoding="utf-8")
+            owned = []
+            with mock.patch.object(ros2env.subprocess, "Popen", return_value=FakeProcess()):
+                with self.assertRaisesRegex(RuntimeError, "exited immediately"):
+                    ros2env.launch_rviz(
+                        ros2_root,
+                        config,
+                        {},
+                        "test",
+                        startup_check_seconds=0.1,
+                        owned_processes=owned,
+                    )
+
+            self.assertEqual(1, len(owned))
+            self.assertEqual(9876, owned[0].pid)
+
     def test_cleanup_owned_processes_on_error_terminates_started_helpers(self) -> None:
         """Late launcher failures must not orphan helpers started earlier."""
 

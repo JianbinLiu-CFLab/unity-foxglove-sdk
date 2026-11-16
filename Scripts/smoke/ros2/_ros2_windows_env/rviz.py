@@ -39,6 +39,7 @@ def launch_rviz(
     startup_check_seconds: float = 1.5,
     window_wait_seconds: float = 0.0,
     stdout_log_path: pathlib.Path | None = None,
+    owned_processes: list[subprocess.Popen] | None = None,
 ) -> subprocess.Popen:
     """Launch RViz2 with the supplied config and optional visible-window timing."""
 
@@ -112,6 +113,8 @@ def launch_rviz(
         log_prefix,
         f"RViz2 Popen returned pid={process.pid} popen_elapsed={popen_elapsed:.3f}s total_elapsed={total_elapsed:.3f}s",
     )
+    if owned_processes is not None:
+        owned_processes.append(process)
 
     if startup_check_seconds > 0.0:
         check_deadline = time.perf_counter() + startup_check_seconds

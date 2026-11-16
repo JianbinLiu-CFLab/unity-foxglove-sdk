@@ -108,6 +108,7 @@ def main(argv: list[str]) -> int:
             startup_check_seconds=1.5,
             window_wait_seconds=45.0,
             stdout_log_path=rviz_log_path,
+            owned_processes=started_helpers,
         )
     print(
         textwrap.dedent(
