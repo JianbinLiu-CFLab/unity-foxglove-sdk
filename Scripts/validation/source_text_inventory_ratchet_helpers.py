@@ -133,7 +133,12 @@ def _load_ratchet_approvals(
         seen.add(key)
         if key[2] not in {"A", "B"}:
             errors.append(f"approval {index} has invalid class")
-        if not isinstance(entry["base_count"], int) or not isinstance(entry["head_count"], int):
+        if (
+            not isinstance(entry["base_count"], int)
+            or not isinstance(entry["head_count"], int)
+            or entry["base_count"] < 0
+            or entry["head_count"] < 0
+        ):
             errors.append(f"approval {index} has invalid counts")
         if not isinstance(entry["reason"], str) or len(entry["reason"].strip()) < 20:
             errors.append(f"approval {index} reason is too short")
