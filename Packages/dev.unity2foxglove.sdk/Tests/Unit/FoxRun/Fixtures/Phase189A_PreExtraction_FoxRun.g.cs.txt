@@ -1068,10 +1068,8 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgl
         switch (topicIndex)
         {
             case 0:
-                if (__foxRunCaptureEncoding_0 == FoxRunEncoding.Protobuf)
-                    router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(0), FoxRunEncoding.Protobuf, nowNs, __BuildFoxRunProtobuf_0(), __foxRunOrigin);
-                else if (__foxRunCaptureEncoding_0 == FoxRunEncoding.MessagePack)
-                    router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(0), FoxRunEncoding.MessagePack, nowNs, __foxRunLastMessagePack_0, __foxRunOrigin);
+                if (__foxRunCaptureEncoding_0 == FoxRunEncoding.Protobuf) router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(0), FoxRunEncoding.Protobuf, nowNs, __BuildFoxRunProtobuf_0(), __foxRunOrigin);
+                else if (__foxRunCaptureEncoding_0 == FoxRunEncoding.MessagePack) router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(0), FoxRunEncoding.MessagePack, nowNs, __foxRunLastMessagePack_0, __foxRunOrigin);
                 else
                 {
                     var __sink_0 = __BuildFoxRunJson_0();
@@ -1079,10 +1077,8 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgl
                 }
                 break;
             case 1:
-                if (__foxRunCaptureEncoding_1 == FoxRunEncoding.Protobuf)
-                    router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(1), FoxRunEncoding.Protobuf, nowNs, __BuildFoxRunProtobuf_1(), __foxRunOrigin);
-                else if (__foxRunCaptureEncoding_1 == FoxRunEncoding.MessagePack)
-                    router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(1), FoxRunEncoding.MessagePack, nowNs, __foxRunLastMessagePack_1, __foxRunOrigin);
+                if (__foxRunCaptureEncoding_1 == FoxRunEncoding.Protobuf) router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(1), FoxRunEncoding.Protobuf, nowNs, __BuildFoxRunProtobuf_1(), __foxRunOrigin);
+                else if (__foxRunCaptureEncoding_1 == FoxRunEncoding.MessagePack) router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(1), FoxRunEncoding.MessagePack, nowNs, __foxRunLastMessagePack_1, __foxRunOrigin);
                 else
                 {
                     var __sink_1 = __BuildFoxRunJson_1();
@@ -1090,10 +1086,8 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgl
                 }
                 break;
             case 2:
-                if (__foxRunCaptureEncoding_2 == FoxRunEncoding.Protobuf)
-                    router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(2), FoxRunEncoding.Protobuf, nowNs, __BuildFoxRunProtobuf_2(), __foxRunOrigin);
-                else if (__foxRunCaptureEncoding_2 == FoxRunEncoding.MessagePack)
-                    router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(2), FoxRunEncoding.MessagePack, nowNs, __foxRunLastMessagePack_2, __foxRunOrigin);
+                if (__foxRunCaptureEncoding_2 == FoxRunEncoding.Protobuf) router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(2), FoxRunEncoding.Protobuf, nowNs, __BuildFoxRunProtobuf_2(), __foxRunOrigin);
+                else if (__foxRunCaptureEncoding_2 == FoxRunEncoding.MessagePack) router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(2), FoxRunEncoding.MessagePack, nowNs, __foxRunLastMessagePack_2, __foxRunOrigin);
                 else
                 {
                     var __sink_2 = __BuildFoxRunJson_2();
@@ -1101,10 +1095,8 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgl
                 }
                 break;
             case 3:
-                if (__foxRunCaptureEncoding_3 == FoxRunEncoding.Protobuf)
-                    router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(3), FoxRunEncoding.Protobuf, nowNs, __BuildFoxRunProtobuf_3(), __foxRunOrigin);
-                else if (__foxRunCaptureEncoding_3 == FoxRunEncoding.MessagePack)
-                    router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(3), FoxRunEncoding.MessagePack, nowNs, __foxRunLastMessagePack_3, __foxRunOrigin);
+                if (__foxRunCaptureEncoding_3 == FoxRunEncoding.Protobuf) router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(3), FoxRunEncoding.Protobuf, nowNs, __BuildFoxRunProtobuf_3(), __foxRunOrigin);
+                else if (__foxRunCaptureEncoding_3 == FoxRunEncoding.MessagePack) router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(3), FoxRunEncoding.MessagePack, nowNs, __foxRunLastMessagePack_3, __foxRunOrigin);
                 else
                 {
                     var __sink_3 = __BuildFoxRunJson_3();
@@ -1112,10 +1104,8 @@ partial class TestLog : IFoxgloveLogSource, IFoxgloveTopicContractSource, IFoxgl
                 }
                 break;
             case 4:
-                if (__foxRunCaptureEncoding_4 == FoxRunEncoding.Protobuf)
-                    router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(4), FoxRunEncoding.Protobuf, nowNs, __BuildFoxRunProtobuf_4(), __foxRunOrigin);
-                else if (__foxRunCaptureEncoding_4 == FoxRunEncoding.MessagePack)
-                    router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(4), FoxRunEncoding.MessagePack, nowNs, __foxRunLastMessagePack_4, __foxRunOrigin);
+                if (__foxRunCaptureEncoding_4 == FoxRunEncoding.Protobuf) router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(4), FoxRunEncoding.Protobuf, nowNs, __BuildFoxRunProtobuf_4(), __foxRunOrigin);
+                else if (__foxRunCaptureEncoding_4 == FoxRunEncoding.MessagePack) router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(4), FoxRunEncoding.MessagePack, nowNs, __foxRunLastMessagePack_4, __foxRunOrigin);
                 else
                 {
                     var __sink_4 = __BuildFoxRunJson_4();
