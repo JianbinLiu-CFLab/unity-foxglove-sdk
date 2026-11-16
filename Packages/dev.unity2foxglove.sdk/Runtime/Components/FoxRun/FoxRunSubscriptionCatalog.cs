@@ -282,7 +282,8 @@ namespace Unity.FoxgloveSDK.Components
                 .Where(binding => binding != null
                                   && string.Equals(binding.DeclaringType, contract.DeclaringType, StringComparison.Ordinal)
                                   && string.Equals(binding.Topic, contract.Topic, StringComparison.Ordinal)
-                                  && BindingSupportsDirection(binding.Flow, mode))
+                                  && BindingSupportsDirection(binding.Flow, mode)
+                                  && binding.SupportsWebSocket)
                 .OrderBy(binding => binding.MemberName, StringComparer.Ordinal)
                 .ToArray();
             if (bindings.Length == 0)

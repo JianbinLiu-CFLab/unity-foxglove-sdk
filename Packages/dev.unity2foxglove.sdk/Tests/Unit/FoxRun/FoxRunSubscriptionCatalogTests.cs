@@ -179,6 +179,86 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        public void CatalogIgnoresNativeOnlyBindingsWhenProjectingWebSocketContracts()
+        {
+            var fields = new[]
+            {
+                new FoxRunSchemaFieldInfo(
+                    "value",
+                    "_webValue",
+                    "field",
+                    "int32",
+                    false,
+                    false,
+                    false,
+                    1)
+            };
+            var manifest = new FoxRunSchemaManifestInfo(
+                FoxrunManifestWriter.CurrentManifestVersion,
+                "Unity2Foxglove",
+                "FoxRun",
+                1,
+                "global",
+                "foxrun",
+                new[]
+                {
+                    new FoxRunSchemaTypeInfo(
+                        "Demo.Contracts",
+                        new[]
+                        {
+                            new FoxRunSchemaContractInfo(
+                                "Demo.Input",
+                                "/phase294/mixed-provider",
+                                "Demo.Input",
+                                "protobuf",
+                                "protobuf",
+                                "protobuf",
+                                "policy",
+                                "FixedRate",
+                                10f,
+                                0f,
+                                fields,
+                                flow: "Subscribe",
+                                protobufDescriptorSet: new byte[] { 1 },
+                                logicalSchemaName: "Demo.Input")
+                        })
+                },
+                subscriptionManifestHash: "subscriptions",
+                subscriptionBindings: new[]
+                {
+                    WebSocketBinding(
+                        "Demo.Input",
+                        "_webValue",
+                        "/phase294/mixed-provider"),
+                    new FoxRunSchemaSubscriptionBindingInfo(
+                        "Demo.Input",
+                        "_nativeValue",
+                        "/phase294/mixed-provider",
+                        "Subscribe",
+                        publishTransportIds: null,
+                        subscribeTransportId: "unity2foxglove.r2fu",
+                        reliability: "inherit",
+                        durability: "inherit",
+                        history: "inherit",
+                        depth: 0,
+                        supportsWebSocket: false)
+                });
+
+            var response = FoxRunSubscriptionCatalog.BuildResponse(
+                manifest,
+                subscriptionsEnabled: true,
+                FoxRunEncoding.Protobuf,
+                FoxRunEncoding.Protobuf,
+                subscriptionRateLimitHz: 60,
+                requestedTopic: "/phase294/mixed-provider",
+                includeDescriptor: true);
+
+            var contract = Assert.Single((JArray)response["contracts"]);
+            Assert.True(contract.Value<bool>("subscribeAvailable"));
+            Assert.Equal("protobuf", contract.Value<string>("encoding"));
+        }
+
+        [Fact]
         [Trait("Phase", "185-A")]
         public void MessagePackCatalogDetailIsSchemalessAndRetainsLogicalIdentity()
         {

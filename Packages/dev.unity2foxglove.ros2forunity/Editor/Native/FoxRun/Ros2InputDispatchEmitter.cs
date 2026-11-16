@@ -773,7 +773,13 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static void EmitBudget(StringBuilder sb, string pad, string count, string elementType)
         {
-            sb.AppendLine(pad + "budget.RequireBytes(checked((long)" + count + " * " + ElementSize(elementType) + "L));");
+            sb.AppendLine(
+                pad
+                + "budget.RequireSequenceElements(checked((long)"
+                + count
+                + "), "
+                + ElementSize(elementType)
+                + ");");
         }
 
         private static void EmitBestEffortDisposeCall(StringBuilder sb, string pad, string call)

@@ -15,6 +15,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         /// <summary>Largest portable copied-data budget.</summary>
         public const int MaxBytes = 256 * 1024 * 1024;
 
+        public const int MaximumSequenceElements = 16_384;
+
         /// <summary>Safe default used when old serialized scenes have no configured budget.</summary>
         public const int DefaultBytes = 4 * 1024 * 1024;
 
