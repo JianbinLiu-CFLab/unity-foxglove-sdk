@@ -13,7 +13,7 @@
     "Packages/dev.unity2foxglove.sdk|Unity.FoxgloveSDK.Core|FoxgloveSession": 2840,
     "Packages/dev.unity2foxglove.sdk|Unity.FoxgloveSDK.Editor|FoxgloveManagerEditor": 2768,
     "Packages/dev.unity2foxglove.sdk|Unity.FoxgloveSDK.Editor|FoxrunCodeGenerator": 2211,
-    "Packages/dev.unity2foxglove.sdk|Unity.FoxgloveSDK.IO|McapReplayEngine": 2607,
+    "Packages/dev.unity2foxglove.sdk|Unity.FoxgloveSDK.IO|McapReplayEngine": 2606,
     "Packages/dev.unity2foxglove.sdk|Unity.FoxgloveSDK.Tests.Unit.FoxRun|FoxRunDeclarationModelTests": 4913,
     "Packages/dev.unity2foxglove.sdk|Unity.FoxgloveSDK.Tests|FoxRunTransportProviderTests": 2105,
     "Packages/dev.unity2foxglove.sdk|Unity.FoxgloveSDK.Tests|PhaseValidationSourceHelpers": 2381,

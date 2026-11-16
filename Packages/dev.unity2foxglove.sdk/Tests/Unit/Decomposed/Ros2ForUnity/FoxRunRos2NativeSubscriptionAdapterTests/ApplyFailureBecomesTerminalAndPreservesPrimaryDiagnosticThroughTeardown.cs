@@ -14,7 +14,6 @@ using System.Threading;
 using Unity.FoxgloveSDK.Components;
 using Unity2Foxglove.Ros2ForUnity.Native;
 using Xunit;
-
 namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
 {
 
@@ -110,29 +109,6 @@ public sealed partial class FoxRunRos2NativeSubscriptionAdapterTests
             Assert.True(binding.TryApplyLatest(182, 0d));
             Assert.Equal("newest", applied.Data);
             binding.Stop();
-        }
-
-        [Fact]
-        public void NativeTransportAdmissionSharesTheTopicQuotaAcrossBindings()
-        {
-            FoxRunTopicAdmissionRegistry.Reset();
-            try
-            {
-                var first = new FoxRunRos2TransportAdmissionGate(1, "/phase297/shared");
-                var second = new FoxRunRos2TransportAdmissionGate(1, "/phase297/shared");
-
-                Assert.True(first.TryAccept(100L));
-                Assert.False(second.TryAccept(100L));
-
-                FoxRunTopicAdmissionRegistry.Reset();
-                Assert.True(FoxRunTopicAdmissionRegistry.TryAccept("/phase297/shared", 1d, 1));
-                Assert.False(new FoxRunRos2TransportAdmissionGate(1, "/phase297/shared")
-                    .TryAccept(Stopwatch.GetTimestamp()));
-            }
-            finally
-            {
-                FoxRunTopicAdmissionRegistry.Reset();
-            }
         }
 
         [Fact]

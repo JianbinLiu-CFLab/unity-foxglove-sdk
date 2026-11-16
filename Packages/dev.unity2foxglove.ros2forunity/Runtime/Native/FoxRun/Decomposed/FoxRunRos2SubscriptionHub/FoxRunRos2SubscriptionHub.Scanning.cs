@@ -115,10 +115,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 _policy = null;
             }
         }
-
         private void OnSessionChanged(FoxRunSubscriptionSessionPolicy policy)
             => ApplySessionPolicy(policy);
-
         private void ApplySessionPolicy(FoxRunSubscriptionSessionPolicy policy)
         {
             if (ReferenceEquals(_policy, policy))

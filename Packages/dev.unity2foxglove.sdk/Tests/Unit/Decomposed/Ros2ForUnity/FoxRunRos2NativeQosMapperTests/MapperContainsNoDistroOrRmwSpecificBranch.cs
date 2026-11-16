@@ -18,6 +18,26 @@ namespace Unity2Foxglove.Tests.Ros2ForUnity
     public sealed partial class FoxRunRos2NativeQosMapperTests
     {
         [Fact]
+        public void NativeTransportAdmissionSharesTheTopicQuotaAcrossBindings()
+        {
+            FoxRunTopicAdmissionRegistry.Reset();
+            try
+            {
+                var first = new FoxRunRos2TransportAdmissionGate(1, "/phase297/shared");
+                var second = new FoxRunRos2TransportAdmissionGate(1, "/phase297/shared");
+                Assert.True(first.TryAccept(100L));
+                Assert.False(second.TryAccept(100L));
+                FoxRunTopicAdmissionRegistry.Reset();
+                Assert.True(FoxRunTopicAdmissionRegistry.TryAccept("/phase297/shared", 1d, 1));
+                Assert.False(new FoxRunRos2TransportAdmissionGate(1, "/phase297/shared").TryAccept(System.Diagnostics.Stopwatch.GetTimestamp()));
+            }
+            finally
+            {
+                FoxRunTopicAdmissionRegistry.Reset();
+            }
+        }
+
+        [Fact]
         public void MapperContainsNoDistroOrRmwSpecificBranch()
         {
             var source = File.ReadAllText(Path.Combine(

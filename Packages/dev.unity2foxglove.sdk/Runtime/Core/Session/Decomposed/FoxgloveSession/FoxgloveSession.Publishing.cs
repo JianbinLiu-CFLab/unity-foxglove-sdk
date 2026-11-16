@@ -98,7 +98,6 @@ namespace Unity.FoxgloveSDK.Core
                 }
             }
         }
-
         private void WriteMessageSafely(McapRecorder recorder, AdvertiseChannel channel, ulong logTimeNs, byte[] payload)
         {
             try
@@ -116,7 +115,6 @@ namespace Unity.FoxgloveSDK.Core
                 _logger.LogWarning($"MCAP recording failed; live publish continues: {ex.Message}");
             }
         }
-
         private List<(uint clientId, uint subscriptionId)> CopySubscribersForPublish(uint channelId)
         {
             // Keep the allocation-free normal path, but do not share an active
@@ -131,7 +129,6 @@ namespace Unity.FoxgloveSDK.Core
             {
                 subscribers = new List<(uint clientId, uint subscriptionId)>();
             }
-
             lock (_subscriberScratchLock)
             {
                 _subscriptions.CopySubscribersForChannel(channelId, _subscriberScratch);
@@ -144,10 +141,8 @@ namespace Unity.FoxgloveSDK.Core
                     _subscriberScratch.Clear();
                 }
             }
-
             return subscribers;
         }
-
         /// <summary>
         /// Publish replay data without recording it again. Replay frames use
         /// the transport data queue so playback seeks can drop stale pre-seek
@@ -161,7 +156,6 @@ namespace Unity.FoxgloveSDK.Core
                 channel = _channels.Get(channelId);
                 if (channel == null) return;
             }
-
             payload ??= Array.Empty<byte>();
             topic ??= channel.Topic;
             lock (_channelLifecycleLock)
@@ -191,7 +185,6 @@ namespace Unity.FoxgloveSDK.Core
                     subscribers.Clear();
                 }
             }
-        }
 
         /// <summary>
         /// Publish replay data to one client without allowing another client's
@@ -211,7 +204,6 @@ namespace Unity.FoxgloveSDK.Core
                 channel = _channels.Get(channelId);
                 if (channel == null) return;
             }
-
             lock (_channelLifecycleLock)
             {
                 var subscriptions = s_clientReplaySubscriptionScratch;
@@ -220,7 +212,6 @@ namespace Unity.FoxgloveSDK.Core
                     subscriptions = new List<(uint subscriptionId, uint channelId)>();
                     s_clientReplaySubscriptionScratch = subscriptions;
                 }
-
                 lock (_subscriberScratchLock)
                 {
                     _subscriptions.CopySubscriptionsForClient(clientId, subscriptions);
