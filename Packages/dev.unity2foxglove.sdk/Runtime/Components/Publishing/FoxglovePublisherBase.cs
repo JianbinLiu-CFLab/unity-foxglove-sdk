@@ -374,6 +374,10 @@ namespace Unity.FoxgloveSDK.Components
         /// </summary>
         protected bool TryPreparePublishPayload(out PublisherEncodingResolution resolution)
         {
+            resolution = default;
+            if (IsReplaySuppressed || !EnsureManagerAvailable())
+                return false;
+
             resolution = ResolvePublisherEncoding();
             return ShouldPreparePublishPayload(resolution, resolution.Effective);
         }

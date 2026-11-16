@@ -227,17 +227,20 @@ namespace Unity.FoxgloveSDK.Components
 
             var requestVideoOutput = profile.IsVideo && publishWebSocket;
             if (requestVideoOutput && !EnsureVideoSidecarStarted(profile)) return;
-            if (!profile.IsVideo && !AllowJpegCaptureByMainLoopHealth())
+            if (CameraPipelineHealthPolicy.ShouldApplyJpegHealthGates(profile.IsVideo, publishJpegOutput)
+                && !AllowJpegCaptureByMainLoopHealth())
             {
                 EmitCameraDiagnosticsIfNeeded();
                 return;
             }
-            if (!profile.IsVideo && !AllowJpegCaptureByFrameBudget())
+            if (CameraPipelineHealthPolicy.ShouldApplyJpegHealthGates(profile.IsVideo, publishJpegOutput)
+                && !AllowJpegCaptureByFrameBudget())
             {
                 EmitCameraDiagnosticsIfNeeded();
                 return;
             }
-            if (!profile.IsVideo && !AllowJpegCaptureByPipelineHealth())
+            if (CameraPipelineHealthPolicy.ShouldApplyJpegHealthGates(profile.IsVideo, publishJpegOutput)
+                && !AllowJpegCaptureByPipelineHealth())
             {
                 EmitCameraDiagnosticsIfNeeded();
                 return;
@@ -402,6 +405,7 @@ namespace Unity.FoxgloveSDK.Components
             StopJpegWorker(clearQueues: true);
             _jpegPublishPipeline?.Dispose();
             _jpegPublishPipeline = null;
+            _diagnostics.ResetCameraState();
             if (_pendingRequests == 0)
                 CleanupResources();
             UnlockRuntimeOutputMode();
@@ -422,6 +426,7 @@ namespace Unity.FoxgloveSDK.Components
             StopJpegWorker(clearQueues: true);
             _jpegPublishPipeline?.Dispose();
             _jpegPublishPipeline = null;
+            _diagnostics.ResetCameraState();
             if (_pendingRequests == 0)
                 CleanupResources();
             UnlockRuntimeOutputMode();

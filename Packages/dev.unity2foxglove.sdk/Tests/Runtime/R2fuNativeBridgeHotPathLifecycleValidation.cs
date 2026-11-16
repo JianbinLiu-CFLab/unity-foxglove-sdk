@@ -104,13 +104,14 @@ namespace Unity.FoxgloveSDK.Tests
                   && hierarchyHandler.Contains("_sceneStateDirty = true", StringComparison.Ordinal)
                   && !hierarchyHandler.Contains("RefreshSceneState();", StringComparison.Ordinal),
                 "165-A11: editor hierarchy refresh conservatively closes native bootstrap and defers scene rebuild");
+            var bootstrapGate = RequiredMethod(source, "internal static bool CanBootstrapBridge", "Ros2ForUnityNativeBridgeLifecycleGate.cs");
+            var shutdownGate = RequiredMethod(source, "internal static bool IsShuttingDownForBridge", "Ros2ForUnityNativeBridgeLifecycleGate.cs");
             Check(source.Contains("_lastRefreshedActiveSceneHandle", StringComparison.Ordinal)
                   && source.Contains("_lastRefreshedActiveSceneHandle = activeScene.handle", StringComparison.Ordinal)
                   && source.Contains("SceneManager.GetActiveScene().handle == _lastRefreshedActiveSceneHandle", StringComparison.Ordinal)
-                  && source.Contains("CanBootstrapBridge", StringComparison.Ordinal)
-                  && source.Contains("IsActiveSceneCacheCurrent", StringComparison.Ordinal)
-                  && source.Contains("!IsActiveSceneCacheCurrent || IsBridgeSceneUnsafe(ownerScene)", StringComparison.Ordinal),
-                "165-A12: lifecycle gate fail-closes bridge bootstrap when active scene changes before event refresh");
+                  && bootstrapGate.Contains("IsActiveSceneCacheCurrent", StringComparison.Ordinal)
+                  && !shutdownGate.Contains("IsActiveSceneCacheCurrent", StringComparison.Ordinal),
+                "165-A12: lifecycle gate keeps active-scene freshness on cold bootstrap paths without querying it in bridge updates");
             var nativeInitGate = RequiredMethod(source, "internal static bool CanInitializeNativeRuntimeForBridge", "Ros2ForUnityNativeBridgeLifecycleGate.cs");
             Check(nativeInitGate.Contains("RefreshSceneStateIfNeeded();", StringComparison.Ordinal)
                   && nativeInitGate.Contains("!_nativeReloadWindow", StringComparison.Ordinal)

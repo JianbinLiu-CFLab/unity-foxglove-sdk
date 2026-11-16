@@ -110,6 +110,19 @@ namespace Unity.FoxgloveSDK.Components
             var contract = entry.Contract;
             var hasDetail = !string.IsNullOrEmpty(requestedTopic);
             var descriptor = contract.ProtobufDescriptorSet;
+            var subscribeAvailable = contract.SubscribeAvailable;
+            var unavailableDiagnosticId =
+                contract.SubscribeUnavailableDiagnosticId;
+            var unavailableReason = contract.SubscribeUnavailableReason;
+            if (entry.EffectiveEncoding == FoxRunEncoding.Protobuf
+                && subscribeAvailable
+                && !SupportsDirectProtobuf(contract))
+            {
+                subscribeAvailable = false;
+                unavailableDiagnosticId = "FOXRUN_PANEL_PROTOBUF_SHAPE";
+                unavailableReason =
+                    "The selected contract does not support direct Protobuf publication from the FoxRun panel.";
+            }
             var objectValue = new JObject
             {
                 ["declaringType"] = contract.DeclaringType,
@@ -124,7 +137,7 @@ namespace Unity.FoxgloveSDK.Components
                     string.IsNullOrWhiteSpace(contract.LogicalSchemaName)
                         ? contract.DeclaringType
                         : contract.LogicalSchemaName,
-                ["subscribeAvailable"] = contract.SubscribeAvailable,
+                ["subscribeAvailable"] = subscribeAvailable,
                 ["publishTransportIds"] =
                     contract.PublishTransportIds == null
                         ? JValue.CreateNull()
@@ -133,10 +146,8 @@ namespace Unity.FoxgloveSDK.Components
                     contract.SubscribeTransportId == null
                         ? JValue.CreateNull()
                         : new JValue(contract.SubscribeTransportId),
-                ["unavailableDiagnosticId"] =
-                    contract.SubscribeUnavailableDiagnosticId,
-                ["unavailableReason"] =
-                    contract.SubscribeUnavailableReason,
+                ["unavailableDiagnosticId"] = unavailableDiagnosticId,
+                ["unavailableReason"] = unavailableReason,
                 ["hz"] = contract.Hz,
                 ["isStream"] = entry.IsStream,
                 ["writableFieldCount"] = contract.Fields?.Count ?? 0,
@@ -159,6 +170,66 @@ namespace Unity.FoxgloveSDK.Components
             }
 
             contracts.Add(objectValue);
+        }
+
+        private static bool SupportsDirectProtobuf(
+            FoxRunSchemaContractInfo contract)
+        {
+            foreach (var field in contract.Fields ?? Array.Empty<FoxRunSchemaFieldInfo>())
+            {
+                if (field == null)
+                    return false;
+                if (field.TypeShape != null
+                    && field.TypeShape.Kind != FoxRunTypeShapeInfoKind.Canonical
+                    && field.TypeShape.Kind != FoxRunTypeShapeInfoKind.Enum)
+                {
+                    return false;
+                }
+                if (field.TypeShape?.Kind == FoxRunTypeShapeInfoKind.Enum)
+                    continue;
+                if (!IsDirectProtobufScalar(field.Type))
+                    return false;
+            }
+            return true;
+        }
+
+        private static bool IsDirectProtobufScalar(string type)
+        {
+            var normalized = (type ?? string.Empty)
+                .Trim()
+                .Replace("System.", string.Empty, StringComparison.Ordinal)
+                .ToLowerInvariant();
+            switch (normalized)
+            {
+                case "double":
+                case "float64":
+                case "float":
+                case "single":
+                case "float32":
+                case "string":
+                case "bytes":
+                case "bool":
+                case "boolean":
+                case "int":
+                case "int8":
+                case "int16":
+                case "int32":
+                case "int64":
+                case "uint":
+                case "uint8":
+                case "uint16":
+                case "uint32":
+                case "uint64":
+                case "sint32":
+                case "sint64":
+                case "fixed32":
+                case "fixed64":
+                case "sfixed32":
+                case "sfixed64":
+                    return true;
+                default:
+                    return false;
+            }
         }
 
         private static IEnumerable<CatalogContract> EnumerateContracts(
@@ -218,7 +289,8 @@ namespace Unity.FoxgloveSDK.Components
                 .Where(binding => binding != null
                                   && string.Equals(binding.DeclaringType, contract.DeclaringType, StringComparison.Ordinal)
                                   && string.Equals(binding.Topic, contract.Topic, StringComparison.Ordinal)
-                                  && BindingSupportsDirection(binding.Flow, mode))
+                                  && BindingSupportsDirection(binding.Flow, mode)
+                                  && binding.SupportsWebSocket)
                 .OrderBy(binding => binding.MemberName, StringComparer.Ordinal)
                 .ToArray();
             if (bindings.Length == 0)

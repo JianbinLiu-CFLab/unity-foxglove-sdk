@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import importlib.util
+import importlib
 import sys
 import unittest
 from pathlib import Path
@@ -14,6 +15,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 MCAP_TIME_SYNC = ROOT / "Scripts" / "mcap" / "mcap_time_sync.py"
+PHASE121_PACKAGE_ROOT = ROOT / "Scripts" / "mcap" / "conformance"
 
 
 def load_module():
@@ -25,6 +27,14 @@ def load_module():
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
+
+
+def load_phase121_reporting():
+    """Load the Phase121 runner-report helper as a package module."""
+    package_root = str(PHASE121_PACKAGE_ROOT)
+    if package_root not in sys.path:
+        sys.path.insert(0, package_root)
+    return importlib.import_module("run_phase121_conformance.checkout_reporting")
 
 
 def varint(value: int) -> bytes:
@@ -126,6 +136,18 @@ class McapTimeSyncTests(unittest.TestCase):
         self.assertEqual(3, report["counts"]["pointcloud_messages"])
         self.assertEqual(2, report["counts"]["pointcloud_payload_parsed"])
         self.assertEqual(2, report["pointcloud_log_minus_payload_ms"]["count"])
+
+    def test_phase121_runner_report_counts_skip_reasons(self) -> None:
+        """Runner reports must expose one skipped case for each skip reason."""
+        module = load_phase121_reporting()
+
+        report = module.new_runner_report(
+            name="csharp-streamed-reader",
+            kind="streamed-reader",
+            skips=[{"reason": "CI smoke"}],
+        )
+
+        self.assertEqual(1, report["skipped"])
 
 
 if __name__ == "__main__":

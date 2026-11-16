@@ -83,7 +83,7 @@ namespace Unity.FoxgloveSDK.Tests
             var registry = Read(repoRoot, "Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs");
             Check(project.Contains("Phase163_37Validation.cs", StringComparison.Ordinal),
                 "163-37D-1: runtime test project compiles Phase163_37Validation");
-            Check(registry.Contains("Ci(\"--phase163-37\", \"Phase 163-37\", Phase163_37Validation.Validate", StringComparison.Ordinal),
+            Check(registry.Contains("Ci(\"--phase163-37\", \"Phase 163-37: phase163-37 SDK sample and public package example review closure\", Phase163_37Validation.Validate", StringComparison.Ordinal),
                 "163-37D-2: validation registry exposes --phase163-37");
         }
 

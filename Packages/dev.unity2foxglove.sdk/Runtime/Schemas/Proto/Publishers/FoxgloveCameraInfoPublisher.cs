@@ -204,15 +204,15 @@ namespace Unity.FoxgloveSDK.Components
                 return selectedCamera;
             }
 
-            if (!_sourceCameraCacheResolved)
-            {
-                _cachedSourceCamera = GetComponent<Camera>();
-                if (_cachedSourceCamera == null)
-                    _cachedSourceCamera = Camera.main;
-                _sourceCameraCacheResolved = true;
-            }
-
-            return _cachedSourceCamera;
+            return CameraInfoAuthorityPolicy.ResolveFallback(
+                ref _cachedSourceCamera,
+                ref _sourceCameraCacheResolved,
+                () =>
+                {
+                    var componentCamera = GetComponent<Camera>();
+                    return componentCamera != null ? componentCamera : Camera.main;
+                },
+                camera => camera != null);
         }
 
         private FoxgloveCameraPublisher ResolveImagePublisher()
@@ -315,7 +315,9 @@ namespace Unity.FoxgloveSDK.Components
             if (profile == null)
                 return;
 
-            if (string.IsNullOrWhiteSpace(_topic) || _topic == "/unity/sensor/camera/camera_info")
+            if (string.IsNullOrWhiteSpace(_topic)
+                || _topic == "/unity/sensor/camera/camera_info"
+                || _topic == "/unity/camera/info")
                 _topic = profile.CameraInfoTopic;
             if (string.IsNullOrWhiteSpace(_frameId) || _frameId == "os_camera")
                 _frameId = profile.CameraFrameId;

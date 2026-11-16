@@ -98,7 +98,7 @@ namespace Unity.FoxgloveSDK.Tests
             var phase137 = registry.IndexOf("Ci(\"--phase137\", \"Phase 137\"", StringComparison.Ordinal);
             Check(phase137F >= 0 && phase137G > phase137F && phase137 > phase137G,
                 "163-56E-3: Phase137G registry entry stays grouped with the Phase137 series");
-            Check(registry.Contains("Ci(\"--phase163-56\", \"Phase 163-56\", Phase163_56Validation.Validate", StringComparison.Ordinal),
+            Check(registry.Contains("Ci(\"--phase163-56\", \"Phase 163-56: phase163-56 review regression coverage for runtime validation hygiene\", Phase163_56Validation.Validate", StringComparison.Ordinal),
                 "163-56E-4: validation registry exposes Phase163-56");
         }
 

@@ -225,10 +225,16 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
 
             var source = FoxgloveSourceEmitter.EmitClass(type);
 
-            Assert.Contains(
-                "router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(0), FoxRunEncoding.JSON",
-                source,
-                StringComparison.Ordinal);
+            if (encoding == FoxRunGenerationDescriptorConstants.ProtobufEncoding)
+                Assert.Contains(
+                    "router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(0), FoxRunEncoding.Protobuf, nowNs, __BuildFoxRunProtobuf_0()",
+                    source,
+                    StringComparison.Ordinal);
+            else
+                Assert.Contains(
+                    "router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(0), FoxRunEncoding.JSON",
+                    source,
+                    StringComparison.Ordinal);
             Assert.DoesNotContain(
                 "router.Publish(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(0)",
                 source,

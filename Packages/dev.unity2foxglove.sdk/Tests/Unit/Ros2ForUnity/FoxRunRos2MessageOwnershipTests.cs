@@ -63,6 +63,16 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
 
         [Fact]
+        public void CopyBudgetRejectsSequenceElementFloodBeforeByteAccounting()
+        {
+            var budget = new FoxRunRos2CopyBudget(long.MaxValue);
+
+            Assert.Throws<InvalidOperationException>(() =>
+                budget.RequireSequenceElements(16_385, 1));
+            Assert.Equal(0, budget.ConsumedBytes);
+        }
+
+        [Fact]
         public void CopyFailureOrBudgetOverflowDoesNotPublishAnOwnedValue()
         {
             var slot = new FoxRunRos2OwnedLatestSlot<FakeMessage>(message => message.Dispose());

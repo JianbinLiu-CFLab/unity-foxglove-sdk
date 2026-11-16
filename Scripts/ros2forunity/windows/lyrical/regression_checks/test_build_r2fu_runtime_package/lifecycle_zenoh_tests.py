@@ -107,6 +107,9 @@ class LyricalLifecycleZenohTests:
                 "/// For a more complete view of the configuration's structure, check out `zenoh/src/config.rs`'s `Config` structure.\n"
                 "/// Note that the values here are correctly typed, but may not be sensible, so copying this file to change only the parts that matter to you is not good practice.\n"
                 "{\n"
+                "  listen: { endpoints: [\n"
+                "      \"tcp/[::]:7447\"\n"
+                "  ] },\n"
                 "      /// ROS setting: increase the value to support a large number of Nodes starting all together\n"
                 "      accept_pending: 10000,\n"
                 "      /// ROS setting: increase the value to support a large number of Nodes starting all together\n"
@@ -119,8 +122,9 @@ class LyricalLifecycleZenohTests:
             self.builder.patch_zenoh_router_config_notes(package)
 
             patched = config.read_text(encoding="utf-8")
+            self.assertIn('"tcp/127.0.0.1:7447"', patched)
             self.assertIn("without authentication or ACLs", patched)
-            self.assertIn("localhost-only or ACL-protected deployment profile", patched)
+            self.assertIn("External peers require an explicit ACL-protected deployment profile", patched)
             self.assertIn("high development default is unsuitable", patched)
             self.assertEqual(patched, mirror.read_text(encoding="utf-8"))
 

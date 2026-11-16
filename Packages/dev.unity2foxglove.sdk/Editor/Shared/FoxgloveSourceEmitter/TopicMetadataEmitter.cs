@@ -119,8 +119,17 @@ namespace Unity.FoxgloveSDK.Editor
                     encoding,
                     fields);
                 var fingerprint = Sha256Hex(canonical);
+                var protobufSchema = UsesProtobuf(fields)
+                    ? FoxRunProtobufContractBuilder.ResolveMessageFullName(
+                        schema,
+                        string.IsNullOrEmpty(ns) ? className : ns + "." + className,
+                        topic)
+                    : string.Empty;
+                var protobufSchemaArgument = UsesProtobuf(fields)
+                    ? ", \"" + StringLiteralEmitter.CSharpStringLiteral(protobufSchema) + "\""
+                    : string.Empty;
                 sb.AppendLine(
-                    $"{pad}    private static readonly FoxTopicContract __foxRunContract_{i} = new FoxTopicContract(\"{StringLiteralEmitter.CSharpStringLiteral(topic)}\", \"{StringLiteralEmitter.CSharpStringLiteral(schema)}\", \"{encoding}\", \"{StringLiteralEmitter.CSharpStringLiteral(canonical)}\", \"{fingerprint}\", FoxTopicVisibility.Exported, FoxTopicWriterPolicy.SingleWriter);");
+                    $"{pad}    private static readonly FoxTopicContract __foxRunContract_{i} = new FoxTopicContract(\"{StringLiteralEmitter.CSharpStringLiteral(topic)}\", \"{StringLiteralEmitter.CSharpStringLiteral(schema)}\", \"{encoding}\", \"{StringLiteralEmitter.CSharpStringLiteral(canonical)}\", \"{fingerprint}\", FoxTopicVisibility.Exported, FoxTopicWriterPolicy.SingleWriter{protobufSchemaArgument});");
             }
             sb.AppendLine();
             sb.AppendLine($"{pad}    string IFoxgloveTopicContractSource.FoxgloveLog_Origin => __foxRunOrigin;");

@@ -171,7 +171,7 @@ namespace Unity.FoxgloveSDK.Performance
         {
             var path = Path.Combine(DataLoaderFixtureDirectory(),
                 $"phase118_dataloader_indexed_v1_{topics}_{messagesPerChannel}.mcap");
-            if (!File.Exists(path) || new FileInfo(path).Length == 0)
+            if (!IsValidDataLoaderFixture(path, topics, topics))
             {
                 using (var fs = new FileStream(path, FileMode.Create, FileAccess.Write))
                 using (var recorder = new McapRecorder(fs))
@@ -201,7 +201,7 @@ namespace Unity.FoxgloveSDK.Performance
         {
             var path = Path.Combine(DataLoaderFixtureDirectory(),
                 $"phase118_dataloader_direct_v1_{topics}_{messagesPerChannel}.mcap");
-            if (!File.Exists(path) || new FileInfo(path).Length == 0)
+            if (!IsValidDataLoaderFixture(path, topics, topics))
             {
                 using (var fs = new FileStream(path, FileMode.Create, FileAccess.Write))
                 using (var writer = new McapWriter(fs))
@@ -237,7 +237,7 @@ namespace Unity.FoxgloveSDK.Performance
         private static DataLoaderFixture CreateDataLoaderSparseFixture()
         {
             var path = Path.Combine(DataLoaderFixtureDirectory(), "phase118_dataloader_sparse_v1.mcap");
-            if (!File.Exists(path) || new FileInfo(path).Length == 0)
+            if (!IsValidDataLoaderFixture(path, 3, 3))
             {
                 using (var fs = new FileStream(path, FileMode.Create, FileAccess.Write))
                 using (var recorder = new McapRecorder(fs))
@@ -269,6 +269,24 @@ namespace Unity.FoxgloveSDK.Performance
                 WindowEndTimeNs = 90,
                 WindowMessageCount = 2
             };
+        }
+
+        private static bool IsValidDataLoaderFixture(string path, int expectedChannels, int expectedSchemas)
+        {
+            if (!File.Exists(path) || new FileInfo(path).Length == 0)
+                return false;
+
+            try
+            {
+                using var loader = new McapDataLoader(path);
+                var initialization = loader.Initialize();
+                return initialization.Channels.Count == expectedChannels
+                       && initialization.Schemas.Count == expectedSchemas;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
         }
 
         private static DataLoaderFixture DescribeDataLoaderFixture(

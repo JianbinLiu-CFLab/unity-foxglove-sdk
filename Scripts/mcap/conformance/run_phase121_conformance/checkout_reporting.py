@@ -97,6 +97,9 @@ def new_runner_report(
 ) -> dict[str, object]:
     """Create a normalized runner report entry."""
 
+    if skipped == 0 and skips:
+        skipped = len(skips)
+
     return {
         "name": name,
         "kind": kind,

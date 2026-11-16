@@ -25,6 +25,7 @@ namespace Unity.FoxgloveSDK.Components
     public sealed class FoxTopicContract
     {
         private readonly FoxTopicContract _logicalContract;
+        private readonly string _protobufSchemaName;
         private FoxTopicContract _protobufWireContract;
         private FoxTopicContract _jsonWireContract;
         private FoxTopicContract _messagePackWireContract;
@@ -45,6 +46,28 @@ namespace Unity.FoxgloveSDK.Components
                 stableFingerprint,
                 visibility,
                 writerPolicy,
+                null)
+        {
+        }
+
+        public FoxTopicContract(
+            string topic,
+            string schemaName,
+            string encoding,
+            string canonicalType,
+            string stableFingerprint,
+            FoxTopicVisibility visibility,
+            FoxTopicWriterPolicy writerPolicy,
+            string protobufSchemaName)
+            : this(
+                topic,
+                schemaName,
+                encoding,
+                canonicalType,
+                stableFingerprint,
+                visibility,
+                writerPolicy,
+                protobufSchemaName,
                 logicalContract: null)
         {
         }
@@ -57,12 +80,14 @@ namespace Unity.FoxgloveSDK.Components
             string stableFingerprint,
             FoxTopicVisibility visibility,
             FoxTopicWriterPolicy writerPolicy,
+            string protobufSchemaName,
             FoxTopicContract logicalContract)
         {
             if (string.IsNullOrWhiteSpace(topic))
                 throw new ArgumentException("Topic is required.", nameof(topic));
 
             _logicalContract = logicalContract ?? this;
+            _protobufSchemaName = protobufSchemaName ?? string.Empty;
             Topic = topic;
             SchemaName = schemaName ?? string.Empty;
             Encoding = string.IsNullOrWhiteSpace(encoding) ? "json" : encoding;
@@ -93,7 +118,10 @@ namespace Unity.FoxgloveSDK.Components
                 FoxRunEncodingResolver.ToProtocolEncoding(wireEncoding);
             var schemaName = wireEncoding == FoxRunEncoding.MessagePack
                 ? string.Empty
-                : SchemaName;
+                : wireEncoding == FoxRunEncoding.Protobuf
+                    && !string.IsNullOrEmpty(_protobufSchemaName)
+                    ? _protobufSchemaName
+                    : SchemaName;
             if (string.Equals(Encoding, protocolEncoding, StringComparison.Ordinal)
                 && string.Equals(SchemaName, schemaName, StringComparison.Ordinal))
             {
@@ -113,6 +141,7 @@ namespace Unity.FoxgloveSDK.Components
                 StableFingerprint,
                 Visibility,
                 WriterPolicy,
+                _protobufSchemaName,
                 this);
             return Interlocked.CompareExchange(ref cached, created, null)
                    ?? created;

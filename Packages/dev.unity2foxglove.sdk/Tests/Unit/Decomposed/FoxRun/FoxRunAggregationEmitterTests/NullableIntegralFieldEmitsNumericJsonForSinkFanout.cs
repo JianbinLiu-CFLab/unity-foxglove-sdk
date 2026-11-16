@@ -41,6 +41,30 @@ public sealed partial class FoxRunAggregationEmitterTests
         }
 
         [Fact]
+        public void NullableUnityVectorFieldEmitsStructuredJsonForSinkFanout()
+        {
+            var type = new FoxRunGenerationType(
+                "Demo",
+                "NullableTelemetry",
+                new[]
+                {
+                    new FoxRunGenerationMember(
+                        "Demo", "NullableTelemetry", "_optionalPosition", "field", "System.Nullable<UnityEngine.Vector3>",
+                        false, false, "", "/phase163/nullable-vector", 10f, "",
+                        0, 0f, "UnitTest", 0, "",
+                        isAggregateMember: false, jsonFieldName: "optionalPosition")
+                });
+
+            var source = FoxgloveSourceEmitter.EmitClass(type);
+
+            Assert.Contains("__foxRunCapture_0_0 == null", source, StringComparison.Ordinal);
+            Assert.Contains("__foxRunCapture_0_0.Value.x", source, StringComparison.Ordinal);
+            Assert.Contains("__foxRunCapture_0_0.Value.y", source, StringComparison.Ordinal);
+            Assert.Contains("__foxRunCapture_0_0.Value.z", source, StringComparison.Ordinal);
+            Assert.DoesNotContain("__AppendFoxRunJsonString(__json, __foxRunCapture_0_0 == null ? null : __foxRunCapture_0_0.Value.ToString())", source, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void GeneratedFoxRunSchemaInfoContinuesAfterInvalidAggregateContract()
         {
             FoxRunSchemaInfoRegistry.ClearForTests();

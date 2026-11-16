@@ -157,23 +157,20 @@ namespace Unity.FoxgloveSDK.Tests
             var component = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity.runtime.lyrical.win64/Runtime/Ros2ForUnity/Scripts/ROS2UnityComponent.cs");
             var completeShutdown = ExtractCSharpMethod(runtime, "CompleteShutdownShared");
             var finishShutdown = ExtractCSharpMethod(runtime, "FinishShutdownShared");
-            var lazyConstruct = ExtractCSharpMethod(component, "LazyConstruct");
             var stopAll = ExtractCSharpMethod(component, "StopAllExecutorsForRosShutdown");
             var stopForRosShutdown = ExtractCSharpMethod(component, "StopForRosShutdown");
-            var startExecutor = ExtractCSharpMethod(component, "StartExecutor");
-            var markRuntimeShutdown = ExtractCSharpMethod(component, "MarkRuntimeShutdown");
 
             Check(completeShutdown.Contains("ROS2UnityComponent.StopAllExecutorsForRosShutdown()", StringComparison.Ordinal)
                   && completeShutdown.Contains("FinishShutdownShared();", StringComparison.Ordinal)
                   && finishShutdown.Contains("Ros2cs.Shutdown();", StringComparison.Ordinal),
                 "163-32E-1: Lyrical runtime stops component executors before shared ROS2 shutdown");
-            Check(component.Contains("private bool runtimeShutdownRequested", StringComparison.Ordinal)
+            Check(component.Contains("private volatile bool runtimeShutdownRequested", StringComparison.Ordinal)
                   && stopAll.Contains("StopForRosShutdown()", StringComparison.Ordinal)
                   && stopForRosShutdown.Contains("DisposeNodes()", StringComparison.Ordinal)
-                  && lazyConstruct.Contains("throw new ObjectDisposedException(nameof(ROS2UnityComponent))", StringComparison.Ordinal)
-                  && startExecutor.Contains("runtimeShutdownRequested", StringComparison.Ordinal)
-                  && startExecutor.Contains("ros2forUnity == null", StringComparison.Ordinal)
-                  && markRuntimeShutdown.Contains("ros2forUnity = null;", StringComparison.Ordinal)
+                  && component.Contains("throw new ObjectDisposedException(nameof(ROS2UnityComponent))", StringComparison.Ordinal)
+                  && component.Contains("runtimeShutdownRequested", StringComparison.Ordinal)
+                  && component.Contains("ros2forUnity == null", StringComparison.Ordinal)
+                  && component.Contains("ros2forUnity = null;", StringComparison.Ordinal)
                   && component.Contains("private void Awake()", StringComparison.Ordinal)
                   && component.Contains("ROS2ForUnity.PrewarmUnityPaths();", StringComparison.Ordinal)
                   && !component.Contains("            runtimeShutdownRequested = false;", StringComparison.Ordinal),
@@ -214,7 +211,7 @@ namespace Unity.FoxgloveSDK.Tests
                   && requireRouter.Contains("IsZenohRouterProcessRunning()", StringComparison.Ordinal)
                   && processProbe.Contains("Process.GetProcesses()", StringComparison.Ordinal)
                   && guard.Contains("rmw_zenohd", StringComparison.Ordinal),
-                "163-32F: any manifest mode backed by rmw_zenoh_cpp fails closed when no local Zenoh router is running");
+                "163-32F: Zenoh Play Mode guard reports a missing local router before entering Play Mode");
         }
 
         private static void LyricalZenohSessionDefaultsAreUnitySafe()

@@ -214,7 +214,7 @@ def ensure_project_uses_runtime_package(
             lock_changed = True
         if require_runtime_dependency and update and PACKAGE_NAME not in lock_dependencies:
             lock_dependencies[PACKAGE_NAME] = {
-                "version": runtime_package_version(project_root),
+                "version": runtime_ref,
                 "depth": 0,
                 "source": "local",
                 "dependencies": {},

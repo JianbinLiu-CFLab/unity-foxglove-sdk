@@ -95,11 +95,7 @@ namespace Unity.FoxgloveSDK.Components
 
         private FoxRunEncoding ResolveAdditiveSinkEncoding(
             FoxgloveLogTopicInfo info)
-            => SelectsWebSocket(info)
-               && ResolveWebSocketEncoding(info)
-                   == FoxRunEncoding.MessagePack
-                ? FoxRunEncoding.MessagePack
-                : FoxRunEncoding.JSON;
+            => ResolveWebSocketEncoding(info);
 
     }
 }

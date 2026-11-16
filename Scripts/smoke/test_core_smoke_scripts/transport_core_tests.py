@@ -76,6 +76,11 @@ class CoreTransportTests:
         self.assertEqual(bytes([1]) + struct.pack("<I", 175_001) + payload, frame)
         self.assertEqual(5.0, module.decode_float_field(payload))
 
+        with self.assertRaises(ValueError):
+            module.encode_float_field(1e300)
+        with self.assertRaises(ValueError):
+            module.build_client_message_frame(0x1_0000_0000, payload)
+
     def test_phase168_msgpack_probe_enforces_shared_decode_limits(self) -> None:
         """The live probe should match runtime depth and aggregate-container bounds."""
         module = load_smoke_module("phase168_msgpack_limits_under_test", "websocket/phase168_msgpack_live_probe.py")

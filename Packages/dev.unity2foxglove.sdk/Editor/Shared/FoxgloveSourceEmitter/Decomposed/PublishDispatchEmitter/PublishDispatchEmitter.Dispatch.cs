@@ -451,18 +451,17 @@ namespace Unity.FoxgloveSDK.Editor
                 }
                 if (TopicMetadataEmitter.IsInherited(fields))
                 {
+                    sb.AppendLine($"{pad}                if (__foxRunCaptureEncoding_{i} == FoxRunEncoding.Protobuf) router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract({i}), FoxRunEncoding.Protobuf, nowNs, __BuildFoxRunProtobuf_{i}(), __foxRunOrigin);");
                     if (MessagePackPublishDispatchEmitter.MayUseMessagePack(fields))
                     {
-                        sb.AppendLine($"{pad}                if (__foxRunCaptureEncoding_{i} == FoxRunEncoding.MessagePack)");
-                        sb.AppendLine($"{pad}                    router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract({i}), FoxRunEncoding.MessagePack, nowNs, __foxRunLastMessagePack_{i}, __foxRunOrigin);");
-                        sb.AppendLine($"{pad}                else");
-                        sb.AppendLine($"{pad}                {{");
+                        sb.AppendLine($"{pad}                else if (__foxRunCaptureEncoding_{i} == FoxRunEncoding.MessagePack) router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract({i}), FoxRunEncoding.MessagePack, nowNs, __foxRunLastMessagePack_{i}, __foxRunOrigin);");
                     }
                     else
                     {
-                        sb.AppendLine($"{pad}                if (__foxRunCaptureEncoding_{i} == FoxRunEncoding.MessagePack)");
-                        sb.AppendLine($"{pad}                    throw new global::System.InvalidOperationException(\"Typed MessagePack sink publication is unavailable for this declaration.\");");
+                        sb.AppendLine($"{pad}                else if (__foxRunCaptureEncoding_{i} == FoxRunEncoding.MessagePack) throw new global::System.InvalidOperationException(\"Typed MessagePack sink publication is unavailable for this declaration.\");");
                     }
+                    sb.AppendLine($"{pad}                else");
+                    sb.AppendLine($"{pad}                {{");
                     if (IsAggregateTopic(fields))
                     {
                         EnsurePureAggregateTopic(fields, topics[i]);
@@ -473,8 +472,13 @@ namespace Unity.FoxgloveSDK.Editor
                         sb.AppendLine($"{pad}                    var __sink_{i} = __BuildFoxRunJson_{i}();");
                     }
                     sb.AppendLine($"{pad}                    router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract({i}), FoxRunEncoding.JSON, nowNs, __sink_{i}, __foxRunOrigin);");
-                    if (MessagePackPublishDispatchEmitter.MayUseMessagePack(fields))
-                        sb.AppendLine($"{pad}                }}");
+                    sb.AppendLine($"{pad}                }}");
+                    sb.AppendLine($"{pad}                break;");
+                    continue;
+                }
+                else if (TopicMetadataEmitter.UsesProtobuf(fields))
+                {
+                    sb.AppendLine($"{pad}                router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract({i}), FoxRunEncoding.Protobuf, nowNs, __BuildFoxRunProtobuf_{i}(), __foxRunOrigin);");
                     sb.AppendLine($"{pad}                break;");
                     continue;
                 }

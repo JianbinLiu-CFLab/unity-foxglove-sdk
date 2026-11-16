@@ -5,6 +5,7 @@
 // Purpose: Shared camera timing snapshot bridge for frame-stall diagnostics.
 
 using System;
+using System.Collections.Generic;
 
 namespace Unity.FoxgloveSDK.Components
 {
@@ -75,13 +76,15 @@ namespace Unity.FoxgloveSDK.Components
 
     internal static class CameraTimingDiagnostics
     {
-        // Main-thread diagnostics bridge: camera publishers publish from Unity callbacks and
-        // FoxgloveManager reads during its Update/stall logging path. Do not write this from
-        // background workers; CameraTimingSnapshot is intentionally a large immutable struct.
-        private static CameraTimingSnapshot s_lastSnapshot = CameraTimingSnapshot.NoFrame;
+        private static readonly Dictionary<int, CameraTimingSnapshot> s_snapshots =
+            new Dictionary<int, CameraTimingSnapshot>();
+        private static int s_nextPublisherId;
 
         public static CameraTimingSnapshot LastSnapshotOrDefault
-            => s_lastSnapshot;
+            => AggregateSnapshots();
+
+        internal static int RegisterPublisher()
+            => ++s_nextPublisherId;
 
 #if UNITY_2019_1_OR_NEWER
         [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.SubsystemRegistration)]
@@ -89,10 +92,38 @@ namespace Unity.FoxgloveSDK.Components
             => Reset();
 #endif
 
-        public static void Publish(CameraTimingSnapshot snapshot)
-            => s_lastSnapshot = snapshot;
+        public static void Publish(int publisherId, CameraTimingSnapshot snapshot)
+        {
+            if (publisherId > 0)
+                s_snapshots[publisherId] = snapshot;
+        }
 
         public static void Reset()
-            => s_lastSnapshot = CameraTimingSnapshot.NoFrame;
+            => s_snapshots.Clear();
+
+        public static void Reset(int publisherId)
+            => s_snapshots.Remove(publisherId);
+
+        private static CameraTimingSnapshot AggregateSnapshots()
+        {
+            var aggregate = CameraTimingSnapshot.NoFrame;
+            var latestPublisherId = 0;
+            foreach (var pair in s_snapshots)
+            {
+                var snapshot = pair.Value;
+                if (!snapshot.HasFrame)
+                    continue;
+                if (!aggregate.HasFrame
+                    || snapshot.RecordedRealtimeSeconds > aggregate.RecordedRealtimeSeconds
+                    || (snapshot.RecordedRealtimeSeconds == aggregate.RecordedRealtimeSeconds
+                        && pair.Key > latestPublisherId))
+                {
+                    aggregate = snapshot;
+                    latestPublisherId = pair.Key;
+                }
+            }
+
+            return aggregate;
+        }
     }
 }

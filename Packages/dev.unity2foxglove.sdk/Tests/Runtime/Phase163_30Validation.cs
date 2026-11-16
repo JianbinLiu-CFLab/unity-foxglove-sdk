@@ -22,7 +22,7 @@ namespace Unity.FoxgloveSDK.Tests
             HumbleRuntimeCapturesSourcedDistroBeforeStandalonePatch();
             HumbleRuntimeLifecycleLogsAvoidEditorStackTraceExtraction();
             HumbleExecutorDoesNotRestartDeadRuntimeAfterSharedShutdown();
-            HumbleSyncWritesSemverLockVersion();
+            HumbleSyncWritesLocalReferenceLockVersion();
             Ros2WindowsEnvDoesNotInferUnknownPathsAsJazzy();
             HumbleValidatorUsesLocalPackageManagerGuardAndRequiresCore();
             HumbleBuilderRegeneratesStandaloneDistroCapture();
@@ -64,6 +64,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void HumbleExecutorDoesNotRestartDeadRuntimeAfterSharedShutdown()
         {
             var component = ReadRepoText("Packages/dev.unity2foxglove.ros2forunity.runtime.humble.win64/Runtime/Ros2ForUnity/Scripts/ROS2UnityComponent.cs");
+            var lazyConstruct = ExtractMethod(component, "LazyConstruct");
             var stopAll = ExtractMethod(component, "StopAllExecutorsForRosShutdown");
             var startExecutor = ExtractMethod(component, "StartExecutor");
             var markRuntimeShutdown = ExtractMethod(component, "MarkRuntimeShutdown");
@@ -74,19 +75,20 @@ namespace Unity.FoxgloveSDK.Tests
                   && stopForRosShutdown.Contains("DisposeNodes()", StringComparison.Ordinal)
                   && stopForRosShutdown.Contains("TryDetachRuntimeState", StringComparison.Ordinal),
                 "163-30B-1: shared Humble shutdown marks components whose ROS2 context was torn down");
-            Check(startExecutor.Contains("runtimeShutdownRequested", StringComparison.Ordinal)
+            Check(lazyConstruct.Contains("if (runtimeShutdownRequested)", StringComparison.Ordinal)
+                  && lazyConstruct.Contains("throw new ObjectDisposedException(nameof(ROS2UnityComponent))", StringComparison.Ordinal)
+                  && startExecutor.Contains("runtimeShutdownRequested", StringComparison.Ordinal)
                   && startExecutor.Contains("ros2forUnity == null", StringComparison.Ordinal)
                   && markRuntimeShutdown.Contains("ros2forUnity = null;", StringComparison.Ordinal),
-                "163-30B-2: Humble executor does not restart against a dead ROS2ForUnity instance");
+                "163-30B-2: Humble component does not reinitialize or restart against a dead ROS2ForUnity instance");
         }
 
-        private static void HumbleSyncWritesSemverLockVersion()
+        private static void HumbleSyncWritesLocalReferenceLockVersion()
         {
             var sync = ReadRepoText("Scripts/ros2forunity/windows/humble/sync_r2fu_artifact_to_unity2foxglove.py");
 
-            Check(sync.Contains("\"version\": PACKAGE_VERSION", StringComparison.Ordinal)
-                  && !sync.Contains("\"version\": runtime_ref", StringComparison.Ordinal),
-                "163-30C: Humble project sync writes package semver into packages-lock.json");
+            Check(sync.Contains("\"version\": runtime_ref", StringComparison.Ordinal),
+                "163-30C: Humble project sync writes the local package reference into packages-lock.json");
         }
 
         private static void Ros2WindowsEnvDoesNotInferUnknownPathsAsJazzy()

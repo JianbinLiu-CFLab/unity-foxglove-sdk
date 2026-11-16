@@ -65,6 +65,54 @@ TEST(
 
 TEST(
   Unity2FoxgloveRos2BridgeProtocol,
+  LegacyRawReadBoundsAnIdleSession)
+{
+  const auto sockets = MakeConnectedSocketPair();
+  ASSERT_NE(kInvalidSocket, sockets[0]);
+  ASSERT_NE(kInvalidSocket, sockets[1]);
+  ScopedFd client_socket(sockets[0]);
+  ScopedFd server_socket(sockets[1]);
+  configure_client_timeouts(client_socket.get());
+  configure_client_timeouts(server_socket.get());
+
+  uint8_t byte = 0;
+  std::atomic<bool> reader_done{false};
+  std::exception_ptr reader_error;
+  std::thread reader(
+    [&]() {
+      try {
+        (void)read_exact_into(
+          server_socket.get(),
+          &byte,
+          1,
+          nullptr,
+          []() {return true;});
+      } catch (...) {
+        reader_error = std::current_exception();
+      }
+      reader_done.store(true);
+    });
+  SocketThreadJoiner joiner(server_socket.get(), reader);
+
+  const auto deadline =
+    std::chrono::steady_clock::now() + std::chrono::seconds(7);
+  while (
+    !reader_done.load() &&
+    std::chrono::steady_clock::now() < deadline)
+  {
+    std::this_thread::sleep_for(std::chrono::milliseconds(25));
+  }
+
+  ASSERT_TRUE(reader_done.load());
+  reader.join();
+  ASSERT_NE(nullptr, reader_error);
+  EXPECT_THROW(
+    std::rethrow_exception(reader_error),
+    ClientReadTimeoutException);
+}
+
+TEST(
+  Unity2FoxgloveRos2BridgeProtocol,
   AccountedWireWriteConsumesFrozenWallClockDeadline)
 {
   const auto sockets = MakeConnectedSocketPair();

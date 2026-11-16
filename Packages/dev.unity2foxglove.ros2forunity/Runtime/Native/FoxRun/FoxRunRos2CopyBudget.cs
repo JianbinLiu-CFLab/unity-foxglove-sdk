@@ -48,6 +48,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 throw new ArgumentOutOfRangeException(nameof(elementCount));
             if (elementStorageBytes < 0)
                 throw new ArgumentOutOfRangeException(nameof(elementStorageBytes));
+            if (elementCount > FoxRunRos2NativeCopyBudgetPolicy.MaximumSequenceElements)
+                throw new InvalidOperationException(
+                    "FoxRun ROS2 sequence element budget exceeded.");
             RequireBytes(checked(elementCount * elementStorageBytes));
         }
     }

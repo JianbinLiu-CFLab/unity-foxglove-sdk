@@ -105,6 +105,8 @@ public abstract class Sensor<T> : ISensor where T : class, MessageWithHeader, ne
     private ROS2Node ros2Node;
     private string ownerAgentName;
     private string cachedFrameName;
+    private string cachedFrameOwnerAgent;
+    private string cachedFrameId;
 
     private T readings;
     private bool newReadings;
@@ -130,16 +132,17 @@ public abstract class Sensor<T> : ISensor where T : class, MessageWithHeader, ne
 
     public override string frameName()
     {
-        if (cachedFrameName != null)
+        if (cachedFrameName != null
+            && string.Equals(cachedFrameOwnerAgent, ownerAgentName, StringComparison.Ordinal)
+            && string.Equals(cachedFrameId, frameID, StringComparison.Ordinal))
         {
             return cachedFrameName;
         }
 
-        if (String.IsNullOrEmpty(ownerAgentName))
-        {
-            return frameID;
-        }
-        return ownerAgentName + "/" + frameID;
+        cachedFrameOwnerAgent = ownerAgentName;
+        cachedFrameId = frameID;
+        cachedFrameName = String.IsNullOrEmpty(ownerAgentName) ? frameID : ownerAgentName + "/" + frameID;
+        return cachedFrameName;
     }
 
     /// <summary>
@@ -188,6 +191,8 @@ public abstract class Sensor<T> : ISensor where T : class, MessageWithHeader, ne
         }
 
         ownerAgentName = agentName;
+        cachedFrameOwnerAgent = ownerAgentName;
+        cachedFrameId = frameID;
         cachedFrameName = String.IsNullOrEmpty(ownerAgentName) ? frameID : ownerAgentName + "/" + frameID;
         string nsName = (agentName ?? String.Empty).Replace(" ", "_");
         var createdPublisher = node.CreateSensorPublisher<T>(nsName + "/" + topicName);

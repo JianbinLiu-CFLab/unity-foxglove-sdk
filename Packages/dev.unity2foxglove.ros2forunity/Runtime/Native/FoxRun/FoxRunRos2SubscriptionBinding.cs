@@ -22,11 +22,23 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
     {
         private const long NoAcceptedTimestamp = long.MinValue;
         private readonly long _minimumIntervalTicks;
+        private readonly long _scope;
+        private readonly string _topic;
+        private readonly int _maximumAcceptedPerSecond;
         private long _lastAcceptedTimestamp = NoAcceptedTimestamp;
+        private int _released;
 
-        internal FoxRunRos2TransportAdmissionGate(int maximumAcceptedPerSecond)
+        internal FoxRunRos2TransportAdmissionGate(
+            int maximumAcceptedPerSecond,
+            string topic = null,
+            long scope = 0L)
         {
             var normalized = Math.Max(1, maximumAcceptedPerSecond);
+            _scope = scope;
+            _topic = topic ?? string.Empty;
+            _maximumAcceptedPerSecond = normalized;
+            if (!string.IsNullOrEmpty(_topic))
+                FoxRunTopicAdmissionRegistry.Acquire(_scope, _topic);
             _minimumIntervalTicks = normalized == int.MaxValue
                 ? 0L
                 : Math.Max(1L, (Stopwatch.Frequency + normalized - 1L) / normalized);
@@ -34,6 +46,15 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         internal bool TryAccept(long stopwatchTimestamp)
         {
+            if (!string.IsNullOrEmpty(_topic))
+            {
+                return FoxRunTopicAdmissionRegistry.TryAcceptAtStopwatch(
+                    _scope,
+                    _topic,
+                    stopwatchTimestamp,
+                    _maximumAcceptedPerSecond);
+            }
+
             if (_minimumIntervalTicks == 0L)
                 return true;
 
@@ -51,6 +72,13 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                         observed) == observed)
                     return true;
             }
+        }
+
+        internal void Release()
+        {
+            if (Interlocked.Exchange(ref _released, 1) == 0
+                && !string.IsNullOrEmpty(_topic))
+                FoxRunTopicAdmissionRegistry.Release(_scope, _topic);
         }
     }
 
@@ -295,7 +323,9 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             Func<bool> consumeTrigger = null,
             Func<bool> canApply = null,
             int transportAdmissionRateLimitHz = int.MaxValue,
-            Func<long> admissionTimestamp = null)
+            Func<long> admissionTimestamp = null,
+            string transportAdmissionTopic = null,
+            long transportAdmissionScope = 0L)
         {
             Contract = contract ?? throw new ArgumentNullException(nameof(contract));
             if (sessionGeneration < 0)
@@ -312,8 +342,6 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             _valuesEqual = valuesEqual;
             _consumeTrigger = consumeTrigger;
             _canApply = canApply;
-            _transportAdmission = new FoxRunRos2TransportAdmissionGate(
-                transportAdmissionRateLimitHz);
             _admissionTimestamp = admissionTimestamp ?? Stopwatch.GetTimestamp;
             _backend = backend ?? throw new ArgumentNullException(nameof(backend));
             _qos = qos ?? FoxRunResolvedQos.Default;
@@ -325,6 +353,10 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             _clearOwned = ClearOwned;
             _decideOwned = DecideOwned;
             _slot = new FoxRunRos2OwnedLatestSlot<object>(_disposeOwned);
+            _transportAdmission = new FoxRunRos2TransportAdmissionGate(
+                transportAdmissionRateLimitHz,
+                transportAdmissionTopic,
+                transportAdmissionScope);
             _state = (int)FoxRunRos2SubscriptionBindingState.Configured;
             _lastRegistration = FoxRunRos2RegistrationResult.Failure(
                 FoxRunRos2RegistrationError.RuntimeUnavailable,

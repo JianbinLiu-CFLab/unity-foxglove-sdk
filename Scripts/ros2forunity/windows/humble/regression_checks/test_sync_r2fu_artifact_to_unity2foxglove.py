@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 import tempfile
 import unittest
@@ -39,6 +40,28 @@ class SyncR2fuArtifactTests(unittest.TestCase):
 
             with self.assertRaisesRegex(ValueError, "pinned Humble handoff"):
                 sync.assert_artifact_matches_manifest(artifact, None)
+
+    def test_project_update_uses_local_reference_in_lockfile(self) -> None:
+        """Updating a missing local runtime lock entry must preserve the file reference."""
+        sync = load_sync_module()
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            packages = root / "Unity2Foxglove" / "Packages"
+            packages.mkdir(parents=True)
+            (packages / "manifest.json").write_text(
+                json.dumps({"dependencies": {}}),
+                encoding="utf-8",
+            )
+            (packages / "packages-lock.json").write_text(
+                json.dumps({"dependencies": {}}),
+                encoding="utf-8",
+            )
+
+            sync.ensure_project_uses_runtime_package(root, update=True)
+
+            lock = json.loads((packages / "packages-lock.json").read_text(encoding="utf-8"))
+            entry = lock["dependencies"][sync.PACKAGE_NAME]
+            self.assertEqual("file:../../Packages/" + sync.PACKAGE_NAME, entry["version"])
 
 
 if __name__ == "__main__":

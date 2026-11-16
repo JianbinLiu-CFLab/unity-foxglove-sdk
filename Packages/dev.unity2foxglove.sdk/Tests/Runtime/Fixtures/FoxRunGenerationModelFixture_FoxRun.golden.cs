@@ -31,13 +31,13 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
             }
         }
 
-        private static readonly FoxTopicContract __foxRunContract_0 = new FoxTopicContract("/debug/array", "", "json", "v2|topic=12#/debug/array|encoding=4#json|schema=0#|fields=1|field|json=7#samples|member=8#_samples|canonical=7#float32|shape=247#S|kind=3|type=0#|canonical=0#|collection=1|nullable=0|constructible=1|valueType=0|fields=0|enumValues=0|element=S|kind=0|type=7#float32|canonical=7#float32|collection=0|nullable=0|constructible=1|valueType=1|fields=0|enumValues=0|element=N|end|end|end", "57aacde4029c0cc8861f163852c8c9d366eacf4a221f45f9fc5fef8f2c400086", FoxTopicVisibility.Exported, FoxTopicWriterPolicy.SingleWriter);
-        private static readonly FoxTopicContract __foxRunContract_1 = new FoxTopicContract("/debug/extra", "", "json", "v2|topic=12#/debug/extra|encoding=4#json|schema=0#|fields=1|field|json=5#extra|member=6#_extra|canonical=6#string|shape=129#S|kind=0|type=6#string|canonical=6#string|collection=0|nullable=0|constructible=1|valueType=0|fields=0|enumValues=0|element=N|end|end", "8a7b121bd413e594b0e1ad5753416056a4228f81f76e6d10d69ef3db64220820", FoxTopicVisibility.Exported, FoxTopicWriterPolicy.SingleWriter);
-        private static readonly FoxTopicContract __foxRunContract_2 = new FoxTopicContract("/debug/list", "", "json", "v2|topic=11#/debug/list|encoding=4#json|schema=0#|fields=1|field|json=10#sampleList|member=11#_sampleList|canonical=7#float32|shape=247#S|kind=3|type=0#|canonical=0#|collection=2|nullable=0|constructible=1|valueType=0|fields=0|enumValues=0|element=S|kind=0|type=7#float32|canonical=7#float32|collection=0|nullable=0|constructible=1|valueType=1|fields=0|enumValues=0|element=N|end|end|end", "87de9ce25523919ec9c8b74fd8d058ab33aaed0884a81b22c7e8d96898d3b960", FoxTopicVisibility.Exported, FoxTopicWriterPolicy.SingleWriter);
-        private static readonly FoxTopicContract __foxRunContract_3 = new FoxTopicContract("/debug/nullable", "", "json", "v2|topic=15#/debug/nullable|encoding=4#json|schema=0#|fields=1|field|json=13#optionalCount|member=14#_optionalCount|canonical=5#int32|shape=127#S|kind=0|type=5#int32|canonical=5#int32|collection=0|nullable=1|constructible=1|valueType=1|fields=0|enumValues=0|element=N|end|end", "86d27a004a146efb799011b2e479ae1dcb718f25b369d9f9f32faf4d93266290", FoxTopicVisibility.Exported, FoxTopicWriterPolicy.SingleWriter);
-        private static readonly FoxTopicContract __foxRunContract_4 = new FoxTopicContract("/debug/trigger", "", "json", "v2|topic=14#/debug/trigger|encoding=4#json|schema=0#|fields=1|field|json=7#trigger|member=8#_trigger|canonical=5#int32|shape=127#S|kind=0|type=5#int32|canonical=5#int32|collection=0|nullable=0|constructible=1|valueType=1|fields=0|enumValues=0|element=N|end|end", "c6f190ea27d7c4822491e2079f63c7d6c361e3c1fa832ac3b14bf1a4bb7dab98", FoxTopicVisibility.Exported, FoxTopicWriterPolicy.SingleWriter);
-        private static readonly FoxTopicContract __foxRunContract_5 = new FoxTopicContract("/debug/value", "", "json", "v2|topic=12#/debug/value|encoding=4#json|schema=0#|fields=2|field|json=5#value|member=6#_value|canonical=7#float32|shape=131#S|kind=0|type=7#float32|canonical=7#float32|collection=0|nullable=0|constructible=1|valueType=1|fields=0|enumValues=0|element=N|end|field|json=11#valueMirror|member=12#_valueMirror|canonical=7#float32|shape=131#S|kind=0|type=7#float32|canonical=7#float32|collection=0|nullable=0|constructible=1|valueType=1|fields=0|enumValues=0|element=N|end|end", "636b8858805e0683f8039ac86f41ecc680763626513104bda387a23a2a86e1b5", FoxTopicVisibility.Exported, FoxTopicWriterPolicy.SingleWriter);
-        private static readonly FoxTopicContract __foxRunContract_6 = new FoxTopicContract("/debug/vector", "", "json", "v2|topic=13#/debug/vector|encoding=4#json|schema=0#|fields=1|field|json=8#position|member=9#_position|canonical=21#unity.vector3.float32|shape=812#S|kind=1|type=19#UnityEngine.Vector3|canonical=0#|collection=0|nullable=0|constructible=1|valueType=1|fields=3|field|json=1#x|member=1#x|repeated=0|repeatedCollection=0|assignable=1|fieldNullable=0|shape=S|kind=0|type=7#float32|canonical=7#float32|collection=0|nullable=0|constructible=1|valueType=1|fields=0|enumValues=0|element=N|end|field|json=1#y|member=1#y|repeated=0|repeatedCollection=0|assignable=1|fieldNullable=0|shape=S|kind=0|type=7#float32|canonical=7#float32|collection=0|nullable=0|constructible=1|valueType=1|fields=0|enumValues=0|element=N|end|field|json=1#z|member=1#z|repeated=0|repeatedCollection=0|assignable=1|fieldNullable=0|shape=S|kind=0|type=7#float32|canonical=7#float32|collection=0|nullable=0|constructible=1|valueType=1|fields=0|enumValues=0|element=N|end|enumValues=0|element=N|end|end", "3d0eede5337ec250ae2b7840ac0c93e1d56a280f4aa0c7039f3a03f262f3c151", FoxTopicVisibility.Exported, FoxTopicWriterPolicy.SingleWriter);
+        private static readonly FoxTopicContract __foxRunContract_0 = new FoxTopicContract("/debug/array", "", "json", "v2|topic=12#/debug/array|encoding=4#json|schema=0#|fields=1|field|json=7#samples|member=8#_samples|canonical=7#float32|shape=247#S|kind=3|type=0#|canonical=0#|collection=1|nullable=0|constructible=1|valueType=0|fields=0|enumValues=0|element=S|kind=0|type=7#float32|canonical=7#float32|collection=0|nullable=0|constructible=1|valueType=1|fields=0|enumValues=0|element=N|end|end|end", "57aacde4029c0cc8861f163852c8c9d366eacf4a221f45f9fc5fef8f2c400086", FoxTopicVisibility.Exported, FoxTopicWriterPolicy.SingleWriter, "unity2foxglove.foxrun.Unity_FoxgloveSDK_Tests_Fixtures_FoxRunGenerationModelFixture_ec5506f3");
+        private static readonly FoxTopicContract __foxRunContract_1 = new FoxTopicContract("/debug/extra", "", "json", "v2|topic=12#/debug/extra|encoding=4#json|schema=0#|fields=1|field|json=5#extra|member=6#_extra|canonical=6#string|shape=129#S|kind=0|type=6#string|canonical=6#string|collection=0|nullable=0|constructible=1|valueType=0|fields=0|enumValues=0|element=N|end|end", "8a7b121bd413e594b0e1ad5753416056a4228f81f76e6d10d69ef3db64220820", FoxTopicVisibility.Exported, FoxTopicWriterPolicy.SingleWriter, "unity2foxglove.foxrun.Unity_FoxgloveSDK_Tests_Fixtures_FoxRunGenerationModelFixture_24e6e6b0");
+        private static readonly FoxTopicContract __foxRunContract_2 = new FoxTopicContract("/debug/list", "", "json", "v2|topic=11#/debug/list|encoding=4#json|schema=0#|fields=1|field|json=10#sampleList|member=11#_sampleList|canonical=7#float32|shape=247#S|kind=3|type=0#|canonical=0#|collection=2|nullable=0|constructible=1|valueType=0|fields=0|enumValues=0|element=S|kind=0|type=7#float32|canonical=7#float32|collection=0|nullable=0|constructible=1|valueType=1|fields=0|enumValues=0|element=N|end|end|end", "87de9ce25523919ec9c8b74fd8d058ab33aaed0884a81b22c7e8d96898d3b960", FoxTopicVisibility.Exported, FoxTopicWriterPolicy.SingleWriter, "unity2foxglove.foxrun.Unity_FoxgloveSDK_Tests_Fixtures_FoxRunGenerationModelFixture_38cbea4e");
+        private static readonly FoxTopicContract __foxRunContract_3 = new FoxTopicContract("/debug/nullable", "", "json", "v2|topic=15#/debug/nullable|encoding=4#json|schema=0#|fields=1|field|json=13#optionalCount|member=14#_optionalCount|canonical=5#int32|shape=127#S|kind=0|type=5#int32|canonical=5#int32|collection=0|nullable=1|constructible=1|valueType=1|fields=0|enumValues=0|element=N|end|end", "86d27a004a146efb799011b2e479ae1dcb718f25b369d9f9f32faf4d93266290", FoxTopicVisibility.Exported, FoxTopicWriterPolicy.SingleWriter, "unity2foxglove.foxrun.Unity_FoxgloveSDK_Tests_Fixtures_FoxRunGenerationModelFixture_432b270f");
+        private static readonly FoxTopicContract __foxRunContract_4 = new FoxTopicContract("/debug/trigger", "", "json", "v2|topic=14#/debug/trigger|encoding=4#json|schema=0#|fields=1|field|json=7#trigger|member=8#_trigger|canonical=5#int32|shape=127#S|kind=0|type=5#int32|canonical=5#int32|collection=0|nullable=0|constructible=1|valueType=1|fields=0|enumValues=0|element=N|end|end", "c6f190ea27d7c4822491e2079f63c7d6c361e3c1fa832ac3b14bf1a4bb7dab98", FoxTopicVisibility.Exported, FoxTopicWriterPolicy.SingleWriter, "unity2foxglove.foxrun.Unity_FoxgloveSDK_Tests_Fixtures_FoxRunGenerationModelFixture_307d8952");
+        private static readonly FoxTopicContract __foxRunContract_5 = new FoxTopicContract("/debug/value", "", "json", "v2|topic=12#/debug/value|encoding=4#json|schema=0#|fields=2|field|json=5#value|member=6#_value|canonical=7#float32|shape=131#S|kind=0|type=7#float32|canonical=7#float32|collection=0|nullable=0|constructible=1|valueType=1|fields=0|enumValues=0|element=N|end|field|json=11#valueMirror|member=12#_valueMirror|canonical=7#float32|shape=131#S|kind=0|type=7#float32|canonical=7#float32|collection=0|nullable=0|constructible=1|valueType=1|fields=0|enumValues=0|element=N|end|end", "636b8858805e0683f8039ac86f41ecc680763626513104bda387a23a2a86e1b5", FoxTopicVisibility.Exported, FoxTopicWriterPolicy.SingleWriter, "unity2foxglove.foxrun.Unity_FoxgloveSDK_Tests_Fixtures_FoxRunGenerationModelFixture_7d41f57b");
+        private static readonly FoxTopicContract __foxRunContract_6 = new FoxTopicContract("/debug/vector", "", "json", "v2|topic=13#/debug/vector|encoding=4#json|schema=0#|fields=1|field|json=8#position|member=9#_position|canonical=21#unity.vector3.float32|shape=812#S|kind=1|type=19#UnityEngine.Vector3|canonical=0#|collection=0|nullable=0|constructible=1|valueType=1|fields=3|field|json=1#x|member=1#x|repeated=0|repeatedCollection=0|assignable=1|fieldNullable=0|shape=S|kind=0|type=7#float32|canonical=7#float32|collection=0|nullable=0|constructible=1|valueType=1|fields=0|enumValues=0|element=N|end|field|json=1#y|member=1#y|repeated=0|repeatedCollection=0|assignable=1|fieldNullable=0|shape=S|kind=0|type=7#float32|canonical=7#float32|collection=0|nullable=0|constructible=1|valueType=1|fields=0|enumValues=0|element=N|end|field|json=1#z|member=1#z|repeated=0|repeatedCollection=0|assignable=1|fieldNullable=0|shape=S|kind=0|type=7#float32|canonical=7#float32|collection=0|nullable=0|constructible=1|valueType=1|fields=0|enumValues=0|element=N|end|enumValues=0|element=N|end|end", "3d0eede5337ec250ae2b7840ac0c93e1d56a280f4aa0c7039f3a03f262f3c151", FoxTopicVisibility.Exported, FoxTopicWriterPolicy.SingleWriter, "unity2foxglove.foxrun.Unity_FoxgloveSDK_Tests_Fixtures_FoxRunGenerationModelFixture_efb474f9");
 
         string IFoxgloveTopicContractSource.FoxgloveLog_Origin => __foxRunOrigin;
 
@@ -1140,8 +1140,8 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
             switch (topicIndex)
             {
                 case 0:
-                    if (__foxRunCaptureEncoding_0 == FoxRunEncoding.MessagePack)
-                        router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(0), FoxRunEncoding.MessagePack, nowNs, __foxRunLastMessagePack_0, __foxRunOrigin);
+                    if (__foxRunCaptureEncoding_0 == FoxRunEncoding.Protobuf) router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(0), FoxRunEncoding.Protobuf, nowNs, __BuildFoxRunProtobuf_0(), __foxRunOrigin);
+                    else if (__foxRunCaptureEncoding_0 == FoxRunEncoding.MessagePack) router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(0), FoxRunEncoding.MessagePack, nowNs, __foxRunLastMessagePack_0, __foxRunOrigin);
                     else
                     {
                         var __sink_0 = __BuildFoxRunJson_0();
@@ -1149,8 +1149,8 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
                     }
                     break;
                 case 1:
-                    if (__foxRunCaptureEncoding_1 == FoxRunEncoding.MessagePack)
-                        router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(1), FoxRunEncoding.MessagePack, nowNs, __foxRunLastMessagePack_1, __foxRunOrigin);
+                    if (__foxRunCaptureEncoding_1 == FoxRunEncoding.Protobuf) router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(1), FoxRunEncoding.Protobuf, nowNs, __BuildFoxRunProtobuf_1(), __foxRunOrigin);
+                    else if (__foxRunCaptureEncoding_1 == FoxRunEncoding.MessagePack) router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(1), FoxRunEncoding.MessagePack, nowNs, __foxRunLastMessagePack_1, __foxRunOrigin);
                     else
                     {
                         var __sink_1 = __BuildFoxRunJson_1();
@@ -1158,8 +1158,8 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
                     }
                     break;
                 case 2:
-                    if (__foxRunCaptureEncoding_2 == FoxRunEncoding.MessagePack)
-                        router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(2), FoxRunEncoding.MessagePack, nowNs, __foxRunLastMessagePack_2, __foxRunOrigin);
+                    if (__foxRunCaptureEncoding_2 == FoxRunEncoding.Protobuf) router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(2), FoxRunEncoding.Protobuf, nowNs, __BuildFoxRunProtobuf_2(), __foxRunOrigin);
+                    else if (__foxRunCaptureEncoding_2 == FoxRunEncoding.MessagePack) router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(2), FoxRunEncoding.MessagePack, nowNs, __foxRunLastMessagePack_2, __foxRunOrigin);
                     else
                     {
                         var __sink_2 = __BuildFoxRunJson_2();
@@ -1167,8 +1167,8 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
                     }
                     break;
                 case 3:
-                    if (__foxRunCaptureEncoding_3 == FoxRunEncoding.MessagePack)
-                        router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(3), FoxRunEncoding.MessagePack, nowNs, __foxRunLastMessagePack_3, __foxRunOrigin);
+                    if (__foxRunCaptureEncoding_3 == FoxRunEncoding.Protobuf) router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(3), FoxRunEncoding.Protobuf, nowNs, __BuildFoxRunProtobuf_3(), __foxRunOrigin);
+                    else if (__foxRunCaptureEncoding_3 == FoxRunEncoding.MessagePack) router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(3), FoxRunEncoding.MessagePack, nowNs, __foxRunLastMessagePack_3, __foxRunOrigin);
                     else
                     {
                         var __sink_3 = __BuildFoxRunJson_3();
@@ -1176,8 +1176,8 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
                     }
                     break;
                 case 4:
-                    if (__foxRunCaptureEncoding_4 == FoxRunEncoding.MessagePack)
-                        router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(4), FoxRunEncoding.MessagePack, nowNs, __foxRunLastMessagePack_4, __foxRunOrigin);
+                    if (__foxRunCaptureEncoding_4 == FoxRunEncoding.Protobuf) router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(4), FoxRunEncoding.Protobuf, nowNs, __BuildFoxRunProtobuf_4(), __foxRunOrigin);
+                    else if (__foxRunCaptureEncoding_4 == FoxRunEncoding.MessagePack) router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(4), FoxRunEncoding.MessagePack, nowNs, __foxRunLastMessagePack_4, __foxRunOrigin);
                     else
                     {
                         var __sink_4 = __BuildFoxRunJson_4();
@@ -1185,8 +1185,8 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
                     }
                     break;
                 case 5:
-                    if (__foxRunCaptureEncoding_5 == FoxRunEncoding.MessagePack)
-                        router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(5), FoxRunEncoding.MessagePack, nowNs, __foxRunLastMessagePack_5, __foxRunOrigin);
+                    if (__foxRunCaptureEncoding_5 == FoxRunEncoding.Protobuf) router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(5), FoxRunEncoding.Protobuf, nowNs, __BuildFoxRunProtobuf_5(), __foxRunOrigin);
+                    else if (__foxRunCaptureEncoding_5 == FoxRunEncoding.MessagePack) router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(5), FoxRunEncoding.MessagePack, nowNs, __foxRunLastMessagePack_5, __foxRunOrigin);
                     else
                     {
                         var __sink_5 = __BuildFoxRunJson_5();
@@ -1194,8 +1194,8 @@ namespace Unity.FoxgloveSDK.Tests.Fixtures
                     }
                     break;
                 case 6:
-                    if (__foxRunCaptureEncoding_6 == FoxRunEncoding.MessagePack)
-                        router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(6), FoxRunEncoding.MessagePack, nowNs, __foxRunLastMessagePack_6, __foxRunOrigin);
+                    if (__foxRunCaptureEncoding_6 == FoxRunEncoding.Protobuf) router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(6), FoxRunEncoding.Protobuf, nowNs, __BuildFoxRunProtobuf_6(), __foxRunOrigin);
+                    else if (__foxRunCaptureEncoding_6 == FoxRunEncoding.MessagePack) router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(6), FoxRunEncoding.MessagePack, nowNs, __foxRunLastMessagePack_6, __foxRunOrigin);
                     else
                     {
                         var __sink_6 = __BuildFoxRunJson_6();

@@ -48,8 +48,10 @@ namespace Unity.FoxgloveSDK.Editor
             var typeName = shape?.TypeName ?? string.Empty;
             return string.Equals(typeName, "UnityEngine.Vector2", System.StringComparison.Ordinal)
                    || string.Equals(typeName, "UnityEngine.Vector3", System.StringComparison.Ordinal)
+                   || string.Equals(typeName, "UnityEngine.Vector4", System.StringComparison.Ordinal)
                    || string.Equals(typeName, "UnityEngine.Quaternion", System.StringComparison.Ordinal)
-                   || string.Equals(typeName, "UnityEngine.Color", System.StringComparison.Ordinal);
+                   || string.Equals(typeName, "UnityEngine.Color", System.StringComparison.Ordinal)
+                   || string.Equals(typeName, "UnityEngine.Color32", System.StringComparison.Ordinal);
         }
 
         private static void EmitCollectionJsonValueAppend(
@@ -153,6 +155,31 @@ namespace Unity.FoxgloveSDK.Editor
                 case "System.Double":
                     sb.AppendLine($"{pad}if ({access} == null || double.IsNaN({access}.Value) || double.IsInfinity({access}.Value)) __json.Append(\"null\"); else __json.Append({access}.Value.ToString(\"R\", global::System.Globalization.CultureInfo.InvariantCulture));");
                     break;
+                case "Vector2":
+                    EmitNullableObjectJsonValueAppend(sb, access, pad, "x", "y");
+                    break;
+                case "Vector3":
+                    EmitNullableObjectJsonValueAppend(sb, access, pad, "x", "y", "z");
+                    break;
+                case "Quaternion":
+                    EmitNullableObjectJsonValueAppend(sb, access, pad, "x", "y", "z", "w");
+                    break;
+                case "Color":
+                    EmitNullableObjectJsonValueAppend(sb, access, pad, "r", "g", "b", "a");
+                    break;
+                case "Vector4":
+                    EmitNullableObjectJsonValueAppend(sb, access, pad, "x", "y", "z", "w");
+                    break;
+                case "Color32":
+                    sb.AppendLine($"{pad}if ({access} == null)");
+                    sb.AppendLine($"{pad}{{");
+                    sb.AppendLine($"{pad}    __json.Append(\"null\");");
+                    sb.AppendLine($"{pad}}}");
+                    sb.AppendLine($"{pad}else");
+                    sb.AppendLine($"{pad}{{");
+                    AppendColor32(sb, pad + "    ", access + ".Value");
+                    sb.AppendLine($"{pad}}}");
+                    break;
                 default:
                     if (IsIntegralType(type))
                         sb.AppendLine($"{pad}if ({access} == null) __json.Append(\"null\"); else __json.Append({access}.Value.ToString(global::System.Globalization.CultureInfo.InvariantCulture));");
@@ -160,6 +187,22 @@ namespace Unity.FoxgloveSDK.Editor
                         sb.AppendLine($"{pad}__AppendFoxRunJsonString(__json, {access} == null ? null : {access}.Value.ToString());");
                     break;
             }
+        }
+
+        private static void EmitNullableObjectJsonValueAppend(
+            StringBuilder sb,
+            string access,
+            string pad,
+            params string[] fields)
+        {
+            sb.AppendLine($"{pad}if ({access} == null)");
+            sb.AppendLine($"{pad}{{");
+            sb.AppendLine($"{pad}    __json.Append(\"null\");");
+            sb.AppendLine($"{pad}}}");
+            sb.AppendLine($"{pad}else");
+            sb.AppendLine($"{pad}{{");
+            AppendVector(sb, pad + "    ", access + ".Value", fields);
+            sb.AppendLine($"{pad}}}");
         }
 
         private static bool TryGetCollectionElementType(string type, out string elementType, out string countProperty)

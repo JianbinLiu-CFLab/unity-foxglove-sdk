@@ -401,6 +401,17 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             _remainingBytes -= byteCount;
         }
 
+        public void RequireSequenceElements(long elementCount, long elementStorageBytes)
+        {
+            if (elementCount < 0)
+                throw new ArgumentOutOfRangeException(nameof(elementCount));
+            if (elementStorageBytes < 0)
+                throw new ArgumentOutOfRangeException(nameof(elementStorageBytes));
+            if (elementCount > FoxRunRos2NativeCopyBudgetPolicy.MaximumSequenceElements)
+                throw new InvalidOperationException("FoxRun ROS2 sequence element budget exceeded.");
+            RequireBytes(checked(elementCount * elementStorageBytes));
+        }
+
         internal static FoxRunRos2CopyContext Rent(long maximumBytes)
         {
             var context = s_cached;

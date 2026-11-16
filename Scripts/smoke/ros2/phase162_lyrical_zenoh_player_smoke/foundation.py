@@ -87,6 +87,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Stop an auto-started Zenoh router when this helper exits even if the helper-launched RViz2 process is still open.",
     )
+    parser.add_argument(
+        "--hold-router-for-rviz",
+        action="store_true",
+        help="Keep an auto-started Zenoh router alive until helper-launched RViz2 exits.",
+    )
     parser.add_argument("--router-ready-marker", default=DEFAULT_ROUTER_READY_MARKER)
     parser.add_argument("--unity-player", type=pathlib.Path, default=None)
     parser.add_argument("--player-log", type=pathlib.Path, default=None)

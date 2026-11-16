@@ -15,9 +15,9 @@ namespace Unity.FoxgloveSDK.IO
         public ulong TimeNs = ulong.MaxValue;
 
         /// <summary>Optional channel ID filter; null or empty means all channels.</summary>
-        public List<ushort> ChannelIds;
+        public List<ushort> ChannelIds = new List<ushort>();
 
         /// <summary>Optional topic filter; null or empty means all topics.</summary>
-        public List<string> Topics;
+        public List<string> Topics = new List<string>();
     }
 }

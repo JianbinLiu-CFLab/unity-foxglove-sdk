@@ -366,8 +366,8 @@ class SchemaToolingTests(unittest.TestCase):
             root = Path(temp)
             cdr_output = root / "Ros2CdrGeneratedSerializers.g.cs"
             catalog_output = root / "FoxgloveRos2MsgSchemaCatalog.cs"
-            cdr_output.write_text("same\n", encoding="utf-8")
-            catalog_output.write_text("same\n", encoding="utf-8")
+            cdr_output.write_bytes(b"same\n")
+            catalog_output.write_bytes(b"same\n")
             cdr_mtime = cdr_output.stat().st_mtime_ns
             catalog_mtime = catalog_output.stat().st_mtime_ns
 
@@ -376,6 +376,24 @@ class SchemaToolingTests(unittest.TestCase):
 
             self.assertEqual(cdr_mtime, cdr_output.stat().st_mtime_ns)
             self.assertEqual(catalog_mtime, catalog_output.stat().st_mtime_ns)
+
+    def test_generators_rewrite_crlf_outputs_to_lf(self) -> None:
+        """Schema generators should repair non-LF output before skipping a write."""
+        cdr = load_module("cdr_generator_line_endings", "Scripts/schema/generate_ros2_cdr_serializers.py")
+        catalog = load_module("schema_catalog_line_endings", "Scripts/schema/generate_ros2_msg_schema_catalog.py")
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            cdr_output = root / "Ros2CdrGeneratedSerializers.g.cs"
+            catalog_output = root / "FoxgloveRos2MsgSchemaCatalog.cs"
+            cdr_output.write_bytes(b"same\r\n")
+            catalog_output.write_bytes(b"same\r\n")
+
+            cdr.write_text(cdr_output, "same\n")
+            catalog.write_text_if_changed(catalog_output, "same\n")
+
+            self.assertEqual(b"same\n", cdr_output.read_bytes())
+            self.assertEqual(b"same\n", catalog_output.read_bytes())
 
     def test_generated_output_validator_reports_stale_committed_files(self) -> None:
         """Fresh generator output should be byte-compared against committed files."""

@@ -90,6 +90,70 @@ public partial class ParameterAndServiceTests
         }
 
         [Fact]
+        public void DirectlyEnqueuedJsonServiceCallIsParsedDuringDrain()
+        {
+            var fake = new Phase6FakeTransport();
+            var handled = false;
+            var services = new FoxgloveServiceRegistry();
+            var serviceId = services.Register(
+                new ServiceDescriptor
+                {
+                    Name = "/direct-enqueue", Type = "/direct-enqueue",
+                    Request = new ServiceSchemaDescriptor { SchemaName = "/req" },
+                    Response = new ServiceSchemaDescriptor { SchemaName = "/resp" }
+                },
+                payload =>
+                {
+                    handled = payload["value"]?.Value<int>() == 7;
+                    return new JObject { ["ok"] = true };
+                });
+            using var session = new FoxgloveSession(
+                "direct-enqueue",
+                fake,
+                serviceRegistry: services);
+
+            session.Services.Enqueue(
+                serviceId,
+                1,
+                1,
+                "json",
+                Encoding.UTF8.GetBytes("{\"value\":7}"));
+            session.DrainServiceCalls();
+
+            Assert.True(handled);
+            Assert.NotEmpty(fake.SentBinaries(1));
+        }
+
+        [Fact]
+        public void ReentrantServiceDrainDoesNotInvalidateTheOuterDispatch()
+        {
+            var fake = new Phase6FakeTransport();
+            FoxgloveSession session = null;
+            var handled = false;
+            var services = new FoxgloveServiceRegistry();
+            var serviceId = services.Register(
+                new ServiceDescriptor
+                {
+                    Name = "/reentrant-drain", Type = "/reentrant-drain",
+                    Request = new ServiceSchemaDescriptor { SchemaName = "/req" },
+                    Response = new ServiceSchemaDescriptor { SchemaName = "/resp" }
+                },
+                _ =>
+                {
+                    handled = true;
+                    session.DrainServiceCalls();
+                    return new JObject { ["ok"] = true };
+                });
+            session = new FoxgloveSession("reentrant-drain", fake, serviceRegistry: services);
+
+            session.Services.Enqueue(serviceId, 1, 1, "json", Encoding.UTF8.GetBytes("{}"));
+            session.DrainServiceCalls();
+
+            Assert.True(handled);
+            Assert.NotEmpty(fake.SentBinaries(1));
+        }
+
+        [Fact]
         public void MalformedPlaybackControlIsConsumedAndDiagnosed()
         {
             var fake = new Phase6FakeTransport();

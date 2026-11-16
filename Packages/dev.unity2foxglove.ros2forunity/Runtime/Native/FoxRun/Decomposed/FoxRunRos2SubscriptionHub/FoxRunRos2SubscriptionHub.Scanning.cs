@@ -115,10 +115,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 _policy = null;
             }
         }
-
         private void OnSessionChanged(FoxRunSubscriptionSessionPolicy policy)
             => ApplySessionPolicy(policy);
-
         private void ApplySessionPolicy(FoxRunSubscriptionSessionPolicy policy)
         {
             if (ReferenceEquals(_policy, policy))
@@ -435,7 +433,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     valuesEqual: valuesEqual,
                     consumeTrigger: consumeTrigger,
                     canApply: canApply,
-                    transportAdmissionRateLimitHz: _policy.TransportAdmissionRateLimitHz);
+                    transportAdmissionRateLimitHz: _policy.TransportAdmissionRateLimitHz,
+                    transportAdmissionTopic: contract.Topic, transportAdmissionScope: gameObject.GetInstanceID());
                 binding.WaitForRuntime();
                 if (Ros2ForUnityNativeBridgeLifecycleGate.CanInitializeNativeRuntimeForBridge(
                         gameObject.scene))

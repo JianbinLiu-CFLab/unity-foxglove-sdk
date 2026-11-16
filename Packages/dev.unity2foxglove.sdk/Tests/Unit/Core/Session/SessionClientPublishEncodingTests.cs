@@ -160,6 +160,42 @@ namespace Unity.FoxgloveSDK.UnitTests.Core.Session
         }
 
         [Fact]
+        public async Task UnsubscribeWaitsForAnInFlightPublishBeforeClearingDataQueue()
+        {
+            var transport = new ClientPublishTransport { BlockDataSends = true };
+            using var session = new FoxgloveSession("session-publish-unsubscribe-order", transport);
+            session.RegisterChannel(new AdvertiseChannel
+            {
+                Id = 1,
+                Topic = "/phase174/unsubscribe-order",
+                Encoding = "json",
+                SchemaName = "",
+                Schema = ""
+            });
+            transport.Connect(11);
+            transport.ReceiveText(11,
+                "{\"op\":\"subscribe\",\"subscriptions\":[{\"id\":7,\"channelId\":1}]}" );
+
+            var publish = Task.Run(() => session.Publish(1, new byte[] { 1 }, 1));
+            Assert.True(transport.DataSendEntered.Wait(TimeSpan.FromSeconds(5)));
+
+            using var unsubscribeStarted = new ManualResetEventSlim();
+            var unsubscribe = Task.Run(() =>
+            {
+                unsubscribeStarted.Set();
+                transport.ReceiveText(11, "{\"op\":\"unsubscribe\",\"subscriptionIds\":[7]}");
+            });
+            Assert.True(unsubscribeStarted.Wait(TimeSpan.FromSeconds(5)));
+            var completed = await Task.WhenAny(unsubscribe, Task.Delay(250));
+            Assert.NotSame(unsubscribe, completed);
+
+            transport.AllowDataSend.Set();
+            await publish;
+            await unsubscribe;
+            Assert.Equal(1, transport.ClearDataQueueCount);
+        }
+
+        [Fact]
         public void AdvertiseAndUnadvertiseShareTheDisconnectLifecycleGate()
         {
             var transport = new ClientPublishTransport();
@@ -226,9 +262,13 @@ namespace Unity.FoxgloveSDK.UnitTests.Core.Session
             return frame;
         }
 
-        private sealed class ClientPublishTransport : IFoxgloveTransport
+        private sealed class ClientPublishTransport : IFoxgloveTransport, IClientDataQueueResettableFoxgloveTransport
         {
             public bool IsRunning { get; private set; }
+            public bool BlockDataSends { get; set; }
+            public ManualResetEventSlim DataSendEntered { get; } = new();
+            public ManualResetEventSlim AllowDataSend { get; } = new();
+            public int ClearDataQueueCount { get; private set; }
             public event Action<uint> OnClientConnected;
             public event Action<uint> OnClientDisconnected;
             public event Action<uint, string> OnTextReceived;
@@ -241,7 +281,14 @@ namespace Unity.FoxgloveSDK.UnitTests.Core.Session
             public void BroadcastText(string json) { }
             public void BroadcastBinary(byte[] data) { }
             public void SendText(uint clientId, string json) => SentTexts.Add(json);
-            public void SendBinary(uint clientId, byte[] data) { }
+            public void SendBinary(uint clientId, byte[] data)
+            {
+                if (!BlockDataSends)
+                    return;
+                DataSendEntered.Set();
+                AllowDataSend.Wait(TimeSpan.FromSeconds(5));
+            }
+            public void ClearDataQueue(uint clientId) => ClearDataQueueCount++;
             public void Connect(uint clientId) => OnClientConnected?.Invoke(clientId);
             public void Disconnect(uint clientId) => OnClientDisconnected?.Invoke(clientId);
             public void ReceiveText(uint clientId, string json) => OnTextReceived?.Invoke(clientId, json);

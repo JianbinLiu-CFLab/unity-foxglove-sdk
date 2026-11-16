@@ -39,6 +39,7 @@ namespace Unity.FoxgloveSDK.Components
         private int _lastCullingMask;
         private CameraClearFlags _lastClearFlags;
         private Color _lastBackgroundColor;
+        private int _lastCameraSettingsHash;
         private bool _captureCameraDirty = true;
 
         public Camera CaptureCamera => _captureCamera;
@@ -156,6 +157,7 @@ namespace Unity.FoxgloveSDK.Components
             _sourceCamera = null;
             _captureRenderTextureGeneration = 0;
             _lastCopiedSourceCamera = null;
+            _lastCameraSettingsHash = 0;
             _captureCameraDirty = true;
         }
 
@@ -164,6 +166,7 @@ namespace Unity.FoxgloveSDK.Components
             if (_sourceCamera == null || _captureCamera == null)
                 return;
 
+            var cameraSettingsHash = CameraSettingsHash(_sourceCamera);
             if (!_captureCameraDirty
                 && _lastCopiedSourceCamera == _sourceCamera
                 && _lastCaptureWidth == width
@@ -175,10 +178,9 @@ namespace Unity.FoxgloveSDK.Components
                 && Mathf.Approximately(_lastFarClipPlane, _sourceCamera.farClipPlane)
                 && _lastCullingMask == _sourceCamera.cullingMask
                 && _lastClearFlags == _sourceCamera.clearFlags
-                && _lastBackgroundColor == _sourceCamera.backgroundColor)
-            {
+                && _lastBackgroundColor == _sourceCamera.backgroundColor
+                && _lastCameraSettingsHash == cameraSettingsHash)
                 return;
-            }
 
             _captureCamera.CopyFrom(_sourceCamera);
             _lastCopiedSourceCamera = _sourceCamera;
@@ -192,7 +194,42 @@ namespace Unity.FoxgloveSDK.Components
             _lastCullingMask = _sourceCamera.cullingMask;
             _lastClearFlags = _sourceCamera.clearFlags;
             _lastBackgroundColor = _sourceCamera.backgroundColor;
+            _lastCameraSettingsHash = cameraSettingsHash;
             _captureCameraDirty = false;
+        }
+
+        private static int CameraSettingsHash(Camera camera)
+        {
+            unchecked
+            {
+                var hash = 17;
+                hash = hash * 31 + camera.allowHDR.GetHashCode();
+                hash = hash * 31 + camera.allowMSAA.GetHashCode();
+                hash = hash * 31 + camera.allowDynamicResolution.GetHashCode();
+                hash = hash * 31 + camera.depthTextureMode.GetHashCode();
+                hash = hash * 31 + camera.useOcclusionCulling.GetHashCode();
+                hash = hash * 31 + camera.renderingPath.GetHashCode();
+                hash = hash * 31 + camera.opaqueSortMode.GetHashCode();
+                hash = hash * 31 + camera.transparencySortMode.GetHashCode();
+                hash = hash * 31 + camera.transparencySortAxis.GetHashCode();
+                hash = hash * 31 + camera.layerCullSpherical.GetHashCode();
+                hash = hash * 31 + camera.eventMask;
+                hash = hash * 31 + camera.projectionMatrix.GetHashCode();
+                hash = hash * 31 + camera.nonJitteredProjectionMatrix.GetHashCode();
+                hash = hash * 31 + camera.lensShift.GetHashCode();
+                hash = hash * 31 + camera.sensorSize.GetHashCode();
+                hash = hash * 31 + camera.gateFit.GetHashCode();
+                hash = hash * 31 + camera.focalLength.GetHashCode();
+                hash = hash * 31 + camera.targetDisplay;
+                hash = hash * 31 + camera.stereoTargetEye.GetHashCode();
+                hash = hash * 31 + camera.stereoConvergence.GetHashCode();
+                hash = hash * 31 + camera.stereoSeparation.GetHashCode();
+                var distances = camera.layerCullDistances;
+                if (distances != null)
+                    for (var index = 0; index < distances.Length; index++)
+                        hash = hash * 31 + distances[index].GetHashCode();
+                return hash;
+            }
         }
 
         private void DestroyRenderTexture()

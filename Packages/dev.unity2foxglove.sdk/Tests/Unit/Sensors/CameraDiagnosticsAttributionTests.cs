@@ -76,7 +76,6 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             Assert.DoesNotContain("CameraPublishDiagnostics", managerDiagnostics, StringComparison.Ordinal);
             Assert.Contains("CameraTimingDiagnostics.Publish", cameraDiagnostics, StringComparison.Ordinal);
             Assert.Contains("CameraTimingDiagnostics.Reset", cameraDiagnostics, StringComparison.Ordinal);
-            Assert.Contains("Main-thread diagnostics bridge", sharedSnapshot, StringComparison.Ordinal);
             Assert.Contains("cameraSnapshotAgeMs=", managerDiagnostics, StringComparison.Ordinal);
             Assert.Contains("cameraRenderMs=", managerDiagnostics, StringComparison.Ordinal);
             Assert.Contains("cameraPendingReadbacksBefore=", managerDiagnostics, StringComparison.Ordinal);

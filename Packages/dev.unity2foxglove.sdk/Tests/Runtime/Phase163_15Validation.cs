@@ -91,8 +91,9 @@ namespace Unity.FoxgloveSDK.Tests
                   && CountOccurrences(resolveTopic, "ResolveSensorProfile()") == 1
                   && CountOccurrences(resolveParent, "ResolveSensorProfile()") == 1,
                 "163-15D-1: CameraInfo profile-dependent helpers cache the profile per call");
-            Check(source.Contains("_topic == \"/unity/sensor/camera/camera_info\"", StringComparison.Ordinal),
-                "163-15D-2: CameraInfo profile default sentinel matches actual default topic");
+            Check(source.Contains("_topic == \"/unity/sensor/camera/camera_info\"", StringComparison.Ordinal)
+                  && source.Contains("_topic == \"/unity/camera/info\"", StringComparison.Ordinal),
+                "163-15D-2: CameraInfo profile default sentinels include legacy and current topics");
             Check(source.Contains("WarnScreenDimensionFallback", StringComparison.Ordinal)
                   && source.Contains("falling back to Screen dimensions for calibration", StringComparison.Ordinal),
                 "163-15D-3: CameraInfo warns when misconfiguration falls back to Screen dimensions");

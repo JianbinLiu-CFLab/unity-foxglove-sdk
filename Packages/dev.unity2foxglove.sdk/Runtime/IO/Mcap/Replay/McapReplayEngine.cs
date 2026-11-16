@@ -141,7 +141,6 @@ namespace Unity.FoxgloveSDK.IO
         private readonly Dictionary<ushort, SnapshotCandidate> _snapshotLatestByChannel = new();
         private List<McapChunkIndex> _snapshotChunkIndexesByDescendingEndTime;
         private readonly IFoxgloveLogger _logger;
-
         /// <summary>
         /// Counters from the most recent <see cref="Snapshot"/> call.
         /// </summary>

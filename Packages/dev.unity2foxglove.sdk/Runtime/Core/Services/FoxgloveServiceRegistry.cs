@@ -8,6 +8,8 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Text;
+using System.Threading;
 using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Protocol;
 
@@ -18,6 +20,7 @@ namespace Unity.FoxgloveSDK.Core
     /// </summary>
     public class FoxgloveServiceRegistry
     {
+        private static readonly UTF8Encoding StrictUtf8 = new UTF8Encoding(false, true);
         private readonly Dictionary<uint, ServiceDescriptor> _services = new();
         // Key: (clientId, callId) — two clients may independently use the same callId
         private readonly Dictionary<(uint clientId, uint callId), FoxgloveServiceCall> _pending = new();
@@ -27,6 +30,11 @@ namespace Unity.FoxgloveSDK.Core
         private readonly Func<long> _monotonicTimestampProvider;
         private uint _nextServiceId = 1;
         private readonly Dictionary<uint, Func<Newtonsoft.Json.Linq.JToken, Newtonsoft.Json.Linq.JToken>> _handlers = new();
+        private int _drainInProgress;
+
+        internal bool TryBeginDrain() => Interlocked.Exchange(ref _drainInProgress, 1) == 0;
+
+        internal void EndDrain() => Volatile.Write(ref _drainInProgress, 0);
 
         /// <summary>Create a service registry using the process monotonic clock.</summary>
         public FoxgloveServiceRegistry()
@@ -210,15 +218,31 @@ namespace Unity.FoxgloveSDK.Core
             out FoxgloveServiceCall call,
             out string error)
         {
+            var parsedPayload = ParseJsonPayloadIfPresent(encoding, payload);
             return TryEnqueue(
                 serviceId,
                 callId,
                 clientId,
                 encoding,
                 payload,
-                jsonPayload: null,
+                jsonPayload: parsedPayload,
                 out call,
                 out error);
+        }
+
+        private static JToken ParseJsonPayloadIfPresent(string encoding, byte[] payload)
+        {
+            if (!string.Equals(encoding, "json", StringComparison.OrdinalIgnoreCase)
+                || payload == null)
+                return null;
+            try
+            {
+                return JToken.Parse(StrictUtf8.GetString(payload));
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         /// <summary>

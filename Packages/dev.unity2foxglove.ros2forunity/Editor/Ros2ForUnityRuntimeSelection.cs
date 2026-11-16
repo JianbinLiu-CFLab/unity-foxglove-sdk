@@ -191,6 +191,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Editor
         private const string WindowsNativePluginRelativeDirectory =
             "Runtime/Ros2ForUnity/Plugins/Windows/x86_64";
         private static string _cachedCandidatesProjectDirectory;
+        private static string _cachedCandidatesFingerprint;
         private static IReadOnlyList<Ros2ForUnityRuntimeDescriptor> _cachedCandidates;
         private static string _cachedManifestProjectDirectory;
         private static DateTime _cachedManifestWriteTimeUtc;

@@ -12,7 +12,7 @@ namespace Unity.FoxgloveSDK.Core
 {
     internal static class ReplayPropertyCache
     {
-        private static readonly ConcurrentDictionary<PropertyCacheKey, PropertyInfo> Cache = new();
+        private static readonly ConcurrentDictionary<PropertyCacheKey, PropertyCacheEntry> Cache = new();
 
 #if UNITY_5_3_OR_NEWER
         [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.SubsystemRegistration)]
@@ -25,7 +25,17 @@ namespace Unity.FoxgloveSDK.Core
         internal static PropertyInfo Resolve(Type type, string propertyName, BindingFlags bindingFlags)
         {
             var key = new PropertyCacheKey(type, propertyName, bindingFlags);
-            return Cache.GetOrAdd(key, static cachedKey => cachedKey.Resolve());
+            return Cache.GetOrAdd(key, static cachedKey => new PropertyCacheEntry(cachedKey.Resolve())).Property;
+        }
+
+        private readonly struct PropertyCacheEntry
+        {
+            public PropertyCacheEntry(PropertyInfo property)
+            {
+                Property = property;
+            }
+
+            public PropertyInfo Property { get; }
         }
 
         private readonly struct PropertyCacheKey : IEquatable<PropertyCacheKey>

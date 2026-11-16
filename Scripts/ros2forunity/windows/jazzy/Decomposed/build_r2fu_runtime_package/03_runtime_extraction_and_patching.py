@@ -55,6 +55,15 @@ def copy_supplemental_runtime_dlls(package: Path, ros2_bin: Path) -> None:
                 f"Missing supplemental Jazzy runtime DLL {source}; "
                 "install the repo-local ros2-windows/ros2_jazzy entrypoint before rebuilding this package."
             )
+        expected_hash = PHASE161_SUPPLEMENTAL_RUNTIME_DLL_SHA256.get(name)
+        if not expected_hash:
+            raise ValueError(f"Missing pinned SHA-256 for supplemental Jazzy runtime DLL {name}.")
+        actual_hash = sha256_file(source)
+        if actual_hash != expected_hash:
+            raise ValueError(
+                f"Supplemental Jazzy runtime DLL {source} does not match its pinned SHA-256: "
+                f"{actual_hash} != {expected_hash}"
+            )
         shutil.copy2(source, plugin_root / name)
 
 

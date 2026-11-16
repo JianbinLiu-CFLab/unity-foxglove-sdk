@@ -158,7 +158,7 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
         }
 
         [Fact]
-        public void RosOnlyInheritedPublishRegistersAdditiveSinkAsJson()
+        public void RosOnlyInheritedPublishRegistersAdditiveSinkAsSelectedEncoding()
         {
             using var fixture = new Fixture(
                 activeProviderIds: new[]
@@ -173,11 +173,11 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
 
             var registered =
                 Assert.Single(fixture.Sink.Registered);
-            Assert.Equal("json", registered.Encoding);
+            Assert.Equal("msgpack", registered.Encoding);
             Assert.True(fixture.Publish());
             var published =
                 Assert.Single(fixture.Sink.Published);
-            Assert.Equal("json", published.Encoding);
+            Assert.Equal("msgpack", published.Encoding);
             Assert.Equal(0, fixture.Source.WebSocketPublishes);
             Assert.Equal(0, fixture.Source.WebSocketEncodingSets);
         }
@@ -448,7 +448,7 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
                 ulong nowNs)
                 => router.PublishCompatible(
                     _contract,
-                    FoxRunEncoding.JSON,
+                    FoxRunEncoding.MessagePack,
                     nowNs,
                     new byte[] { 0x7b, 0x7d },
                     FoxgloveLog_Origin);

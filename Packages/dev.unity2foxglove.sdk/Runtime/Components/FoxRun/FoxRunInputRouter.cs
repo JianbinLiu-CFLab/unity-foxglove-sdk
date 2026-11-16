@@ -6,6 +6,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.ExceptionServices;
 using System.Threading;
 using Unity.FoxgloveSDK.Schemas.MsgPack;
@@ -49,23 +50,30 @@ namespace Unity.FoxgloveSDK.Components
             new(StringComparer.Ordinal);
         private readonly Dictionary<string, Registration[]> _registrationSnapshots =
             new(StringComparer.Ordinal);
-        private readonly Dictionary<string, Queue<double>> _arrivalTimes =
-            new(StringComparer.Ordinal);
         private readonly List<IFoxgloveInputSource> _registeredSources = new();
         private readonly List<RegistrationLifetime> _registrationLifetimes = new();
         private IFoxgloveInputSource[] _sourceSnapshot = Array.Empty<IFoxgloveInputSource>();
+        private static long NextRateLimitScope;
+        private readonly long _rateLimitScope;
         private FoxRunEncoding _defaultSubscriptionEncoding = FoxRunEncoding.Protobuf;
         private string _defaultSubscribeTransportId =
             FoxgloveWebSocketTransport.Id;
 
         public FoxRunInputRouter(int maxPayloadBytes = 64 * 1024, int maxMessagesPerSecondPerTopic = 60)
         {
+            _rateLimitScope = Interlocked.Increment(ref NextRateLimitScope);
+#if !UNITY_5_3_OR_NEWER
+            FoxRunTopicAdmissionRegistry.Reset(_rateLimitScope);
+#endif
             MaxPayloadBytes = Math.Max(1, maxPayloadBytes);
             MaxMessagesPerSecondPerTopic = Math.Max(1, maxMessagesPerSecondPerTopic);
         }
 
         public int MaxPayloadBytes { get; set; }
         public int MaxMessagesPerSecondPerTopic { get; set; }
+
+        internal void ResetRateLimitScope()
+            => FoxRunTopicAdmissionRegistry.Reset(_rateLimitScope);
 
         /// <summary>Manager-resolved transport used when declarations inherit.</summary>
         public string DefaultSubscribeTransportId
@@ -489,5 +497,194 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
+    }
+}
+
+namespace Unity.FoxgloveSDK.Components
+{
+    public static class FoxRunTopicAdmissionRegistry
+    {
+        private readonly struct AdmissionKey : IEquatable<AdmissionKey>
+        {
+            public AdmissionKey(long scope, string topic)
+            {
+                Scope = scope;
+                Topic = topic;
+            }
+
+            public long Scope { get; }
+            public string Topic { get; }
+
+            public bool Equals(AdmissionKey other)
+                => Scope == other.Scope && string.Equals(Topic, other.Topic, StringComparison.Ordinal);
+
+            public override bool Equals(object obj)
+                => obj is AdmissionKey other && Equals(other);
+
+            public override int GetHashCode()
+                => HashCode.Combine(Scope, Topic);
+        }
+
+        private static readonly object Sync = new object();
+        private static readonly Dictionary<AdmissionKey, Queue<double>> Arrivals =
+            new Dictionary<AdmissionKey, Queue<double>>();
+        private static readonly Dictionary<AdmissionKey, int> References =
+            new Dictionary<AdmissionKey, int>();
+        private static bool UnityClockOffsetSet;
+        private static double UnityClockOffset;
+
+        public static bool TryAccept(
+            string topic,
+            double nowSeconds,
+            int maximumAcceptedPerSecond)
+            => TryAccept(0L, topic, nowSeconds, maximumAcceptedPerSecond);
+
+        public static bool TryAccept(
+            long scope,
+            string topic,
+            double nowSeconds,
+            int maximumAcceptedPerSecond)
+        {
+            if (string.IsNullOrEmpty(topic)
+                || double.IsNaN(nowSeconds)
+                || double.IsInfinity(nowSeconds))
+                return false;
+
+            lock (Sync)
+            {
+                if (!UnityClockOffsetSet)
+                {
+                    UnityClockOffset =
+                        (double)Stopwatch.GetTimestamp() / Stopwatch.Frequency
+                        - nowSeconds;
+                    UnityClockOffsetSet = true;
+                }
+                return TryAcceptUnderLock(
+                    scope,
+                    topic,
+                    nowSeconds + UnityClockOffset,
+                    maximumAcceptedPerSecond);
+            }
+        }
+
+        public static bool TryAcceptAtStopwatch(
+            string topic,
+            long stopwatchTimestamp,
+            int maximumAcceptedPerSecond)
+            => TryAcceptAtStopwatch(0L, topic, stopwatchTimestamp, maximumAcceptedPerSecond);
+
+        public static bool TryAcceptAtStopwatch(
+            long scope,
+            string topic,
+            long stopwatchTimestamp,
+            int maximumAcceptedPerSecond)
+        {
+            lock (Sync)
+            {
+                return TryAcceptUnderLock(
+                    scope,
+                    topic,
+                    (double)stopwatchTimestamp / Stopwatch.Frequency,
+                    maximumAcceptedPerSecond);
+            }
+        }
+
+        public static void Remove(long scope, string topic)
+        {
+            if (string.IsNullOrEmpty(topic))
+                return;
+            lock (Sync)
+            {
+                var key = new AdmissionKey(scope, topic);
+                Arrivals.Remove(key);
+                References.Remove(key);
+            }
+        }
+
+        public static void Acquire(long scope, string topic)
+        {
+            if (string.IsNullOrEmpty(topic))
+                return;
+            lock (Sync)
+            {
+                var key = new AdmissionKey(scope, topic);
+                References.TryGetValue(key, out var count);
+                References[key] = count + 1;
+            }
+        }
+
+        public static void Release(long scope, string topic)
+        {
+            if (string.IsNullOrEmpty(topic))
+                return;
+            lock (Sync)
+            {
+                var key = new AdmissionKey(scope, topic);
+                if (!References.TryGetValue(key, out var count) || count <= 1)
+                {
+                    References.Remove(key);
+                    Arrivals.Remove(key);
+                }
+                else
+                    References[key] = count - 1;
+            }
+        }
+
+        private static bool TryAcceptUnderLock(
+            long scope,
+            string topic,
+            double nowSeconds,
+            int maximumAcceptedPerSecond)
+        {
+            if (string.IsNullOrEmpty(topic)
+                || double.IsNaN(nowSeconds)
+                || double.IsInfinity(nowSeconds))
+                return false;
+
+            var key = new AdmissionKey(scope, topic);
+            if (!Arrivals.TryGetValue(key, out var arrivals))
+                Arrivals[key] = arrivals = new Queue<double>();
+
+            while (arrivals.Count > 0 && nowSeconds - arrivals.Peek() >= 1d)
+                arrivals.Dequeue();
+            if (arrivals.Count >= Math.Max(1, maximumAcceptedPerSecond))
+                return false;
+            arrivals.Enqueue(nowSeconds);
+            return true;
+        }
+
+        public static void Reset()
+        {
+            lock (Sync)
+            {
+                Arrivals.Clear();
+                References.Clear();
+                UnityClockOffsetSet = false;
+                UnityClockOffset = 0d;
+            }
+        }
+
+        public static void Reset(long scope)
+        {
+            lock (Sync)
+            {
+                var keys = new List<AdmissionKey>();
+                foreach (var key in Arrivals.Keys)
+                {
+                    if (key.Scope == scope)
+                        keys.Add(key);
+                }
+                foreach (var key in References.Keys)
+                {
+                    if (key.Scope == scope && !keys.Contains(key))
+                        keys.Add(key);
+                }
+                foreach (var key in keys)
+                {
+                    Arrivals.Remove(key);
+                    References.Remove(key);
+                }
+            }
+        }
     }
 }

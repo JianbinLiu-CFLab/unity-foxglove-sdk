@@ -6,6 +6,7 @@
 
 using System;
 using System.IO;
+using Unity.FoxgloveSDK.Components;
 using Unity.FoxgloveSDK.Util;
 using Xunit;
 
@@ -72,6 +73,89 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             Assert.Equal(
                 CameraPipelineHealthSkipReason.RenderPressureCooldown,
                 CameraPipelineHealthPolicy.Evaluate(cooling).SkipReason);
+        }
+
+        [Fact]
+        public void JpegHealthGatesIgnoreRawOnlyAndVideoCapture()
+        {
+            Assert.True(CameraPipelineHealthPolicy.ShouldApplyJpegHealthGates(false, true));
+            Assert.False(CameraPipelineHealthPolicy.ShouldApplyJpegHealthGates(false, false));
+            Assert.False(CameraPipelineHealthPolicy.ShouldApplyJpegHealthGates(true, true));
+        }
+
+        [Fact]
+        public void VideoCaptureDoesNotUseJpegPixelBudget()
+        {
+            Assert.Equal(0, CameraPipelineHealthPolicy.ResolveMaxPixelsPerFrame(true, 1));
+            Assert.Equal(123, CameraPipelineHealthPolicy.ResolveMaxPixelsPerFrame(false, 123));
+        }
+
+        [Fact]
+        public void EncodeResultsRefreshCameraTimingSnapshot()
+        {
+            CameraTimingDiagnostics.Reset();
+            var diagnostics = new CameraPublishDiagnostics();
+            try
+            {
+                diagnostics.RecordJpegEncodeResult(12d, 3d, 42, 2d);
+
+                var snapshot = CameraTimingDiagnostics.LastSnapshotOrDefault;
+                Assert.True(snapshot.HasFrame);
+                Assert.Equal(12d, snapshot.JpegEncodeMs);
+                Assert.Equal(3d, snapshot.SerializeMs);
+                Assert.Equal(42, snapshot.JpegBytes);
+            }
+            finally
+            {
+                diagnostics.ResetCameraState();
+                CameraTimingDiagnostics.Reset();
+            }
+        }
+
+        [Fact]
+        public void CameraTimingSnapshotRetainsIndependentPublishers()
+        {
+            CameraTimingDiagnostics.Reset();
+            var first = new CameraPublishDiagnostics();
+            var second = new CameraPublishDiagnostics();
+            try
+            {
+                first.RecordRenderMs(20d, 1d, 0, 0);
+                second.RecordRenderMs(5d, 2d, 0, 0);
+                Assert.Equal(5d, CameraTimingDiagnostics.LastSnapshotOrDefault.RenderMs);
+
+                first.ResetCameraState();
+                Assert.Equal(5d, CameraTimingDiagnostics.LastSnapshotOrDefault.RenderMs);
+            }
+            finally
+            {
+                first.ResetCameraState();
+                second.ResetCameraState();
+                CameraTimingDiagnostics.Reset();
+            }
+        }
+
+        [Fact]
+        public void CameraTimingSnapshotDoesNotMixOlderHighMetricsIntoNewestFrame()
+        {
+            CameraTimingDiagnostics.Reset();
+            var first = new CameraPublishDiagnostics();
+            var second = new CameraPublishDiagnostics();
+            try
+            {
+                first.RecordRenderMs(99d, 1d, 0, 0);
+                second.RecordRenderMs(5d, 2d, 0, 0);
+
+                var snapshot = CameraTimingDiagnostics.LastSnapshotOrDefault;
+                Assert.Equal(5d, snapshot.RenderMs);
+                Assert.Equal(2d, snapshot.RecordedRealtimeSeconds);
+            }
+            finally
+            {
+                first.ResetCameraState();
+                second.ResetCameraState();
+                CameraTimingDiagnostics.Reset();
+            }
         }
 
         [Fact]

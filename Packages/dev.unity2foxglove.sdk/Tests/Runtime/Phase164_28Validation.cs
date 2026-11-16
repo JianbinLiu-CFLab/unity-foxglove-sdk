@@ -121,10 +121,9 @@ namespace Unity.FoxgloveSDK.Tests
 
                 Check(create.Contains("cachedFrameName = String.IsNullOrEmpty(ownerAgentName) ? frameID : ownerAgentName + \"/\" + frameID;", StringComparison.Ordinal),
                     Label(package, "164-28E-1: sensor frame names are cached when ROS participants are created"));
-                Check(frameName.Contains("if (cachedFrameName != null)", StringComparison.Ordinal)
-                      && !frameName.Contains("cachedFrameNameOwner", StringComparison.Ordinal)
-                      && !frameName.Contains("cachedFrameNameFrameId", StringComparison.Ordinal),
-                    Label(package, "164-28E-2: frameName avoids per-publish owner/frame string comparisons"));
+                Check(frameName.Contains("string.Equals(cachedFrameOwnerAgent, ownerAgentName, StringComparison.Ordinal)", StringComparison.Ordinal)
+                      && frameName.Contains("string.Equals(cachedFrameId, frameID, StringComparison.Ordinal)", StringComparison.Ordinal),
+                    Label(package, "164-28E-2: frameName refreshes its cache when owner or frame identity changes"));
             }
         }
 

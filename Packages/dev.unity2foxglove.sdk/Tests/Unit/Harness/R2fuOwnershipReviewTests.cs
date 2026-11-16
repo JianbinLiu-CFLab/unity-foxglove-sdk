@@ -169,6 +169,41 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         [InlineData("humble")]
         [InlineData("jazzy")]
         [InlineData("lyrical")]
+        public void SensorFrameNameCacheTracksOwnerAndFrameId(string distro)
+        {
+            var assembly = CompileSensorProbe(distro);
+            var sensorType = assembly.GetType("ROS2.SensorProbe", throwOnError: true);
+            var componentType = assembly.GetType("ROS2.ROS2UnityComponent", throwOnError: true);
+            var nodeType = assembly.GetType("ROS2.ROS2Node", throwOnError: true);
+            var sensor = Activator.CreateInstance(sensorType);
+            var component = Activator.CreateInstance(componentType);
+            var node = Activator.CreateInstance(nodeType);
+            var create = sensorType.GetMethod("CreateROSParticipants");
+            var frameName = sensorType.GetMethod("frameName");
+            var frameId = sensorType.GetField("frameID", BindingFlags.Instance | BindingFlags.Public);
+            var dispose = sensorType.BaseType?.GetMethod(
+                distro == "jazzy" ? "DisposeRosParticipants" : "UnregisterExecutable",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+
+            try
+            {
+                create?.Invoke(sensor, new[] { component, node, "robot" });
+                Assert.Equal("robot/sensor", frameName?.Invoke(sensor, null));
+
+                frameId?.SetValue(sensor, "updated");
+
+                Assert.Equal("robot/updated", frameName?.Invoke(sensor, null));
+            }
+            finally
+            {
+                dispose?.Invoke(sensor, null);
+            }
+        }
+
+        [Theory]
+        [InlineData("humble")]
+        [InlineData("jazzy")]
+        [InlineData("lyrical")]
         public void SensorBufferedReadingCanBeClearedDuringTeardown(string distro)
         {
             var root = CSharpSyntaxTree.ParseText(TestSources.Text(

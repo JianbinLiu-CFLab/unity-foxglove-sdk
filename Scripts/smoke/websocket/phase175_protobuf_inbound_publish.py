@@ -201,7 +201,11 @@ def encode_float_field(value: float) -> bytes:
     """Encode Protobuf field 1 as a fixed32 float: tag 0x0d plus little-endian float32."""
     if not math.isfinite(value):
         raise ValueError("value must be finite")
-    return bytes([FLOAT_FIELD_TAG]) + struct.pack("<f", value)
+    try:
+        encoded = struct.pack("<f", value)
+    except OverflowError as exc:
+        raise ValueError("value must fit in a float32") from exc
+    return bytes([FLOAT_FIELD_TAG]) + encoded
 
 
 def decode_float_field(payload: bytes) -> float:
@@ -218,8 +222,8 @@ def decode_float_field(payload: bytes) -> float:
 
 def build_client_message_frame(client_channel_id: int, payload: bytes) -> bytes:
     """Build a client MessageData binary frame: opcode, channel id, then raw Protobuf bytes."""
-    if client_channel_id <= 0:
-        raise ValueError("client_channel_id must be positive")
+    if not 0 < client_channel_id <= 0xFFFFFFFF:
+        raise ValueError("client_channel_id must be a uint32 greater than zero")
     if not payload:
         raise ValueError("payload must not be empty")
     return bytes([CLIENT_MESSAGE_DATA_OPCODE]) + struct.pack("<I", client_channel_id) + payload

@@ -170,14 +170,6 @@ bool read_exact_into(
         continue;
       }
       if (socket_error_is_retryable_timeout(error)) {
-        // A receive timeout before the first byte is an ordinary idle session.
-        // Only a partially received frame is subject to the bounded stall clock.
-        if (offset == 0) {
-          if (node) {
-            rclcpp::spin_some(node);
-          }
-          continue;
-        }
         const auto now = std::chrono::steady_clock::now();
         if (stalled_since == std::chrono::steady_clock::time_point {}) {
           stalled_since = now;

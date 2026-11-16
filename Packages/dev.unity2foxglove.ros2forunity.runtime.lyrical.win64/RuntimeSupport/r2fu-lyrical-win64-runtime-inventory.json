@@ -5248,9 +5248,9 @@
     {
       "path": "Ros2ForUnity/Plugins/Windows/x86_64/share/rmw_zenoh_cpp/config/DEFAULT_RMW_ZENOH_ROUTER_CONFIG.json5",
       "category": "other_support_files",
-      "size": 43216,
+      "size": 43126,
       "compressedSize": 10985,
-      "sha256": "21f4abbd1a3f2b977064dcc7ee834245bb518087ff78cd22fff81f268de768d9"
+      "sha256": "241cff332c13dd9cd63c985c9cd50b1f6015de64147aa01eefbb4ee8072bceca"
     },
     {
       "path": "Ros2ForUnity/Plugins/Windows/x86_64/share/rmw_zenoh_cpp/config/DEFAULT_RMW_ZENOH_SESSION_CONFIG.json5",
@@ -8846,9 +8846,9 @@
     {
       "path": "StreamingAssets/Ros2ForUnity/share/rmw_zenoh_cpp/config/DEFAULT_RMW_ZENOH_ROUTER_CONFIG.json5",
       "category": "other_support_files",
-      "size": 43216,
+      "size": 43126,
       "compressedSize": 10985,
-      "sha256": "21f4abbd1a3f2b977064dcc7ee834245bb518087ff78cd22fff81f268de768d9"
+      "sha256": "241cff332c13dd9cd63c985c9cd50b1f6015de64147aa01eefbb4ee8072bceca"
     },
     {
       "path": "StreamingAssets/Ros2ForUnity/share/rmw_zenoh_cpp/config/DEFAULT_RMW_ZENOH_SESSION_CONFIG.json5",

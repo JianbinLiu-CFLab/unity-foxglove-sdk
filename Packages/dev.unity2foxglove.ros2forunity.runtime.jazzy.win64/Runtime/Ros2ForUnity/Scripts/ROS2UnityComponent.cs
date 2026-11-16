@@ -45,8 +45,10 @@ public class ROS2UnityComponent : MonoBehaviour
     private HashSet<Action> executableActionSet;
     private readonly List<Action> actionsSnapshot = new List<Action>();
     private readonly List<INode> nodesSnapshot = new List<INode>();
+    private readonly List<ROS2Node> pendingNodeDisposals = new List<ROS2Node>();
     private int collectionVersion = 0;
     private int snapshotVersion = -1;
+    private bool nodeSnapshotInFlight = false;
     private bool initialized = false;
     private volatile bool executorStarted = false;
     private volatile bool quitting = false;
@@ -245,6 +247,16 @@ public class ROS2UnityComponent : MonoBehaviour
                 return node.IsDisposed;
             }
 
+            if (dispose && nodeSnapshotInFlight && nodesSnapshot.Contains(node.NativeNode))
+            {
+                nodes.Remove(node);
+                ros2csNodes.Remove(node.NativeNode);
+                collectionVersion++;
+                if (!pendingNodeDisposals.Contains(node))
+                    pendingNodeDisposals.Add(node);
+                return true;
+            }
+
             nodeIndex = nodes.IndexOf(node);
             nativeIndex = ros2csNodes.IndexOf(node.NativeNode);
             if (nodeIndex < 0 && nativeIndex < 0)
@@ -356,6 +368,8 @@ public class ROS2UnityComponent : MonoBehaviour
                     nodesSnapshot.AddRange(ros2csNodes);
                     snapshotVersion = collectionVersion;
                 }
+
+                nodeSnapshotInFlight = hasSnapshot && nodesSnapshot.Count > 0;
             }
 
             if (hasSnapshot)
@@ -368,42 +382,88 @@ public class ROS2UnityComponent : MonoBehaviour
 
     private void RunExecutorSnapshot()
     {
-        List<Exception> exceptions = null;
-        foreach (Action action in actionsSnapshot)
+        try
         {
-            try
+            List<Exception> exceptions = null;
+            foreach (Action action in actionsSnapshot)
             {
-                action();
-            }
-            catch (Exception e)
-            {
-                AddException(ref exceptions, e);
-            }
-        }
-
-        if (nodesSnapshot.Count > 0)
-        {
-            try
-            {
-                Ros2cs.SpinOnce(nodesSnapshot, spinTimeout);
-            }
-            catch (Exception e)
-            {
-                if (!quitting)
+                try
+                {
+                    action();
+                }
+                catch (Exception e)
                 {
                     AddException(ref exceptions, e);
                 }
             }
+
+            if (nodesSnapshot.Count > 0)
+            {
+                try
+                {
+                    Ros2cs.SpinOnce(nodesSnapshot, spinTimeout);
+                }
+                catch (Exception e)
+                {
+                    if (!quitting)
+                    {
+                        AddException(ref exceptions, e);
+                    }
+                }
+            }
+
+            if (exceptions == null)
+            {
+                return;
+            }
+
+            foreach (Exception exception in exceptions)
+            {
+                Debug.LogException(exception);
+            }
+        }
+        finally
+        {
+            lock (mutex)
+            {
+                nodeSnapshotInFlight = false;
+                Monitor.PulseAll(mutex);
+            }
+        }
+    }
+
+    private void RetryPendingNodeDisposals()
+    {
+        List<ROS2Node> pending;
+        lock (mutex)
+        {
+            if (pendingNodeDisposals.Count == 0)
+                return;
+            pending = new List<ROS2Node>(pendingNodeDisposals);
+            pendingNodeDisposals.Clear();
         }
 
-        if (exceptions == null)
+        foreach (ROS2Node node in pending)
         {
-            return;
-        }
+            bool disposedNode;
+            try
+            {
+                disposedNode = node.TryDispose();
+            }
+            catch (Exception e)
+            {
+                Debug.LogException(e);
+                disposedNode = false;
+            }
 
-        foreach (Exception exception in exceptions)
-        {
-            Debug.LogException(exception);
+            if (!disposedNode)
+            {
+                lock (mutex)
+                {
+                    if (!pendingNodeDisposals.Contains(node))
+                        pendingNodeDisposals.Add(node);
+                }
+            }
         }
     }
 
@@ -419,6 +479,9 @@ public class ROS2UnityComponent : MonoBehaviour
 
     void FixedUpdate()
     {
+        if (IsLifecycleOwnerThread())
+            RetryPendingNodeDisposals();
+
         ROS2UnityCore.RetryPendingShutdownsOnCurrentThread();
         if (runtimeShutdownRequested && IsLifecycleOwnerThread())
         {
@@ -606,18 +669,16 @@ public class ROS2UnityComponent : MonoBehaviour
 
     private bool DisposeNodes()
     {
-        List<ROS2Node> nodesToDispose = null;
+        var nodesToDispose = new List<ROS2Node>();
         lock (mutex)
         {
             if (nodes != null)
+                nodesToDispose.AddRange(nodes);
+            foreach (ROS2Node pending in pendingNodeDisposals)
             {
-                nodesToDispose = new List<ROS2Node>(nodes);
+                if (!nodesToDispose.Contains(pending))
+                    nodesToDispose.Add(pending);
             }
-        }
-
-        if (nodesToDispose == null)
-        {
-            return true;
         }
 
         bool allDisposed = true;
@@ -643,15 +704,17 @@ public class ROS2UnityComponent : MonoBehaviour
 
             lock (mutex)
             {
-                if (nodes != null && nodes.Remove(node))
-                {
+                if (nodes != null)
+                    nodes.Remove(node);
+                if (ros2csNodes != null)
                     ros2csNodes.Remove(nativeNode);
-                    collectionVersion++;
-                }
+                pendingNodeDisposals.Remove(node);
+                collectionVersion++;
             }
         }
 
-        return allDisposed;
+        lock (mutex)
+            return allDisposed && pendingNodeDisposals.Count == 0;
     }
 
     private void Shutdown()
@@ -741,6 +804,7 @@ public class ROS2UnityComponent : MonoBehaviour
             ros2csNodes = null;
             actionsSnapshot.Clear();
             nodesSnapshot.Clear();
+            nodeSnapshotInFlight = false;
             collectionVersion++;
             snapshotVersion = -1;
 

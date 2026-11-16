@@ -279,7 +279,7 @@ namespace Demo
         [InlineData("JSON")]
         [InlineData("Protobuf")]
         [Trait("Phase", "185-F")]
-        public void CompiledNonMessagePackSinkSideChannelUsesOneJsonWireView(
+        public void CompiledNonMessagePackSinkSideChannelUsesDeclaredWireView(
             string encodingName)
         {
             const string topic = "/phase185f/compatible-sink";
@@ -312,21 +312,31 @@ namespace Demo
             var router = new FoxTopicSinkRouter();
             router.AddSink(additive);
             router.AddSink(external);
-            Assert.True(router.Register(contract));
+            Assert.True(
+                router.Register(
+                    contract,
+                    encodingName == "Protobuf"
+                        ? FoxRunEncoding.Protobuf
+                        : FoxRunEncoding.JSON));
 
             Assert.True(BeginCapture(instance, topicIndex));
             PublishToSinks(instance, topicIndex, router, 1855UL);
 
             Assert.Equal(1, additive.PublishCalls);
             Assert.Equal(1, external.PublishCalls);
-            Assert.Equal("json", additive.LastContract.Encoding);
+            Assert.Equal(
+                encodingName == "Protobuf" ? "protobuf" : "json",
+                additive.LastContract.Encoding);
             Assert.Same(
                 additive.RegisteredContract,
                 additive.LastContract);
-            Assert.Contains(
-                "\"Value\":42",
-                Encoding.UTF8.GetString(additive.LastPayload),
-                StringComparison.Ordinal);
+            if (encodingName == "Protobuf")
+                Assert.NotEmpty(additive.LastPayload);
+            else
+                Assert.Contains(
+                    "\"Value\":42",
+                    Encoding.UTF8.GetString(additive.LastPayload),
+                    StringComparison.Ordinal);
             EndCapture(instance, topicIndex);
         }
 

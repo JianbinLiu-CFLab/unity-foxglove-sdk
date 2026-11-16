@@ -445,10 +445,35 @@ class RuntimePackageExtractionTests(unittest.TestCase):
             for name in self.builder.PHASE161_SUPPLEMENTAL_RUNTIME_DLLS:
                 (ros2_bin / name).write_bytes(b"custom")
 
-            self.builder.copy_supplemental_runtime_dlls(package, ros2_bin)
+            expected = {
+                name: hashlib.sha256(b"custom").hexdigest()
+                for name in self.builder.PHASE161_SUPPLEMENTAL_RUNTIME_DLLS
+            }
+            with mock.patch.object(self.builder, "PHASE161_SUPPLEMENTAL_RUNTIME_DLL_SHA256", expected):
+                self.builder.copy_supplemental_runtime_dlls(package, ros2_bin)
 
             for name in self.builder.PHASE161_SUPPLEMENTAL_RUNTIME_DLLS:
                 self.assertEqual(b"custom", (plugin_root / name).read_bytes())
+
+    def test_copy_supplemental_runtime_dlls_rejects_tampered_source(self) -> None:
+        """Supplemental DLLs must match their pinned SHA-256 before copying."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            package = root / "package"
+            plugin_root = package / "Runtime" / "Ros2ForUnity" / "Plugins" / "Windows" / "x86_64"
+            plugin_root.mkdir(parents=True)
+            ros2_bin = root / "custom-ros2-bin"
+            ros2_bin.mkdir()
+            for name in self.builder.PHASE161_SUPPLEMENTAL_RUNTIME_DLLS:
+                (ros2_bin / name).write_bytes(b"tampered")
+
+            expected = {
+                name: hashlib.sha256(b"expected").hexdigest()
+                for name in self.builder.PHASE161_SUPPLEMENTAL_RUNTIME_DLLS
+            }
+            with mock.patch.object(self.builder, "PHASE161_SUPPLEMENTAL_RUNTIME_DLL_SHA256", expected):
+                with self.assertRaises(ValueError):
+                    self.builder.copy_supplemental_runtime_dlls(package, ros2_bin)
 
     def test_patch_standalone_environment_rejects_unpatched_path_call_site(self) -> None:
         """Bootstrap patching should fail if the managed PATH write call remains."""

@@ -729,7 +729,7 @@ def patch_ros_time_source_contract(package: Path) -> None:
 
 
 def patch_zenoh_router_config_notes(package: Path) -> None:
-    """Document the bundled Zenoh router config as a trusted-lab development profile."""
+    """Bind the bundled Zenoh router config to localhost and document its limits."""
     runtime_root = package / "Runtime" / "Ros2ForUnity"
     config_relatives = (
         Path("Plugins/Windows/x86_64/share/rmw_zenoh_cpp/config/DEFAULT_RMW_ZENOH_ROUTER_CONFIG.json5"),
@@ -737,9 +737,8 @@ def patch_zenoh_router_config_notes(package: Path) -> None:
     )
     header_note = (
         "/// Unity2Foxglove package note: this is the upstream ROS2 Zenoh router development profile.\n"
-        "/// It listens on tcp/[::]:7447 without authentication or ACLs so routed ROS2 peers on\n"
-        "/// the local network can connect during lab acceptance. Do not use this profile on an\n"
-        "/// untrusted network; copy it to a localhost-only or ACL-protected deployment profile.\n"
+        "/// It listens on tcp/127.0.0.1:7447 without authentication or ACLs for local lab\n"
+        "/// acceptance. External peers require an explicit ACL-protected deployment profile.\n"
     )
     limit_note = (
         "      /// Unity2Foxglove package note: this high development default is unsuitable for\n"
@@ -752,6 +751,10 @@ def patch_zenoh_router_config_notes(package: Path) -> None:
             continue
 
         text = path.read_text(encoding="utf-8")
+        open_endpoint = '      "tcp/[::]:7447"\n'
+        local_endpoint = '      "tcp/127.0.0.1:7447"\n'
+        if open_endpoint in text:
+            text = text.replace(open_endpoint, local_endpoint, 1)
         if "Unity2Foxglove package note: this is the upstream ROS2 Zenoh router development profile." not in text:
             marker = "/// Note that the values here are correctly typed, but may not be sensible, so copying this file to change only the parts that matter to you is not good practice.\n"
             if marker not in text:

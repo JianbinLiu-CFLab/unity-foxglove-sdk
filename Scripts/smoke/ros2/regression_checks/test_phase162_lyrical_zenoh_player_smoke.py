@@ -198,6 +198,7 @@ class Phase162LyricalZenohSmokeTests(unittest.TestCase):
             echo_only=False,
             launch_rviz=True,
             release_router_on_exit=False,
+            hold_router_for_rviz=True,
             rviz_hold_timeout_seconds=30.0,
         )
         summary = {}
@@ -230,6 +231,7 @@ class Phase162LyricalZenohSmokeTests(unittest.TestCase):
             echo_only=False,
             launch_rviz=True,
             release_router_on_exit=False,
+            hold_router_for_rviz=True,
             rviz_hold_timeout_seconds=0.1,
         )
         summary = {}
@@ -244,6 +246,26 @@ class Phase162LyricalZenohSmokeTests(unittest.TestCase):
 
         self.assertEqual("timed-out", outcome)
         self.assertTrue(summary["zenohRouterRvizWaitTimedOut"])
+
+    def test_router_hold_is_opt_in(self) -> None:
+        """Bare Phase162 smoke should clean up without waiting for an open RViz window."""
+        args = SimpleNamespace(
+            echo_only=False,
+            launch_rviz=True,
+            release_router_on_exit=False,
+            hold_router_for_rviz=False,
+            rviz_hold_timeout_seconds=30.0,
+        )
+
+        self.assertIsNone(
+            self.smoke.wait_for_rviz_shutdown_before_router_cleanup(
+                args,
+                mock.Mock(poll=lambda: None),
+                None,
+                [mock.Mock(poll=lambda: None)],
+                {},
+            )
+        )
 
 
 if __name__ == "__main__":

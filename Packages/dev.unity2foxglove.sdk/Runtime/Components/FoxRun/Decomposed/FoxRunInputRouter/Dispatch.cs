@@ -88,11 +88,7 @@ namespace Unity.FoxgloveSDK.Components
                 {
                     return new FoxRunInputDispatchResult(
                         FoxRunInputDispatchStatus.DecodeRejected,
-                        "Inbound encoding does not match the generated FoxRun contract: expected \""
-                            + registrations[0].Encoding
-                            + "\" but client advertised \""
-                            + advertisedEncoding
-                            + "\".",
+                        "Inbound encoding does not match the generated FoxRun contract.",
                         0);
                 }
                 if (!hasMatchingPayloadLimit)
@@ -128,11 +124,7 @@ namespace Unity.FoxgloveSDK.Components
                 if (!string.Equals(registration.Encoding, advertisedEncoding, StringComparison.OrdinalIgnoreCase))
                 {
                     if (string.IsNullOrEmpty(firstError))
-                        firstError = "Inbound encoding does not match the generated FoxRun contract: expected \""
-                            + registration.Encoding
-                            + "\" but client advertised \""
-                            + advertisedEncoding
-                            + "\".";
+                        firstError = "Inbound encoding does not match the generated FoxRun contract.";
                     continue;
                 }
                 if (!registration.IsStream && !ordinaryRateAccepted)
@@ -253,7 +245,7 @@ namespace Unity.FoxgloveSDK.Components
             {
                 _registrations.Remove(topic);
                 _registrationSnapshots.Remove(topic);
-                _arrivalTimes.Remove(topic);
+                FoxRunTopicAdmissionRegistry.Remove(_rateLimitScope, topic);
             }
 
             RemoveSourceSnapshotEntry(source);
@@ -345,17 +337,11 @@ namespace Unity.FoxgloveSDK.Components
         }
 
         private bool AcceptRate(string topic, double nowSeconds)
-        {
-            if (!_arrivalTimes.TryGetValue(topic, out var arrivals))
-                _arrivalTimes[topic] = arrivals = new Queue<double>();
-
-            while (arrivals.Count > 0 && nowSeconds - arrivals.Peek() >= 1d)
-                arrivals.Dequeue();
-            if (arrivals.Count >= Math.Max(1, MaxMessagesPerSecondPerTopic))
-                return false;
-            arrivals.Enqueue(nowSeconds);
-            return true;
-        }
+            => FoxRunTopicAdmissionRegistry.TryAccept(
+                _rateLimitScope,
+                topic,
+                nowSeconds,
+                MaxMessagesPerSecondPerTopic);
 
     }
 }
