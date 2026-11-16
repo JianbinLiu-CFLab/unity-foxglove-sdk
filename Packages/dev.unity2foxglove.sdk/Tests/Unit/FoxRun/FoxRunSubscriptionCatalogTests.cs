@@ -81,6 +81,104 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        public void ProtobufCatalogDoesNotAdvertiseUnsupportedObjectFieldsAsWritable()
+        {
+            var scalarShape = new FoxRunTypeShapeInfo(
+                FoxRunTypeShapeInfoKind.Canonical,
+                "int32",
+                "int32",
+                false,
+                FoxRunCollectionInfoKind.None,
+                null,
+                Array.Empty<FoxRunTypeFieldInfo>(),
+                Array.Empty<FoxRunEnumValueInfo>(),
+                canConstruct: true,
+                isValueType: true);
+            var objectShape = new FoxRunTypeShapeInfo(
+                FoxRunTypeShapeInfoKind.Object,
+                "Demo.Payload",
+                string.Empty,
+                false,
+                FoxRunCollectionInfoKind.None,
+                null,
+                new[]
+                {
+                    new FoxRunTypeFieldInfo(
+                        "value",
+                        "Value",
+                        scalarShape)
+                },
+                Array.Empty<FoxRunEnumValueInfo>());
+            var fields = new[]
+            {
+                new FoxRunSchemaFieldInfo(
+                    "payload",
+                    "_payload",
+                    "field",
+                    "Demo.Payload",
+                    false,
+                    false,
+                    false,
+                    1,
+                    objectShape)
+            };
+            var manifest = new FoxRunSchemaManifestInfo(
+                FoxrunManifestWriter.CurrentManifestVersion,
+                "Unity2Foxglove",
+                "FoxRun",
+                1,
+                "global",
+                "foxrun",
+                new[]
+                {
+                    new FoxRunSchemaTypeInfo(
+                        "Demo.Contracts",
+                        new[]
+                        {
+                            new FoxRunSchemaContractInfo(
+                                "Demo.Input",
+                                "/phase292/object",
+                                "Demo.Payload",
+                                "protobuf",
+                                "protobuf",
+                                "protobuf",
+                                "policy",
+                                "FixedRate",
+                                10f,
+                                0f,
+                                fields,
+                                flow: "Subscribe",
+                                protobufDescriptorSet: new byte[] { 1 },
+                                logicalSchemaName: "Demo.Payload")
+                        })
+                },
+                subscriptionManifestHash: "subscriptions",
+                subscriptionBindings: new[]
+                {
+                    WebSocketBinding("Demo.Input", "_payload", "/phase292/object")
+                });
+
+            var response = FoxRunSubscriptionCatalog.BuildResponse(
+                manifest,
+                subscriptionsEnabled: true,
+                FoxRunEncoding.Protobuf,
+                FoxRunEncoding.Protobuf,
+                subscriptionRateLimitHz: 60,
+                requestedTopic: "/phase292/object",
+                includeDescriptor: true);
+
+            var contract = Assert.Single((JArray)response["contracts"]);
+            Assert.False(contract.Value<bool>("subscribeAvailable"));
+            Assert.Equal(
+                "FOXRUN_PANEL_PROTOBUF_SHAPE",
+                contract.Value<string>("unavailableDiagnosticId"));
+            Assert.Contains(
+                "does not support direct Protobuf publication",
+                contract.Value<string>("unavailableReason"),
+                StringComparison.Ordinal);
+        }
+
+        [Fact]
         [Trait("Phase", "185-A")]
         public void MessagePackCatalogDetailIsSchemalessAndRetainsLogicalIdentity()
         {
