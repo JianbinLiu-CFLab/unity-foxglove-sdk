@@ -15,12 +15,50 @@ from pathlib import Path
 from typing import Callable
 
 try:
+    from . import source_text_inventory_flow as _flow_module
     from .source_text_inventory_text import _balanced_call_end, _normalize_csharp_expression, _split_first_argument
 except ImportError:
+    import source_text_inventory_flow as _flow_module
     from source_text_inventory_text import _balanced_call_end, _normalize_csharp_expression, _split_first_argument
 
+try:
+    from .source_text_inventory_ratchet_helpers import (
+        RATCHET_APPROVAL_FIELDS,
+        RATCHET_APPROVALS_PATH,
+        RATCHET_CLASSES,
+        _archive_revision,
+        _file_has_source_assertion,
+        _helper_signature_records,
+        _helper_signatures_at_head,
+        _helper_signatures_at_revision,
+        _load_ratchet_approvals,
+        _ratchet_change_tokens,
+        _ratchet_counts,
+        _ratchet_key,
+        _ratchet_path,
+        _ratchet_assertion_semantics,
+        _validate_ratchet_rows,
+    )
+except ImportError:
+    from source_text_inventory_ratchet_helpers import (
+        RATCHET_APPROVAL_FIELDS,
+        RATCHET_APPROVALS_PATH,
+        RATCHET_CLASSES,
+        _archive_revision,
+        _file_has_source_assertion,
+        _helper_signature_records,
+        _helper_signatures_at_head,
+        _helper_signatures_at_revision,
+        _load_ratchet_approvals,
+        _ratchet_change_tokens,
+        _ratchet_counts,
+        _ratchet_key,
+        _ratchet_path,
+        _ratchet_assertion_semantics,
+        _validate_ratchet_rows,
+    )
 
-ACKNOWLEDGEMENTS_PATH = Path("Scripts/validation/source_text_inventory_acknowledgements.json")
+
 NEW_FIELDS = {
     "assertion_signature",
     "assertion_context",
@@ -333,19 +371,26 @@ def _load_inventory_report(path: Path) -> list[dict[str, object]]:
     return rows
 
 
-def _archive_revision(root: Path, revision: str, destination: Path) -> None:
-    """Extract one Git revision with safe tarfile filtering when available."""
-    process = subprocess.Popen(["git", "archive", revision], cwd=root, stdout=subprocess.PIPE)
-    assert process.stdout is not None
-    with tarfile.open(fileobj=process.stdout, mode="r|") as archive:
-        try:
-            archive.extractall(destination, filter="data")
-        except TypeError:
-            archive.extractall(destination)
-        process.stdout.read()
-    process.stdout.close()
-    if process.wait() != 0:
-        raise RuntimeError(f"git archive failed for {revision}")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 def _inventory_at_revision(
@@ -367,66 +412,6 @@ def _inventory_at_revision(
                 raise RuntimeError("current inventory callback is required")
             return inventory_callback(tree)
         return _inventory_in_isolated_process(tree)
-
-
-def _load_acknowledgements(
-    root: Path, revision: str | None = None
-) -> tuple[list[dict[str, object]], list[str]]:
-    """Read and validate exact base-to-head acknowledgement entries."""
-    if revision:
-        completed = subprocess.run(
-            ["git", "show", f"{revision}:{ACKNOWLEDGEMENTS_PATH.as_posix()}"],
-            cwd=root,
-            check=False,
-            capture_output=True,
-        )
-        if completed.returncode != 0:
-            return [], []
-        raw = completed.stdout.decode("utf-8")
-    else:
-        path = root / ACKNOWLEDGEMENTS_PATH
-        if not path.is_file():
-            return [], []
-        raw = path.read_text(encoding="utf-8")
-    try:
-        data = json.loads(raw)
-    except json.JSONDecodeError:
-        return [], ["acknowledgements must contain valid JSON"]
-    entries = data.get("acknowledgements", data) if isinstance(data, dict) else data
-    if not isinstance(entries, list):
-        return [], ["acknowledgements must be a list"]
-    errors: list[str] = []
-    seen: set[tuple[object, ...]] = set()
-    required = {"file", "validation_flag", "field", "base_sha256", "head_sha256", "reason"}
-    for index, entry in enumerate(entries):
-        if not isinstance(entry, dict):
-            errors.append(f"entry {index} is not an object")
-            continue
-        missing = sorted(required - set(entry))
-        if missing:
-            errors.append(f"entry {index} missing {','.join(missing)}")
-            continue
-        has_anchor = bool(entry.get("label")) or bool(entry.get("token_sha256"))
-        if entry.get("field") != "helper_signature" and not has_anchor:
-            errors.append(f"entry {index} needs label or token_sha256")
-        if not isinstance(entry["reason"], str) or len(entry["reason"].strip()) < 20:
-            errors.append(f"entry {index} reason is too short")
-        key = tuple(
-            entry.get(name)
-            for name in (
-                "file",
-                "validation_flag",
-                "label",
-                "token_sha256",
-                "field",
-                "base_sha256",
-                "head_sha256",
-            )
-        )
-        if key in seen:
-            errors.append(f"entry {index} is duplicated")
-        seen.add(key)
-    return [entry for entry in entries if isinstance(entry, dict)], errors
 
 
 def _sha(value: object) -> str:
@@ -471,22 +456,6 @@ def _change(
     if head is not None and head.get("label"):
         record["head_label"] = str(head["label"])
     return record
-
-
-def _ack_key(change: dict[str, object]) -> tuple[object, ...]:
-    """Return the exact acknowledgement matching key for a change."""
-    return tuple(
-        change.get(name, "")
-        for name in (
-            "file",
-            "validation_flag",
-            "label",
-            "token_sha256",
-            "field",
-            "base_sha256",
-            "head_sha256",
-        )
-    )
 
 
 def _classify_change(
@@ -711,6 +680,175 @@ def _migration_fingerprints(
     }
 
 
+def _verify_count_ratchet(
+    root: Path,
+    base_rows: list[dict[str, object]],
+    rows: list[dict[str, object]],
+    revision: str,
+    parser_changes: list[dict[str, object]],
+    parser_strengthened: list[dict[str, object]],
+) -> int:
+    """Enforce class-count monotonicity without trusting row-level metadata."""
+    errors = _validate_ratchet_rows(base_rows, "base")
+    errors.extend(_validate_ratchet_rows(rows, "head"))
+    if errors:
+        for error in errors:
+            print(f"SOURCE_TEXT_RATCHET_INVALID {error}")
+        return 1
+
+    base_file_paths: dict[str, str] = {}
+    for row in base_rows:
+        normalized = _ratchet_path(row.get("file", ""))
+        original = str(row.get("file", "")).strip().replace("\\", "/")
+        base_file_paths.setdefault(normalized, original)
+    base_files = set(base_file_paths)
+    head_files = {_ratchet_path(row.get("file", "")) for row in rows}
+    for missing_file in sorted(base_files - head_files):
+        live_path = root / base_file_paths[missing_file]
+        if _file_has_source_assertion(live_path):
+            print(
+                f"SOURCE_TEXT_RATCHET_INVENTORY_INCOMPLETE file={missing_file} "
+                "live_assertion_without_inventory_row"
+            )
+            return 1
+
+    base_counts = _ratchet_counts(base_rows)
+    head_counts = _ratchet_counts(rows)
+    base_tokens = _ratchet_change_tokens(base_rows)
+    head_tokens = _ratchet_change_tokens(rows)
+    base_semantics = _ratchet_assertion_semantics(base_rows)
+    head_semantics = _ratchet_assertion_semantics(rows)
+    failures: list[str] = []
+    improvements: list[str] = []
+    changed: list[str] = []
+
+    all_file_flags = {
+        (key[0], key[1]) for key in (*base_counts.keys(), *head_counts.keys())
+    }
+    for file_name, validation_flag in sorted(all_file_flags):
+        base_c = base_counts[(file_name, validation_flag, "C")]
+        head_c = head_counts[(file_name, validation_flag, "C")]
+        if head_c > base_c:
+            failures.append(
+                f"SOURCE_TEXT_RATCHET_CLASS_C_INCREASE file={file_name} "
+                f"flag={validation_flag} base={base_c} head={head_c}"
+            )
+        elif head_c < base_c:
+            failures.append(
+                f"SOURCE_TEXT_RATCHET_CLASS_C_DECREASE file={file_name} "
+                f"flag={validation_flag} base={base_c} head={head_c}"
+            )
+        for row_class in ("A", "B"):
+            base_count = base_counts[(file_name, validation_flag, row_class)]
+            head_count = head_counts[(file_name, validation_flag, row_class)]
+            if head_count < base_count:
+                failures.append(
+                    f"SOURCE_TEXT_RATCHET_CLASS_{row_class}_DECREASE file={file_name} "
+                    f"flag={validation_flag} base={base_count} head={head_count}"
+                )
+            elif head_count > base_count:
+                improvements.append(
+                    f"SOURCE_TEXT_RATCHET_IMPROVED class={row_class} file={file_name} "
+                    f"flag={validation_flag} base={base_count} head={head_count}"
+                )
+
+    base_unknown = sum(value for key, value in base_counts.items() if key[2] == "UNKNOWN")
+    head_unknown = sum(value for key, value in head_counts.items() if key[2] == "UNKNOWN")
+    base_unresolved = sum(value for key, value in base_counts.items() if key[2] == "UNRESOLVED")
+    head_unresolved = sum(value for key, value in head_counts.items() if key[2] == "UNRESOLVED")
+    if head_unknown > base_unknown:
+        failures.append(
+            f"SOURCE_TEXT_RATCHET_UNKNOWN_INCREASE base={base_unknown} head={head_unknown}"
+        )
+    if head_unresolved > base_unresolved:
+        failures.append(
+            f"SOURCE_TEXT_RATCHET_UNRESOLVED_INCREASE base={base_unresolved} head={head_unresolved}"
+        )
+
+    approvals, approval_errors = _load_ratchet_approvals(root, revision)
+    approval_map = {
+        (_ratchet_path(entry["file"]), str(entry["validation_flag"]).strip(), str(entry["class"]).strip()): entry
+        for entry in approvals
+    }
+    for line in list(failures):
+        match = re.match(
+            r"SOURCE_TEXT_RATCHET_CLASS_([AB])_DECREASE file=(.*?) flag=(.*?) base=(\d+) head=(\d+)$",
+            line,
+        )
+        if match is None:
+            continue
+        row_class, file_name, validation_flag, base_count, head_count = match.groups()
+        entry = approval_map.get((file_name, validation_flag, row_class))
+        if entry is not None and (
+            entry["base_count"] == int(base_count) and entry["head_count"] == int(head_count)
+        ):
+            failures.remove(line)
+            print(
+                f"SOURCE_TEXT_RATCHET_APPROVED class={row_class} file={file_name} "
+                f"flag={validation_flag} base={base_count} head={head_count}"
+            )
+
+    for key in sorted(set(base_tokens) | set(head_tokens)):
+        if base_tokens.get(key, Counter()) != head_tokens.get(key, Counter()):
+            message = f"SOURCE_TEXT_RATCHET_CHANGED file={key[0]} flag={key[1]} class={key[2]}"
+            changed.append(message)
+            if (
+                key[2] in {"A", "C"}
+                and base_counts[key] > 0
+                and head_counts[key] > 0
+            ):
+                failures.append(
+                    f"SOURCE_TEXT_RATCHET_ASSERTION_CHANGED file={key[0]} "
+                    f"flag={key[1]} class={key[2]}"
+                )
+
+    for key in sorted(set(base_semantics) | set(head_semantics)):
+        if key[2] not in {"A", "B", "C"} or base_counts[key] != head_counts[key]:
+            continue
+        if base_semantics.get(key, Counter()) == head_semantics.get(key, Counter()):
+            continue
+        message = (
+            f"SOURCE_TEXT_RATCHET_ASSERTION_CHANGED file={key[0]} "
+            f"flag={key[1]} class={key[2]}"
+        )
+        if message not in failures:
+            failures.append(message)
+
+    helper_files = {
+        str(row.get("file", ""))
+        for row in (*base_rows, *rows)
+        if str(row.get("file", "")).endswith(".cs")
+    }
+    base_helpers = _helper_signatures_at_revision(root, revision, helper_files)
+    head_helpers = _helper_signatures_at_head(root, helper_files)
+    helper_changed = [
+        f"SOURCE_TEXT_RATCHET_HELPER_CHANGED file={key[0]} helper={key[1]}"
+        for key in sorted(set(base_helpers) | set(head_helpers))
+        if base_helpers.get(key) != head_helpers.get(key)
+    ]
+
+    print(
+        "SOURCE_TEXT_INVENTORY_BASE_OK "
+        f"base_rows={len(base_rows)} head_rows={len(rows)} "
+        f"base_unresolved={base_unresolved} head_unresolved={head_unresolved} "
+        f"base_unknown={base_unknown} head_unknown={head_unknown} "
+        f"strengthened={len(parser_strengthened)} acknowledged=0 unacknowledged={len(failures)} ack_unused=0"
+    )
+    for item in improvements:
+        print(item)
+    for item in changed:
+        print(item)
+    for item in helper_changed:
+        print(item)
+    for change in parser_changes:
+        print(f"SOURCE_TEXT_RATCHET_PARSER_CHANGE {json.dumps(change, sort_keys=True)}")
+    for error in approval_errors:
+        print(f"SOURCE_TEXT_RATCHET_APPROVAL_ERROR {error}")
+    for failure in failures:
+        print(failure)
+    return 1 if failures or approval_errors else 0
+
+
 def _verify_base_inventory(
     root: Path,
     rows: list[dict[str, object]],
@@ -720,9 +858,19 @@ def _verify_base_inventory(
     output: Path | None = None,
     trusted_base_inventory: Path | None = None,
 ) -> int:
-    """Classify base/head changes and enforce exact acknowledgement entries."""
+    """Classify base/head changes and enforce the count ratchet."""
     if inventory_callback is None:
         raise RuntimeError("current inventory callback is required")
+    revision_check = subprocess.run(
+        ["git", "rev-parse", "--verify", f"{revision}^{{commit}}"],
+        cwd=root,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if revision_check.returncode != 0:
+        print(f"SOURCE_TEXT_RATCHET_BASE_ERROR revision={revision}")
+        return 1
     checker_changed = _checker_digest(root) != _checker_digest(root, revision)
     base_rows = (
         _load_inventory_report(trusted_base_inventory)
@@ -802,78 +950,28 @@ def _verify_base_inventory(
         parser_strengthened = []
         if migration_approval is not None:
             migration_errors.append("checker did not change")
-    matches, missing = _match_base_rows(base_status_rows, rows, strict=True)
-    strengthened: list[dict[str, object]] = list(parser_strengthened)
-    changes: list[dict[str, object]] = _row_schema_changes(rows, "head")
-    changes.extend(parser_changes)
-    for base, head in matches:
-        row_strengthened, weakening_fields = _classify_change(base, head)
-        strengthened.extend(row_strengthened)
-        for field in weakening_fields:
-            changes.append(_change(base, head, field, base.get(field, ""), head.get(field, "")))
-    for base in missing:
-        changes.append(_change(base, None, "row_removed", base.get("token", ""), ""))
-    matched_head_ids = {id(head) for _, head in matches}
-    for row in rows:
-        if id(row) not in matched_head_ids:
-            if row.get("class") in {"UNKNOWN", "UNRESOLVED"}:
-                changes.append(_row_added_change(row))
-            else:
-                strengthened.append({"file": row.get("file", ""), "field": "row_added"})
-    base_unresolved = sum(row.get("class") == "UNRESOLVED" for row in base_status_rows)
-    head_unresolved = sum(row.get("class") == "UNRESOLVED" for row in rows)
-    base_unknown = sum(row.get("class") == "UNKNOWN" for row in base_status_rows)
-    head_unknown = sum(row.get("class") == "UNKNOWN" for row in rows)
-    if head_unresolved > base_unresolved:
-        changes.append(_inventory_count_change("unresolved_count", base_unresolved, head_unresolved))
-    if head_unknown > base_unknown:
-        changes.append(_inventory_count_change("unknown_count", base_unknown, head_unknown))
-    changes = list({_ack_key(change): change for change in changes}.values())
-    acknowledgements, ack_errors = _load_acknowledgements(root, revision)
-    _, head_ack_errors = _load_acknowledgements(root)
-    ack_errors.extend(f"head {error}" for error in head_ack_errors)
-    ack_map = {_ack_key(entry): entry for entry in acknowledgements}
-    acknowledged: list[dict[str, object]] = []
-    unacknowledged: list[dict[str, object]] = []
-    for change in changes:
-        change_key = _ack_key(change)
-        entry = ack_map.get(change_key)
-        if entry is None:
-            unacknowledged.append(change)
-        else:
-            acknowledged.append(change)
-    used_keys = {_ack_key(change) for change in changes}
-    unused = [entry for entry in acknowledgements if _ack_key(entry) not in used_keys]
-    print(
-        "SOURCE_TEXT_INVENTORY_BASE_OK "
-        f"base_rows={len(base_rows)} head_rows={len(rows)} missing={len(missing)} "
-        f"base_unresolved={base_unresolved} head_unresolved={head_unresolved} "
-        f"base_unknown={base_unknown} head_unknown={head_unknown} "
-        f"strengthened={len(strengthened)} acknowledged={len(acknowledged)} "
-        f"unacknowledged={len(unacknowledged)} ack_unused={len(unused)}"
-    )
-    for change in parser_strengthened:
-        if change.get("field") == "parser_schema_added":
-            print(
-                "SOURCE_TEXT_INVENTORY_PARSER_MIGRATION "
-                f"{change['base_value']}->{change['head_value']} additive_schema"
-            )
+    if checker_changed and migration_approval is None:
+        migration_errors.append("parser migration approval required")
     if migration_approval is not None and not migration_errors:
         print(
             "SOURCE_TEXT_INVENTORY_PARSER_MIGRATION_APPROVED "
             f"changes={len(approved_parser_changes)} "
             f"fingerprints={json.dumps(fingerprints, sort_keys=True)}"
         )
+    for change in parser_strengthened:
+        if change.get("field") == "parser_schema_added":
+            print(
+                "SOURCE_TEXT_INVENTORY_PARSER_MIGRATION "
+                f"{change['base_value']}->{change['head_value']} additive_schema"
+            )
     if migration_errors:
         print(f"SOURCE_TEXT_INVENTORY_PARSER_MIGRATION_REJECTED {','.join(migration_errors)}")
-    if ack_errors:
-        for error in ack_errors:
-            print(f"SOURCE_TEXT_INVENTORY_ACK_ERROR {error}")
-    if unused:
-        print(f"SOURCE_TEXT_INVENTORY_ACK_UNUSED count={len(unused)}")
-    if unacknowledged:
-        for change in unacknowledged[:20]:
-            suggestion = dict(change)
-            suggestion["reason"] = ""
-            print(f"SOURCE_TEXT_INVENTORY_UNACKNOWLEDGED {json.dumps(suggestion, sort_keys=True)}")
-    return 1 if ack_errors or unacknowledged or migration_errors else 0
+        return 1
+    return _verify_count_ratchet(
+        root,
+        base_status_rows,
+        rows,
+        revision,
+        parser_changes,
+        parser_strengthened,
+    )

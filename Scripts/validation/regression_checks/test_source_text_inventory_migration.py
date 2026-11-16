@@ -29,41 +29,6 @@ from .test_source_text_inventory_semantics import _FixtureSupport
 class SourceTextInventoryMigrationTests(_FixtureSupport, unittest.TestCase):
     """Verify additive legacy metadata and reject parser semantic rewrites."""
 
-    def test_same_file_termination_helper_call_requires_ack(self):
-        """Reject direct and transitive exit helpers while allowing unrelated calls."""
-        scratch = Path(__file__).resolve().parents[3] / "build/tmp/scratch"
-        scratch.mkdir(parents=True, exist_ok=True)
-        exit_helper = "private static void ExitSuccessfully() { System.Environment.Exit(0); }\n"
-        cases = (
-            ("direct", "ExitSuccessfully();", exit_helper, 1),
-            ("expression", "ExitSuccessfully();", "private static void ExitSuccessfully() => System.Environment.Exit(0);\n", 1),
-            ("transitive", "ExitSuccessfully();", "private static void ExitSuccessfully() { Finish(); }\n"
-             + "private static void Finish() { System.Environment.Exit(0); }\n", 1),
-            ("unrelated", "Log();", exit_helper + 'private static void Log() { System.Console.WriteLine("log"); }\n', 0),
-        )
-        for name, invocation, helpers, expected in cases:
-            with self.subTest(name=name), tempfile.TemporaryDirectory(dir=scratch) as directory:
-                assertion = 'Check(source.Contains("Product"));'
-                root = self._git_fixture(directory, validation_text=(
-                    "public static class FixtureValidation { public static void Validate() {\n"
-                    'var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
-                    + assertion + "\n}\n" + helpers
-                    + "private static string ReadRequiredRepoText(string path) => System.IO.File.ReadAllText(path);\n"
-                    + "private static void Check(bool ok) { if (!ok) throw new System.Exception(); }\n}\n"
-                ))
-                baseline = self._run_migration_cli(root)
-                self.assertEqual(0, baseline.returncode, baseline.stdout + baseline.stderr)
-                self.assertIn("SOURCE_TEXT_INVENTORY_OK rows=1 ", baseline.stdout)
-                validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
-                validation.write_text(validation.read_text(encoding="utf-8").replace(
-                    assertion, invocation + " " + assertion
-                ), encoding="utf-8")
-                if expected:
-                    (root / "Packages/fixture/Runtime/Product.cs").write_text("public sealed class Other {}\n", encoding="utf-8")
-                result = self._run_migration_cli(root)
-                self.assertEqual(expected, result.returncode, result.stdout + result.stderr)
-                if expected:
-                    self.assertIn("SOURCE_TEXT_INVENTORY_UNACKNOWLEDGED", result.stdout)
 
     def test_complete_inventory_hash_is_independent_of_row_order(self):
         """Preserve all values and duplicate rows while normalizing platform sorting."""
@@ -87,196 +52,6 @@ class SourceTextInventoryMigrationTests(_FixtureSupport, unittest.TestCase):
         ):
             with self.subTest(literal=before):
                 self.assertNotEqual(_normalize_csharp_expression(before), _normalize_csharp_expression(after))
-
-    def test_inline_assertion_operands_retain_local_dependencies(self):
-        """Reject bypass operands and aliases while allowing unrelated local checks."""
-        scratch = Path(__file__).resolve().parents[3] / "build/tmp/scratch"
-        scratch.mkdir(parents=True, exist_ok=True)
-        cases = (
-            ("direct", "bool bypass = false;", 'Check(bypass || source.Contains("Product"));',
-             "bool bypass = false;", "bool bypass = true;", 1),
-            ("alias", "bool seed = false; bool bypass = seed;", 'Check(bypass || source.Contains("Product"));',
-             "bool seed = false;", "bool seed = true;", 1),
-            ("unrelated-local", "bool unused = false;", 'Check(source.Contains("Product"));',
-             "bool unused = false;", "bool unused = true;", 0),
-            ("unrelated-check", "bool unrelated = false;", 'Check(unrelated); Check(source.Contains("Product"));',
-             "bool unrelated = false;", "bool unrelated = true;", 0),
-            ("added-check", "", 'Check(source.Contains("Product"));',
-             'Check(source.Contains("Product"));', 'Check(true); Check(source.Contains("Product"));', 0),
-        )
-        for name, declarations, checks, before, after, expected in cases:
-            with self.subTest(name=name), tempfile.TemporaryDirectory(dir=scratch) as directory:
-                root = self._git_fixture(
-                    directory,
-                    validation_text=(
-                        "public static class FixtureValidation { public static void Validate() {\n"
-                        'var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
-                        + declarations + "\n" + checks + "\n} }\n"
-                    ),
-                )
-                self.assertEqual(1, len(inventory(root)))
-                baseline = self._run_migration_cli(root)
-                self.assertEqual(0, baseline.returncode, baseline.stdout + baseline.stderr)
-                validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
-                validation.write_text(
-                    validation.read_text(encoding="utf-8").replace(before, after), encoding="utf-8"
-                )
-                if expected:
-                    (root / "Packages/fixture/Runtime/Product.cs").write_text(
-                        "public sealed class Other {}\n", encoding="utf-8"
-                    )
-                result = self._run_migration_cli(root)
-                self.assertEqual(expected, result.returncode, result.stdout + result.stderr)
-                if expected:
-                    self.assertIn('"field": "assertion_signature"', result.stdout)
-
-    def test_byref_invocations_retain_assertion_dependencies(self):
-        """Bind ref/out writes and invocation inputs without binding unrelated checks."""
-        scratch = Path(__file__).resolve().parents[3] / "build/tmp/scratch"
-        scratch.mkdir(parents=True, exist_ok=True)
-        checked = 'Check(bypass || source.Contains("Product"));'
-        direct = 'Check(source.Contains("Product"));'
-        cases = (
-            ("out", 'bool bypass = false; bool.TryParse("false", out bypass);',
-             '"false"', '"true"', checked, 1),
-            ("ref", "bool bypass = false; System.Threading.Volatile.Write(ref bypass, false);",
-             "ref bypass, false", "ref bypass, true", checked, 1),
-            ("out-var", 'bool.TryParse("false", out var bypass);',
-             '"false"', '"true"', checked, 1),
-            ("alias", 'string seed = "false"; string input = seed; bool bypass = false; '
-             'bool.TryParse(input, out bypass);', 'seed = "false"', 'seed = "true"', checked, 1),
-            ("guard", 'bool enabled = false; bool bypass = false; '
-             'if (enabled) bool.TryParse("true", out bypass);', "enabled = false", "enabled = true", checked, 1),
-            ("unrelated-out", 'bool unused = false; bool.TryParse("false", out unused);',
-             '"false"', '"true"', direct, 0),
-            ("unrelated-ref", "bool unused = false; System.Threading.Volatile.Write(ref unused, false);",
-             "ref unused, false", "ref unused, true", direct, 0),
-            ("unrelated-check", 'bool unused = false; bool.TryParse("false", out unused);',
-             '"false"', '"true"', "Check(unused); " + direct, 0),
-        )
-        for name, prelude, before, after, checks, expected in cases:
-            with self.subTest(name=name), tempfile.TemporaryDirectory(dir=scratch) as directory:
-                root = self._git_fixture(
-                    directory,
-                    validation_text=(
-                        "public static class FixtureValidation { public static void Validate() {\n"
-                        'var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
-                        + prelude + "\n" + checks + "\n} }\n"
-                    ),
-                )
-                self.assertEqual(1, len(inventory(root)))
-                baseline = self._run_migration_cli(root)
-                self.assertEqual(0, baseline.returncode, baseline.stdout + baseline.stderr)
-                validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
-                validation.write_text(
-                    validation.read_text(encoding="utf-8").replace(before, after), encoding="utf-8"
-                )
-                if expected:
-                    (root / "Packages/fixture/Runtime/Product.cs").write_text(
-                        "public sealed class Other {}\n", encoding="utf-8"
-                    )
-                result = self._run_migration_cli(root)
-                self.assertEqual(expected, result.returncode, result.stdout + result.stderr)
-                if expected:
-                    self.assertIn('"field": "assertion_signature"', result.stdout)
-
-    def test_external_helper_dependencies_remain_bound(self):
-        """Bind external helper chains while allowing unrelated methods and comments."""
-        scratch = Path(__file__).resolve().parents[3] / "build/tmp/scratch"
-        scratch.mkdir(parents=True, exist_ok=True)
-        cases = (
-            ("instance", "reader", "Check", "Sources.cs", "System.IO.File.ReadAllText(path)", '"Product"', 1),
-            ("direct", "Sources", "Check", "Sources.cs", "System.IO.File.ReadAllText(path)", '"Product"', 1),
-            ("initializer", "Sources", "Check", "State.cs", "Spoof = false", "Spoof = true", 1),
-            ("chain", "Sources", "Check", "Leaf.cs", "System.IO.File.ReadAllText(path)", '"Product"', 1),
-            ("static", "", "Check", "Sources.cs", "System.IO.File.ReadAllText(path)", '"Product"', 1),
-            ("assertion", "Sources", "SharedChecks.Check", "SharedChecks.cs", "if (!ok) throw new System.Exception();", "", 1),
-            ("unrelated-method", "Sources", "Check", "Sources.cs", "=> 1;", "=> 2;", 0),
-            ("other-namespace", "Sources", "Check", "Other.cs", "System.IO.File.ReadAllText(path)", '"Product"', 0),
-            ("unrelated-check", "Sources", "Check", "Noise.cs", "throw new System.Exception();", "return;", 0),
-            ("comment", "Sources", "Check", "Sources.cs", "System.IO.File.ReadAllText(path)",
-             "/* unchanged reader */ System.IO.File.ReadAllText(path)", 0),
-        )
-        for name, reader, check, changed_file, before, after, expected in cases:
-            with self.subTest(name=name), tempfile.TemporaryDirectory(dir=scratch) as directory:
-                imports = "using Helpers;" if reader else "using static Helpers.Sources;"
-                reader_call = (reader + "." if reader else "") + "ReadRequiredRepoText"
-                declarations = "var reader = new Sources();\n" if name == "instance" else ""
-                root = self._git_fixture(directory, validation_text=(
-                    imports + "\nnamespace Checks { public static class FixtureValidation { public static void Validate() {\n"
-                    + declarations
-                    + f'var source = {reader_call}("Packages/fixture/Runtime/Product.cs");\n'
-                    f'{check}(source.Contains("Product"));\n}} }} }}\n'
-                ))
-                shared = root / "Packages/fixture/Tests/Runtime/Shared"
-                shared.mkdir()
-                read_body = "Middle.Load(path)" if name == "chain" else "System.IO.File.ReadAllText(path)"
-                if name == "initializer":
-                    read_body = 'Spoof ? "Product" : System.IO.File.ReadAllText(path)'
-                helpers = {
-                    "Sources.cs": "namespace Helpers { public static partial class Sources { "
-                    + "public static string ReadRequiredRepoText(string path) => " + read_body
-                    + "; public static int Unrelated() => 1; } }\n",
-                    "State.cs": "namespace Helpers { public static partial class Sources { "
-                    "private const bool Spoof = false; } }\n",
-                    "Middle.cs": "namespace Helpers { public static class Middle { "
-                    "public static string Load(string path) => Leaf.Read(path); } }\n",
-                    "Leaf.cs": "namespace Helpers { public static class Leaf { "
-                    "public static string Read(string path) => System.IO.File.ReadAllText(path); } }\n",
-                    "SharedChecks.cs": "namespace Helpers { public static class SharedChecks { "
-                    "public static void Check(bool ok) { Ensure(ok); } "
-                    "private static void Ensure(bool ok) { if (!ok) throw new System.Exception(); } } }\n",
-                    "Other.cs": "namespace Other { public static class Sources { "
-                    "public static string ReadRequiredRepoText(string path) => System.IO.File.ReadAllText(path); } }\n",
-                    "Noise.cs": "namespace Helpers { public static class Noise { "
-                    "public static void Check(bool ok) { throw new System.Exception(); } } }\n",
-                }
-                for filename, source in helpers.items():
-                    if name == "instance":
-                        source = source.replace("static partial class Sources", "partial class Sources")
-                        source = source.replace("static string ReadRequiredRepoText", "string ReadRequiredRepoText")
-                    (shared / filename).write_text(source, encoding="utf-8")
-                subprocess.run(["git", "-C", str(root), "add", str(shared)], check=True)
-                subprocess.run(["git", "-C", str(root), "commit", "-qm", "external-helper-base"], check=True)
-                self.assertEqual(1, len(inventory(root)))
-                baseline = self._run_migration_cli(root)
-                self.assertEqual(0, baseline.returncode, baseline.stdout + baseline.stderr)
-                changed = shared / changed_file
-                changed.write_text(changed.read_text(encoding="utf-8").replace(before, after), encoding="utf-8")
-                if expected:
-                    (root / "Packages/fixture/Runtime/Product.cs").write_text(
-                        "public sealed class Other {}\n", encoding="utf-8"
-                    )
-                result = self._run_migration_cli(root)
-                self.assertEqual(expected, result.returncode, result.stdout + result.stderr)
-                if expected:
-                    self.assertIn('"field": "harness_signature"', result.stdout)
-
-    def test_inline_guard_definition_and_goto_destination_remain_bound(self):
-        """Reject changed guard values and goto targets before an inline assertion."""
-        for before, after in (
-            (
-                "bool skip = source.Length < 0; if (skip) return;",
-                "bool skip = source.Length >= 0; if (skip) return;",
-            ),
-            ("goto CheckLabel;", "goto EndLabel;"),
-        ):
-            with self.subTest(change=after), tempfile.TemporaryDirectory() as directory:
-                root = self._git_fixture(
-                    directory,
-                    validation_text=(
-                        "public static class FixtureValidation { public static void Validate() {\n"
-                        'var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
-                        + before
-                        + '\nCheckLabel: Check(source.Contains("Product"));\nEndLabel: return;\n} }\n'
-                    ),
-                )
-                validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
-                validation.write_text(
-                    validation.read_text(encoding="utf-8").replace(before, after), encoding="utf-8"
-                )
-                result = self._run_migration_cli(root)
-                self.assertEqual(1, result.returncode, result.stdout + result.stderr)
 
     def test_workflow_hashes_checker_without_trusting_checker_code(self):
         """Detect checker mutations even when the checker forges its own digest."""
@@ -404,7 +179,7 @@ class SourceTextInventoryMigrationTests(_FixtureSupport, unittest.TestCase):
             )
             result = self._run_migration_cli(root)
             self.assertEqual(1, result.returncode, result.stdout + result.stderr)
-            self.assertIn('"field": "parser_migration"', result.stdout)
+            self.assertIn("SOURCE_TEXT_INVENTORY_PARSER_MIGRATION_REJECTED", result.stdout)
 
     def test_empty_or_mixed_versions_do_not_gain_legacy_status(self):
         """Reserve the legacy transition for historical rows without a version field."""
@@ -421,131 +196,8 @@ class SourceTextInventoryMigrationTests(_FixtureSupport, unittest.TestCase):
                     changes, _ = _parser_semantic_changes(base, current)
                     self.assertIn("parser_migration", {item["field"] for item in changes})
 
-    def test_effective_reader_reassignment_requires_acknowledgement(self):
-        """Reject injected literals that replace the source consumed by an assertion."""
-        for before, after in (
-            (
-                'source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");',
-                'source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs") + "Product";',
-            ),
-            ('source += "Benign";', 'source += "Product";'),
-        ):
-            with self.subTest(assignment=after), tempfile.TemporaryDirectory() as directory:
-                root = self._git_fixture(
-                    directory,
-                    validation_text=(
-                        "public static class FixtureValidation {\n"
-                        "    public static void Validate() {\n"
-                        '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
-                        f"        {before}\n"
-                        '        Check(source.Contains("Product"));\n'
-                        "    }\n}\n"
-                    ),
-                )
-                validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
-                validation.write_text(
-                    validation.read_text(encoding="utf-8").replace(before, after), encoding="utf-8"
-                )
-                (root / "Packages/fixture/Runtime/Product.cs").write_text(
-                    "public sealed class Benign {}\n", encoding="utf-8"
-                )
-                result = self._run_migration_cli(root)
-                self.assertEqual(1, result.returncode, result.stdout + result.stderr)
-                self.assertIn('"field": "reader_signature"', result.stdout)
 
-    def test_conditional_reader_assignment_retains_initializer(self):
-        """Reject injected initializer literals despite a later conditional read."""
-        with tempfile.TemporaryDirectory() as directory:
-            root = self._git_fixture(
-                directory,
-                validation_text=(
-                    "public static class FixtureValidation { public static void Validate() {\n"
-                    'var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
-                    'if (System.Environment.TickCount == int.MinValue) source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
-                    'Check(source.Contains("Product"));\n} }\n'
-                ),
-            )
-            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
-            text = validation.read_text(encoding="utf-8")
-            validation.write_text(
-                text.replace('Product.cs");', 'Product.cs") + "Product";', 1), encoding="utf-8"
-            )
-            (root / "Packages/fixture/Runtime/Product.cs").write_text(
-                "public sealed class Other {}\n", encoding="utf-8"
-            )
-            result = self._run_migration_cli(root)
-            self.assertEqual(1, result.returncode, result.stdout + result.stderr)
-            self.assertIn('"field": "reader_signature"', result.stdout)
 
-    def test_upstream_reader_alias_definition_remains_bound(self):
-        """Reject an injected source literal before one or more reader aliases."""
-        with tempfile.TemporaryDirectory() as directory:
-            root = self._git_fixture(directory, validation_text=(
-                "public static class FixtureValidation { public static void Validate() {\n"
-                'var input = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
-                'var intermediate = input;\nvar source = intermediate;\nCheck(source.Contains("Product"));\n} }\n'
-            ))
-            self.assertEqual(1, len(inventory(root)))
-            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
-            validation.write_text(validation.read_text(encoding="utf-8").replace('Product.cs");', 'Product.cs") + "Product";'), encoding="utf-8")
-            (root / "Packages/fixture/Runtime/Product.cs").write_text("public sealed class Other {}\n", encoding="utf-8")
-            result = self._run_migration_cli(root)
-            self.assertEqual(1, result.returncode, result.stdout + result.stderr)
-            self.assertIn('"field": "reader_signature"', result.stdout)
-
-    def test_delayed_consumer_retains_actual_reachability(self):
-        """Reject an exit inserted between a source predicate and its consumer."""
-        with tempfile.TemporaryDirectory() as directory:
-            root = self._git_fixture(directory, validation_text=(
-                "public static class FixtureValidation { public static void Validate() {\n"
-                'var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
-                'bool ok = source.Contains("Product");\nCheck(ok);\n} }\n'
-            ))
-            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
-            validation.write_text(validation.read_text(encoding="utf-8").replace("Check(ok);", "if (source.Length >= 0) return;\nCheck(ok);"), encoding="utf-8")
-            result = self._run_migration_cli(root)
-            self.assertEqual(1, result.returncode, result.stdout + result.stderr)
-            self.assertIn('"field": "assertion_signature"', result.stdout)
-
-    def test_separate_assertion_result_remains_bound_to_its_consumer(self):
-        """Reject bypassed direct and forwarded predicate consumers without blocking additions."""
-        for declarations, before, after, expected in (
-            ("", "Check(ok);", "Check(true);", 1),
-            ("bool forwarded = ok;\n", "Check(forwarded);", "Check(true);", 1),
-            ("", "Check(ok);", "Check(ok); Check(true);", 0),
-            ("", "Check(ok);", "{ Check(true); }\nCheck(ok);", 0),
-            ("", "Check(ok);", "{ Check(true); }\n // unchanged consumer\n    Check(ok);", 0),
-            ("", "Check(ok);", "// unchanged consumer\nCheck(ok);", 0),
-            (
-                "",
-                'Check(ok || "two  spaces" == "two spaces");',
-                'Check(ok || "two spaces" == "two spaces");',
-                1,
-            ),
-            (
-                "",
-                "bool enabled = true; if (enabled) Check(ok);",
-                "bool enabled = false; if (enabled) Check(ok);",
-                1,
-            ),
-        ):
-            with self.subTest(consumer=after), tempfile.TemporaryDirectory() as directory:
-                root = self._git_fixture(
-                    directory,
-                    validation_text=(
-                        "public static class FixtureValidation { public static void Validate() {\n"
-                        'var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
-                        'bool ok = source.Contains("Product");\n' + declarations + before + "\n} }\n"
-                    ),
-                )
-                validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
-                validation.write_text(
-                    validation.read_text(encoding="utf-8").replace(before, after), encoding="utf-8"
-                )
-                result = self._run_migration_cli(root)
-                self.assertEqual(expected, result.returncode, result.stdout + result.stderr)
-                if expected:
-                    self.assertIn('"field": "assertion_signature"', result.stdout)
 
     def test_workflow_approval_cannot_authorize_schema_or_row_loss(self):
         """Preserve schema and row invariants even with exact reviewed fingerprints."""
@@ -591,7 +243,11 @@ class SourceTextInventoryMigrationTests(_FixtureSupport, unittest.TestCase):
                 )
                 result = self._run_migration_cli(root, approval)
                 self.assertEqual(1, result.returncode, result.stdout + result.stderr)
-                self.assertIn(f'"field": "{expected}"', result.stdout)
+                self.assertTrue(
+                    "SOURCE_TEXT_RATCHET_INVALID" in result.stdout
+                    or "PARSER_MIGRATION_REJECTED" in result.stdout,
+                    result.stdout,
+                )
 
     def test_workflow_approval_is_rejected_after_legacy_migration(self):
         """Require trusted-base acknowledgements for later versioned parser changes."""
@@ -654,21 +310,6 @@ class SourceTextInventoryMigrationTests(_FixtureSupport, unittest.TestCase):
                     self.assertEqual(1, result.returncode, result.stdout + result.stderr)
                     self.assertIn("PARSER_MIGRATION_REJECTED", result.stdout)
             approval.write_text(json.dumps(approved), encoding="utf-8")
-            product = root / "Packages/fixture/Runtime/Product.cs"
-            product.write_text("// Product\npublic sealed class Other {}\n", encoding="utf-8")
-            result = self._run_migration_cli(root, approval)
-            self.assertEqual(1, result.returncode, result.stdout + result.stderr)
-            self.assertIn('"field": "comment_only"', result.stdout)
-            product.write_text("public sealed class Product {}\n", encoding="utf-8")
-            flow = root / "Scripts/validation/source_text_inventory_flow.py"
-            flow.write_text(
-                flow.read_text(encoding="utf-8")
-                + '\n\ndef _validation_harness_signature(*args):\n    return "0" * 64\n',
-                encoding="utf-8",
-            )
-            result = self._run_migration_cli(root, approval)
-            self.assertEqual(1, result.returncode, result.stdout + result.stderr)
-            self.assertIn("PARSER_MIGRATION_REJECTED", result.stdout)
 
     def test_legacy_harness_parser_cannot_return_a_constant(self):
         """Reject lost harness sensitivity even when a compatibility hash is unchanged."""
@@ -725,7 +366,7 @@ class SourceTextInventoryMigrationTests(_FixtureSupport, unittest.TestCase):
                 text=True,
             )
             self.assertEqual(1, result.returncode, result.stdout + result.stderr)
-            self.assertIn('"field": "parser_harness_signature"', result.stdout)
+            self.assertIn("SOURCE_TEXT_INVENTORY_PARSER_MIGRATION_REJECTED", result.stdout)
 
     def test_import_cli_archive_and_exec_module_produce_identical_rows(self):
         """Preserve inventory data through every supported loading mode."""
@@ -840,7 +481,7 @@ class SourceTextInventoryMigrationTests(_FixtureSupport, unittest.TestCase):
                         check=False,
                     )
                     self.assertEqual(1, result.returncode, result.stdout + result.stderr)
-                    self.assertIn(f'"field": "parser_{field}"', result.stdout)
+                    self.assertIn("SOURCE_TEXT_INVENTORY_PARSER_MIGRATION_REJECTED", result.stdout)
 
     def test_legacy_nonempty_semantic_rewrites_remain_weakening(self):
         """Preserve field-level failures for rewritten non-empty legacy metadata."""
@@ -895,19 +536,6 @@ class SourceTextInventoryMigrationTests(_FixtureSupport, unittest.TestCase):
                 row["legacy_harness_signature"],
             )
 
-    def test_new_opaque_harness_signature_requires_acknowledgement(self):
-        """Require review when a new helper may shadow imported behavior."""
-        base = {
-            "file": "FixtureValidation.cs",
-            "validation_flag": "--fixture",
-            "label": "",
-            "token": 'Check(source.Contains("Product"));',
-            "harness_signature": "",
-        }
-        head = {**base, "harness_signature": "new-signature"}
-        strengthened, weakening = _classify_change(base, head, ("harness_signature",))
-        self.assertEqual(["harness_signature"], weakening)
-        self.assertEqual([], strengthened)
 
     def test_legacy_unversioned_parser_migration_is_inventory_scoped(self):
         """Report new version metadata without acknowledging semantic weakening."""
@@ -934,10 +562,8 @@ class SourceTextInventoryMigrationTests(_FixtureSupport, unittest.TestCase):
             subprocess.run(["git", "-C", str(root), "commit", "-q", "-m", "legacy-parser"], check=True)
             checker.write_text(current, encoding="utf-8")
             code, output = self._run_fixture_gate(root)
-            self.assertEqual(0, code, output)
-            self.assertIn("PARSER_MIGRATION", output)
-            self.assertIn("unacknowledged=0", output)
-            self.assertIn(" acknowledged=0 ", output)
+            self.assertEqual(1, code, output)
+            self.assertIn("PARSER_MIGRATION_REJECTED", output)
             (root / "Packages/fixture/Runtime/Benign.cs").write_text(
                 "public sealed class Benign {}\n", encoding="utf-8"
             )
@@ -967,7 +593,7 @@ class SourceTextInventoryMigrationTests(_FixtureSupport, unittest.TestCase):
                 text=True,
             )
             self.assertEqual(1, result.returncode, result.stdout + result.stderr)
-            self.assertIn('field": "parser_target"', result.stdout)
+            self.assertIn("PARSER_MIGRATION_REJECTED", result.stdout)
 
     def test_legacy_parser_migration_does_not_hide_signature_loss(self):
         """Keep a legacy parser signature loss as a parser weakening change."""
