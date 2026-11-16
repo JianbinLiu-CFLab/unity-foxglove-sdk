@@ -429,6 +429,23 @@ class SourceTextRatchetTests(unittest.TestCase):
             self.assertEqual(1, code, output)
             self.assertIn("SOURCE_TEXT_RATCHET_APPROVAL_ERROR", output)
 
+    def test_negative_trusted_approval_counts_fail_closed(self):
+        """Reject negative count approvals before they can authorize a weakening."""
+        from Scripts.validation.source_text_inventory_ratchet import _load_ratchet_approvals
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(directory)
+            approval = root / "Scripts/validation/source_text_ratchet_approvals.json"
+            approval.write_text(
+                '{"approvals": [{"file": "x", "validation_flag": "--phase", "class": "A", '
+                '"base_count": -1, "head_count": 0, "reason": "A sufficiently long approval reason.", '
+                '"replacement": "behavior"}]}\n',
+                encoding="utf-8",
+            )
+            approvals, errors = _load_ratchet_approvals(root)
+            self.assertEqual([], approvals)
+            self.assertEqual(["approval 0 has invalid counts"], errors)
+
     def test_live_file_with_missing_inventory_rows_fails_closed(self):
         """Reject a live assertion file that disappears from the head inventory."""
         from Scripts.validation.source_text_inventory_ratchet import _verify_count_ratchet

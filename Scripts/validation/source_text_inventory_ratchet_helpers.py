@@ -128,23 +128,27 @@ def _load_ratchet_approvals(
             str(entry["validation_flag"]).strip(),
             str(entry["class"]).strip(),
         )
+        entry_errors: list[str] = []
         if key in seen:
-            errors.append(f"approval {index} is duplicated")
+            entry_errors.append(f"approval {index} is duplicated")
         seen.add(key)
         if key[2] not in {"A", "B"}:
-            errors.append(f"approval {index} has invalid class")
+            entry_errors.append(f"approval {index} has invalid class")
         if (
             not isinstance(entry["base_count"], int)
             or not isinstance(entry["head_count"], int)
             or entry["base_count"] < 0
             or entry["head_count"] < 0
         ):
-            errors.append(f"approval {index} has invalid counts")
+            entry_errors.append(f"approval {index} has invalid counts")
         if not isinstance(entry["reason"], str) or len(entry["reason"].strip()) < 20:
-            errors.append(f"approval {index} reason is too short")
+            entry_errors.append(f"approval {index} reason is too short")
         if not isinstance(entry["replacement"], str) or not entry["replacement"].strip():
-            errors.append(f"approval {index} replacement is empty")
-        approvals.append(entry)
+            entry_errors.append(f"approval {index} replacement is empty")
+        if entry_errors:
+            errors.extend(entry_errors)
+        else:
+            approvals.append(entry)
     return approvals, errors
 
 def _ratchet_change_tokens(rows: list[dict[str, object]]) -> dict[tuple[str, str, str], Counter[str]]:

@@ -416,7 +416,7 @@ jobs:
           {
             "base_inventory_sha256": "8d736879430024f8031d687f64e77621589e73a44f11d3dbf2a633c2121932c5",
             "base_revision": "3e2637c529ec8a390bae8ff46c43053336aa7b0a",
-            "checker_sha256": "8e50cc77247964ead5ee000977dcba7ad6fe610ad444e7ca7583c1eaf634f126",
+            "checker_sha256": "74850994685f7dcf477d3579fc18c94a8fd4ab76b41b0b807794c9af099bf967",
             "current_inventory_sha256": "8d736879430024f8031d687f64e77621589e73a44f11d3dbf2a633c2121932c5",
             "parser_changes_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
             "scope": "versioned-parser-maintenance",
