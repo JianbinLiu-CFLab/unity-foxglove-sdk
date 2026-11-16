@@ -30,19 +30,19 @@ namespace Unity.FoxgloveSDK.Tests
     {
         private static void VerifySessionCachesPrioritizedTransportCapability()
         {
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/FoxgloveSession.cs");
-            var publishingSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/Decomposed/FoxgloveSession/FoxgloveSession.Publishing.cs");
-            var publish = ExtractMethodBody(publishingSource, "private void SendSubscribers(");
-            var replay = publish;
+            var transport = new Phase51FakeTransport();
+            var session = new FoxgloveSession("phase51", transport, new FixedClock(1), new DefaultSchemaRegistry());
+            session.RegisterChannel(new AdvertiseChannel { Id = 1, Topic = "/phase51/priority", Encoding = "json" });
+            transport.RaiseConnected(7);
+            transport.RaiseText(7, "{\"op\":\"subscribe\",\"subscriptions\":[{\"id\":11,\"channelId\":1}]}");
 
-            Check(source.Contains("_prioritizedTransport") && source.Contains("_transport as IPrioritizedFoxgloveTransport"),
-                "51B-20a: FoxgloveSession caches prioritized transport capability at construction");
-            Check(!publish.Contains("_transport is IPrioritizedFoxgloveTransport")
-                  && publish.Contains("_prioritizedTransport"),
-                "51B-20b: live publish hot path uses cached prioritized transport capability");
-            Check(!replay.Contains("_transport is IPrioritizedFoxgloveTransport")
-                  && replay.Contains("_prioritizedTransport"),
-                "51B-20c: replay publish hot path uses cached prioritized transport capability");
+            session.Publish(1, new byte[] { 1 }, 2);
+            Check(transport.DataBinary.Count == 1 && transport.ControlBinary.Count == 0,
+                "51B-20b: live publish uses the prioritized data queue");
+
+            session.PublishReplay(1, new byte[] { 2 }, 3);
+            Check(transport.DataBinary.Count == 2 && transport.ControlBinary.Count == 0,
+                "51B-20c: replay publish uses the prioritized data queue");
         }
 
         private static void VerifyClientIdAllocationCannotWrapToZero()

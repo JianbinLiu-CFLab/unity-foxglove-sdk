@@ -53,12 +53,15 @@ namespace Unity.FoxgloveSDK.Components
         private readonly List<IFoxgloveInputSource> _registeredSources = new();
         private readonly List<RegistrationLifetime> _registrationLifetimes = new();
         private IFoxgloveInputSource[] _sourceSnapshot = Array.Empty<IFoxgloveInputSource>();
+        private static long NextRateLimitScope;
+        private readonly long _rateLimitScope;
         private FoxRunEncoding _defaultSubscriptionEncoding = FoxRunEncoding.Protobuf;
         private string _defaultSubscribeTransportId =
             FoxgloveWebSocketTransport.Id;
 
         public FoxRunInputRouter(int maxPayloadBytes = 64 * 1024, int maxMessagesPerSecondPerTopic = 60)
         {
+            _rateLimitScope = Interlocked.Increment(ref NextRateLimitScope);
 #if !UNITY_5_3_OR_NEWER
             FoxRunTopicAdmissionRegistry.Reset();
 #endif
@@ -498,13 +501,41 @@ namespace Unity.FoxgloveSDK.Components
 {
     public static class FoxRunTopicAdmissionRegistry
     {
+        private readonly struct AdmissionKey : IEquatable<AdmissionKey>
+        {
+            public AdmissionKey(long scope, string topic)
+            {
+                Scope = scope;
+                Topic = topic;
+            }
+
+            public long Scope { get; }
+            public string Topic { get; }
+
+            public bool Equals(AdmissionKey other)
+                => Scope == other.Scope && string.Equals(Topic, other.Topic, StringComparison.Ordinal);
+
+            public override bool Equals(object obj)
+                => obj is AdmissionKey other && Equals(other);
+
+            public override int GetHashCode()
+                => HashCode.Combine(Scope, Topic);
+        }
+
         private static readonly object Sync = new object();
-        private static readonly Dictionary<string, Queue<double>> Arrivals =
-            new Dictionary<string, Queue<double>>(StringComparer.Ordinal);
+        private static readonly Dictionary<AdmissionKey, Queue<double>> Arrivals =
+            new Dictionary<AdmissionKey, Queue<double>>();
         private static bool UnityClockOffsetSet;
         private static double UnityClockOffset;
 
         public static bool TryAccept(
+            string topic,
+            double nowSeconds,
+            int maximumAcceptedPerSecond)
+            => TryAccept(0L, topic, nowSeconds, maximumAcceptedPerSecond);
+
+        public static bool TryAccept(
+            long scope,
             string topic,
             double nowSeconds,
             int maximumAcceptedPerSecond)
@@ -524,6 +555,7 @@ namespace Unity.FoxgloveSDK.Components
                     UnityClockOffsetSet = true;
                 }
                 return TryAcceptUnderLock(
+                    scope,
                     topic,
                     nowSeconds + UnityClockOffset,
                     maximumAcceptedPerSecond);
@@ -534,10 +566,18 @@ namespace Unity.FoxgloveSDK.Components
             string topic,
             long stopwatchTimestamp,
             int maximumAcceptedPerSecond)
+            => TryAcceptAtStopwatch(0L, topic, stopwatchTimestamp, maximumAcceptedPerSecond);
+
+        public static bool TryAcceptAtStopwatch(
+            long scope,
+            string topic,
+            long stopwatchTimestamp,
+            int maximumAcceptedPerSecond)
         {
             lock (Sync)
             {
                 return TryAcceptUnderLock(
+                    scope,
                     topic,
                     (double)stopwatchTimestamp / Stopwatch.Frequency,
                     maximumAcceptedPerSecond);
@@ -545,6 +585,7 @@ namespace Unity.FoxgloveSDK.Components
         }
 
         private static bool TryAcceptUnderLock(
+            long scope,
             string topic,
             double nowSeconds,
             int maximumAcceptedPerSecond)
@@ -554,8 +595,9 @@ namespace Unity.FoxgloveSDK.Components
                 || double.IsInfinity(nowSeconds))
                 return false;
 
-            if (!Arrivals.TryGetValue(topic, out var arrivals))
-                Arrivals[topic] = arrivals = new Queue<double>();
+            var key = new AdmissionKey(scope, topic);
+            if (!Arrivals.TryGetValue(key, out var arrivals))
+                Arrivals[key] = arrivals = new Queue<double>();
 
             while (arrivals.Count > 0 && nowSeconds - arrivals.Peek() >= 1d)
                 arrivals.Dequeue();

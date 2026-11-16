@@ -267,6 +267,24 @@ namespace Demo
             Assert.Equal(FoxRunInputDispatchStatus.RateLimited, rateLimited.Status);
         }
 
+        [Fact]
+        public void SeparateRoutersDoNotShareTopicQuota()
+        {
+            var firstInput = new RecordingInput("/phase297/isolation");
+            var secondInput = new RecordingInput("/phase297/isolation");
+            var first = new FoxRunInputRouter(maxMessagesPerSecondPerTopic: 1);
+            var second = new FoxRunInputRouter(maxMessagesPerSecondPerTopic: 1);
+            first.Register(firstInput);
+            second.Register(secondInput);
+
+            Assert.Equal(
+                FoxRunInputDispatchStatus.Staged,
+                first.Dispatch("/phase297/isolation", Array.Empty<byte>(), "json", 1d).Status);
+            Assert.Equal(
+                FoxRunInputDispatchStatus.Staged,
+                second.Dispatch("/phase297/isolation", Array.Empty<byte>(), "json", 1d).Status);
+        }
+
         [Theory]
         [InlineData("ros2")]
         [InlineData("cdr")]

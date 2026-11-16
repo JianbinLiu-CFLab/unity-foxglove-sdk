@@ -337,6 +337,7 @@ namespace Unity.FoxgloveSDK.Components
 
         private bool AcceptRate(string topic, double nowSeconds)
             => FoxRunTopicAdmissionRegistry.TryAccept(
+                _rateLimitScope,
                 topic,
                 nowSeconds,
                 MaxMessagesPerSecondPerTopic);
