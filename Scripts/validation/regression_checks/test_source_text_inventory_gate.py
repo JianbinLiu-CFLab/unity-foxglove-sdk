@@ -226,6 +226,38 @@ class SourceTextRatchetTests(unittest.TestCase):
             self.assertIn("SOURCE_TEXT_RATCHET_CHANGED", output)
             self.assertIn("SOURCE_TEXT_RATCHET_ASSERTION_CHANGED", output)
 
+    def test_unreachable_assertion_fails_closed(self):
+        """Reject an assertion moved into an unreachable constant branch."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(directory)
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace(
+                    '        Check(source.Contains("Product"));\n',
+                    '        if (false) { Check(source.Contains("Product")); }\n',
+                ),
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code, output)
+            self.assertIn("SOURCE_TEXT_RATCHET_ASSERTION_CHANGED", output)
+
+    def test_swallowed_exception_assertion_fails_closed(self):
+        """Reject an assertion moved into a swallowing exception handler."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(directory)
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace(
+                    '        Check(source.Contains("Product"));\n',
+                    '        try { throw new System.Exception(); } catch { Check(source.Contains("Product")); }\n',
+                ),
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code, output)
+            self.assertIn("SOURCE_TEXT_RATCHET_ASSERTION_CHANGED", output)
+
     def test_polarity_flip_fails_class_c_ratchet(self):
         """Reject a DoesNotContain-style boundary flipped into a positive check."""
         with tempfile.TemporaryDirectory() as directory:

@@ -36,6 +36,7 @@ try:
         _ratchet_counts,
         _ratchet_key,
         _ratchet_path,
+        _ratchet_assertion_semantics,
         _validate_ratchet_rows,
     )
 except ImportError:
@@ -53,6 +54,7 @@ except ImportError:
         _ratchet_counts,
         _ratchet_key,
         _ratchet_path,
+        _ratchet_assertion_semantics,
         _validate_ratchet_rows,
     )
 
@@ -714,6 +716,8 @@ def _verify_count_ratchet(
     head_counts = _ratchet_counts(rows)
     base_tokens = _ratchet_change_tokens(base_rows)
     head_tokens = _ratchet_change_tokens(rows)
+    base_semantics = _ratchet_assertion_semantics(base_rows)
+    head_semantics = _ratchet_assertion_semantics(rows)
     failures: list[str] = []
     improvements: list[str] = []
     changed: list[str] = []
@@ -797,6 +801,18 @@ def _verify_count_ratchet(
                     f"SOURCE_TEXT_RATCHET_ASSERTION_CHANGED file={key[0]} "
                     f"flag={key[1]} class={key[2]}"
                 )
+
+    for key in sorted(set(base_semantics) | set(head_semantics)):
+        if key[2] not in {"A", "B", "C"} or base_counts[key] != head_counts[key]:
+            continue
+        if base_semantics.get(key, Counter()) == head_semantics.get(key, Counter()):
+            continue
+        message = (
+            f"SOURCE_TEXT_RATCHET_ASSERTION_CHANGED file={key[0]} "
+            f"flag={key[1]} class={key[2]}"
+        )
+        if message not in failures:
+            failures.append(message)
 
     helper_files = {
         str(row.get("file", ""))

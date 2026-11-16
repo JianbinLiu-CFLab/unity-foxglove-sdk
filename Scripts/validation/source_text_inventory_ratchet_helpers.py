@@ -159,6 +159,24 @@ def _ratchet_change_tokens(rows: list[dict[str, object]]) -> dict[tuple[str, str
         tokens.setdefault(key, Counter())[str(row.get("token", ""))] += 1
     return tokens
 
+def _ratchet_assertion_semantics(
+    rows: list[dict[str, object]],
+) -> dict[tuple[str, str, str], Counter[tuple[str, ...]]]:
+    """Collect assertion context values whose changes must fail closed."""
+    fields = (
+        "assertion_context",
+        "assertion_literal",
+        "assertion_polarity",
+        "checked_expression",
+        "reachability",
+    )
+    semantics: dict[tuple[str, str, str], Counter[tuple[str, ...]]] = {}
+    for row in rows:
+        key = _ratchet_key(row)
+        signature = tuple(str(row.get(field, "")) for field in fields)
+        semantics.setdefault(key, Counter())[signature] += 1
+    return semantics
+
 def _helper_signature_records(text: str) -> dict[str, str]:
     """Return hashes for recognized assertion/read/source helpers and bindings."""
     if not re.search(
