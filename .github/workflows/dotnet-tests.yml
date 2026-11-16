@@ -329,6 +329,11 @@ jobs:
           print(digest.hexdigest())
           MIGRATION_CHECKER
           )
+          if [ "$trusted_revision" = "3e2637c529ec8a390bae8ff46c43053336aa7b0a" ] \
+            && [ "$actual_migration_checker_sha" != "089c1ce7e27acaa5ace048456e0dc165f7dfb1f24b7b6ef54b191c51e69126cb" ]; then
+            echo "Phase203 reviewed checker SHA-256 does not match the pinned trusted migration approval" >&2
+            exit 1
+          fi
           trusted_checker_sha=$(python3 -I -B - "$trusted_root" <<'TRUSTED_CHECKER'
           import hashlib
           import sys
@@ -416,7 +421,7 @@ jobs:
           {
             "base_inventory_sha256": "8d736879430024f8031d687f64e77621589e73a44f11d3dbf2a633c2121932c5",
             "base_revision": "3e2637c529ec8a390bae8ff46c43053336aa7b0a",
-            "checker_sha256": "74850994685f7dcf477d3579fc18c94a8fd4ab76b41b0b807794c9af099bf967",
+            "checker_sha256": "089c1ce7e27acaa5ace048456e0dc165f7dfb1f24b7b6ef54b191c51e69126cb",
             "current_inventory_sha256": "8d736879430024f8031d687f64e77621589e73a44f11d3dbf2a633c2121932c5",
             "parser_changes_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
             "scope": "versioned-parser-maintenance",

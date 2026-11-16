@@ -694,10 +694,15 @@ def _verify_count_ratchet(
             print(f"SOURCE_TEXT_RATCHET_INVALID {error}")
         return 1
 
-    base_files = {_ratchet_path(row.get("file", "")) for row in base_rows}
+    base_file_paths: dict[str, str] = {}
+    for row in base_rows:
+        normalized = _ratchet_path(row.get("file", ""))
+        original = str(row.get("file", "")).strip().replace("\\", "/")
+        base_file_paths.setdefault(normalized, original)
+    base_files = set(base_file_paths)
     head_files = {_ratchet_path(row.get("file", "")) for row in rows}
     for missing_file in sorted(base_files - head_files):
-        live_path = root / missing_file
+        live_path = root / base_file_paths[missing_file]
         if _file_has_source_assertion(live_path):
             print(
                 f"SOURCE_TEXT_RATCHET_INVENTORY_INCOMPLETE file={missing_file} "
@@ -781,9 +786,17 @@ def _verify_count_ratchet(
 
     for key in sorted(set(base_tokens) | set(head_tokens)):
         if base_tokens.get(key, Counter()) != head_tokens.get(key, Counter()):
-            changed.append(
-                f"SOURCE_TEXT_RATCHET_CHANGED file={key[0]} flag={key[1]} class={key[2]}"
-            )
+            message = f"SOURCE_TEXT_RATCHET_CHANGED file={key[0]} flag={key[1]} class={key[2]}"
+            changed.append(message)
+            if (
+                key[2] in {"A", "C"}
+                and base_counts[key] > 0
+                and head_counts[key] > 0
+            ):
+                failures.append(
+                    f"SOURCE_TEXT_RATCHET_ASSERTION_CHANGED file={key[0]} "
+                    f"flag={key[1]} class={key[2]}"
+                )
 
     helper_files = {
         str(row.get("file", ""))

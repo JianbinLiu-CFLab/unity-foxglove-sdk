@@ -211,7 +211,7 @@ class SourceTextRatchetTests(unittest.TestCase):
             self.assertIn("SOURCE_TEXT_RATCHET_IMPROVED class=C", output)
 
     def test_in_place_class_c_edit_passes_and_reports_changed_key(self):
-        """Allow an in-place Class C edit while making the key visible to review."""
+        """Reject an in-place Class C assertion edit while reporting its changed key."""
         with tempfile.TemporaryDirectory() as directory:
             root = self._git_fixture(directory)
             validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
@@ -222,8 +222,9 @@ class SourceTextRatchetTests(unittest.TestCase):
                 encoding="utf-8",
             )
             code, output = self._run_fixture_gate(root)
-            self.assertEqual(0, code, output)
+            self.assertEqual(1, code, output)
             self.assertIn("SOURCE_TEXT_RATCHET_CHANGED", output)
+            self.assertIn("SOURCE_TEXT_RATCHET_ASSERTION_CHANGED", output)
 
     def test_polarity_flip_fails_class_c_ratchet(self):
         """Reject a DoesNotContain-style boundary flipped into a positive check."""
@@ -448,13 +449,15 @@ class SourceTextRatchetTests(unittest.TestCase):
 
     def test_live_file_with_missing_inventory_rows_fails_closed(self):
         """Reject a live assertion file that disappears from the head inventory."""
+        from Scripts.validation.source_text_inventory import inventory
         from Scripts.validation.source_text_inventory_ratchet import _verify_count_ratchet
 
         with tempfile.TemporaryDirectory() as directory:
             root = self._git_fixture(directory)
+            base_rows = inventory(root)
             code = _verify_count_ratchet(
                 root,
-                [{"file": "Packages/fixture/Tests/Runtime/FixtureValidation.cs", "validation_flag": "--phase-fixture", "class": "C", "token": "x"}],
+                base_rows,
                 [],
                 "HEAD",
                 [],
