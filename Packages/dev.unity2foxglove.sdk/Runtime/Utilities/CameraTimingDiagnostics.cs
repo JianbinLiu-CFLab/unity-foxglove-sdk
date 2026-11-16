@@ -107,28 +107,20 @@ namespace Unity.FoxgloveSDK.Components
         private static CameraTimingSnapshot AggregateSnapshots()
         {
             var aggregate = CameraTimingSnapshot.NoFrame;
-            foreach (var snapshot in s_snapshots.Values)
+            var latestPublisherId = 0;
+            foreach (var pair in s_snapshots)
             {
-                if (!aggregate.HasFrame)
+                var snapshot = pair.Value;
+                if (!snapshot.HasFrame)
+                    continue;
+                if (!aggregate.HasFrame
+                    || snapshot.RecordedRealtimeSeconds > aggregate.RecordedRealtimeSeconds
+                    || (snapshot.RecordedRealtimeSeconds == aggregate.RecordedRealtimeSeconds
+                        && pair.Key > latestPublisherId))
                 {
                     aggregate = snapshot;
-                    continue;
+                    latestPublisherId = pair.Key;
                 }
-
-                aggregate = new CameraTimingSnapshot(
-                    hasFrame: true,
-                    recordedRealtimeSeconds: Math.Max(aggregate.RecordedRealtimeSeconds, snapshot.RecordedRealtimeSeconds),
-                    renderMs: Math.Max(aggregate.RenderMs, snapshot.RenderMs),
-                    readbackLatencyMs: Math.Max(aggregate.ReadbackLatencyMs, snapshot.ReadbackLatencyMs),
-                    readbackCopyMs: Math.Max(aggregate.ReadbackCopyMs, snapshot.ReadbackCopyMs),
-                    jpegEncodeMs: Math.Max(aggregate.JpegEncodeMs, snapshot.JpegEncodeMs),
-                    serializeMs: Math.Max(aggregate.SerializeMs, snapshot.SerializeMs),
-                    completedJpegDrainMs: Math.Max(aggregate.CompletedJpegDrainMs, snapshot.CompletedJpegDrainMs),
-                    jpegBytes: Math.Max(aggregate.JpegBytes, snapshot.JpegBytes),
-                    pendingReadbacksBefore: Math.Max(aggregate.PendingReadbacksBefore, snapshot.PendingReadbacksBefore),
-                    pendingReadbacksAfter: Math.Max(aggregate.PendingReadbacksAfter, snapshot.PendingReadbacksAfter),
-                    encodeQueueDepth: Math.Max(aggregate.EncodeQueueDepth, snapshot.EncodeQueueDepth),
-                    completedQueueDepth: Math.Max(aggregate.CompletedQueueDepth, snapshot.CompletedQueueDepth));
             }
 
             return aggregate;

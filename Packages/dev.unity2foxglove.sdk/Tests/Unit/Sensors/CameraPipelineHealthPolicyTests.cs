@@ -122,10 +122,33 @@ namespace Unity.FoxgloveSDK.UnitTests.Sensors
             {
                 first.RecordRenderMs(20d, 1d, 0, 0);
                 second.RecordRenderMs(5d, 2d, 0, 0);
-                Assert.Equal(20d, CameraTimingDiagnostics.LastSnapshotOrDefault.RenderMs);
+                Assert.Equal(5d, CameraTimingDiagnostics.LastSnapshotOrDefault.RenderMs);
 
                 first.ResetCameraState();
                 Assert.Equal(5d, CameraTimingDiagnostics.LastSnapshotOrDefault.RenderMs);
+            }
+            finally
+            {
+                first.ResetCameraState();
+                second.ResetCameraState();
+                CameraTimingDiagnostics.Reset();
+            }
+        }
+
+        [Fact]
+        public void CameraTimingSnapshotDoesNotMixOlderHighMetricsIntoNewestFrame()
+        {
+            CameraTimingDiagnostics.Reset();
+            var first = new CameraPublishDiagnostics();
+            var second = new CameraPublishDiagnostics();
+            try
+            {
+                first.RecordRenderMs(99d, 1d, 0, 0);
+                second.RecordRenderMs(5d, 2d, 0, 0);
+
+                var snapshot = CameraTimingDiagnostics.LastSnapshotOrDefault;
+                Assert.Equal(5d, snapshot.RenderMs);
+                Assert.Equal(2d, snapshot.RecordedRealtimeSeconds);
             }
             finally
             {
