@@ -41,6 +41,7 @@ public class ROS2UnityComponent : MonoBehaviour
     private HashSet<Action> executableActionSet;
     private readonly List<Action> actionsSnapshot = new List<Action>();
     private readonly List<INode> nodesSnapshot = new List<INode>();
+    private readonly List<ROS2Node> pendingNodeDisposals = new List<ROS2Node>();
     private int collectionVersion = 0;
     private int snapshotVersion = -1;
     private bool nodeSnapshotInFlight = false;
@@ -248,7 +249,12 @@ public class ROS2UnityComponent : MonoBehaviour
 
             if (dispose && nodeSnapshotInFlight && nodesSnapshot.Contains(node.NativeNode))
             {
-                return false;
+                nodes.Remove(node);
+                ros2csNodes.Remove(node.NativeNode);
+                collectionVersion++;
+                if (!pendingNodeDisposals.Contains(node))
+                    pendingNodeDisposals.Add(node);
+                return true;
             }
 
             nodeIndex = nodes.IndexOf(node);
@@ -402,8 +408,44 @@ public class ROS2UnityComponent : MonoBehaviour
                         nodeSnapshotInFlight = false;
                         Monitor.PulseAll(mutex);
                     }
+            RetryPendingNodeDisposals();
                 }
             }
+
+    private void RetryPendingNodeDisposals()
+    {
+        List<ROS2Node> pending;
+        lock (mutex)
+        {
+            if (pendingNodeDisposals.Count == 0)
+                return;
+            pending = new List<ROS2Node>(pendingNodeDisposals);
+            pendingNodeDisposals.Clear();
+        }
+
+        foreach (ROS2Node node in pending)
+        {
+            bool disposedNode;
+            try
+            {
+                disposedNode = node.TryDispose();
+            }
+            catch (Exception e)
+            {
+                Debug.LogException(e);
+                disposedNode = false;
+            }
+
+            if (!disposedNode)
+            {
+                lock (mutex)
+                {
+                    if (!pendingNodeDisposals.Contains(node))
+                        pendingNodeDisposals.Add(node);
+                }
+            }
+        }
+    }
             Thread.Sleep(interval);
         }
     }

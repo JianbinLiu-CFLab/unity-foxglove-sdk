@@ -180,7 +180,8 @@ namespace Unity.FoxgloveSDK.Components
                 if (field == null)
                     return false;
                 if (field.TypeShape != null
-                    && field.TypeShape.Kind != FoxRunTypeShapeInfoKind.Canonical)
+                    && field.TypeShape.Kind != FoxRunTypeShapeInfoKind.Canonical
+                    && field.TypeShape.Kind != FoxRunTypeShapeInfoKind.Enum)
                 {
                     return false;
                 }
@@ -208,9 +209,13 @@ namespace Unity.FoxgloveSDK.Components
                 case "bool":
                 case "boolean":
                 case "int":
+                case "int8":
+                case "int16":
                 case "int32":
                 case "int64":
                 case "uint":
+                case "uint8":
+                case "uint16":
                 case "uint32":
                 case "uint64":
                 case "sint32":

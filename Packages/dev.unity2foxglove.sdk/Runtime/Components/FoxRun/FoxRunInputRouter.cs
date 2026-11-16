@@ -584,6 +584,14 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
+        public static void Remove(long scope, string topic)
+        {
+            if (string.IsNullOrEmpty(topic))
+                return;
+            lock (Sync)
+                Arrivals.Remove(new AdmissionKey(scope, topic));
+        }
+
         private static bool TryAcceptUnderLock(
             long scope,
             string topic,

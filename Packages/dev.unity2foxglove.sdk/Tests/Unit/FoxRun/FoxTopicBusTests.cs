@@ -11,6 +11,19 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
     public sealed partial class FoxTopicBusTests
     {
         [Fact]
+        public void PublicContractRetainsTheSevenParameterConstructor()
+        {
+            var constructor = typeof(FoxTopicContract).GetConstructor(
+                new[]
+                {
+                    typeof(string), typeof(string), typeof(string), typeof(string),
+                    typeof(string), typeof(FoxTopicVisibility), typeof(FoxTopicWriterPolicy)
+                });
+
+            Assert.NotNull(constructor);
+        }
+
+        [Fact]
         public void ContractNormalizesNullInputsAndRejectsMissingTopic()
         {
             Assert.Throws<ArgumentException>(() => new FoxTopicContract(null, "", "json", "", "", FoxTopicVisibility.Exported, FoxTopicWriterPolicy.SingleWriter));

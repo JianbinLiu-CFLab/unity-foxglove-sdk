@@ -37,8 +37,28 @@ namespace Unity.FoxgloveSDK.Components
             string canonicalType,
             string stableFingerprint,
             FoxTopicVisibility visibility,
+            FoxTopicWriterPolicy writerPolicy)
+            : this(
+                topic,
+                schemaName,
+                encoding,
+                canonicalType,
+                stableFingerprint,
+                visibility,
+                writerPolicy,
+                null)
+        {
+        }
+
+        public FoxTopicContract(
+            string topic,
+            string schemaName,
+            string encoding,
+            string canonicalType,
+            string stableFingerprint,
+            FoxTopicVisibility visibility,
             FoxTopicWriterPolicy writerPolicy,
-            string protobufSchemaName = null)
+            string protobufSchemaName)
             : this(
                 topic,
                 schemaName,

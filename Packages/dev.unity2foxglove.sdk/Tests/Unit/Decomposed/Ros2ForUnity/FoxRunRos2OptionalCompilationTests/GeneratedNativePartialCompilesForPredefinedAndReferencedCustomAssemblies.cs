@@ -218,6 +218,13 @@ namespace Demo
             Reliability = Unity.FoxgloveSDK.Components.FoxRunDeliveryReliability.BestEffort,
             SchemaName = ""std_msgs/msg/String"")]
         private std_msgs.msg.String _incoming;
+
+        [Unity.FoxgloveSDK.Components.FoxRun(""/native/sequence"",
+            Mode = Unity.FoxgloveSDK.Components.FoxRunFlow.Subscribe,
+            SubscribeTransportId = ""unity2foxglove.r2fu"",
+            Reliability = Unity.FoxgloveSDK.Components.FoxRunDeliveryReliability.BestEffort,
+            SchemaName = ""sensor_msgs/msg/Joy"")]
+        private sensor_msgs.msg.Joy _sequenceIncoming;
     }
 }";
             var coreReference = BuildCoreAttributeAssemblyReference();
@@ -226,7 +233,8 @@ namespace Demo
                 {
                     coreReference,
                     JazzyReference("ros2cs_common.dll"),
-                    JazzyReference("std_msgs_assembly.dll")
+                    JazzyReference("std_msgs_assembly.dll"),
+                    JazzyReference("sensor_msgs_assembly.dll")
                 })
                 .Concat(includeNativeReference
                     ? new[] { BuildNativeSeamReference(parseOptions, coreReference) }

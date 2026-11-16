@@ -48,8 +48,10 @@ namespace Unity.FoxgloveSDK.Editor
             var typeName = shape?.TypeName ?? string.Empty;
             return string.Equals(typeName, "UnityEngine.Vector2", System.StringComparison.Ordinal)
                    || string.Equals(typeName, "UnityEngine.Vector3", System.StringComparison.Ordinal)
+                   || string.Equals(typeName, "UnityEngine.Vector4", System.StringComparison.Ordinal)
                    || string.Equals(typeName, "UnityEngine.Quaternion", System.StringComparison.Ordinal)
-                   || string.Equals(typeName, "UnityEngine.Color", System.StringComparison.Ordinal);
+                   || string.Equals(typeName, "UnityEngine.Color", System.StringComparison.Ordinal)
+                   || string.Equals(typeName, "UnityEngine.Color32", System.StringComparison.Ordinal);
         }
 
         private static void EmitCollectionJsonValueAppend(

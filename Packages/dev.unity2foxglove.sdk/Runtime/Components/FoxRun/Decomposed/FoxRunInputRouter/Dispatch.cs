@@ -245,6 +245,7 @@ namespace Unity.FoxgloveSDK.Components
             {
                 _registrations.Remove(topic);
                 _registrationSnapshots.Remove(topic);
+                FoxRunTopicAdmissionRegistry.Remove(_rateLimitScope, topic);
             }
 
             RemoveSourceSnapshotEntry(source);

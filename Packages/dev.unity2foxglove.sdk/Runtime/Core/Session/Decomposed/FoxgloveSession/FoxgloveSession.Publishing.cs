@@ -67,13 +67,7 @@ namespace Unity.FoxgloveSDK.Core
                 TryMirrorPublish(mirrorSink, channel, logTimeNs, payload);
             if (!AllowLiveWebSocket(channel))
                 return;
-            List<(uint clientId, uint subscriptionId)> subscribers;
-            lock (_channelLifecycleLock)
-            {
-                subscribers = CopySubscribersForPublish(channelId);
-            }
-            SendSubscribers(
-                subscribers,
+            SendSubscribersAfterLifecycleAdmission(
                 channelId,
                 channel.Topic,
                 "Live",
@@ -81,41 +75,53 @@ namespace Unity.FoxgloveSDK.Core
                 logTimeNs);
         }
 
-        private void SendSubscribers(
-            List<(uint clientId, uint subscriptionId)> subscribers,
-            uint channelId,
-            string topic,
-            string source,
-            byte[] payload,
-            ulong logTimeNs)
+        private void SendSubscribersAfterLifecycleAdmission(uint channelId, string topic, string source, byte[] payload, ulong logTimeNs)
         {
-            lock (_publishQueueLock)
+            List<(uint clientId, uint subscriptionId)> subscribers;
+            lock (_channelLifecycleLock)
             {
-                try
-                {
-                    foreach (var (clientId, subscriptionId) in subscribers)
-                    {
-                        var frame = BinaryEncoding.EncodeServerMessageData(subscriptionId, logTimeNs, payload);
-                        if (_prioritizedTransport != null)
-                        {
-                            if (FoxgloveReplayTrace.TryFrame(source, topic, logTimeNs, clientId, subscriptionId, channelId, "data", out var trace))
-                                _logger.LogWarning(trace);
-                            _prioritizedTransport.SendDataBinary(clientId, frame);
-                        }
-                        else
-                        {
-                            if (FoxgloveReplayTrace.TryFrame(source, topic, logTimeNs, clientId, subscriptionId, channelId, "fallback-control", out var trace))
-                                _logger.LogWarning(trace);
-                            _transport.SendBinary(clientId, frame);
-                        }
-                    }
-                }
-                finally
-                {
-                    subscribers.Clear();
-                }
+                Monitor.Enter(_publishQueueLock);
+                subscribers = CopySubscribersForPublish(channelId);
+            }
+
+            try
+            {
+                SendSubscribers(subscribers, channelId, topic, source, payload, logTimeNs);
+            }
+            finally
+            {
+                Monitor.Exit(_publishQueueLock);
             }
         }
+
+        private void SendSubscribers(List<(uint clientId, uint subscriptionId)> subscribers, uint channelId, string topic, string source, byte[] payload, ulong logTimeNs)
+        {
+            try
+            {
+                foreach (var (clientId, subscriptionId) in subscribers)
+                {
+                    var frame = BinaryEncoding.EncodeServerMessageData(subscriptionId, logTimeNs, payload);
+                    if (_prioritizedTransport != null)
+                    {
+                        if (FoxgloveReplayTrace.TryFrame(source, topic, logTimeNs, clientId, subscriptionId, channelId, "data", out var trace))
+                            _logger.LogWarning(trace);
+                        _prioritizedTransport.SendDataBinary(clientId, frame);
+                    }
+                    else
+                    {
+                        if (FoxgloveReplayTrace.TryFrame(source, topic, logTimeNs, clientId, subscriptionId, channelId, "fallback-control", out var trace))
+                            _logger.LogWarning(trace);
+                        _transport.SendBinary(clientId, frame);
+                    }
+                }
+            }
+            finally
+            {
+                subscribers.Clear();
+            }
+        }
+
+
         private void WriteMessageSafely(McapRecorder recorder, AdvertiseChannel channel, ulong logTimeNs, byte[] payload)
         {
             try
@@ -176,13 +182,7 @@ namespace Unity.FoxgloveSDK.Core
             }
             payload ??= Array.Empty<byte>();
             topic ??= channel.Topic;
-            List<(uint clientId, uint subscriptionId)> subscribers;
-            lock (_channelLifecycleLock)
-            {
-                subscribers = CopySubscribersForPublish(channelId);
-            }
-            SendSubscribers(
-                subscribers,
+            SendSubscribersAfterLifecycleAdmission(
                 channelId,
                 topic,
                 source,

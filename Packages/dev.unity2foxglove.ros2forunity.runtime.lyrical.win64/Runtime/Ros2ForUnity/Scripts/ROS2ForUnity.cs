@@ -589,13 +589,20 @@ internal partial class ROS2ForUnity : IDisposable
             CheckIntegrity(standaloneBuild ? null : sourcedRosDistroBeforeStandalonePatch);
 
                 // Library loading
+#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
                 if (GetOS() == Platform.Windows) {
                     // Windows version can run standalone, modifies PATH to ensure all plugins visibility.
                     if (!pathConfigured)
                     {
                         SetEnvPathVariable();
                     }
-                } else {
+                } else
+#else
+                if (GetOS() == Platform.Windows)
+                    throw new PlatformNotSupportedException("Windows CRT environment updates require a Windows Unity build target.");
+                else
+#endif
+                {
                     // For foxy, it is necessary to use modified version of librcpputils to resolve custom msgs packages.
                     ROS2.GlobalVariables.absolutePath = GetPluginPath() + "/";
                     if (currentRos2Version == "foxy") {
