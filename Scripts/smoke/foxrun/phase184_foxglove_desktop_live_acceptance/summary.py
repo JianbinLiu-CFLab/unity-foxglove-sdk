@@ -448,6 +448,8 @@ def _reconcile_final_summary_validation(
     try:
         validate_desktop_live_summary(summary)
     except protocol.AcceptanceFailure as validation_failure:
+        if summary.get("verdict") not in (None, "PASS"):
+            return None
         summary["verdict"] = validation_failure.code
         return validation_failure
     return None
