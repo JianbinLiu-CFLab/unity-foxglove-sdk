@@ -338,7 +338,9 @@ the claim must remain conditional.
 | Replay primitives | `ExternalReplayCursorController`, `ReplayPoseOwnershipArbiter`, and replay message/batch contexts use bounded scalar/state models. | Unity scene discovery, decoding, adapters, and mutation remain separate Unity-specific layers. |
 | Canonical descriptors and emitter modules | Roslyn and physical-file hosts already share one resolved model and modular C# emitter. | The emitted syntax, lifecycle, accessible-member model, and several type paths are C#/Unity specific. |
 
-All core SDK runtime code currently ships under one Unity assembly definition.
+Core SDK runtime code currently spans several Unity assembly definitions,
+including the core SDK, Sensors, Proto, and generated ROS2 message assemblies.
+The extraction discussion below focuses on the core runtime assembly.
 `CoordinateConverter` directly uses `UnityEngine.Vector3` and
 `UnityEngine.Quaternion`; some core/MCAP registry files use Unity runtime
 initialization hooks; generated bindings target Unity component lifecycle and
@@ -408,7 +410,8 @@ workflows:
 - MCAP indexes and reader APIs support bounded time/channel access;
 - latest-at and range replay distinguish state reconstruction from sequential
   message delivery;
-- the replay cursor is a latest-only, authenticated control mailbox;
+- the replay cursor is a latest-only, loopback-scoped control mailbox with
+  optional bearer authentication;
 - ownership arbitration defines which registered source may mutate a Unity
   target.
 
