@@ -73,8 +73,9 @@ class SourceTextInventoryCsvMigrationTests(_FixtureSupport, unittest.TestCase):
             report = root / "build" / "trusted-inventory"
             write_report([row], report)
             baseline = self._run_migration_cli(root, trusted_base=report)
-            self.assertEqual(0, baseline.returncode, baseline.stdout + baseline.stderr)
+            self.assertEqual(1, baseline.returncode, baseline.stdout + baseline.stderr)
             self.assertIn("legacy-unversioned->2 additive_schema", baseline.stdout)
+            self.assertIn("PARSER_MIGRATION_REJECTED", baseline.stdout)
             evidence = json.loads(
                 (root / "build/inventory/parser_migration_evidence.json").read_text(encoding="utf-8")
             )
