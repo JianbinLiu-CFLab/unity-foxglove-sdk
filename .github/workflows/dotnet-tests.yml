@@ -347,7 +347,8 @@ jobs:
           if [ "$trusted_revision" != "$trusted_minimum_revision" ] \
             && [ "$trusted_revision" != "69d645a31940054eccd776c17b175378f11d6dca" ] \
             && [ "$trusted_revision" != "202be484368654e24e353059d052487b6fa31f3a" ] \
-            && [ "$trusted_revision" != "6858beeda351b406ca804f9e4ad7f29a596f6d23" ]; then
+            && [ "$trusted_revision" != "6858beeda351b406ca804f9e4ad7f29a596f6d23" ] \
+            && [ "$trusted_revision" != "3e2637c529ec8a390bae8ff46c43053336aa7b0a" ]; then
             if [ "$actual_migration_checker_sha" != "$trusted_checker_sha" ]; then
               echo "Current checker differs from immutable base checker without a reviewed migration approval" >&2
               exit 1
@@ -401,6 +402,25 @@ jobs:
             "parser_changes_sha256": "c647094ec1573de6d2134a8aedf5a0ba0f8e1c499981aea780de7e384f7f8e9b",
             "scope": "versioned-parser-maintenance",
             "reason": "Reviewed exact parser maintenance to keep unresolved production helper candidates out of validation harness signatures in the Phase200 follow-up."
+          }
+          MIGRATION_APPROVAL
+            expected_migration_checker_sha=$(python3 -I -B -c 'import json,sys; print(json.load(open(sys.argv[1]))["checker_sha256"])' "$migration_approval_file")
+            if [ "$actual_migration_checker_sha" != "$expected_migration_checker_sha" ]; then
+              echo "Reviewed parser maintenance checker SHA-256 does not match: actual=$actual_migration_checker_sha expected=$expected_migration_checker_sha" >&2
+              exit 1
+            fi
+            migration_args=(--parser-migration-approval "$migration_approval_file")
+          elif [ "$trusted_revision" = "3e2637c529ec8a390bae8ff46c43053336aa7b0a" ]; then
+            migration_approval_file="$RUNNER_TEMP/source-text-parser-maintenance-approval.json"
+            cat > "$migration_approval_file" <<'MIGRATION_APPROVAL'
+          {
+            "base_inventory_sha256": "8d736879430024f8031d687f64e77621589e73a44f11d3dbf2a633c2121932c5",
+            "base_revision": "3e2637c529ec8a390bae8ff46c43053336aa7b0a",
+            "checker_sha256": "fc877a4925b30b5d8b7a1d55dd4a075b667b2b6b40ac8db1cd39d0a5751dd68d",
+            "current_inventory_sha256": "8d736879430024f8031d687f64e77621589e73a44f11d3dbf2a633c2121932c5",
+            "parser_changes_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "scope": "versioned-parser-maintenance",
+            "reason": "Reviewed exact count-ratchet checker migration for Phase203 on 2026-11-16."
           }
           MIGRATION_APPROVAL
             expected_migration_checker_sha=$(python3 -I -B -c 'import json,sys; print(json.load(open(sys.argv[1]))["checker_sha256"])' "$migration_approval_file")
