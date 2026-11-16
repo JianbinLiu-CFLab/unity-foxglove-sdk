@@ -5,9 +5,11 @@
 // Purpose: Keep reviewed Editor process and path boundaries fail-closed.
 
 using System;
+using System.IO;
 using System.Linq;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Unity.FoxgloveSDK.Editor;
 using Xunit;
 
 namespace Unity.FoxgloveSDK.UnitTests.Harness
@@ -33,19 +35,51 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
-        public void OpenH264InstallerBuildsBothTemporaryArtifactsBeforePublishingEither()
+        public void OpenH264PairPublisherRestoresExistingPairWhenHelperPublishFails()
         {
-            var method = Method(
-                "Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.cs",
-                "Install");
-            var source = method.ToFullString();
-            var build = source.IndexOf("BuildHelperExecutable(versionDir, tempHelper", StringComparison.Ordinal);
-            var dllCommit = source.IndexOf("File.Move(tempDll, finalDllPath)", StringComparison.Ordinal);
-            var helperCommit = source.IndexOf("File.Move(tempHelper, finalHelperPath)", StringComparison.Ordinal);
+            var directory = Path.Combine(
+                TestSources.RepoRoot,
+                "build",
+                "tmp",
+                "openh264-pair-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(directory);
+            var finalDll = Path.Combine(directory, "openh264.dll");
+            var finalHelper = Path.Combine(directory, "openh264-helper.exe");
+            var stagedDll = finalDll + ".tmp";
+            var stagedHelper = finalHelper + ".tmp";
+            File.WriteAllText(finalDll, "old-dll");
+            File.WriteAllText(finalHelper, "old-helper");
+            File.WriteAllText(stagedDll, "new-dll");
+            File.WriteAllText(stagedHelper, "new-helper");
 
-            Assert.True(build >= 0);
-            Assert.True(dllCommit > build);
-            Assert.True(helperCommit > build);
+            try
+            {
+                Action<string, string> move = (source, destination) =>
+                {
+                    if (string.Equals(source, stagedHelper, StringComparison.Ordinal))
+                        throw new IOException("simulated helper publish failure");
+                    File.Move(source, destination);
+                };
+
+                Assert.Throws<IOException>(() =>
+                    OpenH264ArtifactPairPublisher.Publish(
+                        stagedDll,
+                        stagedHelper,
+                        finalDll,
+                        finalHelper,
+                        move));
+
+                Assert.Equal("old-dll", File.ReadAllText(finalDll));
+                Assert.Equal("old-helper", File.ReadAllText(finalHelper));
+                Assert.True(File.Exists(stagedHelper));
+                Assert.False(File.Exists(finalDll + ".bak"));
+                Assert.False(File.Exists(finalHelper + ".bak"));
+            }
+            finally
+            {
+                if (Directory.Exists(directory))
+                    Directory.Delete(directory, recursive: true);
+            }
         }
 
         [Fact]

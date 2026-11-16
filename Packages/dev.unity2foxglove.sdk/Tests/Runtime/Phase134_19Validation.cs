@@ -101,7 +101,7 @@ namespace Unity.FoxgloveSDK.Tests
             var promoteDownloadIndex = installer.IndexOf("File.Move(compressedDownloadPath, compressedPath)", StringComparison.Ordinal);
             var decompressIndex = installer.IndexOf("TryDecompressBZip2(compressedPath, tempDll", StringComparison.Ordinal);
             var dllVerifyIndex = installer.IndexOf("OpenH264OfficialBinaryManifest.DllSha256", StringComparison.Ordinal);
-            var moveIndex = installer.IndexOf("File.Move(tempDll, finalDllPath)", StringComparison.Ordinal);
+            var publishIndex = installer.IndexOf("OpenH264ArtifactPairPublisher.Publish(", StringComparison.Ordinal);
 
             Check(downloadIndex >= 0
                   && compressedVerifyIndex > downloadIndex
@@ -110,7 +110,7 @@ namespace Unity.FoxgloveSDK.Tests
                 "134-19-C1: OpenH264 installer verifies downloaded compressed asset before decompression");
             Check(decompressIndex >= 0
                   && dllVerifyIndex > decompressIndex
-                  && dllVerifyIndex < moveIndex,
+                  && dllVerifyIndex < publishIndex,
                 "134-19-C2: OpenH264 installer verifies decompressed DLL before final move");
             Check(installer.Contains("TryDelete(tempDll)", StringComparison.Ordinal)
                   && installer.Contains("compare SHA256 before installing", StringComparison.Ordinal),
