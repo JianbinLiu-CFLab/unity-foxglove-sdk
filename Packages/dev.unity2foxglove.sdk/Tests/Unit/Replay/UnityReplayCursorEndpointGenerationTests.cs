@@ -210,22 +210,31 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
                     secondQueueEntered.Wait(TimeSpan.FromSeconds(5)),
                     "Second worker never entered its queue callback.");
 
+                Assert.Throws<InvalidOperationException>(() => endpoint.Start(
+                    Options(0, "/retire-third", "retire-third-token"),
+                    _ => new UnityReplayCursorEndpointQueueResult(true, "Cursor accepted.")));
+                Assert.Equal(1, endpoint.RetiringGenerationCount);
+                Assert.True(endpoint.IsRunning);
+
+                releaseSecondQueue.Set();
+                await ObserveRetiredRequestAsync(secondRequest);
+
+                releaseFirstQueue.Set();
+                await ObserveRetiredRequestAsync(firstRequest);
+                for (var i = 0; i < 200 && endpoint.RetiringGenerationCount != 0; i++)
+                {
+                    await Task.Delay(TimeSpan.FromMilliseconds(25));
+                }
+
                 var thirdPort = StartEndpointWithRetry(
                     endpoint,
                     "/retire-third",
                     "retire-third-token",
                     _ => new UnityReplayCursorEndpointQueueResult(true, "Cursor accepted."));
-
-                Assert.Equal(1, endpoint.RetiringGenerationCount);
-
-                releaseSecondQueue.Set();
-                await ObserveRetiredRequestAsync(secondRequest);
                 Assert.Equal(
                     HttpStatusCode.Accepted,
                     await PostCursorAsync(thirdPort, "/retire-third", "retire-third-token"));
 
-                releaseFirstQueue.Set();
-                await ObserveRetiredRequestAsync(firstRequest);
                 for (var i = 0; i < 200 && endpoint.RetiringGenerationCount != 0; i++)
                 {
                     await Task.Delay(TimeSpan.FromMilliseconds(25));
