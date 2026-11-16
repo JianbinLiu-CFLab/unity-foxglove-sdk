@@ -4,20 +4,17 @@
 // Module: Runtime/Core/Session
 // Purpose: FoxgloveSession partial — subscribe/unsubscribe dispatch,
 // ConnectionGraph, ClientPublish, PlaybackControl, and Assets/fetchAsset.
-
 using System;
 using System.Collections.Generic;
 using System.Threading;
 using Newtonsoft.Json;
 using Unity.FoxgloveSDK.Protocol;
 using Unity.FoxgloveSDK.Transport;
-
 namespace Unity.FoxgloveSDK.Core
 {
     public partial class FoxgloveSession
     {
         // ── Subscribe/unsubscribe ──
-
         /// <summary>
         /// Parse a subscribe message and add per-client subscription entries.
         /// Each subscription maps a client-supplied subscriptionId to a channelId.
@@ -82,7 +79,6 @@ namespace Unity.FoxgloveSDK.Core
             }
             catch (Exception ex) { _logger.LogWarning("subscribe error: " + ex); }
         }
-
         private void WarnSubscriptionBudgetRejected(uint clientId, string error)
         {
             lock (_subscriptionBudgetWarnedClientsLock)
@@ -94,7 +90,6 @@ namespace Unity.FoxgloveSDK.Core
             _logger.LogWarning(
                 $"subscribe batch rejected atomically from client {clientId}; no subscriptions from this batch were applied: {error}");
         }
-
         /// <summary>
         /// Parse an unsubscribe message and remove per-client subscriptions
         /// by subscriptionId, cleaning up the connection graph.
@@ -111,7 +106,10 @@ namespace Unity.FoxgloveSDK.Core
                     {
                         var removed = _subscriptions.RemoveSubscriptions(clientId, msg.SubscriptionIds);
                         if (removed.Count > 0 && _transport is IClientDataQueueResettableFoxgloveTransport resettable)
-                            resettable.ClearDataQueue(clientId);
+                        {
+                            lock (_publishQueueLock)
+                                resettable.ClearDataQueue(clientId);
+                        }
 
                         foreach (var (subId, chId) in removed)
                         {
