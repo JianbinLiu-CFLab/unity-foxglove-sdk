@@ -42,8 +42,12 @@ class SchemaToolingTests(unittest.TestCase):
         expected = "namespace Unity2Foxglove.Ros2Bridge.Schemas.Ros2Msg"
 
         with tempfile.TemporaryDirectory() as temp:
+            input_dir = Path(temp) / "ros2"
+            input_dir.mkdir()
+            for name in sorted(catalog.EXPECTED_SCHEMA_NAMES):
+                (input_dir / f"{name}.msg").write_text("", encoding="utf-8")
             output = Path(temp) / "FoxgloveRos2MsgSchemaCatalog.cs"
-            catalog.generate(catalog.DEFAULT_INPUT, output)
+            catalog.generate(input_dir, output)
             self.assertIn(expected, output.read_text(encoding="utf-8"))
 
         generated_cdr = (
