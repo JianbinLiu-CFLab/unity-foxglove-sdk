@@ -159,7 +159,9 @@ namespace Unity.FoxgloveSDK.IO
 
                 if (retry.LogTime < emitAfter)
                 {
-                    _deferredRetryByKey.Remove(key);
+                    RemoveDeferredRetry(
+                        retry.ChunkIndex,
+                        retry.RecordOffset);
                     continue;
                 }
 
