@@ -92,6 +92,8 @@ namespace Unity.FoxgloveSDK.Editor
             var lockKey = string.CompareOrdinal(_pfxPath, _rootCaPath) <= 0
                 ? _pfxPath + "\n" + _rootCaPath
                 : _rootCaPath + "\n" + _pfxPath;
+            if (OperatingSystem.IsWindows())
+                lockKey = lockKey.ToUpperInvariant();
             _pairLock = PairLocks.GetOrAdd(lockKey, _ => new PairLock());
             _pairLockFilePath = Path.Combine(
                 pfxDirectory,
