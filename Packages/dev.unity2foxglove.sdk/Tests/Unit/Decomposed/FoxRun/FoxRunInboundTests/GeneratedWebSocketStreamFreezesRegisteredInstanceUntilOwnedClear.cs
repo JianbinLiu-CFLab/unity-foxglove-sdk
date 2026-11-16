@@ -188,8 +188,9 @@ namespace Demo
             var result = router.Dispatch("/phase175/protobuf", Array.Empty<byte>(), "json", 1);
 
             Assert.Equal(FoxRunInputDispatchStatus.DecodeRejected, result.Status);
-            Assert.Contains("expected \"protobuf\"", result.Diagnostic, StringComparison.OrdinalIgnoreCase);
-            Assert.Contains("client advertised \"json\"", result.Diagnostic, StringComparison.OrdinalIgnoreCase);
+            Assert.Equal(
+                "Inbound encoding does not match the generated FoxRun contract.",
+                result.Diagnostic);
         }
 
         [Fact]
@@ -283,7 +284,29 @@ namespace Demo
 
             Assert.Equal(FoxRunInputDispatchStatus.DecodeRejected, result.Status);
             Assert.Equal(0, input.ApplyCount);
-            Assert.Contains("client advertised \"" + encoding + "\"", result.Diagnostic, StringComparison.OrdinalIgnoreCase);
+            Assert.Equal(
+                "Inbound encoding does not match the generated FoxRun contract.",
+                result.Diagnostic);
+        }
+
+        [Fact]
+        public void RouterEncodingMismatchDiagnosticDoesNotRetainUnboundedClientInput()
+        {
+            var input = new InheritedRecordingInput("/phase175/protobuf-bounded-diagnostic");
+            var router = new FoxRunInputRouter();
+            router.Register(input);
+
+            var result = router.Dispatch(
+                "/phase175/protobuf-bounded-diagnostic",
+                Array.Empty<byte>(),
+                new string('x', 4096),
+                1);
+
+            Assert.Equal(FoxRunInputDispatchStatus.DecodeRejected, result.Status);
+            Assert.Equal(
+                "Inbound encoding does not match the generated FoxRun contract.",
+                result.Diagnostic);
+            Assert.DoesNotContain(new string('x', 4096), result.Diagnostic, StringComparison.Ordinal);
         }
 
         [Fact]

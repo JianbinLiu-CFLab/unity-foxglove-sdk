@@ -42,6 +42,84 @@ namespace Unity.FoxgloveSDK.Tests.Unit.FoxRun
         }
 
         [Fact]
+        public void ExplicitProtobufTopicSinkFanoutUsesProtobufPayload()
+        {
+            var member = new FoxgloveSourceEmitter.TopicMember(
+                "_count",
+                "System.Int32",
+                "/phase175/sink-protobuf",
+                10f,
+                "Demo.Count",
+                (int)FoxRunPolicy.FixedRate,
+                0f,
+                mode: (int)FoxRunFlow.Publish,
+                encoding: "protobuf",
+                protobufFieldNumber: 17,
+                typeShape: FoxRunTypeShape.Canonical("int32"));
+
+            var source = FoxgloveSourceEmitter.EmitClass("Demo", "Counter", new[] { member });
+
+            Assert.Contains(
+                "router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(0), FoxRunEncoding.Protobuf, nowNs, __BuildFoxRunProtobuf_0()",
+                source,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                "router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(0), FoxRunEncoding.JSON",
+                source,
+                StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void InheritedProtobufTopicSinkFanoutUsesTheSelectedWireEncoding()
+        {
+            var member = new FoxgloveSourceEmitter.TopicMember(
+                "_count",
+                "System.Int32",
+                "/phase175/inherited-sink",
+                10f,
+                "Demo.Count",
+                (int)FoxRunPolicy.FixedRate,
+                0f,
+                mode: (int)FoxRunFlow.Publish,
+                encoding: "inherit",
+                typeShape: FoxRunTypeShape.Canonical("int32"));
+
+            var source = FoxgloveSourceEmitter.EmitClass("Demo", "Counter", new[] { member });
+
+            Assert.Contains(
+                "if (__foxRunCaptureEncoding_0 == FoxRunEncoding.Protobuf)",
+                source,
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract(0), FoxRunEncoding.Protobuf, nowNs, __BuildFoxRunProtobuf_0()",
+                source,
+                StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void TopicContractUsesTheGeneratedSchemaForProtobufWireViews()
+        {
+            var generatedSchema = FoxRunProtobufContractBuilder.ResolveMessageFullName(
+                "Demo.Count",
+                "Demo.Counter",
+                "/phase175/contract-schema");
+            var logical = new FoxTopicContract(
+                "/phase175/contract-schema",
+                "Demo.Count",
+                "json",
+                "Demo.Count",
+                "fingerprint",
+                FoxTopicVisibility.Exported,
+                FoxTopicWriterPolicy.SingleWriter,
+                generatedSchema);
+
+            var wire = logical.ForWireEncoding(FoxRunEncoding.Protobuf);
+
+            Assert.Equal("protobuf", wire.Encoding);
+            Assert.Equal(generatedSchema, wire.SchemaName);
+        }
+
+        [Fact]
         public void ExplicitJsonTopicKeepsItsEstablishedGeneratedPath()
         {
             var member = new FoxgloveSourceEmitter.TopicMember(

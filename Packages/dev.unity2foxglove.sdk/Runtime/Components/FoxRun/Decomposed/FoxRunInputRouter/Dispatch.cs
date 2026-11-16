@@ -88,11 +88,7 @@ namespace Unity.FoxgloveSDK.Components
                 {
                     return new FoxRunInputDispatchResult(
                         FoxRunInputDispatchStatus.DecodeRejected,
-                        "Inbound encoding does not match the generated FoxRun contract: expected \""
-                            + registrations[0].Encoding
-                            + "\" but client advertised \""
-                            + advertisedEncoding
-                            + "\".",
+                        "Inbound encoding does not match the generated FoxRun contract.",
                         0);
                 }
                 if (!hasMatchingPayloadLimit)
@@ -128,11 +124,7 @@ namespace Unity.FoxgloveSDK.Components
                 if (!string.Equals(registration.Encoding, advertisedEncoding, StringComparison.OrdinalIgnoreCase))
                 {
                     if (string.IsNullOrEmpty(firstError))
-                        firstError = "Inbound encoding does not match the generated FoxRun contract: expected \""
-                            + registration.Encoding
-                            + "\" but client advertised \""
-                            + advertisedEncoding
-                            + "\".";
+                        firstError = "Inbound encoding does not match the generated FoxRun contract.";
                     continue;
                 }
                 if (!registration.IsStream && !ordinaryRateAccepted)
