@@ -245,7 +245,6 @@ namespace Unity.FoxgloveSDK.Components
             {
                 _registrations.Remove(topic);
                 _registrationSnapshots.Remove(topic);
-                _arrivalTimes.Remove(topic);
             }
 
             RemoveSourceSnapshotEntry(source);
@@ -337,17 +336,10 @@ namespace Unity.FoxgloveSDK.Components
         }
 
         private bool AcceptRate(string topic, double nowSeconds)
-        {
-            if (!_arrivalTimes.TryGetValue(topic, out var arrivals))
-                _arrivalTimes[topic] = arrivals = new Queue<double>();
-
-            while (arrivals.Count > 0 && nowSeconds - arrivals.Peek() >= 1d)
-                arrivals.Dequeue();
-            if (arrivals.Count >= Math.Max(1, MaxMessagesPerSecondPerTopic))
-                return false;
-            arrivals.Enqueue(nowSeconds);
-            return true;
-        }
+            => FoxRunTopicAdmissionRegistry.TryAccept(
+                topic,
+                nowSeconds,
+                MaxMessagesPerSecondPerTopic);
 
     }
 }

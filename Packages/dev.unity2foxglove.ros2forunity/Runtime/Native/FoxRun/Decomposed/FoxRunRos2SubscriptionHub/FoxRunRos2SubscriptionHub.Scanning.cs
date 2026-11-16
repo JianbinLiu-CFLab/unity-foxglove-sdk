@@ -123,6 +123,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         {
             if (ReferenceEquals(_policy, policy))
                 return;
+            FoxRunTopicAdmissionRegistry.Reset();
             _activeSession.Deactivate();
             StopBindingsAndNode();
             _policy = policy;
@@ -435,7 +436,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     valuesEqual: valuesEqual,
                     consumeTrigger: consumeTrigger,
                     canApply: canApply,
-                    transportAdmissionRateLimitHz: _policy.TransportAdmissionRateLimitHz);
+                    transportAdmissionRateLimitHz: _policy.TransportAdmissionRateLimitHz,
+                    transportAdmissionTopic: contract.Topic);
                 binding.WaitForRuntime();
                 if (Ros2ForUnityNativeBridgeLifecycleGate.CanInitializeNativeRuntimeForBridge(
                         gameObject.scene))

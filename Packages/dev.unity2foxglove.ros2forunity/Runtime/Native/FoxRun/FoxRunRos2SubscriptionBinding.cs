@@ -22,11 +22,17 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
     {
         private const long NoAcceptedTimestamp = long.MinValue;
         private readonly long _minimumIntervalTicks;
+        private readonly string _topic;
+        private readonly int _maximumAcceptedPerSecond;
         private long _lastAcceptedTimestamp = NoAcceptedTimestamp;
 
-        internal FoxRunRos2TransportAdmissionGate(int maximumAcceptedPerSecond)
+        internal FoxRunRos2TransportAdmissionGate(
+            int maximumAcceptedPerSecond,
+            string topic = null)
         {
             var normalized = Math.Max(1, maximumAcceptedPerSecond);
+            _topic = topic ?? string.Empty;
+            _maximumAcceptedPerSecond = normalized;
             _minimumIntervalTicks = normalized == int.MaxValue
                 ? 0L
                 : Math.Max(1L, (Stopwatch.Frequency + normalized - 1L) / normalized);
@@ -34,6 +40,14 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         internal bool TryAccept(long stopwatchTimestamp)
         {
+            if (!string.IsNullOrEmpty(_topic))
+            {
+                return FoxRunTopicAdmissionRegistry.TryAcceptAtStopwatch(
+                    _topic,
+                    stopwatchTimestamp,
+                    _maximumAcceptedPerSecond);
+            }
+
             if (_minimumIntervalTicks == 0L)
                 return true;
 
@@ -295,7 +309,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             Func<bool> consumeTrigger = null,
             Func<bool> canApply = null,
             int transportAdmissionRateLimitHz = int.MaxValue,
-            Func<long> admissionTimestamp = null)
+            Func<long> admissionTimestamp = null,
+            string transportAdmissionTopic = null)
         {
             Contract = contract ?? throw new ArgumentNullException(nameof(contract));
             if (sessionGeneration < 0)
@@ -313,7 +328,8 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             _consumeTrigger = consumeTrigger;
             _canApply = canApply;
             _transportAdmission = new FoxRunRos2TransportAdmissionGate(
-                transportAdmissionRateLimitHz);
+                transportAdmissionRateLimitHz,
+                transportAdmissionTopic);
             _admissionTimestamp = admissionTimestamp ?? Stopwatch.GetTimestamp;
             _backend = backend ?? throw new ArgumentNullException(nameof(backend));
             _qos = qos ?? FoxRunResolvedQos.Default;

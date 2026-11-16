@@ -6,6 +6,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.ExceptionServices;
 using System.Threading;
 using Unity.FoxgloveSDK.Schemas.MsgPack;
@@ -49,8 +50,6 @@ namespace Unity.FoxgloveSDK.Components
             new(StringComparer.Ordinal);
         private readonly Dictionary<string, Registration[]> _registrationSnapshots =
             new(StringComparer.Ordinal);
-        private readonly Dictionary<string, Queue<double>> _arrivalTimes =
-            new(StringComparer.Ordinal);
         private readonly List<IFoxgloveInputSource> _registeredSources = new();
         private readonly List<RegistrationLifetime> _registrationLifetimes = new();
         private IFoxgloveInputSource[] _sourceSnapshot = Array.Empty<IFoxgloveInputSource>();
@@ -60,6 +59,9 @@ namespace Unity.FoxgloveSDK.Components
 
         public FoxRunInputRouter(int maxPayloadBytes = 64 * 1024, int maxMessagesPerSecondPerTopic = 60)
         {
+#if !UNITY_5_3_OR_NEWER
+            FoxRunTopicAdmissionRegistry.Reset();
+#endif
             MaxPayloadBytes = Math.Max(1, maxPayloadBytes);
             MaxMessagesPerSecondPerTopic = Math.Max(1, maxMessagesPerSecondPerTopic);
         }
@@ -489,5 +491,88 @@ namespace Unity.FoxgloveSDK.Components
             }
         }
 
+    }
+}
+
+namespace Unity.FoxgloveSDK.Components
+{
+    public static class FoxRunTopicAdmissionRegistry
+    {
+        private static readonly object Sync = new object();
+        private static readonly Dictionary<string, Queue<double>> Arrivals =
+            new Dictionary<string, Queue<double>>(StringComparer.Ordinal);
+        private static bool UnityClockOffsetSet;
+        private static double UnityClockOffset;
+
+        public static bool TryAccept(
+            string topic,
+            double nowSeconds,
+            int maximumAcceptedPerSecond)
+        {
+            if (string.IsNullOrEmpty(topic)
+                || double.IsNaN(nowSeconds)
+                || double.IsInfinity(nowSeconds))
+                return false;
+
+            lock (Sync)
+            {
+                if (!UnityClockOffsetSet)
+                {
+                    UnityClockOffset =
+                        (double)Stopwatch.GetTimestamp() / Stopwatch.Frequency
+                        - nowSeconds;
+                    UnityClockOffsetSet = true;
+                }
+                return TryAcceptUnderLock(
+                    topic,
+                    nowSeconds + UnityClockOffset,
+                    maximumAcceptedPerSecond);
+            }
+        }
+
+        public static bool TryAcceptAtStopwatch(
+            string topic,
+            long stopwatchTimestamp,
+            int maximumAcceptedPerSecond)
+        {
+            lock (Sync)
+            {
+                return TryAcceptUnderLock(
+                    topic,
+                    (double)stopwatchTimestamp / Stopwatch.Frequency,
+                    maximumAcceptedPerSecond);
+            }
+        }
+
+        private static bool TryAcceptUnderLock(
+            string topic,
+            double nowSeconds,
+            int maximumAcceptedPerSecond)
+        {
+            if (string.IsNullOrEmpty(topic)
+                || double.IsNaN(nowSeconds)
+                || double.IsInfinity(nowSeconds))
+                return false;
+
+            if (!Arrivals.TryGetValue(topic, out var arrivals))
+                Arrivals[topic] = arrivals = new Queue<double>();
+
+            while (arrivals.Count > 0 && nowSeconds - arrivals.Peek() >= 1d)
+                arrivals.Dequeue();
+            if (arrivals.Count >= Math.Max(1, maximumAcceptedPerSecond))
+                return false;
+            arrivals.Enqueue(nowSeconds);
+            return true;
+        }
+
+        public static void Reset()
+        {
+            lock (Sync)
+            {
+                Arrivals.Clear();
+                UnityClockOffsetSet = false;
+                UnityClockOffset = 0d;
+            }
+        }
     }
 }
