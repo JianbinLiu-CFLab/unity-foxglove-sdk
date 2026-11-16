@@ -408,7 +408,6 @@ public class ROS2UnityComponent : MonoBehaviour
                         nodeSnapshotInFlight = false;
                         Monitor.PulseAll(mutex);
                     }
-                    RetryPendingNodeDisposals();
                 }
             }
 
@@ -453,6 +452,9 @@ public class ROS2UnityComponent : MonoBehaviour
 
     void FixedUpdate()
     {
+        if (IsLifecycleOwnerThread())
+            RetryPendingNodeDisposals();
+
         ROS2UnityCore.RetryPendingShutdownsOnCurrentThread();
         if (runtimeShutdownRequested && IsLifecycleOwnerThread())
         {
@@ -641,18 +643,16 @@ public class ROS2UnityComponent : MonoBehaviour
 
     private bool DisposeNodes()
     {
-        List<ROS2Node> nodesToDispose = null;
+        var nodesToDispose = new List<ROS2Node>();
         lock (mutex)
         {
             if (nodes != null)
+                nodesToDispose.AddRange(nodes);
+            foreach (ROS2Node pending in pendingNodeDisposals)
             {
-                nodesToDispose = new List<ROS2Node>(nodes);
+                if (!nodesToDispose.Contains(pending))
+                    nodesToDispose.Add(pending);
             }
-        }
-
-        if (nodesToDispose == null)
-        {
-            return true;
         }
 
         bool allDisposed = true;
@@ -678,15 +678,17 @@ public class ROS2UnityComponent : MonoBehaviour
 
             lock (mutex)
             {
-                if (nodes != null && nodes.Remove(node))
-                {
+                if (nodes != null)
+                    nodes.Remove(node);
+                if (ros2csNodes != null)
                     ros2csNodes.Remove(nativeNode);
-                    collectionVersion++;
-                }
+                pendingNodeDisposals.Remove(node);
+                collectionVersion++;
             }
         }
 
-        return allDisposed;
+        lock (mutex)
+            return allDisposed && pendingNodeDisposals.Count == 0;
     }
 
     private void Shutdown()

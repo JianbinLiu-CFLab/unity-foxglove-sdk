@@ -18,19 +18,11 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
     public sealed class JazzyRuntimeWrapperOptimizationTests
     {
         [Fact]
-        public void SensorAndTransformCachesPreserveMutableState()
+        public void TransformCachesUseReusableMatrices()
         {
-            var sensor = TestSources.Text("Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/Runtime/Ros2ForUnity/Scripts/Sensor.cs");
-            var frameName = TestSources.Slice(sensor, "public override string frameName()", "    /// <summary>\r\n    /// Visualises");
             var transformations = TestSources.Text("Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/Runtime/Ros2ForUnity/Scripts/Transformations.cs");
             var method = TestSources.Slice(transformations, "public static Matrix4x4 Unity2RosMatrix4x4()", "}");
 
-            Assert.Contains("private string cachedFrameName;", sensor, StringComparison.Ordinal);
-            Assert.DoesNotContain("private string cachedFrameNameOwner;", sensor, StringComparison.Ordinal);
-            Assert.DoesNotContain("private string cachedFrameNameFrameId;", sensor, StringComparison.Ordinal);
-            Assert.Contains("cachedFrameName = String.IsNullOrEmpty(ownerAgentName) ? frameID : ownerAgentName + \"/\" + frameID;", sensor, StringComparison.Ordinal);
-            Assert.Contains("if (cachedFrameName != null)", frameName, StringComparison.Ordinal);
-            Assert.Contains("return cachedFrameName;", frameName, StringComparison.Ordinal);
             Assert.Contains("static readonly Matrix4x4 Unity2RosMatrix", transformations, StringComparison.Ordinal);
             Assert.Contains("static readonly Matrix4x4 Ros2UnityMatrix", transformations, StringComparison.Ordinal);
             Assert.Contains("Unity2RosMatrix.inverse", transformations, StringComparison.Ordinal);

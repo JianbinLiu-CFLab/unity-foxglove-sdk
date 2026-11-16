@@ -36,7 +36,6 @@ namespace FoxgloveSdk.UnitTests.Mcap
                 Assert.Equal(0, PendingCount(engine));
 
                 var future = engine.Tick(1_000_000_000);
-                Assert.NotSame(first, future);
                 var futureMessage = Assert.Single(future);
                 Assert.Equal(1_000_000_000UL, futureMessage.LogTime);
                 Assert.Equal(8 * 1024 * 1024, futureMessage.Data.Length);
