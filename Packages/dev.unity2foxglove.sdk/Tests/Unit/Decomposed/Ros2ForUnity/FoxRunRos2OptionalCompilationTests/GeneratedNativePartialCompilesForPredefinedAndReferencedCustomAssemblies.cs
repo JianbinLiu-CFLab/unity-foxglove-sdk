@@ -336,6 +336,7 @@ namespace Demo
                     "IFoxRunRos2SubscriptionSource.cs",
                     "IFoxRunRos2SubscriptionRegistrar.cs",
                     "FoxRunRos2CopyBudget.cs",
+                    "FoxRunRos2NativeCopyBudgetPolicy.cs",
                     "FoxRunRos2GeneratedContract.cs"
                 }
                 .Select(file => CSharpSyntaxTree.ParseText(

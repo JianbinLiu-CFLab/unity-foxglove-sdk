@@ -451,17 +451,14 @@ namespace Unity.FoxgloveSDK.Editor
                 }
                 if (TopicMetadataEmitter.IsInherited(fields))
                 {
-                    sb.AppendLine($"{pad}                if (__foxRunCaptureEncoding_{i} == FoxRunEncoding.Protobuf)");
-                    sb.AppendLine($"{pad}                    router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract({i}), FoxRunEncoding.Protobuf, nowNs, __BuildFoxRunProtobuf_{i}(), __foxRunOrigin);");
+                    sb.AppendLine($"{pad}                if (__foxRunCaptureEncoding_{i} == FoxRunEncoding.Protobuf) router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract({i}), FoxRunEncoding.Protobuf, nowNs, __BuildFoxRunProtobuf_{i}(), __foxRunOrigin);");
                     if (MessagePackPublishDispatchEmitter.MayUseMessagePack(fields))
                     {
-                        sb.AppendLine($"{pad}                else if (__foxRunCaptureEncoding_{i} == FoxRunEncoding.MessagePack)");
-                        sb.AppendLine($"{pad}                    router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract({i}), FoxRunEncoding.MessagePack, nowNs, __foxRunLastMessagePack_{i}, __foxRunOrigin);");
+                        sb.AppendLine($"{pad}                else if (__foxRunCaptureEncoding_{i} == FoxRunEncoding.MessagePack) router.PublishCompatible(((IFoxgloveTopicContractSource)this).FoxgloveLog_GetContract({i}), FoxRunEncoding.MessagePack, nowNs, __foxRunLastMessagePack_{i}, __foxRunOrigin);");
                     }
                     else
                     {
-                        sb.AppendLine($"{pad}                else if (__foxRunCaptureEncoding_{i} == FoxRunEncoding.MessagePack)");
-                        sb.AppendLine($"{pad}                    throw new global::System.InvalidOperationException(\"Typed MessagePack sink publication is unavailable for this declaration.\");");
+                        sb.AppendLine($"{pad}                else if (__foxRunCaptureEncoding_{i} == FoxRunEncoding.MessagePack) throw new global::System.InvalidOperationException(\"Typed MessagePack sink publication is unavailable for this declaration.\");");
                     }
                     sb.AppendLine($"{pad}                else");
                     sb.AppendLine($"{pad}                {{");
