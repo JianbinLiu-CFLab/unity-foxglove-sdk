@@ -42,11 +42,12 @@ namespace Unity.FoxgloveSDK.Tests
                   && Count(timedScenario, "GC.Collect();") == 0,
                 "164-57A-1: performance scenarios avoid forced GC before warmup");
             Check(indexedFixture.Contains("phase118_dataloader_indexed_v1_", StringComparison.Ordinal)
-                  && indexedFixture.Contains("if (!File.Exists(path) || new FileInfo(path).Length == 0)", StringComparison.Ordinal)
+                  && indexedFixture.Contains("if (!IsValidDataLoaderFixture(path, topics, topics))", StringComparison.Ordinal)
+                  && source.Contains("private static bool IsValidDataLoaderFixture(", StringComparison.Ordinal)
                   && indexedFixture.Contains("FileMode.Create", StringComparison.Ordinal),
                 "164-57A-2: indexed DataLoader performance fixture is reused on warm runs");
             Check(directFixture.Contains("phase118_dataloader_direct_v1_", StringComparison.Ordinal)
-                  && directFixture.Contains("if (!File.Exists(path) || new FileInfo(path).Length == 0)", StringComparison.Ordinal)
+                  && directFixture.Contains("if (!IsValidDataLoaderFixture(path, topics, topics))", StringComparison.Ordinal)
                   && directFixture.Contains("FileMode.Create", StringComparison.Ordinal),
                 "164-57A-3: direct DataLoader performance fixture is reused on warm runs");
             Check(recordScenario.Contains("using var ms = new MemoryStream(EstimateMcapRecordCapacity(topics, outer));", StringComparison.Ordinal)

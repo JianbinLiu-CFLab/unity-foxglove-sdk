@@ -25,12 +25,14 @@ namespace Unity.FoxgloveSDK.Tests
             var catalogWrite = PythonFunction(catalog, "def write_text_if_changed(");
             var catalogGenerate = PythonFunction(catalog, "def generate(");
 
-            Check(cdrWrite.Contains("path.is_file() and path.read_text(encoding=\"utf-8\") == text", StringComparison.Ordinal)
+            Check(cdrWrite.Contains("encoded = text.encode(\"utf-8\")", StringComparison.Ordinal)
+                  && cdrWrite.Contains("path.is_file() and path.read_bytes() == encoded", StringComparison.Ordinal)
                   && cdrWrite.Contains("return", StringComparison.Ordinal)
-                  && cdrWrite.Contains("path.write_text(text, encoding=\"utf-8\", newline=\"\\n\")", StringComparison.Ordinal),
+                  && cdrWrite.Contains("path.write_bytes(encoded)", StringComparison.Ordinal),
                 "164-43A-1: CDR serializer generator skips identical generated text writes");
             Check(catalog.Contains("def write_text_if_changed(path: Path, text: str) -> None:", StringComparison.Ordinal)
-                  && catalogWrite.Contains("path.is_file() and path.read_text(encoding=\"utf-8\") == text", StringComparison.Ordinal),
+                  && catalogWrite.Contains("encoded = text.encode(\"utf-8\")", StringComparison.Ordinal)
+                  && catalogWrite.Contains("path.is_file() and path.read_bytes() == encoded", StringComparison.Ordinal),
                 "164-43A-2: ROS2 msg catalog generator has an identical-text write helper");
             Check(catalogGenerate.Contains("write_text_if_changed(output, text)", StringComparison.Ordinal)
                   && !catalogGenerate.Contains("output.write_text(text", StringComparison.Ordinal),

@@ -61,7 +61,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--wait-seconds",
         type=float,
-        default=90.0,
+        default=45.0,
         help="How long to wait for Unity's /in subscription.",
     )
     parser.add_argument(
