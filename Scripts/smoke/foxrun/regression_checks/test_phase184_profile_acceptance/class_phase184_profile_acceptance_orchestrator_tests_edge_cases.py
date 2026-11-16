@@ -116,8 +116,8 @@ class _Phase184ProfileAcceptanceOrchestratorTests_edge_cases:
             1,
             main_source.count("std::unique_ptr<WinsockRuntime> winsock;"),
         )
-    def test_windows_bridge_only_times_out_partial_frame_reads(self):
-        """Verify windows bridge only times out partial frame reads."""
+    def test_windows_bridge_times_out_idle_and_partial_frame_reads(self):
+        """Verify windows bridge bounds idle and partial frame reads."""
 
         source = read_split_source(
             ROOT / "Tools/ros2_bridge/unity2foxglove_ros2_bridge/src/unity2foxglove_ros2_bridge.cpp"
@@ -131,13 +131,13 @@ class _Phase184ProfileAcceptanceOrchestratorTests_edge_cases:
             read_exact.index("if (socket_error_is_retryable_timeout(error))") :
         ]
 
-        idle_guard = retryable_timeout.index("if (offset == 0)")
         stall_clock = retryable_timeout.index(
             "if (stalled_since == std::chrono::steady_clock::time_point {})"
         )
-        self.assertLess(idle_guard, stall_clock)
-        self.assertIn("rclcpp::spin_some(node);", retryable_timeout[:stall_clock])
-        self.assertIn("continue;", retryable_timeout[:stall_clock])
+        spin_some = retryable_timeout.index("rclcpp::spin_some(node);")
+        self.assertNotIn("if (offset == 0)", retryable_timeout)
+        self.assertLess(stall_clock, spin_some)
+        self.assertIn("throw ClientReadTimeoutException(count);", retryable_timeout)
     def test_bridge_health_readiness_does_not_create_a_data_generation(self):
         """Verify a health probe uses process ownership without creating data entities."""
 
