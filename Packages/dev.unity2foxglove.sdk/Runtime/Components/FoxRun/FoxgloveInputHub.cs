@@ -32,7 +32,7 @@ namespace Unity.FoxgloveSDK.Components
         private static void ResetStaticState()
         {
             _instance = null;
-            _router.ResetRateLimitScope();
+            FoxRunTopicAdmissionRegistry.Reset();
         }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
