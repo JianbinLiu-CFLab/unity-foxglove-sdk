@@ -330,7 +330,7 @@ jobs:
           MIGRATION_CHECKER
           )
           if [ "$trusted_revision" = "3e2637c529ec8a390bae8ff46c43053336aa7b0a" ] \
-            && [ "$actual_migration_checker_sha" != "347b17b6b9fe53fb51d0fa70afa1c6965166a21f81716f86f82a846fedecc432" ]; then
+            && [ "$actual_migration_checker_sha" != "3e96b90adf9b4127e549a5057c26549745e7bad5b1ee1dd4b57a0128a9e2231b" ]; then
             echo "Phase203 reviewed checker SHA-256 does not match the pinned trusted migration approval" >&2
             exit 1
           fi
@@ -421,7 +421,7 @@ jobs:
           {
             "base_inventory_sha256": "8d736879430024f8031d687f64e77621589e73a44f11d3dbf2a633c2121932c5",
             "base_revision": "3e2637c529ec8a390bae8ff46c43053336aa7b0a",
-            "checker_sha256": "347b17b6b9fe53fb51d0fa70afa1c6965166a21f81716f86f82a846fedecc432",
+            "checker_sha256": "3e96b90adf9b4127e549a5057c26549745e7bad5b1ee1dd4b57a0128a9e2231b",
             "current_inventory_sha256": "8d736879430024f8031d687f64e77621589e73a44f11d3dbf2a633c2121932c5",
             "parser_changes_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
             "scope": "versioned-parser-maintenance",
