@@ -127,7 +127,8 @@ namespace Unity.FoxgloveSDK.Editor
                     AddUnsupported(path, "Custom ROS2 DTO sequences cannot contain nullable elements.", diagnostics);
                     return;
                 }
-                if (!sequenceElement.IsValueType)
+                if (!sequenceElement.IsValueType
+                    && string.IsNullOrEmpty(ScalarRosType(sequenceElement)))
                 {
                     AddUnsupported(path, "Custom ROS2 DTO sequences cannot contain reference elements without per-element presence.", diagnostics);
                     return;
