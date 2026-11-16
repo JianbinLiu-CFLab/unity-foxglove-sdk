@@ -43,13 +43,13 @@ namespace Unity.FoxgloveSDK.Core
 
                     try
                     {
-                        if (!FoxgloveServiceRegistry.TryParseJsonPayload(call, out var input))
+                        if (call.JsonPayload == null)
                         {
                             _services.Fail(call.ClientId, call.CallId, "Malformed JSON payload");
                             continue;
                         }
 
-                        var result = handler(input);
+                        var result = handler(call.JsonPayload);
                         if (result == null)
                         {
                             _services.Fail(call.ClientId, call.CallId, "Service handler returned null");

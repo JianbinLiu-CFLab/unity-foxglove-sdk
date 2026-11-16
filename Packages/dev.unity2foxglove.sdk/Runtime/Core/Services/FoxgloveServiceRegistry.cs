@@ -32,26 +32,6 @@ namespace Unity.FoxgloveSDK.Core
         private readonly Dictionary<uint, Func<Newtonsoft.Json.Linq.JToken, Newtonsoft.Json.Linq.JToken>> _handlers = new();
         private int _drainInProgress;
 
-        internal static bool TryParseJsonPayload(FoxgloveServiceCall call, out JToken payload)
-        {
-            payload = call?.JsonPayload;
-            if (payload != null)
-                return true;
-            if (call == null
-                || !string.Equals(call.Encoding, "json", StringComparison.OrdinalIgnoreCase)
-                || call.Payload == null)
-                return false;
-            try
-            {
-                payload = JToken.Parse(StrictUtf8.GetString(call.Payload));
-                return true;
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
         internal bool TryBeginDrain() => Interlocked.Exchange(ref _drainInProgress, 1) == 0;
 
         internal void EndDrain() => Volatile.Write(ref _drainInProgress, 0);
@@ -238,15 +218,31 @@ namespace Unity.FoxgloveSDK.Core
             out FoxgloveServiceCall call,
             out string error)
         {
+            var parsedPayload = ParseJsonPayloadIfPresent(encoding, payload);
             return TryEnqueue(
                 serviceId,
                 callId,
                 clientId,
                 encoding,
                 payload,
-                jsonPayload: null,
+                jsonPayload: parsedPayload,
                 out call,
                 out error);
+        }
+
+        private static JToken ParseJsonPayloadIfPresent(string encoding, byte[] payload)
+        {
+            if (!string.Equals(encoding, "json", StringComparison.OrdinalIgnoreCase)
+                || payload == null)
+                return null;
+            try
+            {
+                return JToken.Parse(StrictUtf8.GetString(payload));
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         /// <summary>

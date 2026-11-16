@@ -134,13 +134,13 @@ namespace Unity.FoxgloveSDK.IO
         private bool _deferredPendingSorted = true;
         private readonly Dictionary<byte[], int> _deferredOwnerReferences = new();
         private long _deferredOwnerBytes;
+        private readonly List<McapMessage> _defaultTickBuffer = new();
         private readonly List<McapMessage> _scanBoundaryCandidates = new();
         private static readonly IComparer<McapMessage> MessageComparer =
             Comparer<McapMessage>.Create(CompareMessages);
         private readonly Dictionary<ushort, SnapshotCandidate> _snapshotLatestByChannel = new();
         private List<McapChunkIndex> _snapshotChunkIndexesByDescendingEndTime;
         private readonly IFoxgloveLogger _logger;
-
         /// <summary>
         /// Counters from the most recent <see cref="Snapshot"/> call.
         /// </summary>

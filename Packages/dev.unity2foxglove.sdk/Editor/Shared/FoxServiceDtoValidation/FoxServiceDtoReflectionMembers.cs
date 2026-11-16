@@ -53,7 +53,7 @@ namespace Unity.FoxgloveSDK.Editor
 
         public static string JsonPropertyName(MemberInfo member)
         {
-            foreach (var attribute in member.GetCustomAttributes(true))
+            foreach (var attribute in member.GetCustomAttributes(false))
             {
                 var attributeType = attribute.GetType();
                 if (!string.Equals(attributeType.FullName, "Newtonsoft.Json.JsonPropertyAttribute", StringComparison.Ordinal))
@@ -69,7 +69,7 @@ namespace Unity.FoxgloveSDK.Editor
 
         public static bool IsIgnored(MemberInfo member)
         {
-            foreach (var attribute in member.GetCustomAttributes(true))
+            foreach (var attribute in member.GetCustomAttributes(false))
             {
                 var typeName = attribute.GetType().FullName ?? string.Empty;
                 if (typeName == "Newtonsoft.Json.JsonIgnoreAttribute"

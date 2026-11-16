@@ -102,7 +102,7 @@ namespace Unity.FoxgloveSDK.IO
         /// </remarks>
         public List<McapMessage> Tick(ulong nowNs)
         {
-            return Tick(nowNs, new List<McapMessage>());
+            return Tick(nowNs, _defaultTickBuffer);
         }
 
         /// <summary>

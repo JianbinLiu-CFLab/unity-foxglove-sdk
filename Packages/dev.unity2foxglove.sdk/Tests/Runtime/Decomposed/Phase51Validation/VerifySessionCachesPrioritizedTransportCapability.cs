@@ -31,8 +31,9 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifySessionCachesPrioritizedTransportCapability()
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/FoxgloveSession.cs");
-            var publish = ExtractMethodBody(source, "public void Publish(uint channelId, byte[] payload, ulong logTimeNs)");
-            var replay = ExtractMethodBody(source, "internal void PublishReplay");
+            var publishingSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Core/Session/Decomposed/FoxgloveSession/FoxgloveSession.Publishing.cs");
+            var publish = ExtractMethodBody(publishingSource, "private void SendSubscribers(");
+            var replay = publish;
 
             Check(source.Contains("_prioritizedTransport") && source.Contains("_transport as IPrioritizedFoxgloveTransport"),
                 "51B-20a: FoxgloveSession caches prioritized transport capability at construction");

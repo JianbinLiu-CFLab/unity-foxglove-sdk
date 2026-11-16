@@ -208,7 +208,7 @@ namespace Unity.FoxgloveSDK.Editor
             if (type == null)
                 return string.Empty;
 
-            return (type.AssemblyQualifiedName ?? type.FullName ?? type.Name).Replace('+', '.');
+            return (type.FullName ?? type.Name).Replace('+', '.');
         }
 
     }
