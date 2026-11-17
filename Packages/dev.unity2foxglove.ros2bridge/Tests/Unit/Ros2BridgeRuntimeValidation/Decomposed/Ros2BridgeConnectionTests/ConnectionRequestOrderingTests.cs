@@ -47,9 +47,20 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
             first.Start();
             Assert.True(firstEntered.Wait(TimeSpan.FromSeconds(2)));
 
-            var second = new Thread(() => connection.Exchange(
-                (requestId, active) => Prepare(active, requestId, "/phase309/second"),
-                2000));
+            Exception secondFailure = null;
+            var second = new Thread(() =>
+            {
+                try
+                {
+                    connection.Exchange(
+                        (requestId, active) => Prepare(active, requestId, "/phase309/second"),
+                        2000);
+                }
+                catch (Exception exception)
+                {
+                    secondFailure = exception;
+                }
+            });
             second.Start();
             Thread.Sleep(200);
             releaseFirst.Set();
@@ -58,6 +69,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
             Assert.True(second.Join(TimeSpan.FromSeconds(3)));
             peer.AssertCompleted();
             Assert.Null(firstFailure);
+            Assert.Null(secondFailure);
             Assert.Equal(2, observed.Count);
             Assert.True(observed[0] < observed[1], string.Join(",", observed));
         }
