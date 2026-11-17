@@ -240,6 +240,11 @@ namespace Unity.FoxgloveSDK.Tests.Manager
                 _encodingOverride = value;
             }
 
+            public PublisherEncodingResolution? ResolutionOverrideForTest { get; set; }
+
+            protected override PublisherEncodingResolution ResolvePublisherEncoding()
+                => ResolutionOverrideForTest ?? base.ResolvePublisherEncoding();
+
             public void ExternalEnableForTest()
             {
                 SetEnabledLikeUnityForTest(true);

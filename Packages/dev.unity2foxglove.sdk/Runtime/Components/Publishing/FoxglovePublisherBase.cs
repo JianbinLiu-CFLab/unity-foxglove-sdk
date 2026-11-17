@@ -612,9 +612,12 @@ namespace Unity.FoxgloveSDK.Components
             return _ordinaryTransportPublisherId;
         }
 
+        [NonSerialized] private bool _capturingComponentSessionEncoding;
+
         protected virtual PublisherEncodingResolution ResolvePublisherEncoding()
         {
-            if (_manager != null
+            if (!_capturingComponentSessionEncoding
+                && _manager != null
                 && _manager.TryGetActiveComponentPublisherSessionEntry(this, out var frozen))
             {
                 return new PublisherEncodingResolution(
@@ -628,7 +631,15 @@ namespace Unity.FoxgloveSDK.Components
 
         internal PublisherEncodingResolution ResolveComponentSessionEncoding()
         {
-            return ResolvePublisherEncodingFromConfiguration();
+            _capturingComponentSessionEncoding = true;
+            try
+            {
+                return ResolvePublisherEncoding();
+            }
+            finally
+            {
+                _capturingComponentSessionEncoding = false;
+            }
         }
 
         private PublisherEncodingResolution ResolvePublisherEncodingFromConfiguration()
