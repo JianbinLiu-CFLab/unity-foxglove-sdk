@@ -432,6 +432,34 @@ class CanonicalEntrypointContractTests(unittest.TestCase):
         finally:
             temporary.cleanup()
 
+    def test_main_block_only_requires_initializer_wildcard_export(self) -> None:
+        """A wildcard module entrypoint requires the unchanged initializer to export its callable."""
+        temporary, repository, base = self._create_repository()
+        try:
+            (repository / "Scripts/smoke/fixture/__init__.py").write_text(
+                "__all__ = []\n",
+                encoding="utf-8",
+            )
+            base = self._commit(repository, "suppress package wildcard export")
+            (repository / "Scripts/smoke/fixture/__main__.py").write_text(
+                "from . import *\n"
+                "if __name__ == '__main__':\n"
+                "    raise SystemExit(main())\n",
+                encoding="utf-8",
+            )
+            head = self._commit(repository, "append main block")
+            self.assertEqual(
+                1,
+                compare_identity_surfaces.compare_revisions(
+                    repository,
+                    base,
+                    head,
+                    strict=False,
+                ),
+            )
+        finally:
+            temporary.cleanup()
+
     def test_new_unsafe_module_entrypoint_is_incompatible_without_a_base_entrypoint(self) -> None:
         """An unsafe newly added module entrypoint cannot bypass the compatibility gate."""
         temporary, repository, base = self._create_repository()

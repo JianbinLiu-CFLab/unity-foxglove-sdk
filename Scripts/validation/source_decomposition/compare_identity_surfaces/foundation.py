@@ -964,15 +964,20 @@ def _approved_main_block_only_contract(
     if not import_nodes:
         return False
     package_exports = set().union(*(section_exports(section) for section in base_sections))
+
+    initializer_exports = getattr(importlib.import_module(__package__ + ".surface_contracts"), "_entrypoint_initializer_exports")
+    package_initializer_exports = initializer_exports(base_package, package_exports)
     exports_by_module = {
         section.stem: section_exports(section)
         for section in base_sections
     }
     for node in import_nodes:
         if node.module is None:
-            if any(alias.name == "*" for alias in node.names) and called_name in package_exports:
+            if package_initializer_exports is None:
+                continue
+            if any(alias.name == "*" for alias in node.names) and called_name in package_initializer_exports:
                 return True
-            if any(alias.name == called_name for alias in node.names) and called_name in package_exports:
+            if any(alias.name == called_name for alias in node.names) and called_name in package_initializer_exports:
                 return True
             continue
         module_exports = exports_by_module.get(node.module)

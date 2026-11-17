@@ -403,6 +403,34 @@ def _entrypoint_executable_body_is_safe(
     return True
 
 
+def _entrypoint_initializer_exports(
+    base_package: Path,
+    package_exports: set[str],
+) -> set[str] | None:
+    """Return effective wildcard exports from an unchanged package initializer."""
+    initializer = base_package / "__init__.py"
+    if not initializer.is_file():
+        return None
+    tree = _parse_source(initializer.read_text(encoding="utf-8"), initializer)
+    assignments = [node for node in tree.body if isinstance(node, ast.Assign) and any(
+        isinstance(target, ast.Name) and target.id == "__all__" for target in node.targets
+    )]
+    if not assignments:
+        return {name for name in _top_level_names(tree, include_imports=True) if not name.startswith("_")}
+    try:
+        names = ast.literal_eval(assignments[-1].value)
+    except (TypeError, ValueError, SyntaxError):
+        names = None
+    if isinstance(names, (list, tuple, set)) and all(isinstance(name, str) for name in names):
+        return set(names)
+    if any(
+        isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+        and node.func.id in {"globals", "getattr"} for node in ast.walk(tree)
+    ):
+        return package_exports
+    return None
+
+
 _ENTRYPOINT_IMPORT_ROOTS = frozenset({"Scripts", "argparse", "sys", "unittest"})
 
 _REVIEWED_DIRECT_ENTRYPOINTS = frozenset({
