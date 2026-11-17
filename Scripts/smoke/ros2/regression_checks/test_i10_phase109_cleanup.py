@@ -49,7 +49,7 @@ class I10Phase109CleanupTests(unittest.TestCase):
         subscription_body = subscription.group(0)
         self.assertRegex(
             subscription_body,
-            r"(?s)try\s*\{.*?_ros2Node\.RemoveSubscription.*?_subscription\s*=\s*null;.*?_disposed\s*=\s*true;",
+            r"(?s)lock \(_gate\).*?subscription\s*=\s*_subscription;.*?\n\s*}\s*\n\s*try\s*\{.*?_ros2Node\.RemoveSubscription.*?lock \(_gate\).*?_subscription\s*=\s*null;.*?_disposed\s*=\s*true;",
         )
         self.assertNotRegex(
             subscription_body,

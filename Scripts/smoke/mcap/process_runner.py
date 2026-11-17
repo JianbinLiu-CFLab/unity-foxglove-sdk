@@ -40,6 +40,13 @@ def _terminate_tree(process: subprocess.Popen[str]) -> None:
             os.killpg(process.pid, signal.SIGTERM)
         except (OSError, ProcessLookupError):
             pass
+        try:
+            process.wait(timeout=0.5)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(process.pid, getattr(signal, "SIGKILL", signal.SIGTERM))
+            except (OSError, ProcessLookupError):
+                pass
     try:
         process.kill()
     except (OSError, ProcessLookupError):
@@ -68,13 +75,11 @@ def run_bounded(
         env=dict(env),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
+        text=False,
         start_new_session=(os.name != "nt"),
         creationflags=creationflags,
     )
-    buffers: dict[str, list[str]] = {"stdout": [], "stderr": []}
+    buffers: dict[str, list[bytes]] = {"stdout": [], "stderr": []}
     sizes = {"stdout": 0, "stderr": 0}
     truncated = False
 
@@ -116,8 +121,8 @@ def run_bounded(
             stream.close()
     return BoundedResult(
         process.returncode if process.returncode is not None else 1,
-        "".join(buffers["stdout"]),
-        "".join(buffers["stderr"]),
+        b"".join(buffers["stdout"]).decode("utf-8", errors="replace"),
+        b"".join(buffers["stderr"]).decode("utf-8", errors="replace"),
         timed_out=timed_out,
         output_truncated=truncated,
     )

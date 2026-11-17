@@ -502,25 +502,36 @@ public sealed class Phase109Ros2ForUnityContext : IUnity2FoxgloveRos2Context
 
         public void Dispose()
         {
+            ISubscription<std_msgs.msg.String> subscription;
             lock (_gate)
             {
                 if (_disposed)
                     return;
+                subscription = _subscription;
+            }
 
-                try
+            try
+            {
+                if (subscription != null)
                 {
-                    if (_subscription != null)
-                    {
-                        _ros2Node.RemoveSubscription<std_msgs.msg.String>(_subscription);
-                        _subscription = null;
-                    }
+                    _ros2Node.RemoveSubscription<std_msgs.msg.String>(subscription);
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning("[Phase109Ros2ForUnityContext] subscription cleanup failed; retaining ownership for retry: " + ex.Message);
+                return;
+            }
 
+            lock (_gate)
+            {
+                if (_disposed)
+                    return;
+                if (ReferenceEquals(_subscription, subscription))
+                {
+                    _subscription = null;
                     _disposed = true;
                     _pending.Clear();
-                }
-                catch (Exception ex)
-                {
-                    Debug.LogWarning("[Phase109Ros2ForUnityContext] subscription cleanup failed; retaining ownership for retry: " + ex.Message);
                 }
             }
         }
