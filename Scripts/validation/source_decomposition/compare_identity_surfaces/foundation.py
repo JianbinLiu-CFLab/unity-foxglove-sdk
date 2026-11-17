@@ -813,9 +813,11 @@ def _approved_main_block_only_contract(
 
     def is_main_guard(node: ast.stmt) -> bool:
         """Return whether a top-level statement is a module main guard."""
-        if not isinstance(node, ast.If) or len(node.test.ops) != 1:
+        if not isinstance(node, ast.If) or not isinstance(node.test, ast.Compare):
             return False
-        if not isinstance(node.test, ast.Compare) or not isinstance(node.test.ops[0], ast.Eq):
+        if len(node.test.ops) != 1:
+            return False
+        if not isinstance(node.test.ops[0], ast.Eq):
             return False
         left, right = node.test.left, node.test.comparators[0]
         return (
