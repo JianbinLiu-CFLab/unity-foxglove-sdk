@@ -218,10 +218,15 @@ def _posix_process_group_exists(process_group_id: int) -> bool:
     return True
 
 
-def _posix_process_session_id(process_id: int) -> Optional[int]:
+def _posix_process_session_id(
+    process_id: int,
+    expected_group_id: Optional[int] = None,
+) -> Optional[int]:
     """Read the POSIX session id for one process when procfs exposes it."""
     try:
         fields = Path(f"/proc/{process_id}/stat").read_text(encoding="utf-8").rsplit(")", 1)[1].split()
+        if expected_group_id is not None and int(fields[2]) != expected_group_id:
+            return None
         return int(fields[3])
     except (OSError, ValueError, IndexError):
         return None
@@ -317,7 +322,7 @@ class OwnedProcessTree:
         self._windows_job = windows_job
         self._posix_process_group_id = posix_process_group_id
         self._posix_session_id = (
-            _posix_process_session_id(process.pid)
+            _posix_process_session_id(process.pid, posix_process_group_id)
             if posix_process_group_id is not None
             else None
         )
