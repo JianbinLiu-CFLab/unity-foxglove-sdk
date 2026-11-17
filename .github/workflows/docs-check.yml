@@ -100,9 +100,9 @@ jobs:
               -g "!Scripts/ros2forunity/windows/jazzy/phase138b_r2fu_jazzy_windows_build.py" \
               -g "!Scripts/ros2forunity/windows/jazzy/regression_checks/test_phase138b_build_defaults.py"
           else
-            # Hosted runners without ripgrep use a conservative documentation
-            # scan; source/test fixtures intentionally contain example paths.
-            grep -RInE 'BaiduSyncdisk|00 Inbox|!\[\[|Pasted image|TODO|FIXME|TBD' \
+            # Hosted runners without ripgrep use the same documentation policy
+            # pattern; source/test fixtures intentionally contain example paths.
+            grep -RInE "$pattern" \
               README.md ROADMAP.md CHANGELOG.md CITATION.cff PAPER.md docs THIRD_PARTY_NOTICES.md \
               Packages/dev.unity2foxglove.sdk/README.md Packages/dev.unity2foxglove.sdk/Documentation~ \
               Unity2Foxglove/README.md Unity2Foxglove/Docs \

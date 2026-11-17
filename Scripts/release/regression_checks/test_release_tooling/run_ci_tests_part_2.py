@@ -605,4 +605,13 @@ printf '%s' "$required"
         self.assertEqual("partial stdout\n", result.stdout)
         self.assertEqual("partial stderr\n", result.stderr)
 
+    def test_docs_fallback_scan_keeps_absolute_path_patterns(self) -> None:
+        """The grep fallback must enforce the same path policy as ripgrep."""
+        workflow = DOCS_WORKFLOW_PATH.read_text(encoding="utf-8")
+        fallback_line = next(line for line in workflow.splitlines() if "grep -RInE '" in line)
+        fallback = fallback_line.split("grep -RInE '", 1)[1].rsplit("'", 1)[0]
+        self.assertIn("[A-Za-z]:", fallback)
+        self.assertIn("/home", fallback)
+        self.assertIn("/Users", fallback)
+
 __all__ = ["_RunCiTestsPart2"]

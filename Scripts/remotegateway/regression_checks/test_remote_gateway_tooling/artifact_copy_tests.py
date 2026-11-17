@@ -209,11 +209,13 @@ class RemoteGatewayArtifactCopyTests:
             package.mkdir()
             (release / "foxglove.dll").write_bytes(b"changed")
             (release / "foxglove.dll.lib").write_bytes(b"lib")
+            (package / "foxglove.dll").write_bytes(b"original")
             manifest = root / "manifest.json"
             manifest.write_text(json.dumps({"sha256": hashlib.sha256(b"original").hexdigest(), "artifacts": {"foxglove.dll": {"sha256": hashlib.sha256(b"original").hexdigest()}}}), encoding="utf-8")
             with mock.patch.object(self.build, "PACKAGE_PLUGIN_DIR", package):
                 with self.assertRaisesRegex(RuntimeError, "changed after manifest hashing"):
                     self.build.copy_approved_artifacts(root / "target", manifest, self.build.APPROVED_ARTIFACTS)
+            self.assertEqual(b"original", (package / "foxglove.dll").read_bytes())
 
 
 __all__ = ["RemoteGatewayArtifactCopyTests"]
