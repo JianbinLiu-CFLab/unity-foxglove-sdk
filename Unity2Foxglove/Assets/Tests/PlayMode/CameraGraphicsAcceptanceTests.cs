@@ -1,6 +1,8 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Net;
+using System.Net.Sockets;
 using System.Reflection;
 using NUnit.Framework;
 using Unity.FoxgloveSDK.Components;
@@ -133,6 +135,8 @@ namespace Unity2Foxglove.Tests.PlayMode
             var destroyedManager = CreateManager();
             try
             {
+                SetField(disabledManager, "_port", GetFreeLoopbackPort());
+                SetField(destroyedManager, "_port", GetFreeLoopbackPort());
                 disabledManager.StartServer();
                 Assert.That(disabledManager.IsRunning, Is.True);
                 disabledManager.enabled = false;
@@ -153,6 +157,13 @@ namespace Unity2Foxglove.Tests.PlayMode
             }
 
             yield return null;
+        }
+
+        private static int GetFreeLoopbackPort()
+        {
+            using var listener = new TcpListener(IPAddress.Loopback, 0);
+            listener.Start();
+            return ((IPEndPoint)listener.LocalEndpoint).Port;
         }
 
         private static void RequireGraphicsReadback()
