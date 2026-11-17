@@ -334,12 +334,10 @@ namespace Unity2Foxglove.Tests.PlayMode
 
         private static void AssertCameraProjectionMatrix(IReadOnlyList<double> matrix, double fx, double fy, double cx, double cy)
         {
-            Assert.That(matrix.Count, Is.EqualTo(12));
-            Assert.That(matrix[0], Is.EqualTo(fx).Within(0.1d));
-            Assert.That(matrix[2], Is.EqualTo(cx).Within(0.1d));
-            Assert.That(matrix[5], Is.EqualTo(fy).Within(0.1d));
-            Assert.That(matrix[6], Is.EqualTo(cy).Within(0.1d));
-            Assert.That(matrix[10], Is.EqualTo(1d).Within(0.1d));
+            var expected = new[] { fx, 0d, cx, 0d, 0d, fy, cy, 0d, 0d, 0d, 1d, 0d };
+            Assert.That(matrix.Count, Is.EqualTo(expected.Length));
+            for (var index = 0; index < expected.Length; index++)
+                Assert.That(matrix[index], Is.EqualTo(expected[index]).Within(0.1d), $"Unexpected projection matrix element {index}.");
         }
     }
 }
