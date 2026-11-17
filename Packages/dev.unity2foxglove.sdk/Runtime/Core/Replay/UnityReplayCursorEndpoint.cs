@@ -425,13 +425,13 @@ namespace Unity.FoxgloveSDK.Core
             }
             finally
             {
-                lock (_lifecycleGate)
+                if (Interlocked.CompareExchange(
+                        ref _generation,
+                        null,
+                        generation)
+                    == generation)
                 {
-                    if (ReferenceEquals(_generation, generation))
-                    {
-                        _running = false;
-                        _generation = null;
-                    }
+                    _running = false;
                 }
             }
         }

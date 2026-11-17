@@ -339,6 +339,24 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
         }
 
         [Fact]
+        public void StopRetiresIdleWorkerWithoutWarning()
+        {
+            var logger = new RecordingLogger();
+            using var endpoint = new UnityReplayCursorEndpoint(logger);
+            StartEndpointWithRetry(
+                endpoint,
+                "/stop-idle",
+                "stop-idle-token",
+                _ => new UnityReplayCursorEndpointQueueResult(true, "Cursor accepted."));
+
+            endpoint.Stop();
+
+            Assert.Empty(logger.Warnings);
+            Assert.False(endpoint.IsRunning);
+            Assert.Equal(0, endpoint.RetiringGenerationCount);
+        }
+
+        [Fact]
         public void WorkerLoopAndHandlersUseOnlyTheirCapturedGeneration()
         {
             var source = TestSources.Text(
@@ -359,6 +377,15 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
             Assert.DoesNotContain("_queue", handle, StringComparison.Ordinal);
             Assert.Contains("generation.Worker.Join", stop, StringComparison.Ordinal);
             Assert.Contains("ManagedWebSocketOptions.FixedTimeEqualsUtf8", source, StringComparison.Ordinal);
+        }
+
+        private sealed class RecordingLogger : IFoxgloveLogger
+        {
+            internal readonly List<string> Warnings = new List<string>();
+
+            public void LogWarning(string message) => Warnings.Add(message);
+
+            public void LogError(string message) { }
         }
 
     }
