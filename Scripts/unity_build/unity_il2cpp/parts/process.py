@@ -218,11 +218,23 @@ def _posix_process_group_exists(process_group_id: int) -> bool:
     return True
 
 
-def _posix_process_group_pids(process_group_id: int) -> List[int]:
+def _posix_process_session_id(process_id: int) -> Optional[int]:
+    """Read the POSIX session id for one process when procfs exposes it."""
+    try:
+        fields = Path(f"/proc/{process_id}/stat").read_text(encoding="utf-8").rsplit(")", 1)[1].split()
+        return int(fields[3])
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def _posix_process_group_pids(
+    process_group_id: int,
+    session_id: Optional[int] = None,
+) -> List[int]:
     """Enumerate a POSIX process group with bounded residual diagnostics."""
     try:
         result = subprocess.run(
-            ["ps", "-eo", "pid=,pgid="],
+            ["ps", "-eo", "pid=,pgid=,sid="],
             check=False,
             capture_output=True,
             text=True,
@@ -233,13 +245,16 @@ def _posix_process_group_pids(process_group_id: int) -> List[int]:
     pids = []
     for line in result.stdout.splitlines():
         fields = line.split()
-        if len(fields) != 2:
+        if len(fields) not in (2, 3):
             continue
         try:
-            pid, group = (int(field) for field in fields)
+            pid, group = (int(field) for field in fields[:2])
+            process_session = int(fields[2]) if len(fields) == 3 else None
         except ValueError:
             continue
-        if group == process_group_id:
+        if group == process_group_id and (
+            session_id is None or process_session == session_id
+        ):
             pids.append(pid)
     if not pids and _posix_process_group_exists(process_group_id):
         return [process_group_id]
@@ -301,6 +316,11 @@ class OwnedProcessTree:
         self.process = process
         self._windows_job = windows_job
         self._posix_process_group_id = posix_process_group_id
+        self._posix_session_id = (
+            _posix_process_session_id(process.pid)
+            if posix_process_group_id is not None
+            else None
+        )
         self._observed_posix_pids = {process.pid} if posix_process_group_id is not None else set()
 
     def active_pids(self) -> List[int]:
@@ -314,7 +334,10 @@ class OwnedProcessTree:
             if self.process.poll() is None:
                 self._observed_posix_pids.update(_posix_descendant_pids(self.process.pid))
                 self._observed_posix_pids.update(
-                    _posix_process_group_pids(self._posix_process_group_id)
+                    _posix_process_group_pids(
+                        self._posix_process_group_id,
+                        self._posix_session_id,
+                    )
                 )
             return sorted(
                 pid for pid in self._observed_posix_pids if _posix_pid_exists(pid)
@@ -367,6 +390,13 @@ class OwnedProcessTree:
                 # the root; a fresh group enumeration could target unrelated
                 # processes after numeric PGID reuse.
                 owned_pids = set(self._observed_posix_pids)
+                if self._posix_session_id is not None:
+                    owned_pids.update(
+                        _posix_process_group_pids(
+                            self._posix_process_group_id,
+                            self._posix_session_id,
+                        )
+                    )
                 for process_id in owned_pids:
                     try:
                         os.kill(process_id, signal.SIGKILL)
