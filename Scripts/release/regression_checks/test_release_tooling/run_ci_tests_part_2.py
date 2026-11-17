@@ -610,7 +610,9 @@ printf '%s' "$required"
         workflow = DOCS_WORKFLOW_PATH.read_text(encoding="utf-8")
         pattern_line = next(line for line in workflow.splitlines() if "pattern='" in line)
         fallback = pattern_line.split("pattern='", 1)[1].rsplit("'", 1)[0]
-        self.assertIn('grep -RInE "$pattern"', workflow)
+        self.assertIn('grep -RInE "$pattern" "${files[@]}"', workflow)
+        self.assertIn('rg -n "$pattern" "${files[@]}"', workflow)
+        self.assertNotIn("--exclude=", workflow)
         self.assertIn("[A-Za-z]:", fallback)
         self.assertIn("home", fallback)
         self.assertIn("Users", fallback)
