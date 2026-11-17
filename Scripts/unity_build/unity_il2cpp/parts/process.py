@@ -459,10 +459,8 @@ class OwnedProcessTree:
                 except ProcessLookupError:
                     pass
             else:
-                # The group number may have been reused after root exit. Kill
-                # only observed PIDs whose start token still matches. A fresh
-                # group enumeration could target unrelated processes after
-                # numeric PGID reuse.
+                # Recover late descendants through the session-filtered group
+                # view, then kill only PIDs whose start token still matches.
                 self._observe_posix_group_after_exit()
                 for process_id in self._observed_posix_pids:
                     start_token = self._observed_posix_start_tokens.get(process_id)

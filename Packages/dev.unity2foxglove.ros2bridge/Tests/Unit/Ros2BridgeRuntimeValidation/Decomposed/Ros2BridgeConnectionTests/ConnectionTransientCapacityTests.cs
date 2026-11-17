@@ -12,6 +12,13 @@ using Xunit;
 
 namespace Unity2Foxglove.Ros2Bridge.Tests
 {
+    [CollectionDefinition(Name, DisableParallelization = true)]
+    public sealed class Ros2BridgeTransientCapacitySerialCollection
+    {
+        public const string Name = "ROS 2 Bridge transient capacity serial";
+    }
+
+    [Collection(Ros2BridgeTransientCapacitySerialCollection.Name)]
     public sealed class Ros2BridgeConnectionTransientCapacityTests
     {
         [Fact]
