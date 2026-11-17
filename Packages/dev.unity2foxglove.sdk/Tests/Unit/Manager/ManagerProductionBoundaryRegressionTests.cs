@@ -406,6 +406,27 @@ namespace Unity.FoxgloveSDK.Tests.Manager
         }
 
         [Fact]
+        public void ComponentSessionCaptureRecomputesPublisherEncodingAfterRestart()
+        {
+            UnityEngine.Object.ResetRegistry();
+            var manager = new FoxgloveManager { DefaultPublisherEncoding = GlobalEncoding.Json };
+            var publisher = new BoundaryPublisher { TopicForTest = "/boundary" };
+            publisher.gameObject = manager.gameObject;
+            UnityEngine.Object.Register(manager);
+            UnityEngine.Object.Register(publisher);
+
+            var first = manager.CaptureForTest(1UL);
+            manager.SetActiveSessionForTest(first);
+            Assert.True(first.TryGetEntry(publisher, out var firstEntry));
+            Assert.Equal(PublisherEffectiveEncoding.Json, firstEntry.EffectiveEncoding);
+
+            publisher.SetEncodingOverrideForTest(PublisherEncodingOverride.MsgPack);
+            var recaptured = manager.CaptureForTest(2UL);
+            Assert.True(recaptured.TryGetEntry(publisher, out var recapturedEntry));
+            Assert.Equal(PublisherEffectiveEncoding.MsgPack, recapturedEntry.EffectiveEncoding);
+        }
+
+        [Fact]
         public void ComponentSessionStopTailClearsActualManagerSnapshot()
         {
             UnityEngine.Object.ResetRegistry();

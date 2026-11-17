@@ -341,7 +341,7 @@ namespace Unity.FoxgloveSDK.Components
                 publisher => publisher != null && publisher.HasValidTopic);
             foreach (var publisher in publishers)
             {
-                var resolution = publisher.EncodingResolution;
+                var resolution = publisher.ResolveComponentSessionEncoding();
                 var messagePackEntry = ComponentPublisherMessagePackEntryResolver.Resolve(
                     publisher.ComponentMessagePackMessageType,
                     resolution.Effective);

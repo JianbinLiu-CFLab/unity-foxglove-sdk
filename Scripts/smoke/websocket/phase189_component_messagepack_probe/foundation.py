@@ -28,7 +28,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
-import websockets
 FOXGLOVE_SUBPROTOCOL = "foxglove.sdk.v1"
 CATALOG_SERVICE = "/foxglove/component-publish-contracts"
 PROBE_TOPIC = "/phase189/messagepack/full-duplex"
@@ -219,6 +218,8 @@ def build_pass_report(
     }
 async def run_live(args: argparse.Namespace) -> dict[str, Any]:
     """Collect the complete live acceptance report."""
+    import websockets
+
     url = _build_url(args)
     ssl_context = _build_ssl_context(url, args.insecure)
     async with websockets.connect(

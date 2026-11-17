@@ -623,6 +623,16 @@ namespace Unity.FoxgloveSDK.Components
                     fellBack: false);
             }
 
+            return ResolvePublisherEncodingFromConfiguration();
+        }
+
+        internal PublisherEncodingResolution ResolveComponentSessionEncoding()
+        {
+            return ResolvePublisherEncodingFromConfiguration();
+        }
+
+        private PublisherEncodingResolution ResolvePublisherEncodingFromConfiguration()
+        {
             var managerDefault = _manager != null ? _manager.DefaultPublisherEncoding : GlobalEncoding.Json;
             var allowPublisherOverride = _manager == null || _manager.AllowPublisherOverride;
             return PublisherEncodingPolicy.Resolve(

@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import importlib.util
 import json
+import re
 import subprocess
 import sys
 import time
@@ -14,6 +15,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 SCENE = ROOT / "Unity2Foxglove" / "Assets" / "Scenes" / "ManualAcceptance" / "Phase189ComponentMessagePackAcceptance.unity"
 RUN_ROOT = ROOT / "build" / "phase189" / "manual"
+RUN_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}\Z")
 
 
 def git_head() -> str:
@@ -86,6 +88,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--run-id", default=f"phase189-{int(time.time())}")
     parser.add_argument("--non-interactive", action="store_true", help="emit deterministic batch handoff without waiting for Unity clicks")
     args = parser.parse_args(argv)
+    if RUN_ID_RE.fullmatch(args.run_id) is None:
+        print("PHASE189_MANUAL_STATUS fail invalid_run_id", file=sys.stderr)
+        return 1
     if not SCENE.is_file():
         print(f"PHASE189_MANUAL_STATUS fail scene_missing={SCENE}", file=sys.stderr)
         return 1
