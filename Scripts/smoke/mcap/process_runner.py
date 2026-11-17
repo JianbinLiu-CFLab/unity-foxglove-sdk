@@ -43,10 +43,11 @@ def _terminate_tree(process: subprocess.Popen[str]) -> None:
         try:
             process.wait(timeout=0.5)
         except subprocess.TimeoutExpired:
-            try:
-                os.killpg(process.pid, getattr(signal, "SIGKILL", signal.SIGTERM))
-            except (OSError, ProcessLookupError):
-                pass
+            pass
+        try:
+            os.killpg(process.pid, getattr(signal, "SIGKILL", signal.SIGTERM))
+        except (OSError, ProcessLookupError):
+            pass
     try:
         process.kill()
     except (OSError, ProcessLookupError):

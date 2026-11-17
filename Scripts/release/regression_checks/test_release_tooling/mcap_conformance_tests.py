@@ -135,6 +135,18 @@ class McapConformanceToolTests(unittest.TestCase):
             [call.args[1] for call in killpg.call_args_list],
         )
 
+    def test_posix_timeout_kills_group_after_root_exits_on_term(self) -> None:
+        """Children that ignore SIGTERM must still receive a group SIGKILL after a fast root exit."""
+        process = mock.Mock(pid=4242)
+        process.wait.return_value = None
+        with mock.patch.object(process_runner.os, "name", "posix"):
+            with mock.patch.object(process_runner.os, "killpg", create=True) as killpg:
+                process_runner._terminate_tree(process)
+        self.assertEqual(
+            [signal.SIGTERM, getattr(signal, "SIGKILL", signal.SIGTERM)],
+            [call.args[1] for call in killpg.call_args_list],
+        )
+
 McapConformanceToolTests.__module__ = 'Scripts.release.regression_checks.test_release_tooling'
 
 __all__ = ["McapConformanceToolTests"]
