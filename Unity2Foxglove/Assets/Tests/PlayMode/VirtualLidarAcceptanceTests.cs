@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
@@ -19,19 +20,26 @@ namespace Unity2Foxglove.Tests.PlayMode
         public IEnumerator LidarAcceptance_ElapsedPhysicsTimeSpansMultipleTicks()
         {
             var target = CreateTarget(new Vector3(0f, 0f, 5f));
-            var lidar = CreateLidar("lidar-timing", "timing-frame", target.layer);
+            var lidar = CreateLidar("lidar-timing", "timing-frame", target.layer, pixelsPerColumn: 4, columnsPerFrame: 256);
             var previousSimulationMode = Physics.simulationMode;
             var previousFixedDeltaTime = Time.fixedDeltaTime;
             try
             {
                 Physics.simulationMode = SimulationMode.Script;
+                Time.fixedDeltaTime = 0.02f;
                 var ticks = 0;
                 PointCloudFrame firstFrame = null;
+                var simulatedElapsed = new List<double> { 0d };
+                var elapsed = 0d;
                 for (; ticks < 30; ticks++)
                 {
-                    var delta = ticks % 2 == 0 ? 0.06f : 0.04f;
-                    Time.fixedDeltaTime = delta;
+                    var delta = ticks % 2 == 0 ? 0.037f : 0.061f;
+                    var before = Time.fixedTimeAsDouble;
                     Physics.Simulate(delta);
+                    var after = Time.fixedTimeAsDouble;
+                    var observedDelta = after - before;
+                    elapsed += observedDelta > 0d ? observedDelta : delta;
+                    simulatedElapsed.Add(elapsed);
                     yield return new WaitForFixedUpdate();
                     if (lidar.LastFrame != null && lidar.LastFrame.Points.Count >= 4)
                     {
@@ -53,6 +61,43 @@ namespace Unity2Foxglove.Tests.PlayMode
                 for (var index = 1; index < offsets.Count; index++)
                     Assert.That(offsets[index], Is.GreaterThanOrEqualTo(offsets[index - 1]));
                 Assert.That(offsets[offsets.Count - 1] - offsets[0], Is.GreaterThan(0.04f));
+                Assert.That(ticks, Is.GreaterThan(3), "The acceptance scan did not span multiple physics ticks.");
+                var elapsedCandidates = new List<double>(simulatedElapsed);
+                for (var start = 0; start < simulatedElapsed.Count; start++)
+                {
+                    for (var end = start + 1; end < simulatedElapsed.Count; end++)
+                        elapsedCandidates.Add(simulatedElapsed[end] - simulatedElapsed[start]);
+                }
+
+                foreach (var point in firstFrame.Points)
+                {
+                    var azimuth = Math.Atan2(-point.Y, point.X);
+                    if (azimuth < 0d)
+                        azimuth += 2d * Math.PI;
+                    var column = (int)Math.Round(azimuth / (2d * Math.PI) * 256d) % 256;
+                    var normalizedOffset = column / 256f;
+                    var elapsedOffset = point.TimeOffsetSeconds
+                        - normalizedOffset * Time.fixedDeltaTime;
+                    var nearestElapsed = double.MaxValue;
+                    var expectedElapsed = 0d;
+                    foreach (var candidate in elapsedCandidates)
+                    {
+                        var distance = Math.Abs(candidate - elapsedOffset);
+                        if (distance < nearestElapsed)
+                        {
+                            nearestElapsed = distance;
+                            expectedElapsed = candidate;
+                        }
+                    }
+
+                    Assert.That(nearestElapsed, Is.LessThan(0.003d), "Point acquisition time did not retain elapsed physics time.");
+                    var expectedOffset = Unity.FoxgloveSDK.Sensors.Lidar.LidarScanTiming.AcquisitionOffsetSeconds(
+                        expectedElapsed,
+                        0d,
+                        normalizedOffset,
+                        Time.fixedDeltaTime);
+                    Assert.That(point.TimeOffsetSeconds, Is.EqualTo(expectedOffset).Within(0.003f));
+                }
             }
             finally
             {
@@ -136,15 +181,20 @@ namespace Unity2Foxglove.Tests.PlayMode
             return target;
         }
 
-        private static VirtualLidar CreateLidar(string name, string frameId, int targetLayer)
+        private static VirtualLidar CreateLidar(
+            string name,
+            string frameId,
+            int targetLayer,
+            int pixelsPerColumn = 1,
+            int columnsPerFrame = 32)
         {
             var gameObject = new GameObject(name);
             gameObject.layer = 8;
             gameObject.SetActive(false);
             var lidar = gameObject.AddComponent<VirtualLidar>();
             SetField(lidar, "_profileSource", VirtualLidar.ProfileSource.Custom);
-            SetField(lidar, "_customPixelsPerColumn", 1);
-            SetField(lidar, "_customColumnsPerFrame", 32);
+            SetField(lidar, "_customPixelsPerColumn", pixelsPerColumn);
+            SetField(lidar, "_customColumnsPerFrame", columnsPerFrame);
             SetField(lidar, "_customScanRateHz", 1f);
             SetField(lidar, "_customFovTopDeg", 8f);
             SetField(lidar, "_customFovBottomDeg", -8f);
