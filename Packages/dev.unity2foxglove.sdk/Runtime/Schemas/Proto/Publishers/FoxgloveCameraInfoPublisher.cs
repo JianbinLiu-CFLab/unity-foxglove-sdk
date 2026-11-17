@@ -163,7 +163,7 @@ namespace Unity.FoxgloveSDK.Components
                 {
                     fx = projection.m00 * width * 0.5;
                     fy = projection.m11 * height * 0.5;
-                    cx = (1.0 - projection.m02) * width * 0.5;
+                    cx = (1.0 + projection.m02) * width * 0.5;
                     cy = (1.0 + projection.m12) * height * 0.5;
                 }
             }
