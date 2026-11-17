@@ -161,9 +161,16 @@ namespace Unity2Foxglove.Tests.PlayMode
 
         private static int GetFreeLoopbackPort()
         {
-            using var listener = new TcpListener(IPAddress.Loopback, 0);
+            var listener = new TcpListener(IPAddress.Loopback, 0);
             listener.Start();
-            return ((IPEndPoint)listener.LocalEndpoint).Port;
+            try
+            {
+                return ((IPEndPoint)listener.LocalEndpoint).Port;
+            }
+            finally
+            {
+                listener.Stop();
+            }
         }
 
         private static void RequireGraphicsReadback()
