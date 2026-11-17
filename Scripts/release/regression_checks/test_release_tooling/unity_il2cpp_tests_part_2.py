@@ -394,26 +394,6 @@ class _UnityIl2CppBuildTestsPart2:
         self.assertEqual([111], owned)
         self.assertEqual([], foreign)
 
-    @unittest.skipIf(os.name == "nt", "POSIX process-group ownership seam")
-    def test_close_skips_observed_pids_that_left_the_owned_session(self) -> None:
-        """Post-exit cleanup must re-verify each PID before sending SIGKILL."""
-        process = mock.Mock(pid=111)
-        process.poll.return_value = 0
-        tree = self.unity_il2cpp.OwnedProcessTree(process, posix_process_group_id=4321)
-        tree._posix_session_id = 77
-        tree._observed_posix_pids.add(222)
-        sessions = {111: 77, 222: 88}
-        with mock.patch.object(
-            self.unity_il2cpp.OwnedProcessTree,
-            "_posix_process_session_id",
-            side_effect=lambda process_id, expected_group_id=None: sessions.get(process_id),
-        ):
-            with mock.patch.object(self.unity_il2cpp, "_posix_process_group_pids", return_value=[]):
-                with mock.patch.object(self.unity_il2cpp.os, "kill") as kill:
-                    tree.close()
-
-        self.assertEqual([111], [call.args[0] for call in kill.call_args_list])
-
     def test_windows_job_uses_a_dedicated_child_termination_code(self) -> None:
         """A killed child must not inherit the build CLI's own timeout exit code."""
         kernel32 = mock.Mock()

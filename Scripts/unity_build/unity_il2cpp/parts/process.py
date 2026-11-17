@@ -405,11 +405,6 @@ class OwnedProcessTree:
                         )
                     )
                 for process_id in owned_pids:
-                    if self._posix_session_id is not None and (
-                        OwnedProcessTree._posix_process_session_id(process_id)
-                        != self._posix_session_id
-                    ):
-                        continue
                     try:
                         os.kill(process_id, signal.SIGKILL)
                     except (OSError, ProcessLookupError):
