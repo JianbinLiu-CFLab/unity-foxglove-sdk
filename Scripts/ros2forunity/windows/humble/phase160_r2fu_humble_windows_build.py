@@ -218,11 +218,19 @@ def run_command(
                     pass
                 if process.poll() is not None and output_queue.empty():
                     break
+            reader.join(timeout=1)
+            while True:
+                try:
+                    line = output_queue.get_nowait()
+                except queue.Empty:
+                    break
+                output_parts.append(line)
+                log.write(line)
+            log.flush()
             if timed_out:
                 output_parts.append("\nCOMMAND_TIMEOUT\n")
                 log.write("\nCOMMAND_TIMEOUT\n")
                 log.flush()
-        reader.join(timeout=1)
         if process.stdout is not None:
             process.stdout.close()
         exit_code = 124 if timed_out else (process.returncode if process.returncode is not None else 124)

@@ -95,6 +95,35 @@ class Phase160BuildDefaultsTests(unittest.TestCase):
         self.assertIn("COMMAND_TIMEOUT", result.output)
         self.assertLess(time.monotonic() - started, 10.0)
 
+    def test_run_command_keeps_output_the_reader_delivers_after_exit(self) -> None:
+        """Lines still in flight when the child exits must reach the command result."""
+        module = load_build_module()
+        original_queue = module.queue.Queue
+
+        class SlowQueue(original_queue):
+            """Delay delivery so the child exits before its last line is queued."""
+
+            def put(self, item, block=True, timeout=None):
+                """Queue one line after a delay."""
+                time.sleep(0.3)
+                super().put(item, block, timeout)
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            with mock.patch.object(module.queue, "Queue", SlowQueue):
+                result = module.run_command(
+                    [sys.executable, "-c", "print('final-line')"],
+                    cwd=root,
+                    env=os.environ.copy(),
+                    log_file=root / "command.log",
+                    timeout=30,
+                )
+            log_text = (root / "command.log").read_text(encoding="utf-8")
+
+        self.assertEqual(0, result.exit_code)
+        self.assertIn("final-line", result.output)
+        self.assertIn("final-line", log_text)
+
     def test_non_windows_process_cleanup_uses_the_owned_process_group(self) -> None:
         """Non-Windows timeout cleanup must terminate the owned process group."""
         module = load_build_module()
