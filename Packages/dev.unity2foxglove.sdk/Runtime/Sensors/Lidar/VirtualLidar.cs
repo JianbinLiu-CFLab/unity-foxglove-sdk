@@ -435,7 +435,7 @@ namespace Unity.FoxgloveSDK.Components
                     return;
                 }
 
-                var dt = Time.fixedDeltaTime;
+                var dt = nowPhys - _prevFixedTime;
                 _prevFixedTime = nowPhys;
                 if (dt <= 0d)
                     return;
