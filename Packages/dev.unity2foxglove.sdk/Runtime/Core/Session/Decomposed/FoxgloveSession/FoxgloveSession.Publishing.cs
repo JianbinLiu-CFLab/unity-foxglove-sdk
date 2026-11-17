@@ -126,7 +126,6 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
-
         private void WriteMessageSafely(McapRecorder recorder, AdvertiseChannel channel, ulong logTimeNs, byte[] payload)
         {
             try
