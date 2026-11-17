@@ -43,12 +43,23 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Start the WebSocket transport on the given host and port.</summary>
         public void Start(string host, int port)
         {
+            bool wasEncodingConfigurationFrozen;
             lock (_encodingConfigurationLock)
             {
+                wasEncodingConfigurationFrozen = _encodingConfigurationFrozen;
                 // Freeze before transport start so synchronous callbacks observe final encoding authority.
                 _encodingConfigurationFrozen = true;
             }
-            _transport.Start(host, port);
+            try
+            {
+                _transport.Start(host, port);
+            }
+            catch
+            {
+                lock (_encodingConfigurationLock)
+                    _encodingConfigurationFrozen = wasEncodingConfigurationFrozen;
+                throw;
+            }
         }
         /// <summary>Stop the WebSocket transport.</summary>
         public void Stop() => _transport.Stop();
@@ -56,6 +67,7 @@ namespace Unity.FoxgloveSDK.Core
         /// <summary>Clear all transient session channels, subscriptions, and graph state.</summary>
         public void ClearSession()
         {
+            lock (_channelPublishGate)
             lock (_channelLifecycleLock)
             {
                 _channels.Clear();
