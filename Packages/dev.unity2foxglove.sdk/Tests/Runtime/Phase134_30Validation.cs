@@ -73,7 +73,7 @@ namespace Unity.FoxgloveSDK.Tests
             {
                 var source = ReadRepoText(script);
                 Check(source.Contains("import _ros2_windows_env as ros2env", StringComparison.Ordinal)
-                      && source.Contains("ros2env.build_ros_env(ros2_root, args.rmw, args.discovery_range, args.domain_id)", StringComparison.Ordinal)
+                      && source.Contains("ros2env.build_ros_env(ros2_root, args.rmw, args.discovery_range, args.domain_id, ros_distro=\"jazzy\")", StringComparison.Ordinal)
                       && source.Contains("ros2env.validate_ros2_root(ros2_root)", StringComparison.Ordinal)
                       && source.Contains("ros2env.run_ros2(", StringComparison.Ordinal),
                     $"134-30C shared ROS2 env: {script}");
@@ -93,7 +93,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var source = ReadRepoText("Scripts/smoke/ros2/launch_phase128_rviz2.py");
             Check(source.Contains("import _ros2_windows_env as ros2env", StringComparison.Ordinal)
-                  && source.Contains("ros2env.build_ros_env(ros2_root, args.rmw, args.discovery_range, args.domain_id)", StringComparison.Ordinal)
+                  && source.Contains("ros2env.build_ros_env(ros2_root, args.rmw, args.discovery_range, args.domain_id, ros_distro=\"jazzy\")", StringComparison.Ordinal)
                   && source.Contains("ros2env.launch_rviz(", StringComparison.Ordinal),
                 "134-30F: Phase128 launcher uses shared ROS2/RViz2 helpers");
             Check(!source.Contains("def build_rviz_env(", StringComparison.Ordinal)
