@@ -413,35 +413,29 @@ public partial class ParameterAndServiceTests
                 }
             });
             replay.Start();
-            for (var attempt = 0; attempt < 100; attempt++)
+            for (var attempt = 0; attempt < 1000; attempt++)
                 Thread.Yield();
 
             Exception lifecycleFailure = null;
-            var lifecycle = new Thread(() =>
+            try
             {
-                try
+                session.UnregisterChannel(15);
+                session.RegisterChannel(new AdvertiseChannel
                 {
-                    session.UnregisterChannel(15);
-                    session.RegisterChannel(new AdvertiseChannel
-                    {
-                        Id = 15,
-                        Topic = "/replay-new",
-                        Encoding = "json"
-                    });
-                    fake.SimulateText(1,
-                        "{\"op\":\"subscribe\",\"subscriptions\":[{\"id\":2,\"channelId\":15}]}");
-                }
-                catch (Exception exception)
-                {
-                    lifecycleFailure = exception;
-                }
-            });
-            lifecycle.Start();
-            Thread.Sleep(50);
+                    Id = 15,
+                    Topic = "/replay-new",
+                    Encoding = "json"
+                });
+                fake.SimulateText(1,
+                    "{\"op\":\"subscribe\",\"subscriptions\":[{\"id\":2,\"channelId\":15}]}");
+            }
+            catch (Exception exception)
+            {
+                lifecycleFailure = exception;
+            }
             held.Dispose();
 
             Assert.True(replay.Join(TimeSpan.FromSeconds(2)));
-            Assert.True(lifecycle.Join(TimeSpan.FromSeconds(2)));
             FoxgloveReplayTrace.Enabled = false;
             Assert.Null(replayFailure);
             Assert.Null(lifecycleFailure);

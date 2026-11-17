@@ -370,7 +370,7 @@ class _UnityIl2CppBuildTestsPart2:
         tree._observed_posix_pids.add(222)
         tree._observed_posix_start_tokens = {111: "root", 222: "child"}
         with mock.patch.object(
-            self.unity_il2cpp,
+            self.unity_il2cpp.OwnedProcessTree,
             "_posix_process_start_token",
             side_effect=lambda pid: {111: "root", 222: "child"}.get(pid),
         ):
@@ -390,7 +390,7 @@ class _UnityIl2CppBuildTestsPart2:
         tree._observed_posix_pids.update({222})
         tree._observed_posix_start_tokens = {111: "root", 222: "old"}
         with mock.patch.object(
-            self.unity_il2cpp,
+            self.unity_il2cpp.OwnedProcessTree,
             "_posix_process_start_token",
             side_effect=lambda pid: {111: "root", 222: "new"}.get(pid),
         ):

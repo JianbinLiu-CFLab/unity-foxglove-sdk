@@ -17,10 +17,11 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
         [Fact]
         public void TransientCapacityWaitDoesNotStarveHeartbeat()
         {
+            using var initialHeartbeatSeen = new ManualResetEventSlim(false);
+            using var capacityFactoryStarted = new ManualResetEventSlim(false);
             using var capacityWait = new ManualResetEventSlim(false);
-            using var releaseCapacity = new ManualResetEventSlim(false);
             using var heartbeatSeen = new ManualResetEventSlim(false);
-            var allowRequest = 0;
+            var factoryCalls = 0;
             Exception exchangeFailure = null;
             using var peer = Ros2BridgeConnectionTests.LoopbackPeer.Start(stream =>
             {
@@ -31,18 +32,6 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                     Ros2BridgeConnectionTests.HelloAck(
                         hello.RequestId,
                         includeSubscribe: true));
-
-                var heartbeat = Ros2BridgeConnectionTests.Parse(
-                    Ros2BridgeConnectionTests.ReadWireFrame(stream));
-                Assert.Equal(U2R2Operation.HealthPing, heartbeat.Operation);
-                Ros2BridgeConnectionTests.WriteFrame(
-                    stream,
-                    Ros2BridgeConnectionTests.Response(
-                        "health_pong",
-                        heartbeat.RequestId,
-                        heartbeat.SessionId,
-                        heartbeat.ConnectionGeneration));
-                heartbeatSeen.Set();
 
                 while (true)
                 {
@@ -57,6 +46,10 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                                 request.RequestId,
                                 request.SessionId,
                                 request.ConnectionGeneration));
+                        if (!initialHeartbeatSeen.IsSet)
+                            initialHeartbeatSeen.Set();
+                        else if (capacityFactoryStarted.IsSet)
+                            heartbeatSeen.Set();
                         continue;
                     }
 
@@ -73,7 +66,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
             });
 
             var limits = U2R2ProtocolLimits.Default.With(
-                ("readTimeoutMs", 1000UL));
+                ("readTimeoutMs", 100UL));
             using var transport = new Ros2BridgeTcpClient();
             transport.Connect("127.0.0.1", peer.Port, 5000);
             using var connection = new Ros2BridgeConnection(
@@ -84,6 +77,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                 pendingCapacity: 4,
                 timeoutMs: 2000);
             connection.Start();
+            Assert.True(initialHeartbeatSeen.Wait(TimeSpan.FromSeconds(2)));
 
             var exchange = new Thread(() =>
             {
@@ -92,8 +86,12 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                     connection.Exchange(
                         (requestId, active) =>
                         {
-                            if (Volatile.Read(ref allowRequest) == 0)
+                            if (Interlocked.Increment(ref factoryCalls) == 1)
+                            {
+                                capacityFactoryStarted.Set();
+                                Thread.Sleep(70);
                                 return null;
+                            }
                             return Ros2BridgeV2SessionCodec
                                 .CreatePublisherPreparation(
                                     active,
@@ -106,7 +104,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                         waitForRequestCapacity: () =>
                         {
                             capacityWait.Set();
-                            Assert.True(releaseCapacity.Wait(TimeSpan.FromSeconds(3)));
+                            Thread.Sleep(10);
                         });
                 }
                 catch (Exception exception)
@@ -116,13 +114,12 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
             });
             exchange.Start();
 
+            Assert.True(capacityFactoryStarted.Wait(TimeSpan.FromSeconds(2)));
             Assert.True(capacityWait.Wait(TimeSpan.FromSeconds(2)));
             Assert.True(
-                heartbeatSeen.Wait(TimeSpan.FromMilliseconds(750)),
+                heartbeatSeen.Wait(TimeSpan.FromMilliseconds(90)),
                 "Transient capacity backpressure must not miss the heartbeat deadline.");
 
-            Volatile.Write(ref allowRequest, 1);
-            releaseCapacity.Set();
             Assert.True(exchange.Join(TimeSpan.FromSeconds(3)));
             peer.AssertCompleted();
             Assert.Null(exchangeFailure);

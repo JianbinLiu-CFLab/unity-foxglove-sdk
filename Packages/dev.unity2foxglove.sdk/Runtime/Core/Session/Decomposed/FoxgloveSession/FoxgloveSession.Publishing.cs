@@ -81,7 +81,6 @@ namespace Unity.FoxgloveSDK.Core
 
         private void SendSubscribersAfterLifecycleAdmission(uint channelId, string topic, string source, byte[] payload, ulong logTimeNs)
         {
-            using var publishAdmission = _channelPublishGate.EnterRead();
             List<(uint clientId, uint subscriptionId)> subscribers;
             lock (_channelLifecycleLock)
             {
@@ -125,6 +124,7 @@ namespace Unity.FoxgloveSDK.Core
                 subscribers.Clear();
             }
         }
+
 
         private void WriteMessageSafely(McapRecorder recorder, AdvertiseChannel channel, ulong logTimeNs, byte[] payload)
         {

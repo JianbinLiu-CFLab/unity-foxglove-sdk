@@ -408,6 +408,7 @@ class OwnedProcessTree:
                 except ProcessLookupError:
                     pass
             else:
+                self._observe_posix_group_after_exit()
                 for process_id in self._observed_posix_pids:
                     start_token = self._observed_posix_start_tokens.get(process_id)
                     if (
@@ -462,6 +463,7 @@ class OwnedProcessTree:
                 # only observed PIDs whose start token still matches. A fresh
                 # group enumeration could target unrelated processes after
                 # numeric PGID reuse.
+                self._observe_posix_group_after_exit()
                 for process_id in self._observed_posix_pids:
                     start_token = self._observed_posix_start_tokens.get(process_id)
                     if (
@@ -474,6 +476,22 @@ class OwnedProcessTree:
                     except (OSError, ProcessLookupError):
                         pass
             self._posix_process_group_id = None
+
+    def _observe_posix_group_after_exit(self) -> None:
+        """Record authenticated group members after the root process exits."""
+        if self._posix_session_id is None:
+            return
+        observed = _posix_process_group_pids(
+            self._posix_process_group_id,
+            self._posix_session_id,
+        )
+        self._observed_posix_pids.update(observed)
+        for process_id in observed:
+            if process_id in self._observed_posix_start_tokens:
+                continue
+            start_token = self._posix_process_start_token(process_id)
+            if start_token is not None:
+                self._observed_posix_start_tokens[process_id] = start_token
 
 
 def start_owned_process(cmd: List[str], root: Path, **popen_kwargs) -> OwnedProcessTree:
