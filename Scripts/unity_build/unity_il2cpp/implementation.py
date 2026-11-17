@@ -249,10 +249,13 @@ def finish_log_tail(log_path: Path, offset: int, state: _LogTailState) -> None:
     return _phase192_finish_log_tail_impl(log_path, offset, state)
 
 
-def _posix_process_group_pids(pid: int) -> List[int]:
+def _posix_process_group_pids(
+    pid: int,
+    session_id: Optional[int] = None,
+) -> List[int]:
     """Enumerate process-group members through the split process implementation."""
     _phase192_sync_parts()
-    return _phase192_posix_process_group_pids_impl(pid)
+    return _phase192_posix_process_group_pids_impl(pid, session_id)
 
 
 def start_owned_process(cmd: List[str], root: Path, **popen_kwargs) -> OwnedProcessTree:
