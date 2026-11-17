@@ -50,7 +50,7 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         public void Publish(uint channelId, byte[] payload, ulong logTimeNs)
         {
-            lock (_channelPublishGate)
+            using (_channelPublishGate.EnterRead())
             {
                 AdvertiseChannel channel;
                 bool recordingOnly;
