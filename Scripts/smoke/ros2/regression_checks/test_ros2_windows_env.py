@@ -193,9 +193,7 @@ class Ros2WindowsEnvTests(unittest.TestCase):
 
     def test_launch_rviz_checks_visible_window_when_wait_requested(self) -> None:
         """A positive window wait must exercise the visible-window probe."""
-        import importlib
-
-        rviz_module = importlib.import_module("_ros2_windows_env.rviz")
+        rviz_module = sys.modules[ros2env.launch_rviz.__module__]
         with tempfile.TemporaryDirectory() as temp:
             ros2_root = Path(temp) / "ros2_lyrical"
             rviz_exe = ros2_root / "bin" / "rviz2.exe"
