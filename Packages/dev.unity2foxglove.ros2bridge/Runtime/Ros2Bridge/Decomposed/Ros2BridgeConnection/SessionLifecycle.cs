@@ -317,6 +317,13 @@ namespace Unity2Foxglove.Ros2Bridge
                         _requestConstructionInProgress = false;
                         Monitor.PulseAll(_gate);
                     }
+                    try
+                    {
+                        _writerSignal.Set();
+                    }
+                    catch (ObjectDisposedException)
+                    {
+                    }
                 }
             }
 
