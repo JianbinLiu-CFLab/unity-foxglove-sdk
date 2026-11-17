@@ -20,25 +20,27 @@ namespace Unity2Foxglove.Tests.PlayMode
         public IEnumerator LidarAcceptance_ElapsedPhysicsTimeSpansMultipleTicks()
         {
             var target = CreateTarget(new Vector3(0f, 0f, 5f));
-            var recorderObject = new GameObject("lidar-physics-time");
-            var recorder = recorderObject.AddComponent<FixedTimeRecorder>();
+            var stepperObject = new GameObject("lidar-physics-steps");
+            var stepper = stepperObject.AddComponent<PhysicsStepAlternator>();
             var lidar = CreateLidar("lidar-timing", "timing-frame", target.layer, pixelsPerColumn: 4, columnsPerFrame: 256);
             var previousSimulationMode = Physics.simulationMode;
             var previousFixedDeltaTime = Time.fixedDeltaTime;
-            var scanStartPhysSeconds = 0d;
             try
             {
                 Physics.simulationMode = SimulationMode.Script;
-                Time.fixedDeltaTime = 0.02f;
-                yield return null;
-                scanStartPhysSeconds = Time.fixedTimeAsDouble;
+                var activeScanFrameField = typeof(VirtualLidar).GetField("_activeScanFrame", PrivateInstance);
+                var scanStartField = typeof(VirtualLidar).GetField("_activeScanStartPhysSeconds", PrivateInstance);
+                Assert.That(activeScanFrameField, Is.Not.Null, "Missing active scan frame field.");
+                Assert.That(scanStartField, Is.Not.Null, "Missing active scan start field.");
+                double? scanStartPhysSeconds = null;
                 var ticks = 0;
                 PointCloudFrame firstFrame = null;
                 for (; ticks < 120; ticks++)
                 {
-                    var delta = ticks % 2 == 0 ? 0.037f : 0.061f;
-                    Physics.Simulate(delta);
+                    Physics.Simulate(Time.fixedDeltaTime);
                     yield return new WaitForFixedUpdate();
+                    if (scanStartPhysSeconds == null && activeScanFrameField.GetValue(lidar) != null)
+                        scanStartPhysSeconds = (double)scanStartField.GetValue(lidar);
                     if (lidar.LastFrame != null && lidar.LastFrame.Points.Count >= 4)
                     {
                         firstFrame = lidar.LastFrame;
@@ -60,10 +62,12 @@ namespace Unity2Foxglove.Tests.PlayMode
                     Assert.That(offsets[index], Is.GreaterThanOrEqualTo(offsets[index - 1]));
                 Assert.That(offsets[offsets.Count - 1] - offsets[0], Is.GreaterThan(0.04f));
                 Assert.That(ticks, Is.GreaterThan(3), "The acceptance scan did not span multiple physics ticks.");
-                Assert.That(recorder.Times.Count, Is.GreaterThan(3));
-                var expectedElapsedByColumn = BuildExpectedAcquisitionElapsedByColumn(
-                    recorder.Times,
-                    scanStartPhysSeconds,
+                Assert.That(scanStartPhysSeconds.HasValue, Is.True, "VirtualLidar never started a scan.");
+                AssertElapsedDiffersFromNominalStep(stepper, scanStartPhysSeconds.Value);
+                var expectedByColumn = BuildExpectedAcquisitionByColumn(
+                    stepper.Times,
+                    stepper.NominalSteps,
+                    scanStartPhysSeconds.Value,
                     columns: 256,
                     budgetColumns: 64);
 
@@ -74,22 +78,22 @@ namespace Unity2Foxglove.Tests.PlayMode
                         azimuth += 2d * Math.PI;
                     var column = (int)Math.Round(azimuth / (2d * Math.PI) * 256d) % 256;
                     var normalizedOffset = column / 256f;
-                    Assert.That(expectedElapsedByColumn.TryGetValue(column, out var expectedElapsed), Is.True, $"No acquisition time was recorded for column {column}.");
-                    var expectedOffset = Unity.FoxgloveSDK.Sensors.Lidar.LidarScanTiming.AcquisitionOffsetSeconds(
-                        expectedElapsed,
+                    Assert.That(expectedByColumn.TryGetValue(column, out var expected), Is.True, $"No acquisition time was recorded for column {column}.");
+                    var expectedOffset = LidarScanTiming.AcquisitionOffsetSeconds(
+                        expected.ElapsedSeconds,
                         0d,
                         normalizedOffset,
-                        Time.fixedDeltaTime);
-                    Assert.That(point.TimeOffsetSeconds, Is.EqualTo(expectedOffset).Within(0.003f));
+                        expected.NominalStepSeconds);
+                    Assert.That(point.TimeOffsetSeconds, Is.EqualTo(expectedOffset).Within(0.003f), $"Unexpected acquisition offset for column {column}.");
                 }
             }
             finally
             {
+                Object.DestroyImmediate(stepperObject);
                 Physics.simulationMode = previousSimulationMode;
                 Time.fixedDeltaTime = previousFixedDeltaTime;
                 Object.DestroyImmediate(target);
                 Object.DestroyImmediate(lidar.gameObject);
-                Object.DestroyImmediate(recorderObject);
             }
         }
 
@@ -166,19 +170,37 @@ namespace Unity2Foxglove.Tests.PlayMode
             return target;
         }
 
-        private static Dictionary<int, double> BuildExpectedAcquisitionElapsedByColumn(
+        private static void AssertElapsedDiffersFromNominalStep(PhysicsStepAlternator stepper, double scanStartPhysSeconds)
+        {
+            var distinguishingSteps = 0;
+            for (var index = 1; index < stepper.Times.Count; index++)
+            {
+                if (stepper.Times[index] <= scanStartPhysSeconds)
+                    continue;
+                var elapsed = stepper.Times[index] - stepper.Times[index - 1];
+                if (Math.Abs(elapsed - stepper.NominalSteps[index]) > 0.01d)
+                    distinguishingSteps++;
+            }
+
+            Assert.That(distinguishingSteps, Is.GreaterThan(3), "Elapsed physics time did not differ from the nominal step seen by VirtualLidar.");
+        }
+
+        private static Dictionary<int, (double ElapsedSeconds, float NominalStepSeconds)> BuildExpectedAcquisitionByColumn(
             IReadOnlyList<double> fixedTimes,
+            IReadOnlyList<float> nominalSteps,
             double scanStartPhysSeconds,
             int columns,
             int budgetColumns)
         {
-            var expected = new Dictionary<int, double>();
+            var expected = new Dictionary<int, (double ElapsedSeconds, float NominalStepSeconds)>();
             var progress = 0d;
             var cursor = 0;
             var previousPhysSeconds = scanStartPhysSeconds;
             for (var index = 0; index < fixedTimes.Count && cursor < columns; index++)
             {
                 var acquisitionPhysSeconds = fixedTimes[index];
+                if (acquisitionPhysSeconds <= scanStartPhysSeconds)
+                    continue;
                 var elapsedPhysicsSeconds = acquisitionPhysSeconds - previousPhysSeconds;
                 previousPhysSeconds = acquisitionPhysSeconds;
                 progress = LidarScanTiming.AdvanceColumnProgress(
@@ -192,7 +214,7 @@ namespace Unity2Foxglove.Tests.PlayMode
                     continue;
 
                 for (var column = 0; column < columnsToEmit; column++)
-                    expected[cursor + column] = acquisitionPhysSeconds - scanStartPhysSeconds;
+                    expected[cursor + column] = (acquisitionPhysSeconds - scanStartPhysSeconds, nominalSteps[index]);
                 progress -= columnsToEmit;
                 cursor += columnsToEmit;
             }
@@ -285,16 +307,6 @@ namespace Unity2Foxglove.Tests.PlayMode
             var field = typeof(VirtualLidar).GetField(name, PrivateInstance);
             Assert.That(field, Is.Not.Null, $"Missing serialized field {name}.");
             field.SetValue(lidar, value);
-        }
-
-        private sealed class FixedTimeRecorder : MonoBehaviour
-        {
-            public List<double> Times { get; } = new List<double>();
-
-            private void FixedUpdate()
-            {
-                Times.Add(Time.fixedTimeAsDouble);
-            }
         }
     }
 }
