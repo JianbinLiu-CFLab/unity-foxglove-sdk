@@ -223,6 +223,46 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
                     )
                 )
 
+    def test_entrypoint_section_rejects_unreviewed_delegate_calls(self) -> None:
+        """The forwarding function can call only an exported relative delegate without arguments."""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            facade = self._write_package(
+                root,
+                entrypoint_body=(
+                    "from time import sleep\n"
+                    "def run_entrypoint():\n"
+                    "    return sleep(86400)\n"
+                    "__all__ = ['run_entrypoint']\n"
+                ),
+            )
+            self.assertFalse(
+                surface_compare._approved_entrypoint_section(
+                    facade.with_suffix("") / "entrypoint.py"
+                )
+            )
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            facade = self._write_package(
+                root,
+                entrypoint_body=(
+                    "def run_entrypoint():\n"
+                    "    from .live import missing\n"
+                    "    return missing()\n"
+                    "__all__ = ['run_entrypoint']\n"
+                ),
+            )
+            (facade.with_suffix("") / "live.py").write_text(
+                "def other():\n    return 0\n__all__ = ['other']\n",
+                encoding="utf-8",
+            )
+            self.assertFalse(
+                surface_compare._approved_entrypoint_section(
+                    facade.with_suffix("") / "entrypoint.py"
+                )
+            )
+
     def test_entrypoint_section_rejects_async_and_required_arguments(self) -> None:
         """The synchronous zero-argument wrapper contract rejects incompatible callables."""
         for source in (

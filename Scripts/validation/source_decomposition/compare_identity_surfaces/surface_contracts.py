@@ -341,6 +341,7 @@ def _entrypoint_executable_body_is_safe(
 ) -> bool:
     """Return whether the forwarding function has only reviewed executable statements."""
     imported_names: set[str] = set()
+    delegate_names: set[str] = set()
     dangerous_bound_names: set[str] = set()
     for statement in tree.body:
         if isinstance(statement, ast.Import):
@@ -370,10 +371,28 @@ def _entrypoint_executable_body_is_safe(
             if statement.level != 1 or not statement.module or any(alias.name == "*" for alias in statement.names):
                 return False
             module_path = path.parent / Path(*statement.module.split("."))
-            if not (module_path.with_suffix(".py").is_file() or (module_path / "__init__.py").is_file()):
+            target = module_path.with_suffix(".py") if module_path.with_suffix(".py").is_file() else module_path / "__init__.py"
+            if not target.is_file():
                 return False
+            target_tree = _parse_source(target.read_text(encoding="utf-8"), target)
+            exported: set[str] = set()
+            for target_node in target_tree.body:
+                if not (
+                    isinstance(target_node, ast.Assign)
+                    and any(isinstance(item, ast.Name) and item.id == "__all__" for item in target_node.targets)
+                ):
+                    continue
+                try:
+                    declared = ast.literal_eval(target_node.value)
+                except (TypeError, ValueError, SyntaxError):
+                    continue
+                if isinstance(declared, (list, tuple, set)):
+                    exported.update(name for name in declared if isinstance(name, str))
             for alias in statement.names:
+                if alias.name not in exported and alias.name not in _top_level_names(target_tree, include_imports=True):
+                    return False
                 imported_names.add(alias.asname or alias.name)
+                delegate_names.add(alias.asname or alias.name)
         elif isinstance(statement, ast.Attribute) and statement.attr in {
             "environ", "open", "read_text", "read_bytes", "write_text", "write_bytes",
             "unlink", "remove", "replace", "rename", "mkdir", "rmdir", "chmod",
@@ -387,7 +406,18 @@ def _entrypoint_executable_body_is_safe(
         elif isinstance(statement, ast.Call):
             if isinstance(statement.func, ast.Attribute):
                 return False
-            if not isinstance(statement.func, ast.Name) or statement.func.id not in imported_names:
+            if not isinstance(statement.func, ast.Name) or statement.func.id not in delegate_names:
+                return False
+            if any(
+                not (
+                    isinstance(argument, ast.Subscript)
+                    and isinstance(argument.value, ast.Attribute)
+                    and isinstance(argument.value.value, ast.Name)
+                    and argument.value.value.id == "sys"
+                    and argument.value.attr == "argv"
+                )
+                for argument in statement.args
+            ):
                 return False
     if dangerous_bound_names & imported_names:
         return False
