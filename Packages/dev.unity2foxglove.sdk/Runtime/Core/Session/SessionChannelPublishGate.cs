@@ -19,12 +19,15 @@ namespace Unity.FoxgloveSDK.Core
 
         internal IDisposable EnterWrite()
         {
+            if (_gate.IsReadLockHeld && !_gate.IsWriteLockHeld)
+                return Releaser.Noop;
             _gate.EnterWriteLock();
             return new Releaser(_gate, read: false);
         }
 
         private sealed class Releaser : IDisposable
         {
+            internal static readonly IDisposable Noop = new Releaser(null, read: false);
             private readonly ReaderWriterLockSlim _gate;
             private readonly bool _read;
 
@@ -36,6 +39,8 @@ namespace Unity.FoxgloveSDK.Core
 
             public void Dispose()
             {
+                if (_gate == null)
+                    return;
                 if (_read)
                     _gate.ExitReadLock();
                 else
