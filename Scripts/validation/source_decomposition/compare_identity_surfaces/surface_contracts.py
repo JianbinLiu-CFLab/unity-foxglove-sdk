@@ -513,6 +513,36 @@ def _dynamic_initializer_exports_are_trusted(tree: ast.Module) -> bool:
         ):
             continue
         for inner in outer.body:
+            if (
+                isinstance(inner, ast.For)
+                and isinstance(inner.target, ast.Name)
+                and inner.target.id == "_phase192_name"
+                and isinstance(inner.iter, ast.Name)
+                and inner.iter.id == "_PHASE192_EXPORT_NAMES"
+            ):
+                for statement in inner.body:
+                    if not (
+                        isinstance(statement, ast.Assign)
+                        and len(statement.targets) == 1
+                        and isinstance(statement.targets[0], ast.Subscript)
+                        and isinstance(statement.targets[0].value, ast.Attribute)
+                        and isinstance(statement.targets[0].value.value, ast.Name)
+                        and statement.targets[0].value.value.id == "_phase192_section"
+                        and statement.targets[0].value.attr == "__dict__"
+                        and isinstance(statement.targets[0].slice, ast.Name)
+                        and statement.targets[0].slice.id == "_phase192_name"
+                        and isinstance(statement.value, ast.Subscript)
+                        and isinstance(statement.value.value, ast.Call)
+                        and isinstance(statement.value.value.func, ast.Name)
+                        and statement.value.value.func.id == "globals"
+                        and not statement.value.value.args
+                        and not statement.value.value.keywords
+                        and isinstance(statement.value.slice, ast.Name)
+                        and statement.value.slice.id == "_phase192_name"
+                    ):
+                        continue
+                    allowed_calls.add(id(statement.value.value))
+                continue
             if not (
                 isinstance(inner, ast.For)
                 and isinstance(inner.target, ast.Name)
