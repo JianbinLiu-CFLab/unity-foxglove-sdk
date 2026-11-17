@@ -335,7 +335,8 @@ class _UnityIl2CppBuildTestsPart2:
 
     def test_posix_termination_poll_avoids_repeated_ps_processes(self) -> None:
         """Quiescence polling should use the process-group primitive, not shell out on every pass."""
-        process = mock.Mock()
+        process = mock.Mock(pid=111)
+        process.poll.return_value = None
         process.wait.return_value = 0
 
         kill_signal = 9
@@ -367,13 +368,36 @@ class _UnityIl2CppBuildTestsPart2:
         process.poll.return_value = 0
         tree = self.unity_il2cpp.OwnedProcessTree(process, posix_process_group_id=4321)
         tree._observed_posix_pids.add(222)
-        with mock.patch.object(self.unity_il2cpp, "_posix_process_group_exists", return_value=True):
+        tree._observed_posix_start_tokens = {111: "root", 222: "child"}
+        with mock.patch.object(
+            self.unity_il2cpp,
+            "_posix_process_start_token",
+            side_effect=lambda pid: {111: "root", 222: "child"}.get(pid),
+        ):
             with mock.patch.object(self.unity_il2cpp, "_posix_process_group_pids", return_value=[999]) as enumerate_pids:
                 with mock.patch.object(self.unity_il2cpp.os, "kill") as kill:
                     tree.close()
 
         enumerate_pids.assert_not_called()
         self.assertEqual({111, 222}, {call.args[0] for call in kill.call_args_list})
+
+    @unittest.skipIf(os.name == "nt", "POSIX process identity seam")
+    def test_close_skips_an_observed_pid_after_start_token_changes(self) -> None:
+        """Post-exit cleanup must not signal a PID that was recycled."""
+        process = mock.Mock(pid=111)
+        process.poll.return_value = 0
+        tree = self.unity_il2cpp.OwnedProcessTree(process, posix_process_group_id=4321)
+        tree._observed_posix_pids.update({222})
+        tree._observed_posix_start_tokens = {111: "root", 222: "old"}
+        with mock.patch.object(
+            self.unity_il2cpp,
+            "_posix_process_start_token",
+            side_effect=lambda pid: {111: "root", 222: "new"}.get(pid),
+        ):
+            with mock.patch.object(self.unity_il2cpp.os, "kill") as kill:
+                tree.close()
+
+        self.assertEqual([111], [call.args[0] for call in kill.call_args_list])
 
     def test_session_filtered_group_enumeration_fails_closed_without_ps(self) -> None:
         """A session-bound enumeration must not fall back to an unauthenticated group id."""
