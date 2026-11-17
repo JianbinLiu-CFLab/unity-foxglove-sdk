@@ -196,11 +196,18 @@ namespace Unity2Foxglove.Tests.PlayMode
             var progress = 0d;
             var cursor = 0;
             var previousPhysSeconds = scanStartPhysSeconds;
+            var primed = false;
             for (var index = 0; index < fixedTimes.Count && cursor < columns; index++)
             {
                 var acquisitionPhysSeconds = fixedTimes[index];
                 if (acquisitionPhysSeconds <= scanStartPhysSeconds)
                     continue;
+                if (!primed)
+                {
+                    previousPhysSeconds = acquisitionPhysSeconds;
+                    primed = true;
+                    continue;
+                }
                 var elapsedPhysicsSeconds = acquisitionPhysSeconds - previousPhysSeconds;
                 previousPhysSeconds = acquisitionPhysSeconds;
                 progress = LidarScanTiming.AdvanceColumnProgress(
