@@ -339,6 +339,135 @@ class SourceTextRatchetTests(unittest.TestCase):
             self.assertIn("SOURCE_TEXT_RATCHET_CLASS_C_INCREASE", output)
             self.assertIn("SOURCE_TEXT_RATCHET_CLASS_A_DECREASE", output)
 
+    def _class_c_replacement_fixture(self, directory: str, head_signature: str | None = None) -> Path:
+        """Create a fixture whose trusted base approves one exact Class C replacement."""
+        from Scripts.validation.source_text_inventory_ratchet_helpers import (
+            _ratchet_assertion_semantics,
+            _ratchet_change_tokens,
+            _ratchet_key_signature,
+        )
+
+        root = self._git_fixture(directory)
+        validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+        original = validation.read_text(encoding="utf-8")
+        key = ("packages/fixture/tests/runtime/fixturevalidation.cs", "--phase-fixture", "C")
+
+        def signature() -> str:
+            """Return the fixture key signature for the current working tree."""
+            rows = inventory(root)
+            return _ratchet_key_signature(
+                _ratchet_change_tokens(rows).get(key),
+                _ratchet_assertion_semantics(rows).get(key),
+            )
+
+        base_signature = signature()
+        validation.write_text(original.replace('Contains("Product")', 'Contains("Prod")'), encoding="utf-8")
+        approved_head = head_signature or signature()
+        validation.write_text(original, encoding="utf-8")
+        replacements = root / "Scripts/validation/source_text_ratchet_replacements.json"
+        replacements.write_text(
+            json.dumps(
+                {
+                    "replacements": [
+                        {
+                            "file": "Packages/fixture/Tests/Runtime/FixtureValidation.cs",
+                            "validation_flag": "--phase-fixture",
+                            "class": "C",
+                            "base_signature": base_signature,
+                            "head_signature": approved_head,
+                            "reason": "The guarded product token moved behind a reviewed helper.",
+                            "replacement": "behavior-test",
+                        }
+                    ]
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+        subprocess.run(["git", "-C", str(root), "commit", "-qm", "trusted-replacement"], check=True)
+        validation.write_text(original.replace('Contains("Product")', 'Contains("Prod")'), encoding="utf-8")
+        return root
+
+    def test_class_c_replacement_passes_with_exact_trusted_signatures(self):
+        """Allow an in-place Class C edit only when the trusted base pins both signatures."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._class_c_replacement_fixture(directory)
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(0, code, output)
+            self.assertIn("SOURCE_TEXT_RATCHET_REPLACEMENT_APPROVED", output)
+            self.assertNotIn("SOURCE_TEXT_RATCHET_ASSERTION_CHANGED", output)
+
+    def test_class_c_replacement_with_different_head_signature_fails(self):
+        """Reject a replacement approval that pins a different head assertion."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._class_c_replacement_fixture(directory, head_signature="0" * 64)
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code, output)
+            self.assertIn("SOURCE_TEXT_RATCHET_REPLACEMENT_MISMATCH", output)
+            self.assertIn("SOURCE_TEXT_RATCHET_ASSERTION_CHANGED", output)
+
+    def test_class_c_replacement_outside_trusted_base_fails(self):
+        """Ignore replacement approvals that exist only in the reviewed head."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._class_c_replacement_fixture(directory)
+            subprocess.run(
+                ["git", "-C", str(root), "rm", "-q", "Scripts/validation/source_text_ratchet_replacements.json"],
+                check=True,
+            )
+            subprocess.run(["git", "-C", str(root), "commit", "-qm", "drop-trusted-replacement"], check=True)
+            subprocess.run(
+                ["git", "-C", str(root), "checkout", "-q", "HEAD~1", "--", "Scripts/validation/source_text_ratchet_replacements.json"],
+                check=True,
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code, output)
+            self.assertIn("SOURCE_TEXT_RATCHET_ASSERTION_CHANGED", output)
+            self.assertNotIn("SOURCE_TEXT_RATCHET_REPLACEMENT_APPROVED", output)
+
+    def test_class_c_replacement_rejects_count_changes_and_other_classes(self):
+        """Keep Class C count changes fail-closed and reject non-C replacement entries."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._class_c_replacement_fixture(directory)
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace(
+                    "    }\n}\n", '        Check(source.Contains("Product"));\n    }\n}\n'
+                ),
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code, output)
+            self.assertIn("SOURCE_TEXT_RATCHET_CLASS_C_INCREASE", output)
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(directory)
+            replacements = root / "Scripts/validation/source_text_ratchet_replacements.json"
+            replacements.write_text(
+                json.dumps(
+                    {
+                        "replacements": [
+                            {
+                                "file": "Packages/fixture/Tests/Runtime/FixtureValidation.cs",
+                                "validation_flag": "--phase-fixture",
+                                "class": "A",
+                                "base_signature": "1" * 64,
+                                "head_signature": "2" * 64,
+                                "reason": "A forged class must not be accepted as a replacement.",
+                                "replacement": "behavior-test",
+                            }
+                        ]
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+            subprocess.run(["git", "-C", str(root), "commit", "-qm", "forged-replacement"], check=True)
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code, output)
+            self.assertIn("replacement 0 has invalid class", output)
+
     def test_removed_class_a_requires_exact_trusted_approval(self):
         """Require an exact trusted-base approval when a Class A row is removed."""
         with tempfile.TemporaryDirectory() as directory:
