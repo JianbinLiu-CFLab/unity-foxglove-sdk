@@ -111,6 +111,7 @@ namespace Unity.FoxgloveSDK.Core
 
         private void RegisterChannelCore(AdvertiseChannel channel, bool recordingOnly)
         {
+            lock (_channelPublishGate)
             lock (_channelLifecycleLock)
                 RegisterChannelCoreLocked(channel, recordingOnly);
         }
@@ -173,7 +174,8 @@ namespace Unity.FoxgloveSDK.Core
             var advertiseAttempted = false;
             var unadvertiseAttempted = false;
             var preexistingLiveAdvertisement = previousLiveAllowed
-                                                && liveAllowed;
+                                                && liveAllowed
+                                                && sameDescriptor;
             try
             {
                 if (recordingOnly)
@@ -257,7 +259,10 @@ namespace Unity.FoxgloveSDK.Core
                    left.SchemaEncoding ?? string.Empty,
                    right.SchemaEncoding ?? string.Empty,
                    StringComparison.Ordinal)
-               && string.Equals(left.Schema, right.Schema, StringComparison.Ordinal);
+               && string.Equals(
+                   left.Schema ?? string.Empty,
+                   right.Schema ?? string.Empty,
+                   StringComparison.Ordinal);
 
         private static bool EnsureRecorderChannel(McapRecorder recorder, AdvertiseChannel channel)
         {
@@ -306,6 +311,7 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         public void UnregisterChannel(uint channelId)
         {
+            lock (_channelPublishGate)
             lock (_channelLifecycleLock)
             {
                 var ch = _channels.Get(channelId);

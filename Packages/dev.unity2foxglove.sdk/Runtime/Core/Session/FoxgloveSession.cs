@@ -42,6 +42,7 @@ namespace Unity.FoxgloveSDK.Core
         private readonly IPrioritizedFoxgloveTransport _prioritizedTransport;
         private readonly IFoxgloveClock _clock;
         private readonly object _channelLifecycleLock = new object();
+        private readonly object _channelPublishGate = new object();
         private readonly object _publishQueueLock = new object();
         // Serializes service registry changes with client-visible advertise /
         // unadvertise frames. Service calls take the same lock while they are
