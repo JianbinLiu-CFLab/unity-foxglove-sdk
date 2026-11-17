@@ -1,0 +1,22 @@
+{
+  "replacements": [
+    {
+      "file": "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase134_19Validation.cs",
+      "validation_flag": "--phase134-19",
+      "class": "C",
+      "base_signature": "41daf51fce3182827e499854c5a7641847c31012fb84f84954e75094535345e4",
+      "head_signature": "4e69cc85c46b2cab61e6875a9263b7e9d795c2df2f345ddf47f9bc614bd657ba",
+      "reason": "PR #760 moves the verified OpenH264 DLL publish from File.Move into OpenH264ArtifactPairPublisher; 134-19-C2 keeps verify-before-publish ordering against the new call.",
+      "replacement": "EditorSafetyReviewTests.OpenH264PairPublisherRestoresExistingPairWhenHelperPublishFails"
+    },
+    {
+      "file": "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase134_30Validation.cs",
+      "validation_flag": "--phase134-30",
+      "class": "C",
+      "base_signature": "6208d922a21fa3d64a2d7abea38f240a2555e94a24697eec1c47700120da8ad5",
+      "head_signature": "228d67633939fa0c6696b55727fc40d61a25f1d5fce931db9d55201769e65b46",
+      "reason": "PR #760 makes the shared ROS2 env helpers pass ros_distro=\"jazzy\" explicitly because build_ros_env rejects roots without an authenticated distro marker; 134-30C/F pin the new call.",
+      "replacement": "Phase134_30Validation 134-30C and 134-30F shared ROS2 env checks"
+    }
+  ]
+}

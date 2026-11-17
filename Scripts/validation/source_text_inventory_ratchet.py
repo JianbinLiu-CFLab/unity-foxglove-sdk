@@ -31,6 +31,7 @@ try:
         _helper_signature_records,
         _helper_signatures_at_head,
         _helper_signatures_at_revision,
+        _apply_ratchet_replacements,
         _load_ratchet_approvals,
         _ratchet_change_tokens,
         _ratchet_counts,
@@ -49,6 +50,7 @@ except ImportError:
         _helper_signature_records,
         _helper_signatures_at_head,
         _helper_signatures_at_revision,
+        _apply_ratchet_replacements,
         _load_ratchet_approvals,
         _ratchet_change_tokens,
         _ratchet_counts,
@@ -813,6 +815,12 @@ def _verify_count_ratchet(
         )
         if message not in failures:
             failures.append(message)
+
+    approval_errors.extend(
+        _apply_ratchet_replacements(
+            root, revision, failures, (base_tokens, base_semantics), (head_tokens, head_semantics)
+        )
+    )
 
     helper_files = {
         str(row.get("file", ""))

@@ -21,6 +21,10 @@ RATCHET_CLASSES = frozenset({"A", "B", "C", "UNKNOWN", "UNRESOLVED"})
 RATCHET_APPROVAL_FIELDS = frozenset(
     {"file", "validation_flag", "class", "base_count", "head_count", "reason", "replacement"}
 )
+RATCHET_REPLACEMENTS_PATH = Path("Scripts/validation/source_text_ratchet_replacements.json")
+RATCHET_REPLACEMENT_FIELDS = frozenset(
+    {"file", "validation_flag", "class", "base_signature", "head_signature", "reason", "replacement"}
+)
 
 def _ratchet_path(value: object) -> str:
     """Normalize one inventory path for count-ratchet keys."""
@@ -150,6 +154,102 @@ def _load_ratchet_approvals(
         else:
             approvals.append(entry)
     return approvals, errors
+
+def _ratchet_key_signature(
+    tokens: Counter[str] | None, semantics: Counter[tuple[str, ...]] | None
+) -> str:
+    """Hash the exact assertion tokens and semantics recorded for one ratchet key."""
+    payload = {
+        "tokens": sorted((tokens or Counter()).items()),
+        "semantics": sorted([list(signature), count] for signature, count in (semantics or Counter()).items()),
+    }
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+def _load_ratchet_replacements(
+    root: Path, revision: str | None = None
+) -> tuple[list[dict[str, object]], list[str]]:
+    """Load exact Class C in-place replacement approvals from the trusted revision only."""
+    if revision is not None:
+        completed = subprocess.run(
+            ["git", "show", f"{revision}:{RATCHET_REPLACEMENTS_PATH.as_posix()}"],
+            cwd=root,
+            check=False,
+            capture_output=True,
+        )
+        if completed.returncode != 0:
+            return [], []
+        raw = completed.stdout.decode("utf-8")
+    else:
+        path = root / RATCHET_REPLACEMENTS_PATH
+        if not path.is_file():
+            return [], []
+        raw = path.read_text(encoding="utf-8")
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        return [], ["ratchet replacements must contain valid JSON"]
+    if not isinstance(payload, dict) or set(payload) != {"replacements"}:
+        return [], ["ratchet replacements must contain only the replacements field"]
+    entries = payload["replacements"]
+    if not isinstance(entries, list):
+        return [], ["ratchet replacements must be a list"]
+    errors: list[str] = []
+    replacements: list[dict[str, object]] = []
+    seen: set[tuple[str, str]] = set()
+    for index, entry in enumerate(entries):
+        if not isinstance(entry, dict) or set(entry) != RATCHET_REPLACEMENT_FIELDS:
+            errors.append(f"replacement {index} has unexpected fields")
+            continue
+        key = (_ratchet_path(entry["file"]), str(entry["validation_flag"]).strip())
+        entry_errors: list[str] = []
+        if key in seen:
+            entry_errors.append(f"replacement {index} is duplicated")
+        seen.add(key)
+        if entry["class"] != "C":
+            entry_errors.append(f"replacement {index} has invalid class")
+        for field in ("base_signature", "head_signature"):
+            value = entry[field]
+            if not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{64}", value) is None:
+                entry_errors.append(f"replacement {index} has invalid {field}")
+        if entry["base_signature"] == entry["head_signature"]:
+            entry_errors.append(f"replacement {index} does not change the assertion")
+        if not isinstance(entry["reason"], str) or len(entry["reason"].strip()) < 20:
+            entry_errors.append(f"replacement {index} reason is too short")
+        if not isinstance(entry["replacement"], str) or not entry["replacement"].strip():
+            entry_errors.append(f"replacement {index} replacement is empty")
+        if entry_errors:
+            errors.extend(entry_errors)
+        else:
+            replacements.append(entry)
+    return replacements, errors
+
+def _apply_ratchet_replacements(
+    root: Path,
+    revision: str | None,
+    failures: list[str],
+    base: tuple[dict[tuple[str, str, str], Counter[str]], dict[tuple[str, str, str], Counter[tuple[str, ...]]]],
+    head: tuple[dict[tuple[str, str, str], Counter[str]], dict[tuple[str, str, str], Counter[tuple[str, ...]]]],
+) -> list[str]:
+    """Clear Class C assertion changes whose exact signatures the trusted base approves."""
+    replacements, errors = _load_ratchet_replacements(root, revision)
+    for entry in replacements:
+        key = (_ratchet_path(entry["file"]), str(entry["validation_flag"]).strip(), "C")
+        message = f"SOURCE_TEXT_RATCHET_ASSERTION_CHANGED file={key[0]} flag={key[1]} class=C"
+        if message not in failures:
+            continue
+        base_signature = _ratchet_key_signature(base[0].get(key), base[1].get(key))
+        head_signature = _ratchet_key_signature(head[0].get(key), head[1].get(key))
+        verdict = "MISMATCH"
+        if entry["base_signature"] == base_signature and entry["head_signature"] == head_signature:
+            failures.remove(message)
+            verdict = "APPROVED"
+        print(
+            f"SOURCE_TEXT_RATCHET_REPLACEMENT_{verdict} file={key[0]} flag={key[1]} "
+            f"base={base_signature} head={head_signature}"
+        )
+    return errors
 
 def _ratchet_change_tokens(rows: list[dict[str, object]]) -> dict[tuple[str, str, str], Counter[str]]:
     """Collect token multisets for non-blocking changed-key diagnostics."""
