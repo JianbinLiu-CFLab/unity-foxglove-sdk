@@ -198,6 +198,31 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
                 )
             )
 
+    def test_entrypoint_section_rejects_runtime_environment_and_file_access(self) -> None:
+        """The forwarding function cannot read process secrets or filesystem contents."""
+        for source in (
+            (
+                "import os\n"
+                "def run_entrypoint():\n"
+                "    return os.environ['PHASE192_SECRET']\n"
+                "__all__ = ['run_entrypoint']\n"
+            ),
+            (
+                "from pathlib import Path\n"
+                "def run_entrypoint():\n"
+                "    return Path('secret.txt').read_text()\n"
+                "__all__ = ['run_entrypoint']\n"
+            ),
+        ):
+            with self.subTest(source=source), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                facade = self._write_package(root, entrypoint_body=source)
+                self.assertFalse(
+                    surface_compare._approved_entrypoint_section(
+                        facade.with_suffix("") / "entrypoint.py"
+                    )
+                )
+
     def test_entrypoint_section_rejects_async_and_required_arguments(self) -> None:
         """The synchronous zero-argument wrapper contract rejects incompatible callables."""
         for source in (

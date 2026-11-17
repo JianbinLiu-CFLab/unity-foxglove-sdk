@@ -333,6 +333,76 @@ def _is_phase121_configuration_path(
     parts = tuple(part for part in candidate.parts if part not in {".", ""})
     return parts == target
 
+
+def _entrypoint_executable_body_is_safe(
+    tree: ast.Module,
+    path: Path,
+    function: ast.FunctionDef,
+) -> bool:
+    """Return whether the forwarding function has only reviewed executable statements."""
+    imported_names: set[str] = set()
+    dangerous_bound_names: set[str] = set()
+    for statement in tree.body:
+        if isinstance(statement, ast.Import):
+            for alias in statement.names:
+                if alias.name == "*":
+                    return False
+                imported_names.add(alias.asname or alias.name.split(".", 1)[0])
+        elif isinstance(statement, ast.ImportFrom):
+            for alias in statement.names:
+                if alias.name == "*":
+                    return False
+                bound = alias.asname or alias.name
+                imported_names.add(bound)
+                if statement.module == "os" and alias.name in {"environ", "putenv", "unsetenv"}:
+                    dangerous_bound_names.add(bound)
+    for statement in ast.walk(function):
+        if isinstance(statement, ast.Import):
+            if any(
+                alias.name == "*"
+                or alias.name not in {"sys", "argparse", "json", "os", "pathlib", "time", "typing"}
+                for alias in statement.names
+            ):
+                return False
+            for alias in statement.names:
+                imported_names.add(alias.asname or alias.name.split(".", 1)[0])
+        elif isinstance(statement, ast.ImportFrom):
+            if statement.level != 1 or not statement.module or any(alias.name == "*" for alias in statement.names):
+                return False
+            module_path = path.parent / Path(*statement.module.split("."))
+            if not (module_path.with_suffix(".py").is_file() or (module_path / "__init__.py").is_file()):
+                return False
+            for alias in statement.names:
+                imported_names.add(alias.asname or alias.name)
+        elif isinstance(statement, ast.Attribute) and statement.attr in {
+            "environ", "open", "read_text", "read_bytes", "write_text", "write_bytes",
+            "unlink", "remove", "replace", "rename", "mkdir", "rmdir", "chmod",
+            "system", "popen", "run", "Popen", "call", "check_call", "check_output",
+        }:
+            return False
+        elif isinstance(statement, ast.Name) and statement.id in {
+            "__import__", "compile", "eval", "exec", "globals", "locals", "vars", "open",
+        }:
+            return False
+        elif isinstance(statement, ast.Call):
+            if isinstance(statement.func, ast.Attribute):
+                return False
+            if not isinstance(statement.func, ast.Name) or statement.func.id not in imported_names:
+                return False
+    if dangerous_bound_names & imported_names:
+        return False
+    body = list(function.body)
+    if not body or not isinstance(body[-1], ast.Return):
+        return False
+    if any(not isinstance(statement, (ast.Import, ast.ImportFrom, ast.Return)) for statement in body):
+        return False
+    if body[-1].value is not None:
+        for statement in ast.walk(body[-1].value):
+            if isinstance(statement, ast.Name) and statement.id not in imported_names:
+                return False
+    return True
+
+
 _ENTRYPOINT_IMPORT_ROOTS = frozenset({"Scripts", "argparse", "sys", "unittest"})
 
 _REVIEWED_DIRECT_ENTRYPOINTS = frozenset({
@@ -340,4 +410,4 @@ _REVIEWED_DIRECT_ENTRYPOINTS = frozenset({
     "Scripts/ros2forunity/windows/lyrical/regression_checks/test_validate_r2fu_runtime_package.py",
 })
 
-__all__ = ['_relative_import_contract', '_symbols', '_section_exports', '_initializer_lines', '_initializer_digest', '_NAMESPACE_RISK_ATTRIBUTES', '_NAMESPACE_RISK_MODULE_ATTRIBUTES', '_NAMESPACE_RISK_NAMES', '_namespace_risk_signatures', '_is_phase121_configuration_path', '_ENTRYPOINT_IMPORT_ROOTS', '_REVIEWED_DIRECT_ENTRYPOINTS', '_entrypoint_section_imports_are_trusted', '_function_signature_is_inert']
+__all__ = ['_relative_import_contract', '_symbols', '_section_exports', '_initializer_lines', '_initializer_digest', '_NAMESPACE_RISK_ATTRIBUTES', '_NAMESPACE_RISK_MODULE_ATTRIBUTES', '_NAMESPACE_RISK_NAMES', '_namespace_risk_signatures', '_is_phase121_configuration_path', '_ENTRYPOINT_IMPORT_ROOTS', '_REVIEWED_DIRECT_ENTRYPOINTS', '_entrypoint_section_imports_are_trusted', '_function_signature_is_inert', '_entrypoint_executable_body_is_safe']

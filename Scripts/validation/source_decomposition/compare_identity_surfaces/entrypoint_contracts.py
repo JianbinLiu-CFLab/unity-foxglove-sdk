@@ -906,12 +906,17 @@ def _approved_entrypoint_section(path: Path) -> bool:
         or arguments.kwarg
     ):
         return False
+
+    if not _entrypoint_executable_body_is_safe(tree, path, definitions[0]):
+        return False
     for node in tree.body:
         if isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
             continue
         if isinstance(node, (ast.Import, ast.ImportFrom)):
             continue
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if node is not definitions[0]:
+                return False
             if node.decorator_list or not _function_signature_is_inert(node):
                 return False
             continue
