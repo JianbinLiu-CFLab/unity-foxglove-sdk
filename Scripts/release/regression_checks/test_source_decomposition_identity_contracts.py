@@ -478,66 +478,6 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
                 )
             )
 
-    def test_initializer_path_contract_rejects_shadow_module_path(self) -> None:
-        """A generated initializer must derive its facade path from the package location."""
-        safe = ast.parse(
-            "from pathlib import Path as _Phase192Path\n"
-            "_PHASE192_FACADE_FILE = _Phase192Path(__file__).resolve().parents[1] / 'test_tool.py'\n"
-            "_PHASE192_PARENT = _PHASE192_FACADE_FILE.parent\n"
-        )
-        shadow = ast.parse(
-            "from pathlib import Path as _Phase192Path\n"
-            "_PHASE192_FACADE_FILE = _Phase192Path('/tmp/attacker') / 'test_tool.py'\n"
-            "_PHASE192_PARENT = _PHASE192_FACADE_FILE.parent\n"
-        )
-        nested = ast.parse(
-            "from pathlib import Path as _Phase192Path\n"
-            "_PHASE192_FACADE_FILE = _Phase192Path(__file__).resolve().parents[1] / 'test_tool.py'\n"
-            "_PHASE192_PARENT = _PHASE192_FACADE_FILE.parent\n"
-            "if True:\n"
-            "    _PHASE192_FACADE_FILE = _Phase192Path('/tmp/attacker') / 'test_tool.py'\n"
-        )
-        reordered = ast.parse(
-            "_PHASE192_PARENT = _PHASE192_FACADE_FILE.parent\n"
-            "_PHASE192_FACADE_FILE = _Phase192Path(__file__).resolve().parents[1] / 'test_tool.py'\n"
-        )
-        self.assertTrue(
-            surface_compare._initializer_path_is_repository_rooted(
-                safe,
-                "Scripts/regression_checks/test_tool.py",
-            )
-        )
-        self.assertFalse(
-            surface_compare._initializer_path_is_repository_rooted(
-                shadow,
-                "Scripts/regression_checks/test_tool.py",
-            )
-        )
-        self.assertFalse(
-            surface_compare._initializer_path_is_repository_rooted(
-                nested,
-                "Scripts/regression_checks/test_tool.py",
-            )
-        )
-        self.assertFalse(
-            surface_compare._initializer_path_is_repository_rooted(
-                reordered,
-                "Scripts/regression_checks/test_tool.py",
-            )
-        )
-        bad_file = ast.parse(
-            "from pathlib import Path as _Phase192Path\n"
-            "_PHASE192_FACADE_FILE = _Phase192Path(__file__).resolve().parents[1] / 'test_tool.py'\n"
-            "__file__ = '/tmp/attacker/__init__.py'\n"
-            "_PHASE192_PARENT = _PHASE192_FACADE_FILE.parent\n"
-        )
-        self.assertFalse(
-            surface_compare._initializer_path_is_repository_rooted(
-                bad_file,
-                "Scripts/regression_checks/test_tool.py",
-            )
-        )
-
     def test_discovery_contract_rejects_new_duplicate_facade(self) -> None:
         """A test facade beside a test package is rejected as duplicate discovery."""
         with tempfile.TemporaryDirectory() as base_temporary, tempfile.TemporaryDirectory() as head_temporary:

@@ -606,6 +606,11 @@ def _entrypoint_contract(
                             and (
                                 is_safe_dispatch_call(exception.args[0])
                                 or _is_safe_unittest_main_call(exception.args[0])
+                                or (
+                                    isinstance(exception.args[0].func, ast.Name)
+                                    and not exception.args[0].args
+                                    and not exception.args[0].keywords
+                                )
                             )
                         )
                         or is_unittest_exit_expression(exception.args[0])

@@ -342,9 +342,6 @@ def _directory_migration_is_active(
     return bool(legacy_relative) and legacy_relative == current_relative
 
 
-
-
-
 _IDENTITY_HELPER_RELATIVES = (
     "Scripts/validation/source_decomposition/identity_surface_conditions.py",
     "Scripts/validation/source_decomposition/identity_namespace_analysis.py",
@@ -480,6 +477,34 @@ def _compare_surfaces(
             head_public_symbols,
             head_nested_contract,
         ) = unpack(current)
+        approved_namespace_change = (
+            not strict
+            and base_root is not None
+            and head_root is not None
+            and _approved_namespace_change(
+                relative,
+                base_root,
+                head_root,
+                head_relative=(
+                    _current_source_decomposition_relative(relative)
+                    if migrated_relative
+                    else relative
+                ),
+            )
+        )
+        approved_main_block_only = (
+            not strict
+            and base_root is not None
+            and head_root is not None
+            and _approved_main_block_only_contract(
+                base_root,
+                head_root,
+                relative,
+                _current_source_decomposition_relative(relative)
+                if migrated_relative
+                else relative,
+            )
+        )
         if not base_has_public_symbols and not base_public_symbols and base_symbols:
             base_public_symbols = frozenset(
                 name for name in base_symbols if not name.startswith("_")
@@ -517,25 +542,18 @@ def _compare_surfaces(
             or (
                 not strict
                 and not _contract_preserves_order(base_relative, head_relative)
+                and not approved_namespace_change
             )
         ):
             errors.append(f"RELATIVE_STAR_IMPORT_CHANGED {relative}")
-        if not strict and base_risks != head_risks and not _approved_namespace_change(
-            relative,
-            base_root,
-            head_root,
-            head_relative=(
-                _current_source_decomposition_relative(relative)
-                if migrated_relative
-                else relative
-            ),
-        ):
+        if not strict and base_risks != head_risks and not approved_namespace_change:
             errors.append(f"NAMESPACE_CONTRACT_CHANGED {relative}")
         if not strict:
             base_contract = tuple(base_conditional_contract or ())
             head_contract = tuple(head_conditional_contract or ())
             if (
-                relative == "Scripts/package/validate_source_generator_dll.py"
+                not approved_namespace_change
+                and relative == "Scripts/package/validate_source_generator_dll.py"
                 and base_contract != head_contract
             ):
                 errors.append(f"CONDITIONAL_CONTRACT_CHANGED {relative}")
@@ -564,7 +582,8 @@ def _compare_surfaces(
                 )
             }
             if (
-                not migrated_relative
+                not approved_namespace_change
+                and not migrated_relative
                 and (not preserves_order or added_existing_bindings)
             ):
                 errors.append(f"CONDITIONAL_CONTRACT_CHANGED {relative}")
@@ -585,6 +604,7 @@ def _compare_surfaces(
                 )
                 if (
                     entrypoint_changed
+                    and not approved_main_block_only
                     and (
                         head_root is None
                         or not _approved_entrypoint_contract(
@@ -606,6 +626,11 @@ def _compare_surfaces(
             new_collisions = sorted(
                 name for name, owners in head_owners.items()
                 if len(owners) > 1 and name not in base_owners
+                and not (
+                    approved_namespace_change
+                    and name == "run_entrypoint"
+                    and set(owners) == {"facade", "section:entrypoint"}
+                )
             )
             if owner_changes:
                 errors.append(f"SYMBOL_OWNER_CHANGED {relative}: {','.join(owner_changes)}")
@@ -614,13 +639,19 @@ def _compare_surfaces(
         if not strict and base_section_map and head_section_map:
             base_exports_by_section = dict(base_section_map)
             head_exports_by_section = dict(head_section_map)
+
             def duplicate_exports(exports_by_section):
                 """Internal helper for duplicate_exports."""
                 owners: dict[str, set[str]] = {}
                 for section_name, exports in exports_by_section.items():
                     for name in exports:
                         owners.setdefault(name, set()).add(section_name)
-                return {name for name, sections_for_name in owners.items() if len(sections_for_name) > 1}
+                return {
+                    name
+                    for name, sections_for_name in owners.items()
+                    if len(sections_for_name) > 1
+                }
+
             new_collisions = duplicate_exports(head_exports_by_section) - duplicate_exports(base_exports_by_section)
             base_owners: dict[str, set[str]] = {}
             head_owners: dict[str, set[str]] = {}
@@ -634,7 +665,11 @@ def _compare_surfaces(
                 name for name in set(base_owners) & set(head_owners)
                 if base_owners[name] != head_owners[name]
             )
-            base_section_exports_all = set().union(*base_exports_by_section.values()) if base_exports_by_section else set()
+            base_section_exports_all = (
+                set().union(*base_exports_by_section.values())
+                if base_exports_by_section
+                else set()
+            )
             new_sections = set(head_exports_by_section) - set(base_exports_by_section)
             new_section_collisions = {
                 f"{section_name}:{name}"
@@ -647,6 +682,26 @@ def _compare_surfaces(
                 errors.append(f"SECTION_EXPORT_COLLISION {relative}: {','.join(details)}")
             if owner_changes:
                 errors.append(f"SECTION_EXPORT_OWNER_CHANGED {relative}: {','.join(owner_changes)}")
+        base_external_names = {
+            name
+            for name, owners in (base_owner_map or ())
+            if any(owner != "initializer" for owner in owners)
+        } if base_owner_map else set(base_symbols)
+        initializer_allowed_names = frozenset(
+            base_external_names
+            | (set(head_section_exports) - set(base_section_exports))
+        )
+
+        def initializer_is_additive() -> bool:
+            """Check the additive initializer contract with shared name inputs."""
+            return _initializer_is_additive(
+                base_initializer,
+                head_initializer,
+                frozenset(head_sections),
+                initializer_allowed_names,
+                dict(head_section_map or ()),
+            )
+
         if strict:
             initializer_ok = (
                 base_digest == head_digest
@@ -656,22 +711,7 @@ def _compare_surfaces(
         elif base_digest is not None and head_digest is not None:
             initializer_ok = base_digest == head_digest
             if not initializer_ok and (head_root is None or base_root is None):
-                if base_owner_map:
-                    base_external_names = {
-                        name
-                        for name, owners in base_owner_map
-                        if any(owner != "initializer" for owner in owners)
-                    }
-                else:
-                    base_external_names = set(base_symbols)
-                initializer_ok = _initializer_is_additive(
-                    base_initializer,
-                    head_initializer,
-                    frozenset(head_sections),
-                    frozenset(base_external_names)
-                    | (set(head_section_exports) - set(base_section_exports)),
-                    dict(head_section_map or ()),
-                )
+                initializer_ok = initializer_is_additive()
             elif not initializer_ok:
                 head_relative = (
                     _current_source_decomposition_relative(relative)
@@ -696,39 +736,9 @@ def _compare_surfaces(
                         )
                     )
                 else:
-                    if base_owner_map:
-                        base_external_names = {
-                            name
-                            for name, owners in base_owner_map
-                            if any(owner != "initializer" for owner in owners)
-                        }
-                    else:
-                        base_external_names = set(base_symbols)
-                    initializer_ok = _initializer_is_additive(
-                        base_initializer,
-                        head_initializer,
-                        frozenset(head_sections),
-                        frozenset(base_external_names)
-                        | (set(head_section_exports) - set(base_section_exports)),
-                        dict(head_section_map or ()),
-                    )
+                    initializer_ok = initializer_is_additive()
         else:
-            if base_owner_map:
-                base_external_names = {
-                    name
-                    for name, owners in base_owner_map
-                    if any(owner != "initializer" for owner in owners)
-                }
-            else:
-                base_external_names = set(base_symbols)
-            initializer_ok = _initializer_is_additive(
-                base_initializer,
-                head_initializer,
-                frozenset(head_sections),
-                frozenset(base_external_names)
-                | (set(head_section_exports) - set(base_section_exports)),
-                dict(head_section_map or ()),
-            )
+            initializer_ok = initializer_is_additive()
         if not initializer_ok:
             errors.append(f"PACKAGE_INITIALIZER_CHANGED {relative}")
         if not _sections_preserve_order(base_sections, head_sections):
@@ -763,8 +773,12 @@ def compare_revisions(repository: Path, base: str, head: str, *, strict: bool = 
     head = _git(repository, "rev-parse", "--verify", head + "^{commit}").strip()
     errors: list[str] = []
     with _revision_checkout(repository, base) as base_root, _revision_checkout(repository, head) as head_root:
-        base_surfaces = _surfaces(base_root, strict=strict)
-        head_surfaces = _surfaces(head_root, strict=strict)
+        try:
+            base_surfaces = _surfaces(base_root, strict=strict)
+            head_surfaces = _surfaces(head_root, strict=strict)
+        except ValueError as exc:
+            print(f"IDENTITY_CONTRACT_ERROR {exc}")
+            return 1
         allow_directory_migration = _directory_migration_is_active(
             base_surfaces,
             head_surfaces,
@@ -790,12 +804,16 @@ def compare_revisions(repository: Path, base: str, head: str, *, strict: bool = 
             print("IDENTITY_WAIVER_CHANGED Scripts/validation/source_decomposition/identity_waivers.json")
             return 1
         if not strict:
-            _validate_compatibility_new_sections(
-                base_root,
-                head_root,
-                base_surfaces,
-                head_surfaces,
-            )
+            try:
+                _validate_compatibility_new_sections(
+                    base_root,
+                    head_root,
+                    base_surfaces,
+                    head_surfaces,
+                )
+            except ValueError as exc:
+                print(f"IDENTITY_CONTRACT_ERROR {exc}")
+                return 1
         errors = _compare_surfaces(
             base_surfaces,
             head_surfaces,
