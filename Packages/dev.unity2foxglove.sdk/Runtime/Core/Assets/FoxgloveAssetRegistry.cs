@@ -258,7 +258,10 @@ namespace Unity.FoxgloveSDK.Core
                 if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux)
                     || RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
                 {
-                    var descriptor = Open(registeredRoot, OpenReadOnly | OpenNoFollow);
+                    var noFollow = RuntimeInformation.IsOSPlatform(OSPlatform.Linux)
+                        ? OpenNoFollowLinux
+                        : OpenNoFollowMacOs;
+                    var descriptor = Open(registeredRoot, OpenReadOnly | noFollow);
                     if (descriptor < 0)
                     {
                         error = $"Could not open the registered asset root (native error {Marshal.GetLastWin32Error()}).";
@@ -519,7 +522,8 @@ namespace Unity.FoxgloveSDK.Core
 
         private const int AtEmptyPath = 0x1000;
         private const int OpenReadOnly = 0;
-        private const int OpenNoFollow = 0x100;
+        private const int OpenNoFollowLinux = 0x20000;
+        private const int OpenNoFollowMacOs = 0x100;
         private const uint FileFlagBackupSemantics = 0x02000000;
         private const uint FileFlagOpenReparsePoint = 0x00200000;
         private const uint StatxNlink = 0x0004;
