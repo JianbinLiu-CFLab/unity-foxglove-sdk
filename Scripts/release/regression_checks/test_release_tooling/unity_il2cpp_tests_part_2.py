@@ -360,6 +360,21 @@ class _UnityIl2CppBuildTestsPart2:
         self.assertEqual([], residual)
         enumerate_pids.assert_not_called()
 
+    @unittest.skipIf(os.name == "nt", "POSIX process-group ownership seam")
+    def test_close_kills_only_pids_observed_before_root_exit(self) -> None:
+        """Post-exit cleanup must not trust a recycled process-group enumeration."""
+        process = mock.Mock(pid=111)
+        process.poll.return_value = 0
+        tree = self.unity_il2cpp.OwnedProcessTree(process, posix_process_group_id=4321)
+        tree._observed_posix_pids.add(222)
+        with mock.patch.object(self.unity_il2cpp, "_posix_process_group_exists", return_value=True):
+            with mock.patch.object(self.unity_il2cpp, "_posix_process_group_pids", return_value=[999]) as enumerate_pids:
+                with mock.patch.object(self.unity_il2cpp.os, "kill") as kill:
+                    tree.close()
+
+        enumerate_pids.assert_not_called()
+        self.assertEqual({111, 222}, {call.args[0] for call in kill.call_args_list})
+
     def test_windows_job_uses_a_dedicated_child_termination_code(self) -> None:
         """A killed child must not inherit the build CLI's own timeout exit code."""
         kernel32 = mock.Mock()
