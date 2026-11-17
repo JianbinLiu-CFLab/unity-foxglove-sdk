@@ -86,6 +86,18 @@ namespace Unity.FoxgloveSDK.UnitTests.FoxRun
         }
 
         [Fact]
+        public void StrictModeBlocksWhenCurrentSchemaInfoIsMissing()
+        {
+            var recorded = FoxRunSchemaMcapMetadata.CreateRecord(Manifest("g", "c", "b", "p", "int32"));
+
+            var strict = FoxRunSchemaMcapMetadata.Evaluate(recorded, null, SchemaIdentityMode.Strict);
+            var warn = FoxRunSchemaMcapMetadata.Evaluate(recorded, null, SchemaIdentityMode.Warn);
+
+            Assert.True(strict.IsBlocking, strict.Message);
+            Assert.False(warn.IsBlocking, warn.Message);
+        }
+
+        [Fact]
         public void FindingsQualifyRepeatedTopicsAndNameAddedOrRemovedContracts()
         {
             var recorded = ManifestWithContracts(
