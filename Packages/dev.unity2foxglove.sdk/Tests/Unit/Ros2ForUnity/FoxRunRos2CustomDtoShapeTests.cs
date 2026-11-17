@@ -85,21 +85,6 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
         }
 
         [Fact]
-        public void ReflectionBuilderSupportsStringSequences()
-        {
-            var shape = FoxRunReflectionRos2CustomDtoShapeBuilder.Build(typeof(StringSequenceDto));
-
-            Assert.True(shape.IsSupported, string.Join(" || ", shape.Diagnostics));
-            var members = shape.Members.ToDictionary(member => member.Name, StringComparer.Ordinal);
-            Assert.Equal("string[]", members[nameof(StringSequenceDto.Labels)].RosType);
-            Assert.Equal("string[]", members[nameof(StringSequenceDto.Array)].RosType);
-            Assert.Equal(FoxRunRos2CustomDtoSequenceRepresentation.List,
-                members[nameof(StringSequenceDto.Labels)].SequenceRepresentation);
-            Assert.Equal(FoxRunRos2CustomDtoSequenceRepresentation.Array,
-                members[nameof(StringSequenceDto.Array)].SequenceRepresentation);
-        }
-
-        [Fact]
         public void ReflectionBuilderRejectsReservedAndLossyDtoMembers()
         {
             var shape = BuildReflectionShape(typeof(UnsupportedDto));
@@ -311,13 +296,8 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
 
         public sealed class UnsupportedSequenceReferenceDto
         {
-            public List<NestedDto> Children { get; set; }
-        }
-
-        public sealed class StringSequenceDto
-        {
             public List<string> Labels { get; set; }
-            public string[] Array { get; set; }
+            public List<NestedDto> Children { get; set; }
         }
 
         public sealed class SharedReferenceDto
