@@ -48,7 +48,13 @@ class CanonicalEntrypointContractTests(unittest.TestCase):
             text=True,
         ).stdout.strip()
 
-    def _create_phase184_fixture(self, repository: Path, *, live_source: str | None = None) -> Path:
+    def _create_phase184_fixture(
+        self,
+        repository: Path,
+        *,
+        live_source: str | None = None,
+        main_source: str | None = None,
+    ) -> Path:
         """Create a phase184-shaped package with a section-owned main function."""
         package = repository / "Scripts/smoke/fixture"
         package.mkdir(parents=True)
@@ -85,7 +91,7 @@ class CanonicalEntrypointContractTests(unittest.TestCase):
             encoding="utf-8",
         )
         (package / "__main__.py").write_text(
-            "from . import *\n",
+            main_source or "from . import *\n",
             encoding="utf-8",
         )
         return repository / "Scripts/smoke/fixture.py"
@@ -94,13 +100,18 @@ class CanonicalEntrypointContractTests(unittest.TestCase):
         self,
         *,
         live_source: str | None = None,
+        main_source: str | None = None,
     ) -> tuple[tempfile.TemporaryDirectory[str], Path, str]:
         """Create and commit a phase184-shaped repository fixture."""
         temporary = self._temporary_repository()
         repository = Path(temporary.name)
         subprocess.run(["git", "init", "-q"], cwd=repository, check=True)
         subprocess.run(["git", "config", "core.autocrlf", "false"], cwd=repository, check=True)
-        self._create_phase184_fixture(repository, live_source=live_source)
+        self._create_phase184_fixture(
+            repository,
+            live_source=live_source,
+            main_source=main_source,
+        )
         base = self._commit(repository, "base")
         return temporary, repository, base
 
@@ -388,6 +399,36 @@ class CanonicalEntrypointContractTests(unittest.TestCase):
         try:
             with self.assertRaises(RuntimeError):
                 compare_identity_surfaces.compare_revisions(repository, "stale-base", base, strict=False)
+        finally:
+            temporary.cleanup()
+
+    def test_main_block_only_rejects_an_existing_main_guard(self) -> None:
+        """The exception cannot append a second module main guard."""
+        temporary, repository, base = self._create_repository(
+            main_source=(
+                "from . import *\n"
+                "if __name__ == '__main__':\n"
+                "    raise SystemExit(main())\n"
+            )
+        )
+        try:
+            entrypoint = repository / "Scripts/smoke/fixture/__main__.py"
+            entrypoint.write_text(
+                entrypoint.read_text(encoding="utf-8")
+                + "if __name__ == '__main__':\n"
+                + "    raise SystemExit(main())\n",
+                encoding="utf-8",
+            )
+            head = self._commit(repository, "duplicate main guard")
+            self.assertEqual(
+                1,
+                compare_identity_surfaces.compare_revisions(
+                    repository,
+                    base,
+                    head,
+                    strict=False,
+                ),
+            )
         finally:
             temporary.cleanup()
 

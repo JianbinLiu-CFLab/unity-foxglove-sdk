@@ -810,6 +810,28 @@ def _approved_main_block_only_contract(
         for base_node, head_node in zip(base_tree.body, head_tree.body)
     ):
         return False
+
+    def is_main_guard(node: ast.stmt) -> bool:
+        """Return whether a top-level statement is a module main guard."""
+        if not isinstance(node, ast.If) or len(node.test.ops) != 1:
+            return False
+        if not isinstance(node.test, ast.Compare) or not isinstance(node.test.ops[0], ast.Eq):
+            return False
+        left, right = node.test.left, node.test.comparators[0]
+        return (
+            isinstance(left, ast.Name)
+            and left.id == "__name__"
+            and isinstance(right, ast.Constant)
+            and right.value == "__main__"
+        ) or (
+            isinstance(right, ast.Name)
+            and right.id == "__name__"
+            and isinstance(left, ast.Constant)
+            and left.value == "__main__"
+        )
+
+    if any(is_main_guard(node) for node in base_tree.body):
+        return False
     main_block = head_tree.body[-1]
     if not (
         isinstance(main_block, ast.If)
