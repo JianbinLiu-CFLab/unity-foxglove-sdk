@@ -353,6 +353,7 @@ class SourceTextRatchetTests(unittest.TestCase):
         key = ("packages/fixture/tests/runtime/fixturevalidation.cs", "--phase-fixture", "C")
 
         def signature() -> str:
+            """Return the fixture key signature for the current working tree."""
             rows = inventory(root)
             return _ratchet_key_signature(
                 _ratchet_change_tokens(rows).get(key),
