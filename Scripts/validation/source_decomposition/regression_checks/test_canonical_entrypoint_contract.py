@@ -432,6 +432,32 @@ class CanonicalEntrypointContractTests(unittest.TestCase):
         finally:
             temporary.cleanup()
 
+    def test_new_unsafe_module_entrypoint_is_incompatible_without_a_base_entrypoint(self) -> None:
+        """An unsafe newly added module entrypoint cannot bypass the compatibility gate."""
+        temporary, repository, base = self._create_repository()
+        try:
+            entrypoint = repository / "Scripts/smoke/fixture/__main__.py"
+            entrypoint.unlink()
+            base = self._commit(repository, "remove base module entrypoint")
+            entrypoint.write_text(
+                "from . import *\n"
+                "if __name__ == '__main__':\n"
+                "    raise SystemExit(missing())\n",
+                encoding="utf-8",
+            )
+            head = self._commit(repository, "add unsafe module entrypoint")
+            self.assertEqual(
+                1,
+                compare_identity_surfaces.compare_revisions(
+                    repository,
+                    base,
+                    head,
+                    strict=False,
+                ),
+            )
+        finally:
+            temporary.cleanup()
+
     def test_missing_origin_main_revision_fails(self) -> None:
         """A fixture without origin/main cannot satisfy the compatibility gate."""
         temporary, repository, base = self._create_repository()

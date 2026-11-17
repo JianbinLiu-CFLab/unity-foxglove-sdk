@@ -587,13 +587,13 @@ def _compare_surfaces(
                 and (not preserves_order or added_existing_bindings)
             ):
                 errors.append(f"CONDITIONAL_CONTRACT_CHANGED {relative}")
-        if base_entrypoint and head_entrypoint:
-            if (
-                "__phase192_unsafe_entrypoint_call__" in tuple(base_entrypoint_contract or ())
-                or "__phase192_unsafe_entrypoint_call__" in tuple(head_entrypoint_contract or ())
-            ):
-                errors.append(f"MODULE_ENTRYPOINT_CHANGED {relative}")
-            elif strict and base_entrypoint_digest != head_entrypoint_digest:
+        if (
+            "__phase192_unsafe_entrypoint_call__" in tuple(base_entrypoint_contract or ())
+            or "__phase192_unsafe_entrypoint_call__" in tuple(head_entrypoint_contract or ())
+        ):
+            errors.append(f"MODULE_ENTRYPOINT_CHANGED {relative}")
+        elif base_entrypoint and head_entrypoint:
+            if strict and base_entrypoint_digest != head_entrypoint_digest:
                 errors.append(f"MODULE_ENTRYPOINT_CHANGED {relative}")
             elif not strict:
                 entrypoint_changed = (
