@@ -101,7 +101,7 @@ namespace Unity.FoxgloveSDK.Transport
 
         internal static WsFrameReadResult ReadFrame(Stream stream, out WsFrame frame, int maxPayloadBytes)
         {
-            maxPayloadBytes = Math.Max(1, maxPayloadBytes);
+            maxPayloadBytes = Math.Min(MaxPayloadBytes, Math.Max(1, maxPayloadBytes));
             frame = null;
 
             Span<byte> header = stackalloc byte[2];
@@ -122,7 +122,7 @@ namespace Unity.FoxgloveSDK.Transport
             out WsFrame frame,
             int maxPayloadBytes)
         {
-            maxPayloadBytes = Math.Max(1, maxPayloadBytes);
+            maxPayloadBytes = Math.Min(MaxPayloadBytes, Math.Max(1, maxPayloadBytes));
             frame = null;
 
             Span<byte> secondHeaderByte = stackalloc byte[1];
