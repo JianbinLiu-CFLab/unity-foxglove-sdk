@@ -179,6 +179,7 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         internal void PublishReplay(uint channelId, byte[] payload, ulong logTimeNs, string source = "Replay", string topic = null)
         {
+            using var publishAdmission = _channelPublishGate.EnterRead();
             AdvertiseChannel channel;
             lock (_channelLifecycleLock)
             {

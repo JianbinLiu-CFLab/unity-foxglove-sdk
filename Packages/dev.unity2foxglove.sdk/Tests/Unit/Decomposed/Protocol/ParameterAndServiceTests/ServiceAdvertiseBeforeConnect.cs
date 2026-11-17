@@ -378,5 +378,83 @@ public partial class ParameterAndServiceTests
             Assert.NotNull(session.Channels.Get(14));
         }
 
+        [Fact]
+        public void ReplayChannelLookupDoesNotCrossChannelLifecycleWrite()
+        {
+            var fake = new Phase6FakeTransport();
+            var logger = new CaptureLogger();
+            using var session = new FoxgloveSession("Test", fake, logger: logger);
+            session.RegisterChannel(new AdvertiseChannel
+            {
+                Id = 15,
+                Topic = "/replay-old",
+                Encoding = "json"
+            });
+            fake.SimulateConnect(1);
+            fake.SimulateText(1,
+                "{\"op\":\"subscribe\",\"subscriptions\":[{\"id\":1,\"channelId\":15}]}");
+
+            var gate = (SessionChannelPublishGate)typeof(FoxgloveSession)
+                .GetField("_channelPublishGate", BindingFlags.Instance | BindingFlags.NonPublic)
+                .GetValue(session);
+            FoxgloveReplayTrace.ResetBudget();
+            FoxgloveReplayTrace.Enabled = true;
+            using var held = gate.EnterWrite();
+            Exception replayFailure = null;
+            var replay = new Thread(() =>
+            {
+                try
+                {
+                    session.PublishReplay(15, new byte[] { 1 }, 1);
+                }
+                catch (Exception exception)
+                {
+                    replayFailure = exception;
+                }
+            });
+            replay.Start();
+            for (var attempt = 0; attempt < 100; attempt++)
+                Thread.Yield();
+
+            Exception lifecycleFailure = null;
+            var lifecycle = new Thread(() =>
+            {
+                try
+                {
+                    session.UnregisterChannel(15);
+                    session.RegisterChannel(new AdvertiseChannel
+                    {
+                        Id = 15,
+                        Topic = "/replay-new",
+                        Encoding = "json"
+                    });
+                    fake.SimulateText(1,
+                        "{\"op\":\"subscribe\",\"subscriptions\":[{\"id\":2,\"channelId\":15}]}");
+                }
+                catch (Exception exception)
+                {
+                    lifecycleFailure = exception;
+                }
+            });
+            lifecycle.Start();
+            Thread.Sleep(50);
+            held.Dispose();
+
+            Assert.True(replay.Join(TimeSpan.FromSeconds(2)));
+            Assert.True(lifecycle.Join(TimeSpan.FromSeconds(2)));
+            FoxgloveReplayTrace.Enabled = false;
+            Assert.Null(replayFailure);
+            Assert.Null(lifecycleFailure);
+            var replayFrames = logger.Warnings
+                .Where(message => message.Contains("[ReplayTrace]", StringComparison.Ordinal))
+                .ToList();
+            Assert.Contains(
+                replayFrames,
+                message => message.Contains("topic=/replay-new", StringComparison.Ordinal));
+            Assert.DoesNotContain(
+                replayFrames,
+                message => message.Contains("topic=/replay-old", StringComparison.Ordinal));
+        }
+
     }
 }
