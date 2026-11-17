@@ -577,6 +577,16 @@ namespace Unity.FoxgloveSDK.Components
             if (recorded == null)
                 return CreateMissingRecordedResult();
 
+            if (!HasUsableHash(current))
+            {
+                return new FoxRunReplaySchemaGuardResult(
+                    FoxRunReplaySchemaGuardState.MissingCurrent,
+                    false,
+                    "Current runtime does not expose generated FoxRun schema info; replay will continue without schema hash enforcement.",
+                    recorded.GlobalManifestHash,
+                    string.Empty);
+            }
+
             if (FoxRunSchemaInfoRegistry.HasConflict)
             {
                 return new FoxRunReplaySchemaGuardResult(
