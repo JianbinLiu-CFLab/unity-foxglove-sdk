@@ -1,3 +1,4 @@
+using Math = System.Math;
 using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
@@ -19,20 +20,27 @@ namespace Unity2Foxglove.Tests.PlayMode
         public IEnumerator LidarAcceptance_ElapsedPhysicsTimeSpansMultipleTicks()
         {
             var target = CreateTarget(new Vector3(0f, 0f, 5f));
-            var lidar = CreateLidar("lidar-timing", "timing-frame", target.layer);
+            var stepperObject = new GameObject("lidar-physics-steps");
+            var stepper = stepperObject.AddComponent<PhysicsStepAlternator>();
+            var lidar = CreateLidar("lidar-timing", "timing-frame", target.layer, pixelsPerColumn: 4, columnsPerFrame: 256);
             var previousSimulationMode = Physics.simulationMode;
             var previousFixedDeltaTime = Time.fixedDeltaTime;
             try
             {
                 Physics.simulationMode = SimulationMode.Script;
+                var activeScanFrameField = typeof(VirtualLidar).GetField("_activeScanFrame", PrivateInstance);
+                var scanStartField = typeof(VirtualLidar).GetField("_activeScanStartPhysSeconds", PrivateInstance);
+                Assert.That(activeScanFrameField, Is.Not.Null, "Missing active scan frame field.");
+                Assert.That(scanStartField, Is.Not.Null, "Missing active scan start field.");
+                double? scanStartPhysSeconds = null;
                 var ticks = 0;
                 PointCloudFrame firstFrame = null;
-                for (; ticks < 30; ticks++)
+                for (; ticks < 120; ticks++)
                 {
-                    var delta = ticks % 2 == 0 ? 0.06f : 0.04f;
-                    Time.fixedDeltaTime = delta;
-                    Physics.Simulate(delta);
+                    Physics.Simulate(Time.fixedDeltaTime);
                     yield return new WaitForFixedUpdate();
+                    if (scanStartPhysSeconds == null && activeScanFrameField.GetValue(lidar) != null)
+                        scanStartPhysSeconds = (double)scanStartField.GetValue(lidar);
                     if (lidar.LastFrame != null && lidar.LastFrame.Points.Count >= 4)
                     {
                         firstFrame = lidar.LastFrame;
@@ -41,7 +49,7 @@ namespace Unity2Foxglove.Tests.PlayMode
                 }
 
                 Assert.That(firstFrame, Is.Not.Null, $"The scan did not complete within the elapsed-time budget. LastFrame points={lidar.LastFrame?.Points.Count ?? -1}.");
-                Assert.That(ticks, Is.LessThan(30), "Elapsed physics time was not used to advance the scan.");
+                Assert.That(ticks, Is.LessThan(120));
                 var offsets = new List<float>();
                 foreach (var point in firstFrame.Points)
                 {
@@ -53,9 +61,35 @@ namespace Unity2Foxglove.Tests.PlayMode
                 for (var index = 1; index < offsets.Count; index++)
                     Assert.That(offsets[index], Is.GreaterThanOrEqualTo(offsets[index - 1]));
                 Assert.That(offsets[offsets.Count - 1] - offsets[0], Is.GreaterThan(0.04f));
+                Assert.That(ticks, Is.GreaterThan(3), "The acceptance scan did not span multiple physics ticks.");
+                Assert.That(scanStartPhysSeconds.HasValue, Is.True, "VirtualLidar never started a scan.");
+                AssertElapsedDiffersFromNominalStep(stepper, scanStartPhysSeconds.Value);
+                var expectedByColumn = BuildExpectedAcquisitionByColumn(
+                    stepper.Times,
+                    stepper.NominalSteps,
+                    scanStartPhysSeconds.Value,
+                    columns: 256,
+                    budgetColumns: 64);
+
+                foreach (var point in firstFrame.Points)
+                {
+                    var azimuth = Math.Atan2(-point.Y, point.X);
+                    if (azimuth < 0d)
+                        azimuth += 2d * Math.PI;
+                    var column = (int)Math.Round(azimuth / (2d * Math.PI) * 256d) % 256;
+                    var normalizedOffset = column / 256f;
+                    Assert.That(expectedByColumn.TryGetValue(column, out var expected), Is.True, $"No acquisition time was recorded for column {column}.");
+                    var expectedOffset = LidarScanTiming.AcquisitionOffsetSeconds(
+                        expected.ElapsedSeconds,
+                        0d,
+                        normalizedOffset,
+                        expected.NominalStepSeconds);
+                    Assert.That(point.TimeOffsetSeconds, Is.EqualTo(expectedOffset).Within(0.003f), $"Unexpected acquisition offset for column {column}.");
+                }
             }
             finally
             {
+                Object.DestroyImmediate(stepperObject);
                 Physics.simulationMode = previousSimulationMode;
                 Time.fixedDeltaTime = previousFixedDeltaTime;
                 Object.DestroyImmediate(target);
@@ -136,15 +170,79 @@ namespace Unity2Foxglove.Tests.PlayMode
             return target;
         }
 
-        private static VirtualLidar CreateLidar(string name, string frameId, int targetLayer)
+        private static void AssertElapsedDiffersFromNominalStep(PhysicsStepAlternator stepper, double scanStartPhysSeconds)
+        {
+            var distinguishingSteps = 0;
+            for (var index = 1; index < stepper.Times.Count; index++)
+            {
+                if (stepper.Times[index] <= scanStartPhysSeconds)
+                    continue;
+                var elapsed = stepper.Times[index] - stepper.Times[index - 1];
+                if (Math.Abs(elapsed - stepper.NominalSteps[index]) > 0.01d)
+                    distinguishingSteps++;
+            }
+
+            Assert.That(distinguishingSteps, Is.GreaterThan(3), "Elapsed physics time did not differ from the nominal step seen by VirtualLidar.");
+        }
+
+        private static Dictionary<int, (double ElapsedSeconds, float NominalStepSeconds)> BuildExpectedAcquisitionByColumn(
+            IReadOnlyList<double> fixedTimes,
+            IReadOnlyList<float> nominalSteps,
+            double scanStartPhysSeconds,
+            int columns,
+            int budgetColumns)
+        {
+            var expected = new Dictionary<int, (double ElapsedSeconds, float NominalStepSeconds)>();
+            var progress = 0d;
+            var cursor = 0;
+            var previousPhysSeconds = scanStartPhysSeconds;
+            var primed = false;
+            for (var index = 0; index < fixedTimes.Count && cursor < columns; index++)
+            {
+                var acquisitionPhysSeconds = fixedTimes[index];
+                if (acquisitionPhysSeconds <= scanStartPhysSeconds)
+                    continue;
+                if (!primed)
+                {
+                    previousPhysSeconds = acquisitionPhysSeconds;
+                    primed = true;
+                    continue;
+                }
+                var elapsedPhysicsSeconds = acquisitionPhysSeconds - previousPhysSeconds;
+                previousPhysSeconds = acquisitionPhysSeconds;
+                progress = LidarScanTiming.AdvanceColumnProgress(
+                    progress,
+                    elapsedPhysicsSeconds,
+                    columns,
+                    scanPeriodSeconds: 1d,
+                    budgetColumns: budgetColumns);
+                var columnsToEmit = Math.Min((int)Math.Floor(progress), Math.Min(budgetColumns, columns - cursor));
+                if (columnsToEmit <= 0)
+                    continue;
+
+                for (var column = 0; column < columnsToEmit; column++)
+                    expected[cursor + column] = (acquisitionPhysSeconds - scanStartPhysSeconds, nominalSteps[index]);
+                progress -= columnsToEmit;
+                cursor += columnsToEmit;
+            }
+
+            return expected;
+        }
+
+        private static VirtualLidar CreateLidar(
+            string name,
+            string frameId,
+            int targetLayer,
+            int pixelsPerColumn = 1,
+            int columnsPerFrame = 32)
         {
             var gameObject = new GameObject(name);
             gameObject.layer = 8;
             gameObject.SetActive(false);
             var lidar = gameObject.AddComponent<VirtualLidar>();
             SetField(lidar, "_profileSource", VirtualLidar.ProfileSource.Custom);
-            SetField(lidar, "_customPixelsPerColumn", 1);
-            SetField(lidar, "_customColumnsPerFrame", 32);
+            SetField(lidar, "_customPixelsPerColumn", pixelsPerColumn);
+            SetField(lidar, "_customColumnsPerFrame", columnsPerFrame);
             SetField(lidar, "_customScanRateHz", 1f);
             SetField(lidar, "_customFovTopDeg", 8f);
             SetField(lidar, "_customFovBottomDeg", -8f);

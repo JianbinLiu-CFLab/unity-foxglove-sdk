@@ -28,20 +28,16 @@ namespace Unity2Foxglove.Tests.PlayMode
             try
             {
                 publisher.SensorRawImageReady += _ => { };
-                SetField(publisher, "_publishOnEnable", false);
                 yield return null;
                 var resources = GetField(publisher, "_captureResources").GetValue(publisher);
                 var retiredTexture = (RenderTexture)resources.GetType().GetProperty("CaptureRenderTexture").GetValue(resources);
-                var generation = (int)GetField(publisher, "_captureGeneration").GetValue(publisher);
-                resources.GetType().GetMethod("RegisterReadback").Invoke(resources, new object[] { generation });
+                yield return WaitForPendingReadback(publisher);
                 SetField(publisher, "_width", 64);
                 SetField(publisher, "_height", 48);
                 publisher.GetType().GetMethod("EnsureCaptureResources", PrivateInstance).Invoke(publisher, null);
                 Assert.That(retiredTexture, Is.Not.Null);
                 Assert.That(retiredTexture.IsCreated(), Is.True, "The retired render texture was released before its readback generation drained.");
-                var completeReadback = resources.GetType().GetMethod("CompleteReadback");
-                completeReadback.Invoke(resources, new object[] { generation });
-                Assert.That(retiredTexture.IsCreated(), Is.False, "The retired render texture remained after its readback generation drained.");
+                yield return WaitForReleasedTexture(retiredTexture);
                 Assert.That(errors, Is.Empty, string.Join(Environment.NewLine, errors));
             }
             finally
@@ -69,16 +65,26 @@ namespace Unity2Foxglove.Tests.PlayMode
             {
                 publisher.SensorRawImageReady += frames.Add;
                 yield return WaitForFrameCount(frames, 1);
+                yield return WaitForPendingReadback(publisher);
                 SetField(publisher, "_width", 64);
                 SetField(publisher, "_height", 48);
+                var previousGeneration = (int)GetField(publisher, "_captureGeneration").GetValue(publisher);
+                var previousTimestamp = frames[frames.Count - 1].UnixNs;
+                var firstPostResizeFrame = frames.Count;
                 publisher.enabled = false;
                 publisher.enabled = true;
+                var currentGeneration = (int)GetField(publisher, "_captureGeneration").GetValue(publisher);
+                Assert.That(currentGeneration, Is.GreaterThan(previousGeneration));
                 yield return WaitForResizedFrame(frames);
 
                 Assert.That(frames.Exists(frame => frame.Width == 32 && frame.Height == 24), Is.True);
                 Assert.That(frames.Exists(frame => frame.Width == 64 && frame.Height == 48), Is.True);
-                foreach (var frame in frames)
+                for (var index = firstPostResizeFrame; index < frames.Count; index++)
                 {
+                    var frame = frames[index];
+                    Assert.That(frame.UnixNs, Is.GreaterThanOrEqualTo(previousTimestamp), "An older readback timestamp was published after the resize generation changed.");
+                    Assert.That(frame.Width, Is.EqualTo(64));
+                    Assert.That(frame.Height, Is.EqualTo(48));
                     Assert.That(frame.Data.Length, Is.EqualTo(frame.Width * frame.Height * 3));
                     Assert.That(frame.Step, Is.EqualTo(frame.Width * 3));
                 }
@@ -98,6 +104,8 @@ namespace Unity2Foxglove.Tests.PlayMode
             var imageObject = CreateCamera("image-source", 40, 30, manager, out var imagePublisher);
             var imageSourceCamera = imageObject.GetComponent<Camera>();
             imageSourceCamera.fieldOfView = 60f;
+            imageSourceCamera.usePhysicalProperties = true;
+            imageSourceCamera.lensShift = new Vector2(0.12f, -0.08f);
             var configuredCameraObject = new GameObject("configured-camera");
             var configuredCamera = configuredCameraObject.AddComponent<Camera>();
             configuredCamera.fieldOfView = 25f;
@@ -116,10 +124,9 @@ namespace Unity2Foxglove.Tests.PlayMode
                 Assert.That(frame.Width, Is.EqualTo(imagePublisher.SensorCameraCaptureWidth));
                 Assert.That(frame.Height, Is.EqualTo(imagePublisher.SensorCameraCaptureHeight));
                 var projection = imageSourceCamera.projectionMatrix;
-                var expectedFx = projection.m00 * frame.Width * 0.5d;
-                var expectedFy = projection.m11 * frame.Height * 0.5d;
-                Assert.That(frame.K[0], Is.EqualTo(expectedFx).Within(0.1d));
-                Assert.That(frame.K[4], Is.EqualTo(expectedFy).Within(0.1d));
+                Assert.That(Math.Abs(projection.m02), Is.GreaterThan(0.0001f));
+                Assert.That(Math.Abs(projection.m12), Is.GreaterThan(0.0001f));
+                AssertCameraInfoProjection(frame, imageSourceCamera);
             }
             finally
             {
@@ -234,6 +241,26 @@ namespace Unity2Foxglove.Tests.PlayMode
             Assert.Fail("Camera publisher did not produce the expected resized frame.");
         }
 
+        private static IEnumerator WaitForPendingReadback(FoxgloveCameraPublisher publisher)
+        {
+            var pendingField = GetField(publisher, "_pendingRequests");
+            for (var tick = 0; tick < 180; tick++)
+            {
+                if ((int)pendingField.GetValue(publisher) > 0)
+                    yield break;
+                yield return null;
+            }
+
+            Assert.Fail("Camera publisher did not expose a pending GPU readback.");
+        }
+
+        private static IEnumerator WaitForReleasedTexture(RenderTexture texture)
+        {
+            for (var tick = 0; tick < 180 && texture != null && texture.IsCreated(); tick++)
+                yield return null;
+            Assert.That(texture == null || !texture.IsCreated(), Is.True, "The retired render texture remained after its readback callback drained.");
+        }
+
         private static IEnumerator WaitForFrameCount(List<SensorCameraInfoFrame> frames, int count)
         {
             for (var tick = 0; tick < 180 && frames.Count < count; tick++)
@@ -260,6 +287,57 @@ namespace Unity2Foxglove.Tests.PlayMode
         private static void SetField(object target, string name, object value)
         {
             GetField(target, name).SetValue(target, value);
+        }
+
+        private static void AssertCameraInfoProjection(SensorCameraInfoFrame frame, Camera sourceCamera)
+        {
+            const float sampleDepth = 5f;
+            const float sampleSpan = 1f;
+            var center = ProjectImagePoint(sourceCamera, new Vector3(0f, 0f, sampleDepth), frame.Width, frame.Height);
+            var right = ProjectImagePoint(sourceCamera, new Vector3(sampleSpan, 0f, sampleDepth), frame.Width, frame.Height);
+            var left = ProjectImagePoint(sourceCamera, new Vector3(-sampleSpan, 0f, sampleDepth), frame.Width, frame.Height);
+            var up = ProjectImagePoint(sourceCamera, new Vector3(0f, sampleSpan, sampleDepth), frame.Width, frame.Height);
+            var down = ProjectImagePoint(sourceCamera, new Vector3(0f, -sampleSpan, sampleDepth), frame.Width, frame.Height);
+            var fx = (right.x - left.x) * sampleDepth / (2d * sampleSpan);
+            var fy = (up.y - down.y) * sampleDepth / (2d * sampleSpan);
+            var cx = center.x;
+            var cy = frame.Height - center.y;
+
+            AssertCameraIntrinsicMatrix(frame.K, fx, fy, cx, cy);
+            AssertCameraProjectionMatrix(frame.P, fx, fy, cx, cy);
+        }
+
+        private static Vector2 ProjectImagePoint(Camera camera, Vector3 localPoint, uint width, uint height)
+        {
+            var screenPoint = camera.WorldToScreenPoint(camera.transform.TransformPoint(localPoint));
+            var pixelRect = camera.pixelRect;
+            var viewportWidth = Mathf.Max(1f, pixelRect.width);
+            var viewportHeight = Mathf.Max(1f, pixelRect.height);
+            return new Vector2(
+                (screenPoint.x - pixelRect.x) / viewportWidth * width,
+                (screenPoint.y - pixelRect.y) / viewportHeight * height);
+        }
+
+        private static void AssertCameraIntrinsicMatrix(IReadOnlyList<double> matrix, double fx, double fy, double cx, double cy)
+        {
+            Assert.That(matrix.Count, Is.EqualTo(9));
+            Assert.That(matrix[0], Is.EqualTo(fx).Within(0.1d));
+            Assert.That(matrix[1], Is.EqualTo(0d).Within(0.1d));
+            Assert.That(matrix[2], Is.EqualTo(cx).Within(0.1d));
+            Assert.That(matrix[3], Is.EqualTo(0d).Within(0.1d));
+            Assert.That(matrix[4], Is.EqualTo(fy).Within(0.1d));
+            Assert.That(matrix[5], Is.EqualTo(cy).Within(0.1d));
+            Assert.That(matrix[6], Is.EqualTo(0d).Within(0.1d));
+            Assert.That(matrix[7], Is.EqualTo(0d).Within(0.1d));
+            Assert.That(matrix[8], Is.EqualTo(1d).Within(0.1d));
+        }
+
+        private static void AssertCameraProjectionMatrix(IReadOnlyList<double> matrix, double fx, double fy, double cx, double cy)
+        {
+            var expected = new[] { fx, 0d, cx, 0d, 0d, fy, cy, 0d, 0d, 0d, 1d, 0d };
+            Assert.That(matrix.Count, Is.EqualTo(expected.Length));
+            for (var index = 0; index < expected.Length; index++)
+                Assert.That(matrix[index], Is.EqualTo(expected[index]).Within(0.1d), $"Unexpected projection matrix element {index}.");
         }
     }
 }
