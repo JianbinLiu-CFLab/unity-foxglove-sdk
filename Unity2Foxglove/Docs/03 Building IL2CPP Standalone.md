@@ -81,7 +81,7 @@ python Scripts/build_tools/unity_il2cpp.py --target win64
 For example, a typical Unity Hub installation on Windows may look like:
 
 ```powershell
-$env:UNITY_EXE = "C:\Program Files\Unity\Hub\Editor\<unity-version>\Editor\Unity.exe"
+$env:UNITY_EXE = "<unity-install-root>\Hub\Editor\<unity-version>\Editor\Unity.exe"
 ```
 
 ### 6.2 --output-dir / --build-dir: specify output directory
