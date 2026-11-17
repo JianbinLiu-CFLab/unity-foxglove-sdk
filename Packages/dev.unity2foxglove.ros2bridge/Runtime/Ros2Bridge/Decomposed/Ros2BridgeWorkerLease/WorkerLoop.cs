@@ -151,17 +151,10 @@ namespace Unity2Foxglove.Ros2Bridge
                                                 var transientBytes = checked(
                                                     (ulong)measurement.TotalWireBytes
                                                     + responseReserve.TotalBytes);
-                                                while (!outboundLease.TryReserveTransient(
-                                                           transientBytes,
-                                                           out transient))
-                                                {
-                                                    if (ShouldStop(generation)
-                                                        || TryHandleOutboundTerminal(generation))
-                                                    {
-                                                        throw new OperationCanceledException();
-                                                    }
-                                                    _signal.WaitOne(10);
-                                                }
+                                                if (!outboundLease.TryReserveTransient(
+                                                        transientBytes,
+                                                        out transient))
+                                                    return null;
 
                                                 return Ros2BridgeV2SessionCodec
                                                     .EncodePublish(
@@ -171,7 +164,14 @@ namespace Unity2Foxglove.Ros2Bridge
                                                         messageId,
                                                         measurement);
                                             },
-                                            _sendTimeoutMs);
+                                            _sendTimeoutMs,
+                                            () =>
+                                            {
+                                                if (ShouldStop(generation)
+                                                    || TryHandleOutboundTerminal(generation))
+                                                    throw new OperationCanceledException();
+                                                _signal.WaitOne(10);
+                                            });
                                     }
                                     catch
                                     {

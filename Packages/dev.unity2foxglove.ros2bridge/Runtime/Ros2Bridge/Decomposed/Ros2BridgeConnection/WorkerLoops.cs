@@ -76,7 +76,7 @@ namespace Unity2Foxglove.Ros2Bridge
                             {
                                 if (_stopRequested)
                                     return;
-                                if (_requestConstructionsInProgress != 0)
+                                if (_requestConstructionInProgress)
                                 {
                                     waitMilliseconds = 50;
                                 }

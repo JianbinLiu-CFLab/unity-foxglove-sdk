@@ -224,76 +224,99 @@ namespace Unity2Foxglove.Ros2Bridge
                 ulong,
                 Ros2BridgeV2SessionSnapshot,
                 Ros2BridgeV2Request> requestFactory,
-            int timeoutMs)
+            int timeoutMs,
+            Action waitForRequestCapacity = null)
         {
             if (requestFactory == null)
                 throw new ArgumentNullException(nameof(requestFactory));
             if (timeoutMs <= 0)
                 throw new ArgumentOutOfRangeException(nameof(timeoutMs));
 
-            Ros2BridgeV2SessionSnapshot snapshot = null;
-            ulong requestId = 0;
-            lock (_requestAdmissionGate)
-            {
-                lock (_gate)
-                {
-                    ThrowIfDisposedLocked();
-                    if (_lifecycleState
-                        != Ros2BridgeSessionLifecycleState.Ready
-                        || _snapshot == null)
-                    {
-                        throw new InvalidOperationException(
-                            "Normal Bridge work requires a correlated hello_ack.");
-                    }
-                    snapshot = _snapshot;
-                    requestId = _requestIds.Next();
-                    _requestConstructionsInProgress++;
-                }
-            }
-
             PendingRequest pending = null;
-            try
+            var waitBeforeAdmission = false;
+            while (pending == null)
             {
-                var request = requestFactory(requestId, snapshot)
-                    ?? throw new InvalidOperationException(
-                        "The Bridge request factory returned null.");
-                if (request.Expectation.RequestId != requestId
-                    || request.Expectation.AssignsSessionIdentity
-                    || !string.Equals(
-                        request.Expectation.SessionId,
-                        snapshot.SessionId,
-                        StringComparison.Ordinal)
-                    || request.Expectation.ConnectionGeneration
-                    != snapshot.ConnectionGeneration)
+                if (waitBeforeAdmission)
+                    waitForRequestCapacity();
+                waitBeforeAdmission = true;
+                Ros2BridgeV2SessionSnapshot snapshot = null;
+                ulong requestId = 0;
+                var admissionAcquired = false;
+                while (!admissionAcquired)
                 {
-                    throw new U2R2ProtocolException(
-                        "invalid_configuration",
-                        "The Bridge request does not target the active session.",
-                        terminal: true);
+                    lock (_requestAdmissionGate)
+                    {
+                        lock (_gate)
+                        {
+                            if (!_requestConstructionInProgress)
+                            {
+                                ThrowIfDisposedLocked();
+                                if (_lifecycleState
+                                    != Ros2BridgeSessionLifecycleState.Ready
+                                    || _snapshot == null)
+                                {
+                                    throw new InvalidOperationException(
+                                        "Normal Bridge work requires a correlated hello_ack.");
+                                }
+                                snapshot = _snapshot;
+                                requestId = _requestIds.Next();
+                                _requestConstructionInProgress = true;
+                                admissionAcquired = true;
+                            }
+                        }
+                    }
+                    if (!admissionAcquired)
+                        Thread.Yield();
                 }
 
-                lock (_requestAdmissionGate)
+                try
+                {
+                    var request = requestFactory(requestId, snapshot);
+                    if (request == null)
+                    {
+                        if (waitForRequestCapacity == null)
+                            throw new InvalidOperationException(
+                                "The Bridge request factory returned null.");
+                        continue;
+                    }
+                    if (request.Expectation.RequestId != requestId
+                        || request.Expectation.AssignsSessionIdentity
+                        || !string.Equals(
+                            request.Expectation.SessionId,
+                            snapshot.SessionId,
+                            StringComparison.Ordinal)
+                        || request.Expectation.ConnectionGeneration
+                        != snapshot.ConnectionGeneration)
+                    {
+                        throw new U2R2ProtocolException(
+                            "invalid_configuration",
+                            "The Bridge request does not target the active session.",
+                            terminal: true);
+                    }
+
+                    lock (_requestAdmissionGate)
+                    {
+                        lock (_gate)
+                        {
+                            if (_lifecycleState
+                                != Ros2BridgeSessionLifecycleState.Ready
+                                || !ReferenceEquals(_snapshot, snapshot))
+                            {
+                                throw new InvalidOperationException(
+                                    "The Bridge session changed while preparing a request.");
+                            }
+
+                            pending = Enqueue(request);
+                        }
+                    }
+                }
+                finally
                 {
                     lock (_gate)
                     {
-                        if (_lifecycleState
-                            != Ros2BridgeSessionLifecycleState.Ready
-                            || !ReferenceEquals(_snapshot, snapshot))
-                        {
-                            throw new InvalidOperationException(
-                                "The Bridge session changed while preparing a request.");
-                        }
-
-                        pending = Enqueue(request);
+                        _requestConstructionInProgress = false;
+                        Monitor.PulseAll(_gate);
                     }
-                }
-            }
-            finally
-            {
-                lock (_gate)
-                {
-                    _requestConstructionsInProgress--;
-                    Monitor.PulseAll(_gate);
                 }
             }
 
