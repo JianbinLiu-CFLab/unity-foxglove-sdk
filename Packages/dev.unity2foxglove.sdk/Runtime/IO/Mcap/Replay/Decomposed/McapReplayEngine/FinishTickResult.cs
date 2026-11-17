@@ -111,6 +111,9 @@ namespace Unity.FoxgloveSDK.IO
 
         private List<int> GetHistoryChunkNumbersByDescendingEndTime()
         {
+            if (_historyChunkNumbersByDescendingEndTime != null)
+                return _historyChunkNumbersByDescendingEndTime;
+
             var ordered = new List<int>(_summary.ChunkIndexes.Count);
             for (var i = 0; i < _summary.ChunkIndexes.Count; i++)
                 ordered.Add(i);
@@ -127,6 +130,7 @@ namespace Unity.FoxgloveSDK.IO
                     return compare;
                 return right.ChunkStartOffset.CompareTo(left.ChunkStartOffset);
             });
+            _historyChunkNumbersByDescendingEndTime = ordered;
             return ordered;
         }
 
