@@ -325,54 +325,63 @@ namespace Unity.FoxgloveSDK.IO
         private RemoteMcapManifest GetCachedManifestCore(FileStamp loadStamp, out FileStamp storeStamp)
         {
             storeStamp = loadStamp;
-            if (!loadStamp.Exists)
-                return CreateMissingManifest();
-
-            lock (_manifestCacheGate)
+            for (var attempt = 0; attempt < 2; attempt++)
             {
-                if (_cachedManifest != null
-                    && MatchesCachedStamp(loadStamp))
+                if (!loadStamp.Exists)
+                    return CreateMissingManifest();
+
+                lock (_manifestCacheGate)
                 {
+                    if (_cachedManifest != null
+                        && MatchesCachedStamp(loadStamp))
+                    {
+                        return _cachedManifest;
+                    }
+                }
+
+                RemoteMcapManifest manifest;
+                try
+                {
+                    using var loader = new McapDataLoader(_mcapPath);
+                    var sourceId = GetCurrentSourceId(loadStamp);
+                    manifest = RemoteMcapManifestMapper.FromInitialization(
+                        loader.Initialize(),
+                        _manifestName,
+                        sourceId,
+                        BuildDataRoute(sourceId));
+                }
+                catch (IOException)
+                {
+                    return CreateMissingManifest();
+                }
+
+                storeStamp = ReadFileStamp();
+                if (!storeStamp.Exists)
+                    return CreateMissingManifest();
+                if (!SameStamp(loadStamp, storeStamp))
+                {
+                    loadStamp = storeStamp;
+                    continue;
+                }
+
+                lock (_manifestCacheGate)
+                {
+                    if (_cachedManifest != null
+                        && MatchesCachedStamp(loadStamp))
+                    {
+                        return _cachedManifest;
+                    }
+
+                    _cachedManifest = manifest;
+                    _cachedManifestBytes = null;
+                    _cachedManifestLength = loadStamp.Length;
+                    _cachedManifestLastWriteUtc = loadStamp.LastWriteUtc;
+                    _cachedManifestContentHash = loadStamp.ContentHash;
                     return _cachedManifest;
                 }
             }
 
-            RemoteMcapManifest manifest;
-            try
-            {
-                using var loader = new McapDataLoader(_mcapPath);
-                manifest = RemoteMcapManifestMapper.FromInitialization(
-                    loader.Initialize(),
-                    _manifestName,
-                    GetCurrentSourceId(loadStamp),
-                    BuildDataRoute(GetCurrentSourceId(loadStamp)));
-            }
-            catch (IOException)
-            {
-                return CreateMissingManifest();
-            }
-
-            storeStamp = ReadFileStamp();
-            if (!storeStamp.Exists)
-                return CreateMissingManifest();
-            if (!SameStamp(loadStamp, storeStamp))
-                return manifest;
-
-            lock (_manifestCacheGate)
-            {
-                if (_cachedManifest != null
-                    && MatchesCachedStamp(loadStamp))
-                {
-                    return _cachedManifest;
-                }
-
-                _cachedManifest = manifest;
-                _cachedManifestBytes = null;
-                _cachedManifestLength = loadStamp.Length;
-                _cachedManifestLastWriteUtc = loadStamp.LastWriteUtc;
-                _cachedManifestContentHash = loadStamp.ContentHash;
-                return _cachedManifest;
-            }
+            return CreateMissingManifest();
         }
 
         private byte[] GetCachedManifestBytes()
