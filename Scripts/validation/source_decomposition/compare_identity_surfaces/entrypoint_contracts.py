@@ -2,6 +2,10 @@ from __future__ import annotations
 
 from .foundation import *
 from .surface_contracts import *
+
+_UNSAFE_ENTRYPOINT_CONTRACT = "__phase192_unsafe_entrypoint_call__"
+
+
 def _is_safe_unittest_main_call(call: ast.Call) -> bool:
     """Return whether a unittest.main call has only literal safe options."""
     return (
@@ -294,6 +298,7 @@ def _entrypoint_contract(
     )
     dynamic_names: set[str] = set()
     local_names: set[str] = set()
+    invalid_entrypoint = False
     _ENTRYPOINT_DANGEROUS_NAMES = frozenset({
         "__import__", "builtins", "compile", "delattr", "eval", "exec", "getattr",
         "globals", "locals", "setattr", "vars",
@@ -487,6 +492,7 @@ def _entrypoint_contract(
         exception_names: frozenset[str] = frozenset(),
     ) -> bool:
         """Internal helper for validate_guard_statements."""
+        nonlocal invalid_entrypoint
         delegated = False
         for statement in statements:
             if isinstance(statement, ast.Expr) and isinstance(statement.value, ast.Call):
@@ -594,6 +600,22 @@ def _entrypoint_contract(
                 continue
             if isinstance(statement, ast.Raise):
                 exception = statement.exc
+                if (
+                    isinstance(exception, ast.Call)
+                    and isinstance(exception.func, ast.Name)
+                    and exception.func.id == "SystemExit"
+                    and len(exception.args) == 1
+                    and not exception.keywords
+                    and isinstance(exception.args[0], ast.Call)
+                    and isinstance(exception.args[0].func, ast.Name)
+                    and not exception.args[0].args
+                    and not exception.args[0].keywords
+                    and exception.args[0].func.id
+                    not in imported_names | local_names | dynamic_names | package_exports
+                ):
+                    invalid_entrypoint = True
+                    delegated = True
+                    continue
                 if not (
                     isinstance(exception, ast.Call)
                     and isinstance(exception.func, ast.Name)
@@ -606,11 +628,6 @@ def _entrypoint_contract(
                             and (
                                 is_safe_dispatch_call(exception.args[0])
                                 or _is_safe_unittest_main_call(exception.args[0])
-                                or (
-                                    isinstance(exception.args[0].func, ast.Name)
-                                    and not exception.args[0].args
-                                    and not exception.args[0].keywords
-                                )
                             )
                         )
                         or is_unittest_exit_expression(exception.args[0])
@@ -769,6 +786,8 @@ def _entrypoint_contract(
     digest = hashlib.sha256(ast.dump(normalized, include_attributes=False).encode("utf-8")).hexdigest()
     contract = _entrypoint_contract_signatures(normalized)
     risks = _namespace_risk_signatures(normalized)
+    if invalid_entrypoint:
+        contract = (_UNSAFE_ENTRYPOINT_CONTRACT,)
     return True, digest, contract, risks
 
 from Scripts.validation.source_decomposition.identity_initializer_contracts import (
@@ -958,4 +977,4 @@ def _approved_initializer_contract(
         return False
     return _initializer_signatures_compatible(base_signature, head_signature)
 
-__all__ = ['_is_safe_unittest_main_call', '_is_unittest_module_entrypoint', '_entrypoint_contract_signatures', '_reviewed_direct_entrypoint_absolute_import', '_entrypoint_contract', '_SAFE_BUILTIN_NAMES', '_SAFE_IMPORT_ROOTS', '_absolute_import_resolves', '_contract_preserves_order', '_definitely_bound_names', '_initializer_is_additive', '_initializer_statements_match', '_initializer_bound_names', '_is_docstring_statement', '_literal_assignment_target_matches', '_literal_initializer_value', '_literal_truth_value', '_loaded_names', '_module_spec_exists', '_safe_annotation_expression', '_safe_class_definition', '_safe_definition_expression', '_safe_function_definition', '_safe_inert_initializer_condition', '_safe_initializer_addition', '_safe_runtime_expression', '_section_alias_bindings', '_section_tuple_names', '_sections_preserve_order', '_statement_bound_names', '_statement_deleted_names', '_statement_loaded_names', '_entrypoint_block_is_standard', '_approved_entrypoint_section', '_approved_entrypoint_contract', '_approved_initializer_contract', ]
+__all__ = ['_UNSAFE_ENTRYPOINT_CONTRACT', '_is_safe_unittest_main_call', '_is_unittest_module_entrypoint', '_entrypoint_contract_signatures', '_reviewed_direct_entrypoint_absolute_import', '_entrypoint_contract', '_SAFE_BUILTIN_NAMES', '_SAFE_IMPORT_ROOTS', '_absolute_import_resolves', '_contract_preserves_order', '_definitely_bound_names', '_initializer_is_additive', '_initializer_statements_match', '_initializer_bound_names', '_is_docstring_statement', '_literal_assignment_target_matches', '_literal_initializer_value', '_literal_truth_value', '_loaded_names', '_module_spec_exists', '_safe_annotation_expression', '_safe_class_definition', '_safe_definition_expression', '_safe_function_definition', '_safe_inert_initializer_condition', '_safe_initializer_addition', '_safe_runtime_expression', '_section_alias_bindings', '_section_tuple_names', '_sections_preserve_order', '_statement_bound_names', '_statement_deleted_names', '_statement_loaded_names', '_entrypoint_block_is_standard', '_approved_entrypoint_section', '_approved_entrypoint_contract', '_approved_initializer_contract', ]

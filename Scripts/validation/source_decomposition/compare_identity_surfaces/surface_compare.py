@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from .foundation import *
 from .entrypoint_contracts import (
+    _UNSAFE_ENTRYPOINT_CONTRACT,
     _approved_entrypoint_contract,
     _approved_initializer_contract,
 )
@@ -588,7 +589,12 @@ def _compare_surfaces(
             ):
                 errors.append(f"CONDITIONAL_CONTRACT_CHANGED {relative}")
         if base_entrypoint and head_entrypoint:
-            if strict and base_entrypoint_digest != head_entrypoint_digest:
+            if (
+                _UNSAFE_ENTRYPOINT_CONTRACT in tuple(base_entrypoint_contract or ())
+                or _UNSAFE_ENTRYPOINT_CONTRACT in tuple(head_entrypoint_contract or ())
+            ):
+                errors.append(f"MODULE_ENTRYPOINT_CHANGED {relative}")
+            elif strict and base_entrypoint_digest != head_entrypoint_digest:
                 errors.append(f"MODULE_ENTRYPOINT_CHANGED {relative}")
             elif not strict:
                 entrypoint_changed = (
