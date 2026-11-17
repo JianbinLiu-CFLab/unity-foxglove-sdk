@@ -221,7 +221,7 @@ def decode_chunk_records(content: bytes) -> tuple[list[tuple[int, bytes]], int]:
     compression, offset = read_string(content, offset)
     compressed_size = read_u64(content, offset)
     offset += 8
-    if offset + compressed_size > len(content):
+    if offset + compressed_size != len(content):
         raise ValueError("truncated MCAP chunk payload")
     records = content[offset : offset + compressed_size]
 

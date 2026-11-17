@@ -612,9 +612,12 @@ namespace Unity.FoxgloveSDK.Components
             return _ordinaryTransportPublisherId;
         }
 
+        [NonSerialized] private bool _capturingComponentSessionEncoding;
+
         protected virtual PublisherEncodingResolution ResolvePublisherEncoding()
         {
-            if (_manager != null
+            if (!_capturingComponentSessionEncoding
+                && _manager != null
                 && _manager.TryGetActiveComponentPublisherSessionEntry(this, out var frozen))
             {
                 return new PublisherEncodingResolution(
@@ -623,6 +626,24 @@ namespace Unity.FoxgloveSDK.Components
                     fellBack: false);
             }
 
+            return ResolvePublisherEncodingFromConfiguration();
+        }
+
+        internal PublisherEncodingResolution ResolveComponentSessionEncoding()
+        {
+            _capturingComponentSessionEncoding = true;
+            try
+            {
+                return ResolvePublisherEncoding();
+            }
+            finally
+            {
+                _capturingComponentSessionEncoding = false;
+            }
+        }
+
+        private PublisherEncodingResolution ResolvePublisherEncodingFromConfiguration()
+        {
             var managerDefault = _manager != null ? _manager.DefaultPublisherEncoding : GlobalEncoding.Json;
             var allowPublisherOverride = _manager == null || _manager.AllowPublisherOverride;
             return PublisherEncodingPolicy.Resolve(

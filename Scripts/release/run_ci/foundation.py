@@ -74,7 +74,10 @@ def sanitize_run_id(value: str | None) -> str:
 
 def unique_run_id(value: str | None) -> str:
     """Avoid reusing an existing CI output directory across invocations."""
+    inherited = bool((value or "").strip())
     candidate = sanitize_run_id(value)
+    if inherited:
+        return candidate
     run_root = REPO_ROOT / "build" / "ci" / candidate
     if run_root.exists():
         candidate = f"{candidate}-{uuid.uuid4().hex[:8]}"

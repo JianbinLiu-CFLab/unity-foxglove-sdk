@@ -218,7 +218,10 @@ def _posix_process_group_exists(process_group_id: int) -> bool:
     return True
 
 
-def _posix_process_group_pids(process_group_id: int) -> List[int]:
+def _posix_process_group_pids(
+    process_group_id: int,
+    session_id: Optional[int] = None,
+) -> List[int]:
     """Enumerate a POSIX process group with bounded residual diagnostics."""
     try:
         result = subprocess.run(
@@ -229,6 +232,8 @@ def _posix_process_group_pids(process_group_id: int) -> List[int]:
             timeout=PROCESS_DIAGNOSTIC_TIMEOUT_SECONDS,
         )
     except (OSError, subprocess.TimeoutExpired):
+        if session_id is not None:
+            return []
         return [process_group_id] if _posix_process_group_exists(process_group_id) else []
     pids = []
     for line in result.stdout.splitlines():
@@ -239,9 +244,19 @@ def _posix_process_group_pids(process_group_id: int) -> List[int]:
             pid, group = (int(field) for field in fields)
         except ValueError:
             continue
-        if group == process_group_id:
-            pids.append(pid)
-    if not pids and _posix_process_group_exists(process_group_id):
+        if group != process_group_id:
+            continue
+        if session_id is not None:
+            get_session_id = getattr(os, "getsid", None)
+            if get_session_id is None:
+                return []
+            try:
+                if get_session_id(pid) != session_id:
+                    continue
+            except OSError:
+                continue
+        pids.append(pid)
+    if not pids and session_id is None and _posix_process_group_exists(process_group_id):
         return [process_group_id]
     return pids
 
@@ -301,7 +316,70 @@ class OwnedProcessTree:
         self.process = process
         self._windows_job = windows_job
         self._posix_process_group_id = posix_process_group_id
+        self._posix_session_id = (
+            OwnedProcessTree._posix_process_session_id(process.pid, posix_process_group_id)
+            if posix_process_group_id is not None
+            else None
+        )
         self._observed_posix_pids = {process.pid} if posix_process_group_id is not None else set()
+        self._observed_posix_start_tokens: Dict[int, str] = {}
+        if posix_process_group_id is not None:
+            start_token = self._posix_process_start_token(process.pid)
+            if start_token is not None:
+                self._observed_posix_start_tokens[process.pid] = start_token
+
+    @staticmethod
+    def _posix_process_session_id(
+        process_id: int,
+        expected_group_id: Optional[int] = None,
+    ) -> Optional[int]:
+        """Read one POSIX session id from procfs or the platform session API."""
+        try:
+            fields = Path(f"/proc/{process_id}/stat").read_text(encoding="utf-8").rsplit(")", 1)[1].split()
+            if expected_group_id is not None and int(fields[2]) != expected_group_id:
+                return None
+            return int(fields[3])
+        except (OSError, ValueError, IndexError):
+            pass
+
+        get_session_id = getattr(os, "getsid", None)
+        get_process_group_id = getattr(os, "getpgid", None)
+        if get_session_id is None or get_process_group_id is None:
+            return None
+        try:
+            session_id = get_session_id(process_id)
+            if expected_group_id is not None and get_process_group_id(process_id) != expected_group_id:
+                return None
+            return session_id
+        except OSError:
+            return None
+
+    @staticmethod
+    def _posix_process_start_token(process_id: int) -> Optional[str]:
+        """Read a stable start token for one POSIX process when available."""
+        try:
+            fields = Path(f"/proc/{process_id}/stat").read_text(
+                encoding="utf-8"
+            ).rsplit(")", 1)[1].split()
+            return fields[19]
+        except (OSError, ValueError, IndexError):
+            pass
+
+        try:
+            result = subprocess.run(
+                ["ps", "-o", "pid=,lstart=", "-p", str(process_id)],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=PROCESS_DIAGNOSTIC_TIMEOUT_SECONDS,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        for line in result.stdout.splitlines():
+            fields = line.split()
+            if fields and fields[0] == str(process_id) and len(fields) > 1:
+                return " ".join(fields[1:])
+        return None
 
     def active_pids(self) -> List[int]:
         """Return the process IDs still owned by this invocation."""
@@ -312,12 +390,29 @@ class OwnedProcessTree:
             # never trust a recycled numeric PGID; use only authenticated PIDs
             # observed during this invocation.
             if self.process.poll() is None:
-                self._observed_posix_pids.update(_posix_descendant_pids(self.process.pid))
-                self._observed_posix_pids.update(
-                    _posix_process_group_pids(self._posix_process_group_id)
+                observed = set(_posix_descendant_pids(self.process.pid))
+                observed.update(
+                    _posix_process_group_pids(
+                        self._posix_process_group_id,
+                        self._posix_session_id,
+                    )
                 )
+                self._observed_posix_pids.update(observed)
+                for process_id in observed:
+                    if process_id in self._observed_posix_start_tokens:
+                        continue
+                    start_token = self._posix_process_start_token(process_id)
+                    if start_token is not None:
+                        self._observed_posix_start_tokens[process_id] = start_token
             return sorted(
-                pid for pid in self._observed_posix_pids if _posix_pid_exists(pid)
+                pid
+                for pid in self._observed_posix_pids
+                if _posix_pid_exists(pid)
+                and (
+                    pid not in self._observed_posix_start_tokens
+                    or self._posix_process_start_token(pid)
+                    == self._observed_posix_start_tokens[pid]
+                )
             )
         return []
 
@@ -326,10 +421,24 @@ class OwnedProcessTree:
         if self._windows_job is not None:
             self._windows_job.terminate()
         elif self._posix_process_group_id is not None:
-            try:
-                os.killpg(self._posix_process_group_id, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
+            if self.process.poll() is None:
+                try:
+                    os.killpg(self._posix_process_group_id, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+            else:
+                self._observe_posix_group_after_exit()
+                for process_id in self._observed_posix_pids:
+                    start_token = self._observed_posix_start_tokens.get(process_id)
+                    if (
+                        start_token is None
+                        or self._posix_process_start_token(process_id) != start_token
+                    ):
+                        continue
+                    try:
+                        os.kill(process_id, signal.SIGKILL)
+                    except (OSError, ProcessLookupError):
+                        pass
 
         try:
             self.process.wait(timeout=UNITY_TERMINATION_WAIT_SECONDS)
@@ -339,10 +448,17 @@ class OwnedProcessTree:
         deadline = time.monotonic() + UNITY_TERMINATION_WAIT_SECONDS
         while True:
             if self._posix_process_group_id is not None:
-                if not _posix_process_group_exists(self._posix_process_group_id):
-                    return []
+                if self.process.poll() is None:
+                    if not _posix_process_group_exists(self._posix_process_group_id):
+                        return []
+                else:
+                    residual_pids = self.active_pids()
+                    if not residual_pids:
+                        return []
+                    if time.monotonic() >= deadline:
+                        return residual_pids
                 if time.monotonic() >= deadline:
-                    return _posix_process_group_pids(self._posix_process_group_id)
+                    return self.active_pids()
                 time.sleep(PROCESS_TREE_POLL_SECONDS)
                 continue
             residual_pids = self.active_pids()
@@ -362,18 +478,37 @@ class OwnedProcessTree:
                 except ProcessLookupError:
                     pass
             else:
-                # The group number may have been reused after root exit. Kill
-                # authenticated PIDs observed while this invocation owned the
-                # root, plus any descendants still present in that group.
-                owned_pids = set(self._observed_posix_pids)
-                if _posix_process_group_exists(self._posix_process_group_id):
-                    owned_pids.update(_posix_process_group_pids(self._posix_process_group_id))
-                for process_id in owned_pids:
+                # Recover late descendants through the session-filtered group
+                # view, then kill only PIDs whose start token still matches.
+                self._observe_posix_group_after_exit()
+                for process_id in self._observed_posix_pids:
+                    start_token = self._observed_posix_start_tokens.get(process_id)
+                    if (
+                        start_token is None
+                        or self._posix_process_start_token(process_id) != start_token
+                    ):
+                        continue
                     try:
                         os.kill(process_id, signal.SIGKILL)
                     except (OSError, ProcessLookupError):
                         pass
             self._posix_process_group_id = None
+
+    def _observe_posix_group_after_exit(self) -> None:
+        """Record authenticated group members after the root process exits."""
+        if self._posix_session_id is None:
+            return
+        observed = _posix_process_group_pids(
+            self._posix_process_group_id,
+            self._posix_session_id,
+        )
+        self._observed_posix_pids.update(observed)
+        for process_id in observed:
+            if process_id in self._observed_posix_start_tokens:
+                continue
+            start_token = self._posix_process_start_token(process_id)
+            if start_token is not None:
+                self._observed_posix_start_tokens[process_id] = start_token
 
 
 def start_owned_process(cmd: List[str], root: Path, **popen_kwargs) -> OwnedProcessTree:

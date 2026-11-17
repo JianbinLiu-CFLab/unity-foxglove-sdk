@@ -242,7 +242,7 @@ namespace Unity.FoxgloveSDK.Core
                         FileShare.ReadWrite | FileShare.Delete,
                         IntPtr.Zero,
                         FileMode.Open,
-                        FileFlagBackupSemantics,
+                        FileFlagBackupSemantics | FileFlagOpenReparsePoint,
                         IntPtr.Zero);
                     if (opened.IsInvalid)
                     {
@@ -258,7 +258,12 @@ namespace Unity.FoxgloveSDK.Core
                 if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux)
                     || RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
                 {
-                    var descriptor = Open(registeredRoot, OpenReadOnly);
+                    var noFollow = !RuntimeInformation.IsOSPlatform(OSPlatform.Linux)
+                        ? OpenNoFollowMacOs
+                        : RuntimeInformation.ProcessArchitecture is Architecture.Arm or Architecture.Arm64
+                            ? OpenNoFollowLinuxArm
+                            : OpenNoFollowLinux;
+                    var descriptor = Open(registeredRoot, OpenReadOnly | noFollow);
                     if (descriptor < 0)
                     {
                         error = $"Could not open the registered asset root (native error {Marshal.GetLastWin32Error()}).";
@@ -519,7 +524,11 @@ namespace Unity.FoxgloveSDK.Core
 
         private const int AtEmptyPath = 0x1000;
         private const int OpenReadOnly = 0;
+        private const int OpenNoFollowLinux = 0x20000;
+        private const int OpenNoFollowLinuxArm = 0x8000;
+        private const int OpenNoFollowMacOs = 0x100;
         private const uint FileFlagBackupSemantics = 0x02000000;
+        private const uint FileFlagOpenReparsePoint = 0x00200000;
         private const uint StatxNlink = 0x0004;
         private const int StatxNlinkOffset = 16;
         private const int DarwinGetPath = 50;

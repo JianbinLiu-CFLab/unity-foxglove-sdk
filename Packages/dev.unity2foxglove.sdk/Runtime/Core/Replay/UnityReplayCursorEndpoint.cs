@@ -234,9 +234,9 @@ namespace Unity.FoxgloveSDK.Core
             lock (_lifecycleGate)
             {
                 ReapRetiredGenerationsNoLock();
-                StopNoLock();
                 if (!options.Enabled)
                 {
+                    StopNoLock();
                     return;
                 }
 
@@ -249,6 +249,18 @@ namespace Unity.FoxgloveSDK.Core
                 {
                     throw new ArgumentNullException(nameof(queue));
                 }
+
+                var currentGeneration = _generation;
+                if (currentGeneration?.Worker != null
+                    && currentGeneration.Worker != Thread.CurrentThread
+                    && currentGeneration.Worker.IsAlive
+                    && _retiringGenerations.Count >= MaxRetiringGenerations)
+                {
+                    throw new InvalidOperationException(
+                        RetirementCapacityExceededMessage);
+                }
+
+                StopNoLock();
 
                 var listener = new HttpListener();
                 listener.Prefixes.Add($"http://{options.Host}:{options.Port}/");
@@ -347,11 +359,6 @@ namespace Unity.FoxgloveSDK.Core
             else if (!workerRetired)
             {
                 _logger?.LogWarning(RetirementCapacityExceededMessage);
-                // The listener and generation lease are already revoked. Do
-                // not keep the stopped generation as the active publication:
-                // doing so permanently wedges every later Start while the
-                // bounded retirement slot is occupied by an older worker.
-                _generation = null;
             }
 
             if (workerRetired || movedToRetiring)
@@ -418,7 +425,11 @@ namespace Unity.FoxgloveSDK.Core
             }
             finally
             {
-                if (ReferenceEquals(_generation, generation))
+                if (Interlocked.CompareExchange(
+                        ref _generation,
+                        null,
+                        generation)
+                    == generation)
                 {
                     _running = false;
                 }

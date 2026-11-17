@@ -225,6 +225,7 @@ namespace Unity.FoxgloveSDK.IO
             _metadataFallbackScanComplete = false;
             _summary = null;
             _snapshotChunkIndexesByDescendingEndTime = null;
+            _historyChunkOrder.Clear();
             _pending.Clear();
             ClearDeferredPending();
             _currentChunkIdx = -1;

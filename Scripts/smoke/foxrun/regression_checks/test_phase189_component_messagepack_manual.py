@@ -31,7 +31,7 @@ class Phase189ManualAcceptanceTests(unittest.TestCase):
         source = CONTROLLER.read_text(encoding="utf-8")
         for topic in ("/phase189/component/scalar", "/phase189/component/nested", "/phase189/component/jpeg", "/phase189/component/pointcloud"):
             self.assertIn(topic, scene + source)
-        for marker in ("Stage pending topic + JSON", "Restart Manager", "Restore MessagePack", "PHASE189_COMPONENT_MESSAGEPACK_PROBE_PASS"):
+        for marker in ("Stage pending topic + JSON", "Restart Manager", "Restore MessagePack", "Record live probe evidence", "Record MCAP inspector evidence", "PHASE189_COMPONENT_MESSAGEPACK_PROBE_PASS"):
             self.assertIn(marker, source)
         self.assertIn("PHASE189_BATCH_DIAGNOSTIC_PASS", BATCH.read_text(encoding="utf-8"))
 
@@ -44,6 +44,16 @@ class Phase189ManualAcceptanceTests(unittest.TestCase):
         self.assertIn("stage=5/5", output)
         self.assertIn("PHASE189_MANUAL_STATUS", output)
         self.assertNotIn("placeholder", output.lower())
+
+    def test_manual_coordinator_rejects_path_traversal_run_ids(self):
+        """Reject run identifiers that could escape the bounded evidence root."""
+        completed = subprocess.run(
+            [sys.executable, str(MANUAL), "--run-id", "../../outside", "--non-interactive"],
+            text=True,
+            capture_output=True,
+        )
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn("invalid_run_id", completed.stderr)
 
     def test_noninteractive_batch_binds_component_fixture_evidence(self):
         """Require non-interactive mode to emit and validate concrete four-topic evidence."""

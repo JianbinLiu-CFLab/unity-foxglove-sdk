@@ -324,6 +324,65 @@ namespace FoxgloveSdk.UnitTests.Mcap
         }
 
         [Fact]
+        public void StaleDeferredRetryReleasesItsChunkOwner()
+        {
+            using var engine = new McapReplayEngine();
+            var retryType = typeof(McapReplayEngine).GetNestedType(
+                "DeferredReplayRetry",
+                BindingFlags.Instance | BindingFlags.Static | BindingFlags.NonPublic);
+            Assert.NotNull(retryType);
+            var retry = Activator.CreateInstance(retryType, nonPublic: true);
+            retryType.GetField("ChunkIndex", BindingFlags.Instance | BindingFlags.NonPublic)
+                .SetValue(retry, 7);
+            retryType.GetField("RecordOffset", BindingFlags.Instance | BindingFlags.NonPublic)
+                .SetValue(retry, 11);
+            retryType.GetField("LogTime", BindingFlags.Instance | BindingFlags.NonPublic)
+                .SetValue(retry, 10UL);
+
+            var retriesField = typeof(McapReplayEngine).GetField(
+                "_deferredRetries",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            var byKeyField = typeof(McapReplayEngine).GetField(
+                "_deferredRetryByKey",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            var ownersField = typeof(McapReplayEngine).GetField(
+                "_deferredRetryOwners",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            var referencesField = typeof(McapReplayEngine).GetField(
+                "_deferredRetryOwnerReferences",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(retriesField);
+            Assert.NotNull(byKeyField);
+            Assert.NotNull(ownersField);
+            Assert.NotNull(referencesField);
+
+            var retries = (System.Collections.IList)retriesField.GetValue(engine);
+            var byKey = (System.Collections.IDictionary)byKeyField.GetValue(engine);
+            var owners = (System.Collections.IDictionary)ownersField.GetValue(engine);
+            var references = (System.Collections.IDictionary)referencesField.GetValue(engine);
+            const ulong key = ((ulong)7 << 32) | 11UL;
+            retries.Add(retry);
+            byKey.Add(key, retry);
+            owners.Add(7, new byte[] { 1 });
+            references.Add(7, 1);
+
+            var flush = typeof(McapReplayEngine).GetMethod(
+                "FlushDeferredRetries",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(flush);
+            flush.Invoke(engine, new object[]
+            {
+                100UL,
+                100UL,
+                new List<McapMessage>()
+            });
+
+            Assert.Empty(byKey);
+            Assert.Empty(owners);
+            Assert.Empty(references);
+        }
+
+        [Fact]
         public void DeferredRetryAdmissionRemainsResponsiveAtMetadataBound()
         {
             const int futureMessageCount = 100_001;

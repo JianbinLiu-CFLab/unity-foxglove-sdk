@@ -118,7 +118,7 @@ def main(argv: list[str]) -> int:
         ros2_root_text = args.ros2_root or str(ros2env.DEFAULT_ROS2_ROOT)
         ros2_root = ros2env.resolve_existing_path(ros2_root_text, "ROS2 root", workspace_root)
         pixi_python, ros2_script = ros2env.validate_ros2_root(ros2_root)
-        env = ros2env.build_ros_env(ros2_root, args.rmw, args.discovery_range, args.domain_id)
+        env = ros2env.build_ros_env(ros2_root, args.rmw, args.discovery_range, args.domain_id, ros_distro="jazzy")
         print(f"[phase138s-imu-dds] ROS2 root: {ros2_root}")
         print(f"[phase138s-imu-dds] ros2-script.py: {ros2_script}")
     else:

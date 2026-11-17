@@ -72,6 +72,14 @@ class _RunCiTestsPart1:
         self.assertEqual(self.run_ci.REPO_ROOT, expected_root)
         self.assertTrue(self.run_ci.CI_ROOT.is_relative_to(expected_root / "build" / "ci"))
 
+    def test_inherited_run_id_reuses_the_parent_output_directory(self) -> None:
+        """Nested CI jobs must keep the explicitly inherited run directory."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "build" / "ci" / "parent").mkdir(parents=True)
+            with mock.patch.object(self.run_ci, "REPO_ROOT", root):
+                self.assertEqual("parent", self.run_ci.unique_run_id("parent"))
+
     def test_run_ci_supports_module_entrypoint(self) -> None:
         """The package preserves the module invocation supported by the former script."""
         result = subprocess.run(

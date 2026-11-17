@@ -110,25 +110,7 @@ namespace Unity.FoxgloveSDK.IO
         }
 
         private List<int> GetHistoryChunkNumbersByDescendingEndTime()
-        {
-            var ordered = new List<int>(_summary.ChunkIndexes.Count);
-            for (var i = 0; i < _summary.ChunkIndexes.Count; i++)
-                ordered.Add(i);
-
-            ordered.Sort((leftNumber, rightNumber) =>
-            {
-                var left = _summary.ChunkIndexes[leftNumber];
-                var right = _summary.ChunkIndexes[rightNumber];
-                var compare = right.MessageEndTime.CompareTo(left.MessageEndTime);
-                if (compare != 0)
-                    return compare;
-                compare = right.MessageStartTime.CompareTo(left.MessageStartTime);
-                if (compare != 0)
-                    return compare;
-                return right.ChunkStartOffset.CompareTo(left.ChunkStartOffset);
-            });
-            return ordered;
-        }
+            => _historyChunkOrder.Get(_summary);
 
         private List<McapChunkIndex> GetSnapshotChunkIndexesByDescendingEndTime()
         {

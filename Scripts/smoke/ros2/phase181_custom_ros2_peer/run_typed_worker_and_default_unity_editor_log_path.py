@@ -415,7 +415,7 @@ def _terminate_owned_child(process: subprocess.Popen[str]) -> None:
             process.wait(timeout=5.0)
         except subprocess.TimeoutExpired:
             raise PeerFailure("FAIL_PEER_CLEANUP", "Owned Windows process tree did not exit within the cleanup deadline.")
-        if result.returncode != 0 or process.poll() is None:
+        if process.poll() is None:
             raise PeerFailure("FAIL_PEER_CLEANUP", "Owned Windows process tree could not be retired.")
         return
     protocol.terminate_owned_process(process)

@@ -90,4 +90,120 @@ namespace Unity.FoxgloveSDK.Editor
             return new string(chars);
         }
     }
+
+    internal static class OpenH264ArtifactPairPublisher
+    {
+        internal static void Publish(
+            string stagedDllPath,
+            string stagedHelperPath,
+            string finalDllPath,
+            string finalHelperPath,
+            Action<string, string> moveFile = null,
+            Action<string> deleteFile = null)
+        {
+            if (moveFile == null)
+                moveFile = File.Move;
+            if (deleteFile == null)
+                deleteFile = File.Delete;
+
+            var dllBackupPath = finalDllPath + ".bak";
+            var helperBackupPath = finalHelperPath + ".bak";
+            var originalDllMoved = false;
+            var originalHelperMoved = false;
+            var installedDll = false;
+            var installedHelper = false;
+
+            DeleteFileIfPresent(dllBackupPath, deleteFile);
+            DeleteFileIfPresent(helperBackupPath, deleteFile);
+            try
+            {
+                MoveOriginalIfPresent(
+                    finalDllPath,
+                    dllBackupPath,
+                    moveFile,
+                    ref originalDllMoved);
+                MoveOriginalIfPresent(
+                    finalHelperPath,
+                    helperBackupPath,
+                    moveFile,
+                    ref originalHelperMoved);
+
+                moveFile(stagedDllPath, finalDllPath);
+                installedDll = true;
+                moveFile(stagedHelperPath, finalHelperPath);
+                installedHelper = true;
+
+                DeleteFileIfPresent(dllBackupPath, deleteFile);
+                DeleteFileIfPresent(helperBackupPath, deleteFile);
+            }
+            catch
+            {
+                if (installedHelper)
+                    DeleteFileIfPresent(finalHelperPath, deleteFile);
+                if (installedDll)
+                    DeleteFileIfPresent(finalDllPath, deleteFile);
+                if (originalHelperMoved)
+                    RestoreOriginal(
+                        helperBackupPath,
+                        finalHelperPath,
+                        moveFile,
+                        deleteFile);
+                if (originalDllMoved)
+                    RestoreOriginal(
+                        dllBackupPath,
+                        finalDllPath,
+                        moveFile,
+                        deleteFile);
+                throw;
+            }
+        }
+
+        private static void MoveOriginalIfPresent(
+            string originalPath,
+            string backupPath,
+            Action<string, string> moveFile,
+            ref bool moved)
+        {
+            if (!File.Exists(originalPath))
+                return;
+
+            moveFile(originalPath, backupPath);
+            moved = true;
+        }
+
+        private static void RestoreOriginal(
+            string backupPath,
+            string destinationPath,
+            Action<string, string> moveFile,
+            Action<string> deleteFile)
+        {
+            if (!File.Exists(backupPath))
+                return;
+
+            try
+            {
+                DeleteFileIfPresent(destinationPath, deleteFile);
+                moveFile(backupPath, destinationPath);
+            }
+            catch
+            {
+            }
+        }
+
+        private static void DeleteFileIfPresent(
+            string path,
+            Action<string> deleteFile)
+        {
+            if (!File.Exists(path))
+                return;
+
+            try
+            {
+                deleteFile(path);
+            }
+            catch
+            {
+            }
+        }
+    }
 }

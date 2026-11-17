@@ -8,6 +8,7 @@ using System;
 using System.Collections.Concurrent;
 using System.IO;
 using System.Security.Cryptography;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 
@@ -92,6 +93,8 @@ namespace Unity.FoxgloveSDK.Editor
             var lockKey = string.CompareOrdinal(_pfxPath, _rootCaPath) <= 0
                 ? _pfxPath + "\n" + _rootCaPath
                 : _rootCaPath + "\n" + _pfxPath;
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                lockKey = lockKey.ToUpperInvariant();
             _pairLock = PairLocks.GetOrAdd(lockKey, _ => new PairLock());
             _pairLockFilePath = Path.Combine(
                 pfxDirectory,

@@ -140,6 +140,8 @@ namespace Unity.FoxgloveSDK.IO
             Comparer<McapMessage>.Create(CompareMessages);
         private readonly Dictionary<ushort, SnapshotCandidate> _snapshotLatestByChannel = new();
         private List<McapChunkIndex> _snapshotChunkIndexesByDescendingEndTime;
+        private readonly McapHistoryChunkOrderCache _historyChunkOrder =
+            new McapHistoryChunkOrderCache();
         private readonly IFoxgloveLogger _logger;
         /// <summary>
         /// Counters from the most recent <see cref="Snapshot"/> call.

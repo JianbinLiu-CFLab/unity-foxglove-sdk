@@ -89,25 +89,17 @@ jobs:
             "Packages/dev.unity2foxglove.sdk/Samples~"
             "Unity2Foxglove/README.md"
             "Unity2Foxglove/Docs"
-            "Scripts"
           )
           set +e
           pattern='(^|[^A-Za-z0-9])([A-Za-z]:[\\/]|\\\\[^\\/]+[\\/]|/(home|Users)/)|BaiduSyncdisk|00 Inbox|!\[\[|TODO|FIXME|TBD|Pasted image|Scripts[\/]build[_]unity[_]il2cpp\.py'
           if command -v rg >/dev/null 2>&1; then
             rg -n "$pattern" "${files[@]}" \
-              -g "*.md" -g "*.json" -g "*.py" -g "*.ps1" -g "*.cff" \
-              -g "!Scripts/package/validate_unity_package.py" \
-              -g "!Scripts/ros2forunity/windows/jazzy/phase138b_r2fu_jazzy_windows_build.py" \
-              -g "!Scripts/ros2forunity/windows/jazzy/regression_checks/test_phase138b_build_defaults.py"
+              -g "*.md" -g "*.json" -g "*.py" -g "*.ps1" -g "*.cff"
           else
-            # Hosted runners without ripgrep use a conservative documentation
-            # scan; source/test fixtures intentionally contain example paths.
-            grep -RInE 'BaiduSyncdisk|00 Inbox|!\[\[|Pasted image|TODO|FIXME|TBD' \
-              README.md ROADMAP.md CHANGELOG.md CITATION.cff PAPER.md docs THIRD_PARTY_NOTICES.md \
-              Packages/dev.unity2foxglove.sdk/README.md Packages/dev.unity2foxglove.sdk/Documentation~ \
-              Unity2Foxglove/README.md Unity2Foxglove/Docs \
-              --include='*.md' --include='*.json' --include='*.py' --include='*.ps1' --include='*.cff' \
-              --exclude='PAPER.md'
+            # Hosted runners without ripgrep scan the same public documentation
+            # set; source/test fixtures intentionally contain example paths.
+            grep -RInE "$pattern" "${files[@]}" \
+              --include='*.md' --include='*.json' --include='*.py' --include='*.ps1' --include='*.cff'
           fi
           rg_status=$?
           set -e

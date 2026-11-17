@@ -20,6 +20,16 @@ class CompressedPointCloudMcapInspectTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "truncated MCAP record header"):
             module.read_records(b"\x01\x02")
 
+    def test_chunk_trailing_bytes_are_rejected(self) -> None:
+        """Reject bytes after the declared compressed chunk payload."""
+        content = (
+            struct.pack("<QQQI", 0, 0, 0, 0)
+            + struct.pack("<I", 0)
+            + struct.pack("<Q", 0)
+            + b"x"
+        )
+        with self.assertRaisesRegex(ValueError, "truncated MCAP chunk payload"):
+            module.decode_chunk_records(content)
 
 
     def test_oversized_input_is_rejected_before_read(self) -> None:

@@ -56,14 +56,25 @@ def remove_known_subdir(path: pathlib.Path, allowed_parent: pathlib.Path) -> Non
 def kill_process_tree_windows(pid: int) -> None:
     """Terminate a Windows process tree without letting build children outlive timeout."""
 
-    if os.name != "nt":
+    if os.name == "nt":
+        subprocess.run(
+            ["taskkill", "/T", "/F", "/PID", str(pid)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
         return
-    subprocess.run(
-        ["taskkill", "/T", "/F", "/PID", str(pid)],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        check=False,
-    )
+
+    kill_signal = getattr(signal, "SIGKILL", signal.SIGTERM)
+    try:
+        os.killpg(pid, kill_signal)
+    except ProcessLookupError:
+        pass
+    except OSError:
+        try:
+            os.kill(pid, kill_signal)
+        except OSError:
+            pass
 
 
 def classify_output(output: str) -> str:

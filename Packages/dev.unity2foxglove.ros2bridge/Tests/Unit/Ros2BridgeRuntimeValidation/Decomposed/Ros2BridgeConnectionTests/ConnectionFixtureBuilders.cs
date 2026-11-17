@@ -19,11 +19,11 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
 {
     public sealed partial class Ros2BridgeConnectionTests
     {
-        private static U2R2Message Parse(byte[] wireBytes)
+        internal static U2R2Message Parse(byte[] wireBytes)
             => U2R2ProtocolCodec.ParseV2(
                 U2R2ProtocolCodec.DecodeFrame(wireBytes));
 
-        private static JObject HelloAck(
+        internal static JObject HelloAck(
             ulong requestId,
             bool includeSubscribe = false)
             => new JObject
@@ -40,7 +40,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                 ["status"] = "ok",
             };
 
-        private static JObject Response(
+        internal static JObject Response(
             string operation,
             ulong requestId,
             string sessionId,
@@ -87,7 +87,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                 ["status"] = "ok",
             };
 
-        private static void WriteFrame(
+        internal static void WriteFrame(
             Stream stream,
             JObject header)
             => WriteFrame(
@@ -95,7 +95,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                 header,
                 Array.Empty<byte>());
 
-        private static void WriteFrame(
+        internal static void WriteFrame(
             Stream stream,
             JObject header,
             byte[] payload)
@@ -126,7 +126,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
             }
         }
 
-        private static byte[] ReadWireFrame(Stream stream)
+        internal static byte[] ReadWireFrame(Stream stream)
         {
             var fixedHeader = ReadExactly(stream, 16);
             var headerBytes = ReadUInt32(fixedHeader, 8);
@@ -186,7 +186,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                 (byte)((value >> 24) & 0xff);
         }
 
-        private sealed class LoopbackPeer : IDisposable
+        internal sealed class LoopbackPeer : IDisposable
         {
             private readonly TcpListener _listener;
             private readonly Thread _thread;

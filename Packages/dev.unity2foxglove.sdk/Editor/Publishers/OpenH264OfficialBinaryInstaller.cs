@@ -56,7 +56,6 @@ namespace Unity.FoxgloveSDK.Editor
             var finalHelperPath = OpenH264InstallLocation.GetFinalHelperPath(installRoot);
             var tempDll = finalDllPath + ".tmp";
             var tempHelper = finalHelperPath + ".tmp";
-            var publishingFinalPair = false;
             try
             {
                 Directory.CreateDirectory(versionDir);
@@ -117,11 +116,11 @@ namespace Unity.FoxgloveSDK.Editor
                     return Fail(buildError);
                 }
 
-                publishingFinalPair = true;
-                TryDelete(finalDllPath);
-                TryDelete(finalHelperPath);
-                File.Move(tempDll, finalDllPath);
-                File.Move(tempHelper, finalHelperPath);
+                OpenH264ArtifactPairPublisher.Publish(
+                    tempDll,
+                    tempHelper,
+                    finalDllPath,
+                    finalHelperPath);
 
                 TryDelete(compressedPath, warnOnFailure: true);
                 return new OpenH264InstallResult(true, finalHelperPath, finalDllPath, "");
@@ -131,11 +130,6 @@ namespace Unity.FoxgloveSDK.Editor
                 TryDelete(compressedDownloadPath);
                 TryDelete(tempDll);
                 TryDelete(tempHelper);
-                if (publishingFinalPair)
-                {
-                    TryDelete(finalDllPath, warnOnFailure: true);
-                    TryDelete(finalHelperPath, warnOnFailure: true);
-                }
                 return Fail(
                     ex.Message
                     + "\nManual fallback: open "

@@ -7,6 +7,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Runtime.CompilerServices;
 using System.Diagnostics;
 using System.Threading;
 
@@ -58,8 +59,13 @@ namespace Unity.FoxgloveSDK.Components
         private bool _disposed;
         private long _nextReservationIdentity;
         private long _activeReservationIdentity;
-        private readonly Dictionary<int, long> _pendingAdmissionCreditsByThread
-            = new Dictionary<int, long>();
+        private sealed class AdmissionCreditState
+        {
+            internal long Count;
+        }
+
+        private readonly ConditionalWeakTable<Thread, AdmissionCreditState>
+            _pendingAdmissionCreditsByThread = new ConditionalWeakTable<Thread, AdmissionCreditState>();
 
         private long _received;
         private long _admitted;
@@ -145,7 +151,7 @@ namespace Unity.FoxgloveSDK.Components
         {
             SaturatingIncrement(ref _received);
             var now = _getTimestamp();
-            var producerThreadId = Environment.CurrentManagedThreadId;
+            var producerThread = Thread.CurrentThread;
             lock (_gate)
             {
                 if (_disposed)
@@ -161,15 +167,17 @@ namespace Unity.FoxgloveSDK.Components
                 _lastAdmissionTimestamp = now;
                 _hasAdmissionTimestamp = true;
                 if (_pendingAdmissionCreditsByThread.TryGetValue(
-                        producerThreadId,
-                        out var pendingCredits))
+                        producerThread,
+                        out var creditState))
                 {
-                    if (pendingCredits != long.MaxValue)
-                        _pendingAdmissionCreditsByThread[producerThreadId] = pendingCredits + 1;
+                    if (creditState.Count != long.MaxValue)
+                        creditState.Count++;
                 }
                 else
                 {
-                    _pendingAdmissionCreditsByThread[producerThreadId] = 1;
+                    _pendingAdmissionCreditsByThread.Add(
+                        producerThread,
+                        new AdmissionCreditState { Count = 1 });
                 }
                 SaturatingIncrement(ref _admitted);
                 return true;
@@ -450,13 +458,13 @@ namespace Unity.FoxgloveSDK.Components
         {
             lock (_gate)
             {
-                var producerThreadId = Environment.CurrentManagedThreadId;
+                var producerThread = Thread.CurrentThread;
                 if (!_pendingAdmissionCreditsByThread.TryGetValue(
-                        producerThreadId,
-                        out var pendingCredits)
-                    || pendingCredits == 0)
+                        producerThread,
+                        out var creditState)
+                    || creditState.Count == 0)
                     return false;
-                RemoveAdmissionCredit(producerThreadId, pendingCredits);
+                RemoveAdmissionCredit(producerThread, creditState);
                 return true;
             }
         }
@@ -465,23 +473,23 @@ namespace Unity.FoxgloveSDK.Components
         {
             lock (_gate)
             {
-                var producerThreadId = Environment.CurrentManagedThreadId;
+                var producerThread = Thread.CurrentThread;
                 if (!_pendingAdmissionCreditsByThread.TryGetValue(
-                        producerThreadId,
-                        out var pendingCredits)
-                    || pendingCredits == 0)
+                        producerThread,
+                        out var creditState)
+                    || creditState.Count == 0)
                     return false;
-                RemoveAdmissionCredit(producerThreadId, pendingCredits);
+                RemoveAdmissionCredit(producerThread, creditState);
                 return true;
             }
         }
 
-        private void RemoveAdmissionCredit(int producerThreadId, long pendingCredits)
+        private void RemoveAdmissionCredit(Thread producerThread, AdmissionCreditState creditState)
         {
-            if (pendingCredits == 1)
-                _pendingAdmissionCreditsByThread.Remove(producerThreadId);
+            if (creditState.Count == 1)
+                _pendingAdmissionCreditsByThread.Remove(producerThread);
             else
-                _pendingAdmissionCreditsByThread[producerThreadId] = pendingCredits - 1;
+                creditState.Count--;
         }
 
         private bool TryEnqueueOwnedCore(OwnedSample owned)

@@ -84,6 +84,44 @@ namespace FoxgloveSdk.UnitTests.Certificates
         }
 
         [Fact]
+        public void WindowsLockFileIdentityIgnoresDestinationPathCase()
+        {
+            if (!OperatingSystem.IsWindows())
+                return;
+
+            var directory = CreateDirectory();
+            var pfxPath = Path.Combine(directory, "server.pfx");
+            var rootPath = Path.Combine(directory, "root.crt");
+            try
+            {
+                string firstLockPath;
+                using (var first = FoxgloveCertificatePairTransaction.Begin(
+                           pfxPath,
+                           rootPath))
+                {
+                    firstLockPath = Path.GetFileName((string)typeof(FoxgloveCertificatePairTransaction)
+                        .GetField("_pairLockFilePath", BindingFlags.Instance | BindingFlags.NonPublic)
+                        .GetValue(first));
+                }
+
+                using (var second = FoxgloveCertificatePairTransaction.Begin(
+                           pfxPath.ToUpperInvariant(),
+                           rootPath.ToUpperInvariant()))
+                {
+                    var secondLockPath = Path.GetFileName((string)typeof(FoxgloveCertificatePairTransaction)
+                        .GetField("_pairLockFilePath", BindingFlags.Instance | BindingFlags.NonPublic)
+                        .GetValue(second));
+                    Assert.Equal(firstLockPath, secondLockPath);
+                }
+            }
+            finally
+            {
+                if (Directory.Exists(directory))
+                    Directory.Delete(directory, recursive: true);
+            }
+        }
+
+        [Fact]
         public async Task ConcurrentTransactionsForOnePairAreSerialized()
         {
             var directory = CreateDirectory();

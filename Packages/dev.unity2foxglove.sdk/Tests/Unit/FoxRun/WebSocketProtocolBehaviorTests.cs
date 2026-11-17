@@ -84,6 +84,26 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.Equal(10, stream.Position);
         }
 
+        [Fact]
+        public void ConfiguredInboundLimitCannotExceedHardFrameCeiling()
+        {
+            var declaredLength = (ulong)WsFrameCodec.MaxPayloadBytes + 1UL;
+            var bytes = new byte[2 + 8];
+            bytes[0] = 0x82;
+            bytes[1] = 0xFF;
+            for (var shift = 56; shift >= 0; shift -= 8)
+                bytes[2 + (56 - shift) / 8] = (byte)(declaredLength >> shift);
+
+            using var stream = new MemoryStream(bytes);
+            var result = WsFrameCodec.ReadFrame(
+                stream,
+                out _,
+                WsFrameCodec.MaxPayloadBytes * 2);
+
+            Assert.Equal(WsFrameReadResult.MessageTooBig, result);
+            Assert.Equal(10, stream.Position);
+        }
+
         [Theory]
         [InlineData("valid", true, "HTTP/1.1 101")]
         [InlineData("http10", false, "")]

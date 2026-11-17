@@ -29,7 +29,7 @@ def main(argv: list[str]) -> int:
     workspace_root = ros2env.find_workspace_root()
     ros2_root = ros2env.resolve_existing_path(args.ros2_root, "ROS2 root", workspace_root)
     pixi_python, ros2_script = ros2env.validate_ros2_root(ros2_root)
-    env = ros2env.build_ros_env(ros2_root, args.rmw, args.discovery_range, args.domain_id)
+    env = ros2env.build_ros_env(ros2_root, args.rmw, args.discovery_range, args.domain_id, ros_distro="jazzy")
     ros2_overlay = resolve_ros2_overlay(args, workspace_root)
     if ros2_overlay is not None:
         prepend_ros2_overlay(env, ros2_overlay)
@@ -108,6 +108,7 @@ def main(argv: list[str]) -> int:
             startup_check_seconds=1.5,
             window_wait_seconds=45.0,
             stdout_log_path=rviz_log_path,
+            owned_processes=started_helpers,
         )
     print(
         textwrap.dedent(

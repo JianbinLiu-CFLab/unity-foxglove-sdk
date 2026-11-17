@@ -27,7 +27,7 @@ def main(argv: list[str]) -> int:
     fixed_frame = normalize_frame(args.fixed_frame)
     camera_parent_frame = normalize_frame(args.camera_parent_frame)
     pixi_python, ros2_script = ros2env.validate_ros2_root(ros2_root)
-    env = ros2env.build_ros_env(ros2_root, args.rmw, args.discovery_range, args.domain_id)
+    env = ros2env.build_ros_env(ros2_root, args.rmw, args.discovery_range, args.domain_id, ros_distro="jazzy")
     runtime_config = write_runtime_rviz_config(
         workspace_root,
         topic,

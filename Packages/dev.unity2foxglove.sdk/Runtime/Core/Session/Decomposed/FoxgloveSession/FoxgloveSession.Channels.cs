@@ -111,6 +111,7 @@ namespace Unity.FoxgloveSDK.Core
 
         private void RegisterChannelCore(AdvertiseChannel channel, bool recordingOnly)
         {
+            using (_channelPublishGate.EnterWrite())
             lock (_channelLifecycleLock)
                 RegisterChannelCoreLocked(channel, recordingOnly);
         }
@@ -136,7 +137,7 @@ namespace Unity.FoxgloveSDK.Core
             }
 
             var wasRecordingOnly = _recordingOnlyChannels.Contains(channel.Id);
-            var sameDescriptor = previous != null && SameChannelDescriptor(previous, channel);
+            var sameDescriptor = previous != null && SessionChannelDescriptor.Equals(previous, channel);
             var allowMcapRecording = recorder != null && AllowMcapRecording(channel);
             if (recorder != null && !allowMcapRecording)
                 recorder.ClearServerChannelAdmissionRejection(channel.Id);
@@ -173,7 +174,8 @@ namespace Unity.FoxgloveSDK.Core
             var advertiseAttempted = false;
             var unadvertiseAttempted = false;
             var preexistingLiveAdvertisement = previousLiveAllowed
-                                                && liveAllowed;
+                                                && liveAllowed
+                                                && sameDescriptor;
             try
             {
                 if (recordingOnly)
@@ -247,18 +249,6 @@ namespace Unity.FoxgloveSDK.Core
             }
         }
 
-        private static bool SameChannelDescriptor(AdvertiseChannel left, AdvertiseChannel right)
-            => left != null
-               && right != null
-               && string.Equals(left.Topic, right.Topic, StringComparison.Ordinal)
-               && string.Equals(left.Encoding, right.Encoding, StringComparison.Ordinal)
-               && string.Equals(left.SchemaName, right.SchemaName, StringComparison.Ordinal)
-               && string.Equals(
-                   left.SchemaEncoding ?? string.Empty,
-                   right.SchemaEncoding ?? string.Empty,
-                   StringComparison.Ordinal)
-               && string.Equals(left.Schema, right.Schema, StringComparison.Ordinal);
-
         private static bool EnsureRecorderChannel(McapRecorder recorder, AdvertiseChannel channel)
         {
             if (recorder.TryGetServerChannelCompatibility(
@@ -306,6 +296,7 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         public void UnregisterChannel(uint channelId)
         {
+            using (_channelPublishGate.EnterWrite())
             lock (_channelLifecycleLock)
             {
                 var ch = _channels.Get(channelId);

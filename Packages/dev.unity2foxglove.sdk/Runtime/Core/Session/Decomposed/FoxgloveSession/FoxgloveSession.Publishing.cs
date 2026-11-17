@@ -50,29 +50,33 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         public void Publish(uint channelId, byte[] payload, ulong logTimeNs)
         {
-            AdvertiseChannel channel;
-            bool recordingOnly;
-            lock (_channelLifecycleLock)
+            using (_channelPublishGate.EnterRead())
             {
-                channel = _channels.Get(channelId);
-                if (channel == null) return;
-                recordingOnly = _recordingOnlyChannels.Contains(channelId);
+                AdvertiseChannel channel;
+                bool recordingOnly;
+                lock (_channelLifecycleLock)
+                {
+                    channel = _channels.Get(channelId);
+                    if (channel == null) return;
+                    recordingOnly = _recordingOnlyChannels.Contains(channelId);
+                }
+
+                payload ??= Array.Empty<byte>();
+                var recorder = Volatile.Read(ref _recorder);
+                if (recorder != null && AllowMcapRecording(channel) && recorder.HasServerChannel(channelId))
+                    WriteMessageSafely(recorder, channel, logTimeNs, payload);
+                var mirrorSink = Volatile.Read(ref _mirrorSink);
+                if (!recordingOnly && mirrorSink != null)
+                    TryMirrorPublish(mirrorSink, channel, logTimeNs, payload);
+                if (!AllowLiveWebSocket(channel))
+                    return;
+                SendSubscribersAfterLifecycleAdmission(
+                    channelId,
+                    channel.Topic,
+                    "Live",
+                    payload,
+                    logTimeNs);
             }
-            payload ??= Array.Empty<byte>();
-            var recorder = Volatile.Read(ref _recorder);
-            if (recorder != null && AllowMcapRecording(channel) && recorder.HasServerChannel(channelId))
-                WriteMessageSafely(recorder, channel, logTimeNs, payload);
-            var mirrorSink = Volatile.Read(ref _mirrorSink);
-            if (!recordingOnly && mirrorSink != null)
-                TryMirrorPublish(mirrorSink, channel, logTimeNs, payload);
-            if (!AllowLiveWebSocket(channel))
-                return;
-            SendSubscribersAfterLifecycleAdmission(
-                channelId,
-                channel.Topic,
-                "Live",
-                payload,
-                logTimeNs);
         }
 
         private void SendSubscribersAfterLifecycleAdmission(uint channelId, string topic, string source, byte[] payload, ulong logTimeNs)
@@ -174,6 +178,7 @@ namespace Unity.FoxgloveSDK.Core
         /// </summary>
         internal void PublishReplay(uint channelId, byte[] payload, ulong logTimeNs, string source = "Replay", string topic = null)
         {
+            using var publishAdmission = _channelPublishGate.EnterRead();
             AdvertiseChannel channel;
             lock (_channelLifecycleLock)
             {
@@ -201,6 +206,7 @@ namespace Unity.FoxgloveSDK.Core
             string source = "Replay",
             string topic = null)
         {
+            using var publishAdmission = _channelPublishGate.EnterRead();
             AdvertiseChannel channel;
             List<(uint subscriptionId, uint channelId)> subscriptions;
             lock (_channelLifecycleLock)

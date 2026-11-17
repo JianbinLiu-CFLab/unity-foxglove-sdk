@@ -35,7 +35,7 @@ namespace Unity.FoxgloveSDK.Transport
         private const byte Payload16BitLengthMarker = 126;
         /// <summary>RFC 6455 marker for the 64-bit extended payload-length field.</summary>
         private const byte Payload64BitLengthMarker = 127;
-        /// <summary>Maximum allowable payload size in bytes (4 MiB).</summary>
+        /// <summary>Hard payload ceiling; configured read limits are clamped to 4 MiB.</summary>
         internal const int MaxPayloadBytes = 4 * 1024 * 1024;
         private static readonly UTF8Encoding StrictUtf8 = new UTF8Encoding(false, true);
 

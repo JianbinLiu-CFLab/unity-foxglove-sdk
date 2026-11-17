@@ -570,4 +570,25 @@ class _UnityIl2CppBuildTestsPart1:
                     resolved = self.unity_il2cpp.find_unity_from_hub()
         self.assertEqual(good.resolve(), Path(resolved))
 
+    def test_macos_hub_discovery_uses_the_version_above_unity_app(self) -> None:
+        """macOS Hub candidates must derive their version from the Unity.app parent."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            candidate = (
+                root
+                / "Unity"
+                / "Hub"
+                / "Editor"
+                / "2022.3.10f1"
+                / "Unity.app"
+                / "Contents"
+                / "MacOS"
+                / "Unity"
+            )
+            self._write_unity_stand_in(candidate)
+            with mock.patch.object(self.unity_il2cpp.os, "name", "posix"):
+                resolved = self.unity_il2cpp.newest_existing([candidate])
+
+        self.assertEqual(candidate.resolve(), resolved)
+
 __all__ = ["_UnityIl2CppBuildTestsPart1"]

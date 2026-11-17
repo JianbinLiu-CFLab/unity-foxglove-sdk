@@ -48,7 +48,7 @@ namespace Unity.FoxgloveSDK.Tests.Core
         }
 
         [Fact]
-        public void TryReadAllowsTrustedLinkedRegisteredRoot()
+        public void TryReadRejectsLinkedRegisteredRootWithoutFollowingIt()
         {
             var temporary = Path.Combine(
                 Path.GetTempPath(),
@@ -63,13 +63,13 @@ namespace Unity.FoxgloveSDK.Tests.Core
                 var registry = new FoxgloveAssetRegistry();
                 registry.RegisterRoot("asset://linked/", link);
 
-                Assert.True(
+                Assert.False(
                     registry.TryRead(
                         "asset://linked/asset.bin",
                         out var bytes,
                         out var error),
                     error);
-                Assert.Equal("inside", System.Text.Encoding.UTF8.GetString(bytes));
+                Assert.Null(bytes);
             }
             finally
             {

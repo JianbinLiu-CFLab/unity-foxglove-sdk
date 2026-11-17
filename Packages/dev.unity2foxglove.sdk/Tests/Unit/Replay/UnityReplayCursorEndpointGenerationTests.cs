@@ -210,22 +210,31 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
                     secondQueueEntered.Wait(TimeSpan.FromSeconds(5)),
                     "Second worker never entered its queue callback.");
 
+                Assert.Throws<InvalidOperationException>(() => endpoint.Start(
+                    Options(0, "/retire-third", "retire-third-token"),
+                    _ => new UnityReplayCursorEndpointQueueResult(true, "Cursor accepted.")));
+                Assert.Equal(1, endpoint.RetiringGenerationCount);
+                Assert.True(endpoint.IsRunning);
+
+                releaseSecondQueue.Set();
+                await ObserveRetiredRequestAsync(secondRequest);
+
+                releaseFirstQueue.Set();
+                await ObserveRetiredRequestAsync(firstRequest);
+                for (var i = 0; i < 200 && endpoint.RetiringGenerationCount != 0; i++)
+                {
+                    await Task.Delay(TimeSpan.FromMilliseconds(25));
+                }
+
                 var thirdPort = StartEndpointWithRetry(
                     endpoint,
                     "/retire-third",
                     "retire-third-token",
                     _ => new UnityReplayCursorEndpointQueueResult(true, "Cursor accepted."));
-
-                Assert.Equal(1, endpoint.RetiringGenerationCount);
-
-                releaseSecondQueue.Set();
-                await ObserveRetiredRequestAsync(secondRequest);
                 Assert.Equal(
                     HttpStatusCode.Accepted,
                     await PostCursorAsync(thirdPort, "/retire-third", "retire-third-token"));
 
-                releaseFirstQueue.Set();
-                await ObserveRetiredRequestAsync(firstRequest);
                 for (var i = 0; i < 200 && endpoint.RetiringGenerationCount != 0; i++)
                 {
                     await Task.Delay(TimeSpan.FromMilliseconds(25));
@@ -330,6 +339,24 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
         }
 
         [Fact]
+        public void StopRetiresIdleWorkerWithoutWarning()
+        {
+            var logger = new RecordingLogger();
+            using var endpoint = new UnityReplayCursorEndpoint(logger);
+            StartEndpointWithRetry(
+                endpoint,
+                "/stop-idle",
+                "stop-idle-token",
+                _ => new UnityReplayCursorEndpointQueueResult(true, "Cursor accepted."));
+
+            endpoint.Stop();
+
+            Assert.Empty(logger.Warnings);
+            Assert.False(endpoint.IsRunning);
+            Assert.Equal(0, endpoint.RetiringGenerationCount);
+        }
+
+        [Fact]
         public void WorkerLoopAndHandlersUseOnlyTheirCapturedGeneration()
         {
             var source = TestSources.Text(
@@ -350,6 +377,15 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
             Assert.DoesNotContain("_queue", handle, StringComparison.Ordinal);
             Assert.Contains("generation.Worker.Join", stop, StringComparison.Ordinal);
             Assert.Contains("ManagedWebSocketOptions.FixedTimeEqualsUtf8", source, StringComparison.Ordinal);
+        }
+
+        private sealed class RecordingLogger : IFoxgloveLogger
+        {
+            internal readonly List<string> Warnings = new List<string>();
+
+            public void LogWarning(string message) => Warnings.Add(message);
+
+            public void LogError(string message) { }
         }
 
     }

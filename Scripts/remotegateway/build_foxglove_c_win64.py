@@ -333,13 +333,17 @@ def copy_approved_artifacts(
         if source.is_file():
             destination = PACKAGE_PLUGIN_DIR / name
             temporary_destination = destination.with_suffix(destination.suffix + ".tmp")
-            shutil.copy2(source, temporary_destination)
-            os.replace(temporary_destination, destination)
             expected = expected_hashes.get(name)
             if expected and sha256(source) != expected:
                 raise RuntimeError(f"Source artifact changed after manifest hashing: {source}")
-            if expected and sha256(PACKAGE_PLUGIN_DIR / name) != expected:
-                raise RuntimeError(f"Copied artifact hash mismatch: {name}")
+            try:
+                shutil.copy2(source, temporary_destination)
+                if expected and sha256(temporary_destination) != expected:
+                    raise RuntimeError(f"Source artifact changed after manifest hashing: {source}")
+                os.replace(temporary_destination, destination)
+            finally:
+                if temporary_destination.exists():
+                    temporary_destination.unlink()
     if copy_manifest:
         if manifest_path.name != PACKAGE_MANIFEST_NAME:
             raise ValueError(

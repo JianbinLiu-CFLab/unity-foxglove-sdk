@@ -117,7 +117,7 @@ def main(argv: list[str]) -> int:
         raise FileNotFoundError(f"rviz2.exe not found: {rviz_exe}")
 
     ros2env.validate_ros2_root(ros2_root)
-    env = ros2env.build_ros_env(ros2_root, args.rmw, args.discovery_range, args.domain_id)
+    env = ros2env.build_ros_env(ros2_root, args.rmw, args.discovery_range, args.domain_id, ros_distro="jazzy")
     print_summary(ros2_root, rviz_exe, rviz_config, env)
     if args.no_software_rendering:
         print("[phase128] --no-software-rendering is ignored by the shared launcher.")

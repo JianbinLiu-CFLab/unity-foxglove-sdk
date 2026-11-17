@@ -171,6 +171,10 @@ namespace Unity2Foxglove.ManualAcceptance
             if (GUILayout.Button("Restart Manager and apply pending")) RestartManager();
             GUI.enabled = _stage == 3;
             if (GUILayout.Button("Restore MessagePack and restart")) RestoreMessagePack();
+            GUI.enabled = _stage == 4 && !_probeEvidence;
+            if (GUILayout.Button("Record live probe evidence")) RecordProbeEvidence();
+            GUI.enabled = _stage == 4 && !_inspectorEvidence && !string.IsNullOrWhiteSpace(_recordingPath);
+            if (GUILayout.Button("Record MCAP inspector evidence")) RecordInspectorEvidence(_recordingPath);
             GUI.enabled = _stage == 4 && _probeEvidence && _inspectorEvidence;
             if (GUILayout.Button("Complete")) Complete();
             GUI.enabled = true;

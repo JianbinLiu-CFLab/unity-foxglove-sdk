@@ -57,5 +57,11 @@ class Phase189ProbeTests(unittest.TestCase):
         with self.assertRaises(probe.ProbeFailure):
             probe.decode_complete_msgpack(probe.encode_probe_payload(1, 2)[:-1])
 
+    def test_component_fixture_report_is_deterministic_for_direct_callers(self):
+        """Keep the fixture report available without importing the live websocket dependency."""
+        report = probe._component_fixture_report("fixture", "head", "1")
+        self.assertEqual(report["verdict"], "PASS")
+        self.assertEqual(report["finalMessagePack"]["runId"], "fixture")
+
 if __name__ == "__main__":
     unittest.main()

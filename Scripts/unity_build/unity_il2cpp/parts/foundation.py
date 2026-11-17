@@ -215,7 +215,15 @@ def newest_existing(paths: List[Path]) -> Optional[Path]:
             continue
         # Hub candidates are nested as <version>/Editor/Unity; reject any
         # trailing-junk or unknown-channel directory before ranking it.
-        version_component = accepted.parent.parent.name
+        if (
+            accepted.name == "Unity"
+            and accepted.parent.name == "MacOS"
+            and accepted.parent.parent.name == "Contents"
+            and accepted.parent.parent.parent.name == "Unity.app"
+        ):
+            version_component = accepted.parent.parent.parent.parent.name
+        else:
+            version_component = accepted.parent.parent.name
         if not is_unity_editor_version(version_component):
             continue
         existing.append(accepted)

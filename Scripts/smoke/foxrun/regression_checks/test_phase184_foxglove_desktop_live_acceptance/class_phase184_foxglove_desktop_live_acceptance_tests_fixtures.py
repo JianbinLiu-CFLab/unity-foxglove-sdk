@@ -266,8 +266,8 @@ class _Phase184FoxgloveDesktopLiveAcceptanceTests_fixtures:
         )
         encoded = json.dumps(summary, sort_keys=True)
         self.assertNotIn("p184g_", encoded)
-    def test_final_validation_failure_replaces_an_earlier_terminal_verdict(self):
-        """Keep a secondary evidence failure visible after an earlier failure."""
+    def test_final_validation_failure_preserves_an_earlier_terminal_verdict(self):
+        """Keep the primary terminal failure visible after final validation."""
 
         summary = valid_summary()
         summary["verdict"] = live_protocol.FAIL_DESKTOP_CONNECTION
@@ -275,9 +275,11 @@ class _Phase184FoxgloveDesktopLiveAcceptanceTests_fixtures:
 
         failure = coordinator._reconcile_final_summary_validation(summary)
 
-        self.assertIsNotNone(failure)
-        self.assertEqual(live_protocol.FAIL_EVIDENCE, failure.code)
-        self.assertEqual(live_protocol.FAIL_EVIDENCE, summary["verdict"])
+        self.assertIsNone(failure)
+        self.assertEqual(
+            live_protocol.FAIL_DESKTOP_CONNECTION,
+            summary["verdict"],
+        )
     def test_injected_success_locks_launch_order_commands_policies_and_evidence(self):
         """Verify injected success locks launch order commands policies and evidence."""
 

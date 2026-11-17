@@ -1,5 +1,7 @@
 from .foundation import *
 
+from Scripts.smoke.mcap import process_runner
+
 
 _MCAP_TIMEOUT_HELPERS = frozenset({"invoke_command_capture", "run_package_manager"})
 _MCAP_HELPER_RECEIVERS = frozenset({"_configuration", "configuration", "_measurement", "measurement"})
@@ -108,6 +110,42 @@ class McapConformanceToolTests(unittest.TestCase):
         failure = report["failures"][0]
         self.assertTrue(failure["timedOut"])
         self.assertIn("Timed out after 180 second(s).", failure["details"])
+
+    def test_bounded_runner_caps_utf8_output_by_bytes(self) -> None:
+        """Multibyte diagnostics must respect the configured byte budget."""
+        result = process_runner.run_bounded(
+            [sys.executable, "-c", "print('😀' * 20)"],
+            cwd=ROOT,
+            env={},
+            timeout=5,
+            max_output_bytes=8,
+        )
+        self.assertTrue(result.output_truncated)
+        self.assertLessEqual(len(result.stdout.encode("utf-8")), 8)
+
+    def test_posix_timeout_escalates_from_term_to_kill(self) -> None:
+        """A stubborn POSIX child must receive a group SIGKILL after the grace period."""
+        process = mock.Mock(pid=4242)
+        process.wait.side_effect = [subprocess.TimeoutExpired(["child"], 0.5), None]
+        with mock.patch.object(process_runner.os, "name", "posix"):
+            with mock.patch.object(process_runner.os, "killpg", create=True) as killpg:
+                process_runner._terminate_tree(process)
+        self.assertEqual(
+            [signal.SIGTERM, getattr(signal, "SIGKILL", signal.SIGTERM)],
+            [call.args[1] for call in killpg.call_args_list],
+        )
+
+    def test_posix_timeout_kills_group_after_root_exits_on_term(self) -> None:
+        """Children that ignore SIGTERM must still receive a group SIGKILL after a fast root exit."""
+        process = mock.Mock(pid=4242)
+        process.wait.return_value = None
+        with mock.patch.object(process_runner.os, "name", "posix"):
+            with mock.patch.object(process_runner.os, "killpg", create=True) as killpg:
+                process_runner._terminate_tree(process)
+        self.assertEqual(
+            [signal.SIGTERM, getattr(signal, "SIGKILL", signal.SIGTERM)],
+            [call.args[1] for call in killpg.call_args_list],
+        )
 
 McapConformanceToolTests.__module__ = 'Scripts.release.regression_checks.test_release_tooling'
 

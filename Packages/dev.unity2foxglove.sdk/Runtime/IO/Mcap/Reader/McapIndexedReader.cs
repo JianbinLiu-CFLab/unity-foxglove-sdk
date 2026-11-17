@@ -26,6 +26,8 @@ namespace Unity.FoxgloveSDK.IO
         private List<McapChunkIndex> _chunkIndexesByDescendingEndTime;
         private Dictionary<string, McapReader.McapMetadataRecordIndex> _metadataFallbackCache;
         private bool _metadataFallbackScanComplete;
+        private bool _metadataIndexValidationComputed;
+        private bool _metadataIndexIsComplete;
         private int _disposed;
 
         /// <summary>
@@ -589,13 +591,16 @@ namespace Unity.FoxgloveSDK.IO
 
         private bool HasCompleteMetadataIndex()
         {
+            if (_metadataIndexValidationComputed)
+                return _metadataIndexIsComplete;
+
             var metadataCount = _summary.Statistics?.MetadataCount;
             var indexes = _summary.MetadataIndexes;
             if (!metadataCount.HasValue
                 || (ulong)(indexes?.Count ?? 0) != metadataCount.Value)
-                return false;
+                return CacheMetadataIndexValidation(false);
             if (indexes == null || indexes.Count == 0)
-                return true;
+                return CacheMetadataIndexValidation(true);
 
             var offsets = new HashSet<ulong>();
             try
@@ -605,19 +610,26 @@ namespace Unity.FoxgloveSDK.IO
                     var index = indexes[i];
                     if (index == null
                         || !offsets.Add(index.Offset))
-                        return false;
+                        return CacheMetadataIndexValidation(false);
                     var metadata = _reader.ReadMetadataAt(index.Offset);
                     if (metadata == null
                         || !string.Equals(metadata.Name, index.Name, StringComparison.Ordinal))
-                        return false;
+                        return CacheMetadataIndexValidation(false);
                 }
             }
             catch (Exception)
             {
-                return false;
+                return CacheMetadataIndexValidation(false);
             }
 
-            return true;
+            return CacheMetadataIndexValidation(true);
+        }
+
+        private bool CacheMetadataIndexValidation(bool isComplete)
+        {
+            _metadataIndexIsComplete = isComplete;
+            _metadataIndexValidationComputed = true;
+            return isComplete;
         }
 
         /// <summary>
@@ -632,6 +644,8 @@ namespace Unity.FoxgloveSDK.IO
             _chunkIndexesByDescendingEndTime = null;
             _metadataFallbackCache = null;
             _metadataFallbackScanComplete = false;
+            _metadataIndexValidationComputed = false;
+            _metadataIndexIsComplete = false;
             if (_ownsStream)
                 _stream.Dispose();
         }

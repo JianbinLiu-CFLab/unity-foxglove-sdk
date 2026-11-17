@@ -250,6 +250,7 @@ def main(argv: list[str]) -> int:
         rmw_implementation=args.rmw,
         discovery_range=args.discovery_range,
         domain_id=args.domain_id,
+        ros_distro="jazzy",
     )
     config_path = write_config(
         workspace_root,

@@ -68,7 +68,7 @@ def main(argv: list[str]) -> int:
     ros2_root = ros2env.resolve_existing_path(args.ros2_root, "ROS2 root", workspace_root)
     rviz_config = ros2env.resolve_existing_path(args.rviz_config, "RViz2 config", workspace_root)
     pixi_python, ros2_script = ros2env.validate_ros2_root(ros2_root)
-    env = ros2env.build_ros_env(ros2_root, args.rmw, args.discovery_range)
+    env = ros2env.build_ros_env(ros2_root, args.rmw, args.discovery_range, ros_distro="jazzy")
 
     print(f"[phase130-launch] ROS2 root: {ros2_root}")
     print(f"[phase130-launch] pixi Python: {pixi_python}")
