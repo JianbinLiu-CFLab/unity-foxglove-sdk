@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 from .foundation import *
 
 
@@ -97,6 +99,19 @@ class Phase179CorrelationEvidenceTests:
                     profile, "editor", linux, editor, consumed_receipts_path=receipt
                 )
             self.assertEqual("REPLAY", replay.exception.category)
+
+    def test_correlation_publishes_receipt_through_atomic_replace(self) -> None:
+        """Receipt consumption must publish the updated ledger atomically."""
+        profile = self.profiles.PROFILES["humble-fastrtps"]
+        linux = self._linux_summary(profile, surface="editor", token="row-token")
+        editor = self._editor_summary(profile, token="row-token")
+        with tempfile.TemporaryDirectory() as temp:
+            receipt = Path(temp) / "correlation-consumed.json"
+            with mock.patch.object(self.profiles.os, "replace", wraps=os.replace) as replace:
+                self.profiles.correlate_summaries(
+                    profile, "editor", linux, editor, consumed_receipts_path=receipt
+                )
+            replace.assert_called_once()
 
     def test_windows_editor_root_uses_repo_local_ros_python_rclpy_endpoint_evidence(self) -> None:
         """Editor preflight queries all three endpoint contracts through the selected Windows ROS Python, never its CLI."""

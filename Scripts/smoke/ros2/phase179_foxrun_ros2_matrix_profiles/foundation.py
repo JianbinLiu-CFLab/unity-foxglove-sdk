@@ -333,6 +333,43 @@ def _validate_windows_editor_summary(summary: Mapping[str, object], profile: Mat
             raise MatrixFailure("EDITOR_APPLIED", "Editor copied-value counters were inconsistent.")
         if not isinstance(result.get("replaced"), int) or int(result["replaced"]) < 0:
             raise MatrixFailure("EDITOR_APPLIED", "Editor copied-value replacement counter was invalid.")
+@contextlib.contextmanager
+def _correlation_receipt_lock(receipt_path: pathlib.Path):
+    """Serialize receipt consumption across concurrent correlation processes."""
+
+    receipt_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = receipt_path.with_name(receipt_path.name + ".lock")
+    with lock_path.open("a+b") as stream:
+        if os.name == "nt":
+            import msvcrt
+
+            stream.seek(0, os.SEEK_END)
+            if stream.tell() == 0:
+                stream.write(b"0")
+                stream.flush()
+            stream.seek(0)
+            while True:
+                try:
+                    msvcrt.locking(stream.fileno(), msvcrt.LK_LOCK, 1)
+                    break
+                except OSError:
+                    time.sleep(0.05)
+            try:
+                yield
+            finally:
+                stream.seek(0)
+                msvcrt.locking(stream.fileno(), msvcrt.LK_UNLCK, 1)
+            return
+
+        import fcntl
+
+        fcntl.flock(stream.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
+
+
 def correlate_summaries(
     profile: MatrixProfile,
     surface: str,
@@ -373,16 +410,23 @@ def correlate_summaries(
     receipt_digest = hashlib.sha256(receipt_payload).hexdigest()
     if consumed_receipts_path is not None:
         receipt_path = pathlib.Path(consumed_receipts_path)
-        try:
-            consumed = json.loads(receipt_path.read_text(encoding="utf-8")) if receipt_path.exists() else []
-        except (OSError, json.JSONDecodeError) as exc:
-            raise MatrixFailure("RECEIPT", "The correlation receipt ledger is unavailable or malformed.") from exc
-        if not isinstance(consumed, list) or any(not isinstance(item, str) for item in consumed):
-            raise MatrixFailure("RECEIPT", "The correlation receipt ledger has an invalid shape.")
-        if receipt_digest in consumed:
-            raise MatrixFailure("REPLAY", "The exact Phase179 evidence pair was already consumed by a prior correlation.")
-        receipt_path.parent.mkdir(parents=True, exist_ok=True)
-        receipt_path.write_text(json.dumps([*consumed, receipt_digest], indent=2) + "\n", encoding="utf-8")
+        with _correlation_receipt_lock(receipt_path):
+            try:
+                consumed = json.loads(receipt_path.read_text(encoding="utf-8")) if receipt_path.exists() else []
+            except (OSError, json.JSONDecodeError) as exc:
+                raise MatrixFailure("RECEIPT", "The correlation receipt ledger is unavailable or malformed.") from exc
+            if not isinstance(consumed, list) or any(not isinstance(item, str) for item in consumed):
+                raise MatrixFailure("RECEIPT", "The correlation receipt ledger has an invalid shape.")
+            if receipt_digest in consumed:
+                raise MatrixFailure("REPLAY", "The exact Phase179 evidence pair was already consumed by a prior correlation.")
+            receipt_path.parent.mkdir(parents=True, exist_ok=True)
+            temporary = receipt_path.with_name(receipt_path.name + f".{os.getpid()}.tmp")
+            try:
+                temporary.write_text(json.dumps([*consumed, receipt_digest], indent=2) + "\n", encoding="utf-8")
+                os.replace(temporary, receipt_path)
+            finally:
+                if temporary.exists():
+                    temporary.unlink()
 
     label = profile.profile_id.upper().replace("-", "_")
     return {

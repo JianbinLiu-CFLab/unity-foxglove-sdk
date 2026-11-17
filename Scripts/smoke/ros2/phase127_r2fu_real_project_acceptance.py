@@ -208,7 +208,7 @@ def main(argv: list[str]) -> int:
     workspace_root = ros2env.find_workspace_root()
     ros2_root = ros2env.resolve_existing_path(args.ros2_root, "ROS2 root", workspace_root)
     pixi_python, ros2_script = ros2env.validate_ros2_root(ros2_root)
-    env = ros2env.build_ros_env(ros2_root, args.rmw, args.discovery_range, args.domain_id)
+    env = ros2env.build_ros_env(ros2_root, args.rmw, args.discovery_range, args.domain_id, ros_distro="jazzy")
     payload = args.message.replace("'", " ")
 
     print(f"[phase127] ROS2 root: {ros2_root}")

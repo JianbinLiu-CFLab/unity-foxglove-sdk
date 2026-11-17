@@ -94,6 +94,26 @@ class _Phase181CustomRos2PeerTests_runtime:
                         process_factory=lambda *args, **kwargs: Process(),
                     )
             terminate.assert_called_once()
+
+    def test_windows_cleanup_accepts_a_child_that_exited_before_taskkill(self):
+        """A raced taskkill failure is harmless when the owned child is already gone."""
+        peer = load_peer_module()
+
+        class Process:
+            """Exited process double for the taskkill race."""
+            pid = 4242
+
+            def poll(self):
+                """Report that the child exited during taskkill."""
+                return 0
+
+            def wait(self, timeout):
+                """Confirm the child is already reaped."""
+                return 0
+
+        with mock.patch.object(peer.os, "name", "nt"):
+            with mock.patch.object(peer.subprocess, "run", return_value=SimpleNamespace(returncode=1)):
+                peer._terminate_owned_child(Process())
     def test_worker_ready_file_requires_the_locked_full_interface_digest(self):
         """Verify Phase181 behavior: manual Play prompts cannot follow a stale or foreign worker startup file."""
         peer = load_peer_module()
