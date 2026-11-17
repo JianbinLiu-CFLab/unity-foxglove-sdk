@@ -10,7 +10,7 @@
     "Packages/dev.unity2foxglove.ros2bridge|Unity2Foxglove.Ros2Bridge|Ros2BridgeWorkerLease": 2485,
     "Packages/dev.unity2foxglove.ros2forunity|Unity2Foxglove.Ros2ForUnity.Native|FoxRunRos2SubscriptionHub": 2122,
     "Packages/dev.unity2foxglove.sdk|Unity.FoxgloveSDK.Components|FoxgloveManager": 5590,
-    "Packages/dev.unity2foxglove.sdk|Unity.FoxgloveSDK.Core|FoxgloveSession": 2831,
+    "Packages/dev.unity2foxglove.sdk|Unity.FoxgloveSDK.Core|FoxgloveSession": 2832,
     "Packages/dev.unity2foxglove.sdk|Unity.FoxgloveSDK.Editor|FoxgloveManagerEditor": 2768,
     "Packages/dev.unity2foxglove.sdk|Unity.FoxgloveSDK.Editor|FoxrunCodeGenerator": 2211,
     "Packages/dev.unity2foxglove.sdk|Unity.FoxgloveSDK.IO|McapReplayEngine": 2593,
