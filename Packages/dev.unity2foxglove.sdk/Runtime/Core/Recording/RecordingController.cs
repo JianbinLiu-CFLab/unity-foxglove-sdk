@@ -279,6 +279,9 @@ namespace Unity.FoxgloveSDK.Core
 
         private void TryWriteSdkWireSchemaMetadata(McapRecorder recorder)
         {
+            if (_schemaRegistry == null)
+                return;
+
             var schemas = recorder?.GetRecordedSchemaSnapshot();
             var components = recorder?.GetRecordedComponentContractSnapshot();
             if (schemas == null

@@ -95,12 +95,11 @@ namespace Unity.FoxgloveSDK.Core
                     || string.IsNullOrWhiteSpace(foxRunRecord.SdkWireSchemaHash))
                     return null;
                 if (!SdkWireSchemaIdentity.TryCompute(schemaRegistry, out var fallbackCurrentHash))
-                    return CreateSdkResult(
-                        FoxRunReplaySchemaGuardState.MissingCurrent,
+                    return CreateMissingCurrentSdkResult(
                         identityMode,
+                        schemaRegistry,
                         "Current runtime does not expose an SDK-wide wire-schema identity for the FoxRun metadata hash.",
-                        foxRunRecord.SdkWireSchemaHash,
-                        string.Empty);
+                        foxRunRecord.SdkWireSchemaHash);
                 if (string.Equals(foxRunRecord.SdkWireSchemaHash, fallbackCurrentHash, StringComparison.Ordinal))
                     return new FoxRunReplaySchemaGuardResult(
                         FoxRunReplaySchemaGuardState.Match,
@@ -171,12 +170,11 @@ namespace Unity.FoxgloveSDK.Core
                     : "Current runtime does not expose an SDK-wide wire-schema identity.";
             }
             if (!currentIdentityAvailable)
-                return CreateSdkResult(
-                    FoxRunReplaySchemaGuardState.MissingCurrent,
+                return CreateMissingCurrentSdkResult(
                     identityMode,
+                    schemaRegistry,
                     "Current runtime does not expose the recorded output contracts. " + identityFailure,
-                    recordedHash,
-                    string.Empty);
+                    recordedHash);
 
             if (string.Equals(recordedHash, currentHash, StringComparison.Ordinal))
                 return new FoxRunReplaySchemaGuardResult(
@@ -232,6 +230,20 @@ namespace Unity.FoxgloveSDK.Core
                 recordedHash,
                 currentHash);
         }
+
+        private static FoxRunReplaySchemaGuardResult CreateMissingCurrentSdkResult(
+            SchemaIdentityMode identityMode,
+            ISchemaRegistry schemaRegistry,
+            string message,
+            string recordedHash)
+            => new FoxRunReplaySchemaGuardResult(
+                FoxRunReplaySchemaGuardState.MissingCurrent,
+                schemaRegistry != null && identityMode == SchemaIdentityMode.Strict,
+                message + (schemaRegistry != null && identityMode == SchemaIdentityMode.Strict
+                    ? " Replay blocked."
+                    : " Replay will continue."),
+                recordedHash,
+                string.Empty);
 
         private static string ShortHash(string hash)
         {
