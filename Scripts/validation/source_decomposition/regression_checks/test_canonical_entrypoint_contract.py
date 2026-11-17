@@ -518,6 +518,57 @@ class CanonicalEntrypointContractTests(unittest.TestCase):
         finally:
             temporary.cleanup()
 
+    def test_main_block_only_rejects_alias_mismatch_and_unreviewed_dynamic_exports(self) -> None:
+        """Aliased imports and unrelated dynamic export calls cannot satisfy the entrypoint contract."""
+        temporary, repository, base = self._create_repository(main_source="from . import live as entrypoint\n")
+        try:
+            (repository / "Scripts/smoke/fixture/__main__.py").write_text(
+                "from . import live as entrypoint\n"
+                "if __name__ == '__main__':\n"
+                "    raise SystemExit(main())\n",
+                encoding="utf-8",
+            )
+            head = self._commit(repository, "call the source name instead of the alias")
+            self.assertEqual(
+                1,
+                compare_identity_surfaces.compare_revisions(
+                    repository,
+                    base,
+                    head,
+                    strict=False,
+                ),
+            )
+        finally:
+            temporary.cleanup()
+
+        temporary, repository, base = self._create_repository()
+        try:
+            initializer = repository / "Scripts/smoke/fixture/__init__.py"
+            initializer.write_text(
+                initializer.read_text(encoding="utf-8")
+                + "getattr(_phase192_section_0, 'main')\n",
+                encoding="utf-8",
+            )
+            base = self._commit(repository, "add unrelated dynamic export call")
+            (repository / "Scripts/smoke/fixture/__main__.py").write_text(
+                "from . import *\n"
+                "if __name__ == '__main__':\n"
+                "    raise SystemExit(main())\n",
+                encoding="utf-8",
+            )
+            head = self._commit(repository, "append main block")
+            self.assertEqual(
+                1,
+                compare_identity_surfaces.compare_revisions(
+                    repository,
+                    base,
+                    head,
+                    strict=False,
+                ),
+            )
+        finally:
+            temporary.cleanup()
+
     def test_new_unsafe_module_entrypoint_is_incompatible_without_a_base_entrypoint(self) -> None:
         """An unsafe newly added module entrypoint cannot bypass the compatibility gate."""
         temporary, repository, base = self._create_repository()

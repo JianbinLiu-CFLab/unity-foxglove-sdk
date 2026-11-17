@@ -977,7 +977,7 @@ def _approved_main_block_only_contract(
                 continue
             if any(alias.name == "*" for alias in node.names) and called_name in package_initializer_exports:
                 return True
-            if any(alias.name == called_name for alias in node.names) and called_name in package_initializer_exports:
+            if any((alias.asname or alias.name) == called_name and alias.name in package_initializer_exports for alias in node.names):
                 return True
             continue
         module_exports = exports_by_module.get(node.module)
@@ -985,7 +985,7 @@ def _approved_main_block_only_contract(
             continue
         if any(alias.name == "*" for alias in node.names) and called_name in module_exports:
             return True
-        if any(alias.name == called_name for alias in node.names) and called_name in module_exports:
+        if any((alias.asname or alias.name) == called_name and alias.name in module_exports for alias in node.names):
             return True
     return False
 

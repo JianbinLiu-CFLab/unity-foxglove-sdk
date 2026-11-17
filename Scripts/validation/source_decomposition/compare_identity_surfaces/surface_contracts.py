@@ -480,12 +480,101 @@ def _entrypoint_initializer_exports(
         names = None
     if isinstance(names, (list, tuple, set)) and all(isinstance(name, str) for name in names):
         return set(names) & _unconditional_top_level_names(tree)
-    if any(
-        isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-        and node.func.id in {"globals", "getattr"} for node in ast.walk(tree)
-    ):
+    if _dynamic_initializer_exports_are_trusted(tree):
         return package_exports
     return None
+
+
+def _dynamic_initializer_exports_are_trusted(tree: ast.Module) -> bool:
+    """Return whether a dynamic initializer follows the reviewed export loop."""
+    all_assignment = any(
+        isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == "__all__" for target in node.targets)
+        and isinstance(node.value, ast.Call)
+        and isinstance(node.value.func, ast.Name)
+        and node.value.func.id == "sorted"
+        and len(node.value.args) == 1
+        and isinstance(node.value.args[0], ast.Name)
+        and node.value.args[0].id == "_PHASE192_EXPORT_NAMES"
+        and not node.value.keywords
+        for node in tree.body
+    )
+    if not all_assignment:
+        return False
+    allowed_calls: set[int] = set()
+    matched_loop = False
+    for outer in tree.body:
+        if not (
+            isinstance(outer, ast.For)
+            and isinstance(outer.target, ast.Name)
+            and outer.target.id == "_phase192_section"
+            and isinstance(outer.iter, ast.Name)
+            and outer.iter.id == "_PHASE192_SECTION_MODULES"
+        ):
+            continue
+        for inner in outer.body:
+            if not (
+                isinstance(inner, ast.For)
+                and isinstance(inner.target, ast.Name)
+                and inner.target.id == "_phase192_name"
+                and isinstance(inner.iter, ast.Attribute)
+                and inner.iter.attr == "__all__"
+                and isinstance(inner.iter.value, ast.Name)
+                and inner.iter.value.id == "_phase192_section"
+            ):
+                continue
+            copied = False
+            recorded = False
+            for statement in inner.body:
+                if isinstance(statement, ast.Assign) and len(statement.targets) == 1:
+                    target = statement.targets[0]
+                    value = statement.value
+                    if (
+                        isinstance(target, ast.Subscript)
+                        and isinstance(target.value, ast.Call)
+                        and isinstance(target.value.func, ast.Name)
+                        and target.value.func.id == "globals"
+                        and not target.value.args
+                        and not target.value.keywords
+                        and isinstance(target.slice, ast.Name)
+                        and target.slice.id == "_phase192_name"
+                        and isinstance(value, ast.Call)
+                        and isinstance(value.func, ast.Name)
+                        and value.func.id == "getattr"
+                        and len(value.args) == 2
+                        and isinstance(value.args[0], ast.Name)
+                        and value.args[0].id == "_phase192_section"
+                        and isinstance(value.args[1], ast.Name)
+                        and value.args[1].id == "_phase192_name"
+                        and not value.keywords
+                    ):
+                        allowed_calls.update({id(target.value), id(value)})
+                        copied = True
+                if (
+                    isinstance(statement, ast.Expr)
+                    and isinstance(statement.value, ast.Call)
+                    and isinstance(statement.value.func, ast.Attribute)
+                    and isinstance(statement.value.func.value, ast.Name)
+                    and statement.value.func.value.id == "_PHASE192_EXPORT_NAMES"
+                    and statement.value.func.attr == "add"
+                    and len(statement.value.args) == 1
+                    and isinstance(statement.value.args[0], ast.Name)
+                    and statement.value.args[0].id == "_phase192_name"
+                    and not statement.value.keywords
+                ):
+                    recorded = True
+            matched_loop = matched_loop or copied and recorded
+    if not matched_loop:
+        return False
+    return all(
+        not (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id in {"globals", "getattr"}
+        )
+        or id(node) in allowed_calls
+        for node in ast.walk(tree)
+    )
 
 
 _ENTRYPOINT_IMPORT_ROOTS = frozenset({"Scripts", "argparse", "sys", "unittest"})
