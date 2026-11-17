@@ -58,7 +58,7 @@ namespace Unity2Foxglove.Ros2Bridge
         private Ros2BridgeSessionLifecycleState _lifecycleState;
         private Exception _lastFault;
         private bool _stopRequested;
-        private bool _requestConstructionInProgress;
+        private int _requestConstructionsInProgress;
         private bool _disposeRequested;
         private int _workersRemaining;
         private int _disposeTeardownReady;

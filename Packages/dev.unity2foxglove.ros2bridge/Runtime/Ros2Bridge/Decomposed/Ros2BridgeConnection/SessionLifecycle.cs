@@ -233,32 +233,22 @@ namespace Unity2Foxglove.Ros2Bridge
 
             Ros2BridgeV2SessionSnapshot snapshot = null;
             ulong requestId = 0;
-            var admissionAcquired = false;
-            while (!admissionAcquired)
+            lock (_requestAdmissionGate)
             {
-                lock (_requestAdmissionGate)
+                lock (_gate)
                 {
-                    lock (_gate)
+                    ThrowIfDisposedLocked();
+                    if (_lifecycleState
+                        != Ros2BridgeSessionLifecycleState.Ready
+                        || _snapshot == null)
                     {
-                        if (!_requestConstructionInProgress)
-                        {
-                            ThrowIfDisposedLocked();
-                            if (_lifecycleState
-                                != Ros2BridgeSessionLifecycleState.Ready
-                                || _snapshot == null)
-                            {
-                                throw new InvalidOperationException(
-                                    "Normal Bridge work requires a correlated hello_ack.");
-                            }
-                            snapshot = _snapshot;
-                            requestId = _requestIds.Next();
-                            _requestConstructionInProgress = true;
-                            admissionAcquired = true;
-                        }
+                        throw new InvalidOperationException(
+                            "Normal Bridge work requires a correlated hello_ack.");
                     }
+                    snapshot = _snapshot;
+                    requestId = _requestIds.Next();
+                    _requestConstructionsInProgress++;
                 }
-                if (!admissionAcquired)
-                    Thread.Yield();
             }
 
             PendingRequest pending = null;
@@ -302,7 +292,7 @@ namespace Unity2Foxglove.Ros2Bridge
             {
                 lock (_gate)
                 {
-                    _requestConstructionInProgress = false;
+                    _requestConstructionsInProgress--;
                     Monitor.PulseAll(_gate);
                 }
             }
