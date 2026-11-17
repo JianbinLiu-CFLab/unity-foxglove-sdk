@@ -569,6 +569,39 @@ class CanonicalEntrypointContractTests(unittest.TestCase):
         finally:
             temporary.cleanup()
 
+    def test_main_block_only_rejects_noncanonical_exported_callable(self) -> None:
+        """A known exported helper cannot become the package entrypoint."""
+        temporary, repository, base = self._create_repository(
+            live_source=(
+                "def main():\n"
+                "    return 0\n"
+                "\n"
+                "def helper():\n"
+                "    return 0\n"
+                "\n"
+                "__all__ = ['main', 'helper']\n"
+            )
+        )
+        try:
+            (repository / "Scripts/smoke/fixture/__main__.py").write_text(
+                "from . import *\n"
+                "if __name__ == '__main__':\n"
+                "    raise SystemExit(helper())\n",
+                encoding="utf-8",
+            )
+            head = self._commit(repository, "append helper main block")
+            self.assertEqual(
+                1,
+                compare_identity_surfaces.compare_revisions(
+                    repository,
+                    base,
+                    head,
+                    strict=False,
+                ),
+            )
+        finally:
+            temporary.cleanup()
+
     def test_new_unsafe_module_entrypoint_is_incompatible_without_a_base_entrypoint(self) -> None:
         """An unsafe newly added module entrypoint cannot bypass the compatibility gate."""
         temporary, repository, base = self._create_repository()

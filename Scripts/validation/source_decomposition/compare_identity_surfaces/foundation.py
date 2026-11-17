@@ -864,6 +864,8 @@ def _approved_main_block_only_contract(
     ):
         return False
     called_name = raise_node.exc.args[0].func.id
+    if called_name != "main":
+        return False
 
     def section_exports(section: Path) -> set[str]:
         """Return names exported by one existing package section."""
