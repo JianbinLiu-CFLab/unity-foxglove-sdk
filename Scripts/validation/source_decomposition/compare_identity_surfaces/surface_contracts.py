@@ -2,6 +2,32 @@ from __future__ import annotations
 
 from .foundation import *
 
+
+def _unconditional_top_level_names(tree: ast.Module) -> set[str]:
+    """Return names bound by unconditional top-level statements."""
+    names: set[str] = set()
+
+    def add_target(target: ast.AST) -> None:
+        """Collect direct assignment targets."""
+        if isinstance(target, ast.Name):
+            names.add(target.id)
+        elif isinstance(target, (ast.Tuple, ast.List)):
+            for item in target.elts:
+                add_target(item)
+
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            names.add(node.name)
+        elif isinstance(node, ast.Import):
+            names.update(alias.asname or alias.name.split(".", 1)[0] for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            names.update(alias.asname or alias.name for alias in node.names if alias.name != "*")
+        elif isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            for target in targets:
+                add_target(target)
+    return names
+
 _SAFE_STDLIB_ENTRYPOINT_SYMBOLS = {
     "argparse": frozenset({
         "Action", "ArgumentParser", "ArgumentTypeError", "FileType", "HelpFormatter",
@@ -375,6 +401,7 @@ def _entrypoint_executable_body_is_safe(
             if not target.is_file():
                 return False
             target_tree = _parse_source(target.read_text(encoding="utf-8"), target)
+            bound_names = _unconditional_top_level_names(target_tree)
             exported: set[str] = set()
             for target_node in target_tree.body:
                 if not (
@@ -389,7 +416,7 @@ def _entrypoint_executable_body_is_safe(
                 if isinstance(declared, (list, tuple, set)):
                     exported.update(name for name in declared if isinstance(name, str))
             for alias in statement.names:
-                if alias.name not in exported and alias.name not in _top_level_names(target_tree, include_imports=True):
+                if alias.name not in bound_names or (exported and alias.name not in exported):
                     return False
                 imported_names.add(alias.asname or alias.name)
                 delegate_names.add(alias.asname or alias.name)
@@ -446,13 +473,13 @@ def _entrypoint_initializer_exports(
         isinstance(target, ast.Name) and target.id == "__all__" for target in node.targets
     )]
     if not assignments:
-        return {name for name in _top_level_names(tree, include_imports=True) if not name.startswith("_")}
+        return {name for name in _unconditional_top_level_names(tree) if not name.startswith("_")}
     try:
         names = ast.literal_eval(assignments[-1].value)
     except (TypeError, ValueError, SyntaxError):
         names = None
     if isinstance(names, (list, tuple, set)) and all(isinstance(name, str) for name in names):
-        return set(names)
+        return set(names) & _unconditional_top_level_names(tree)
     if any(
         isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
         and node.func.id in {"globals", "getattr"} for node in ast.walk(tree)

@@ -460,6 +460,64 @@ class CanonicalEntrypointContractTests(unittest.TestCase):
         finally:
             temporary.cleanup()
 
+    def test_main_block_only_rejects_conditional_or_unbound_exports(self) -> None:
+        """Conditional definitions and literal-only initializer exports cannot satisfy wildcard resolution."""
+        temporary, repository, base = self._create_repository()
+        try:
+            (repository / "Scripts/smoke/fixture/live.py").write_text(
+                "if False:\n"
+                "    def main():\n"
+                "        return 0\n"
+                "__all__ = ['main']\n",
+                encoding="utf-8",
+            )
+            base = self._commit(repository, "make section export conditional")
+            (repository / "Scripts/smoke/fixture/__main__.py").write_text(
+                "from . import *\n"
+                "if __name__ == '__main__':\n"
+                "    raise SystemExit(main())\n",
+                encoding="utf-8",
+            )
+            head = self._commit(repository, "append conditional main block")
+            self.assertEqual(
+                1,
+                compare_identity_surfaces.compare_revisions(
+                    repository,
+                    base,
+                    head,
+                    strict=False,
+                ),
+            )
+        finally:
+            temporary.cleanup()
+
+        temporary, repository, base = self._create_repository()
+        try:
+            (repository / "Scripts/smoke/fixture/__init__.py").write_text(
+                "from . import live as _phase192_section_0\n"
+                "__all__ = ['main']\n",
+                encoding="utf-8",
+            )
+            base = self._commit(repository, "declare unbound initializer export")
+            (repository / "Scripts/smoke/fixture/__main__.py").write_text(
+                "from . import *\n"
+                "if __name__ == '__main__':\n"
+                "    raise SystemExit(main())\n",
+                encoding="utf-8",
+            )
+            head = self._commit(repository, "append unbound main block")
+            self.assertEqual(
+                1,
+                compare_identity_surfaces.compare_revisions(
+                    repository,
+                    base,
+                    head,
+                    strict=False,
+                ),
+            )
+        finally:
+            temporary.cleanup()
+
     def test_new_unsafe_module_entrypoint_is_incompatible_without_a_base_entrypoint(self) -> None:
         """An unsafe newly added module entrypoint cannot bypass the compatibility gate."""
         temporary, repository, base = self._create_repository()
