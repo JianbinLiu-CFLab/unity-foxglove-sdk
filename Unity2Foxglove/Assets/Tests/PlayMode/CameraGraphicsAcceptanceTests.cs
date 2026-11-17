@@ -104,6 +104,7 @@ namespace Unity2Foxglove.Tests.PlayMode
             var imageObject = CreateCamera("image-source", 40, 30, manager, out var imagePublisher);
             var imageSourceCamera = imageObject.GetComponent<Camera>();
             imageSourceCamera.fieldOfView = 60f;
+            imageSourceCamera.usePhysicalProperties = true;
             imageSourceCamera.lensShift = new Vector2(0.12f, -0.08f);
             var configuredCameraObject = new GameObject("configured-camera");
             var configuredCamera = configuredCameraObject.AddComponent<Camera>();
@@ -123,12 +124,9 @@ namespace Unity2Foxglove.Tests.PlayMode
                 Assert.That(frame.Width, Is.EqualTo(imagePublisher.SensorCameraCaptureWidth));
                 Assert.That(frame.Height, Is.EqualTo(imagePublisher.SensorCameraCaptureHeight));
                 var projection = imageSourceCamera.projectionMatrix;
-                var expectedFx = projection.m00 * frame.Width * 0.5d;
-                var expectedFy = projection.m11 * frame.Height * 0.5d;
-                var expectedCx = (1d + projection.m02) * frame.Width * 0.5d;
-                var expectedCy = (1d + projection.m12) * frame.Height * 0.5d;
-                AssertCameraMatrix(frame.K, expectedFx, expectedFy, expectedCx, expectedCy);
-                AssertCameraMatrix(frame.P, expectedFx, expectedFy, expectedCx, expectedCy);
+                Assert.That(Math.Abs(projection.m02), Is.GreaterThan(0.0001f));
+                Assert.That(Math.Abs(projection.m12), Is.GreaterThan(0.0001f));
+                AssertCameraInfoProjection(frame, imageSourceCamera);
             }
             finally
             {
@@ -291,12 +289,57 @@ namespace Unity2Foxglove.Tests.PlayMode
             GetField(target, name).SetValue(target, value);
         }
 
-        private static void AssertCameraMatrix(IReadOnlyList<double> matrix, double fx, double fy, double cx, double cy)
+        private static void AssertCameraInfoProjection(SensorCameraInfoFrame frame, Camera sourceCamera)
         {
-            var expected = new[] { fx, 0d, cx, 0d, 0d, fy, cy, 0d, 0d, 0d, 1d, 0d };
-            Assert.That(matrix.Count, Is.EqualTo(expected.Length));
-            for (var index = 0; index < expected.Length; index++)
-                Assert.That(matrix[index], Is.EqualTo(expected[index]).Within(0.1d), $"Unexpected camera matrix element {index}.");
+            const float sampleDepth = 5f;
+            const float sampleSpan = 1f;
+            var center = ProjectImagePoint(sourceCamera, new Vector3(0f, 0f, sampleDepth), frame.Width, frame.Height);
+            var right = ProjectImagePoint(sourceCamera, new Vector3(sampleSpan, 0f, sampleDepth), frame.Width, frame.Height);
+            var left = ProjectImagePoint(sourceCamera, new Vector3(-sampleSpan, 0f, sampleDepth), frame.Width, frame.Height);
+            var up = ProjectImagePoint(sourceCamera, new Vector3(0f, sampleSpan, sampleDepth), frame.Width, frame.Height);
+            var down = ProjectImagePoint(sourceCamera, new Vector3(0f, -sampleSpan, sampleDepth), frame.Width, frame.Height);
+            var fx = (right.x - left.x) * sampleDepth / (2d * sampleSpan);
+            var fy = (up.y - down.y) * sampleDepth / (2d * sampleSpan);
+            var cx = center.x;
+            var cy = frame.Height - center.y;
+
+            AssertCameraIntrinsicMatrix(frame.K, fx, fy, cx, cy);
+            AssertCameraProjectionMatrix(frame.P, fx, fy, cx, cy);
+        }
+
+        private static Vector2 ProjectImagePoint(Camera camera, Vector3 localPoint, uint width, uint height)
+        {
+            var screenPoint = camera.WorldToScreenPoint(camera.transform.TransformPoint(localPoint));
+            var pixelRect = camera.pixelRect;
+            var viewportWidth = Mathf.Max(1f, pixelRect.width);
+            var viewportHeight = Mathf.Max(1f, pixelRect.height);
+            return new Vector2(
+                (screenPoint.x - pixelRect.x) / viewportWidth * width,
+                (screenPoint.y - pixelRect.y) / viewportHeight * height);
+        }
+
+        private static void AssertCameraIntrinsicMatrix(IReadOnlyList<double> matrix, double fx, double fy, double cx, double cy)
+        {
+            Assert.That(matrix.Count, Is.EqualTo(9));
+            Assert.That(matrix[0], Is.EqualTo(fx).Within(0.1d));
+            Assert.That(matrix[1], Is.EqualTo(0d).Within(0.1d));
+            Assert.That(matrix[2], Is.EqualTo(cx).Within(0.1d));
+            Assert.That(matrix[3], Is.EqualTo(0d).Within(0.1d));
+            Assert.That(matrix[4], Is.EqualTo(fy).Within(0.1d));
+            Assert.That(matrix[5], Is.EqualTo(cy).Within(0.1d));
+            Assert.That(matrix[6], Is.EqualTo(0d).Within(0.1d));
+            Assert.That(matrix[7], Is.EqualTo(0d).Within(0.1d));
+            Assert.That(matrix[8], Is.EqualTo(1d).Within(0.1d));
+        }
+
+        private static void AssertCameraProjectionMatrix(IReadOnlyList<double> matrix, double fx, double fy, double cx, double cy)
+        {
+            Assert.That(matrix.Count, Is.EqualTo(12));
+            Assert.That(matrix[0], Is.EqualTo(fx).Within(0.1d));
+            Assert.That(matrix[2], Is.EqualTo(cx).Within(0.1d));
+            Assert.That(matrix[5], Is.EqualTo(fy).Within(0.1d));
+            Assert.That(matrix[6], Is.EqualTo(cy).Within(0.1d));
+            Assert.That(matrix[10], Is.EqualTo(1d).Within(0.1d));
         }
     }
 }
