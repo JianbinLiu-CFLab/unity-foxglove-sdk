@@ -45,8 +45,9 @@ namespace Unity.FoxgloveSDK.Core
             => FoxgloveSessionStartup.Start(
                 _encodingConfigurationLock,
                 () => _encodingConfigurationFrozen,
-                value => _encodingConfigurationFrozen = value,
+                SetEncodingConfigurationFrozen,
                 () => _transport.Start(host, port));
+        private void SetEncodingConfigurationFrozen(bool value) { _encodingConfigurationFrozen = value; }
         /// <summary>Stop the WebSocket transport.</summary>
         public void Stop() => _transport.Stop();
 

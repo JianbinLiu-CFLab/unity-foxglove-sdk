@@ -81,6 +81,7 @@ namespace Unity.FoxgloveSDK.Core
 
         private void SendSubscribersAfterLifecycleAdmission(uint channelId, string topic, string source, byte[] payload, ulong logTimeNs)
         {
+            using var publishAdmission = _channelPublishGate.EnterRead();
             List<(uint clientId, uint subscriptionId)> subscribers;
             lock (_channelLifecycleLock)
             {
@@ -205,6 +206,7 @@ namespace Unity.FoxgloveSDK.Core
             string source = "Replay",
             string topic = null)
         {
+            using var publishAdmission = _channelPublishGate.EnterRead();
             AdvertiseChannel channel;
             List<(uint subscriptionId, uint channelId)> subscriptions;
             lock (_channelLifecycleLock)
