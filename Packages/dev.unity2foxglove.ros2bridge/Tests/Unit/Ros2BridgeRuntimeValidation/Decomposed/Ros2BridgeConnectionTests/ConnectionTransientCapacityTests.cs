@@ -74,6 +74,12 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
 
             var limits = U2R2ProtocolLimits.Default.With(
                 ("readTimeoutMs", 100UL));
+            var outbound = new U2R2BoundedOutboundScheduler(limits);
+            Assert.True(
+                outbound.TryReserveTransient(
+                    limits.MaxTransientBytes,
+                    out var capacityBlocker));
+            U2R2ByteLease acceptedTransient = null;
             using var transport = new Ros2BridgeTcpClient();
             transport.Connect("127.0.0.1", peer.Port, 5000);
             using var connection = new Ros2BridgeConnection(
@@ -95,10 +101,20 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
                         {
                             if (Interlocked.Increment(ref factoryCalls) == 1)
                             {
+                                Assert.False(
+                                    outbound.TryReserveTransient(
+                                        1,
+                                        out _),
+                                    "the transient budget should be occupied");
                                 capacityFactoryStarted.Set();
                                 Thread.Sleep(70);
                                 return null;
                             }
+                            Assert.True(
+                                outbound.TryReserveTransient(
+                                    1,
+                                    out acceptedTransient),
+                                "the transient budget should be available after retry");
                             return Ros2BridgeV2SessionCodec
                                 .CreatePublisherPreparation(
                                     active,
@@ -123,6 +139,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
 
             Assert.True(capacityFactoryStarted.Wait(TimeSpan.FromSeconds(2)));
             Assert.True(capacityWait.Wait(TimeSpan.FromSeconds(2)));
+            capacityBlocker.Dispose();
             Assert.True(
                 heartbeatSeen.Wait(TimeSpan.FromMilliseconds(90)),
                 "Transient capacity backpressure must not miss the heartbeat deadline.");
@@ -130,6 +147,7 @@ namespace Unity2Foxglove.Ros2Bridge.Tests
             Assert.True(exchange.Join(TimeSpan.FromSeconds(3)));
             peer.AssertCompleted();
             Assert.Null(exchangeFailure);
+            acceptedTransient?.Dispose();
         }
     }
 }

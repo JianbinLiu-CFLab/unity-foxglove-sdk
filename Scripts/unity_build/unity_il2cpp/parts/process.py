@@ -225,7 +225,7 @@ def _posix_process_group_pids(
     """Enumerate a POSIX process group with bounded residual diagnostics."""
     try:
         result = subprocess.run(
-            ["ps", "-eo", "pid=,pgid=,sid="],
+            ["ps", "-eo", "pid=,pgid="],
             check=False,
             capture_output=True,
             text=True,
@@ -238,17 +238,24 @@ def _posix_process_group_pids(
     pids = []
     for line in result.stdout.splitlines():
         fields = line.split()
-        if len(fields) not in (2, 3):
+        if len(fields) != 2:
             continue
         try:
-            pid, group = (int(field) for field in fields[:2])
-            process_session = int(fields[2]) if len(fields) == 3 else None
+            pid, group = (int(field) for field in fields)
         except ValueError:
             continue
-        if group == process_group_id and (
-            session_id is None or process_session == session_id
-        ):
-            pids.append(pid)
+        if group != process_group_id:
+            continue
+        if session_id is not None:
+            get_session_id = getattr(os, "getsid", None)
+            if get_session_id is None:
+                return []
+            try:
+                if get_session_id(pid) != session_id:
+                    continue
+            except OSError:
+                continue
+        pids.append(pid)
     if not pids and session_id is None and _posix_process_group_exists(process_group_id):
         return [process_group_id]
     return pids
@@ -326,13 +333,25 @@ class OwnedProcessTree:
         process_id: int,
         expected_group_id: Optional[int] = None,
     ) -> Optional[int]:
-        """Read the POSIX session id for one process when procfs exposes it."""
+        """Read one POSIX session id from procfs or the platform session API."""
         try:
             fields = Path(f"/proc/{process_id}/stat").read_text(encoding="utf-8").rsplit(")", 1)[1].split()
             if expected_group_id is not None and int(fields[2]) != expected_group_id:
                 return None
             return int(fields[3])
         except (OSError, ValueError, IndexError):
+            pass
+
+        get_session_id = getattr(os, "getsid", None)
+        get_process_group_id = getattr(os, "getpgid", None)
+        if get_session_id is None or get_process_group_id is None:
+            return None
+        try:
+            session_id = get_session_id(process_id)
+            if expected_group_id is not None and get_process_group_id(process_id) != expected_group_id:
+                return None
+            return session_id
+        except OSError:
             return None
 
     @staticmethod

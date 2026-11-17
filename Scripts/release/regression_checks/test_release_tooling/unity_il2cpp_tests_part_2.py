@@ -407,16 +407,45 @@ class _UnityIl2CppBuildTestsPart2:
 
         self.assertEqual([], pids)
 
+    @unittest.skipIf(os.name == "nt", "POSIX session identity seam")
     def test_session_filtered_group_enumeration_ignores_foreign_sessions(self) -> None:
         """A reused process-group number from another session must yield no PIDs."""
-        completed = types.SimpleNamespace(stdout=" 111 4321 77\n 222 4321 88\n", returncode=0)
+        completed = types.SimpleNamespace(stdout=" 111 4321\n 222 4321\n", returncode=0)
         with mock.patch.object(self.unity_il2cpp.subprocess, "run", return_value=completed):
-            with mock.patch.object(self.unity_il2cpp, "_posix_process_group_exists", return_value=True):
-                owned = self.unity_il2cpp._posix_process_group_pids(4321, 77)
-                foreign = self.unity_il2cpp._posix_process_group_pids(4321, 99)
+            with mock.patch.object(
+                self.unity_il2cpp.os,
+                "getsid",
+                side_effect=lambda pid: {111: 77, 222: 88}[pid],
+            ):
+                with mock.patch.object(self.unity_il2cpp, "_posix_process_group_exists", return_value=True):
+                    owned = self.unity_il2cpp._posix_process_group_pids(4321, 77)
+                    foreign = self.unity_il2cpp._posix_process_group_pids(4321, 99)
 
         self.assertEqual([111], owned)
         self.assertEqual([], foreign)
+
+    @unittest.skipIf(os.name == "nt", "POSIX session identity seam")
+    def test_session_identity_falls_back_to_os_without_procfs(self) -> None:
+        """Session authentication remains available when procfs is absent."""
+        with mock.patch.object(
+            self.unity_il2cpp.Path,
+            "read_text",
+            side_effect=OSError("procfs unavailable"),
+        ):
+            with mock.patch.object(
+                self.unity_il2cpp.os,
+                "getsid",
+                return_value=77,
+            ) as getsid:
+                with mock.patch.object(self.unity_il2cpp.os, "getpgid", return_value=4321) as getpgid:
+                    session_id = self.unity_il2cpp.OwnedProcessTree._posix_process_session_id(
+                        111,
+                        4321,
+                    )
+
+        self.assertEqual(77, session_id)
+        getsid.assert_called_once_with(111)
+        getpgid.assert_called_once_with(111)
 
     def test_windows_job_uses_a_dedicated_child_termination_code(self) -> None:
         """A killed child must not inherit the build CLI's own timeout exit code."""
