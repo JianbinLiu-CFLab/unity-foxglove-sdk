@@ -485,7 +485,7 @@ def _entrypoint_initializer_exports(
     if isinstance(names, (list, tuple, set)) and all(isinstance(name, str) for name in names):
         bound_names = _unconditional_top_level_names(tree)
         return set(names) if set(names) <= bound_names else None
-    if _dynamic_initializer_exports_are_trusted(tree, package_exports):
+    if _dynamic_initializer_exports_are_trusted(tree, package_exports, base_package):
         return package_exports
     return None
 
@@ -503,7 +503,11 @@ def _entrypoint_module_bindings(package: Path, module: str) -> set[str]:
     return _unconditional_top_level_names(_parse_source(target.read_text(encoding="utf-8"), target))
 
 
-def _dynamic_initializer_exports_are_trusted(tree: ast.Module, package_exports: set[str]) -> bool:
+def _dynamic_initializer_exports_are_trusted(
+    tree: ast.Module,
+    package_exports: set[str],
+    base_package: Path,
+) -> bool:
     """Return whether a dynamic initializer follows the reviewed export loop."""
     all_assignment = any(
         isinstance(node, ast.Assign)
@@ -518,6 +522,83 @@ def _dynamic_initializer_exports_are_trusted(tree: ast.Module, package_exports: 
         for node in tree.body
     )
     if not all_assignment:
+        return False
+    section_assignment = next(
+        (
+            node
+            for node in tree.body
+            if isinstance(node, ast.Assign)
+            and any(
+                isinstance(target, ast.Name) and target.id == "_PHASE192_SECTION_MODULES"
+                for target in node.targets
+            )
+        ),
+        None,
+    )
+    if (
+        section_assignment is None
+        or not isinstance(section_assignment.value, ast.Tuple)
+        or not section_assignment.value.elts
+    ):
+        return False
+    section_names = [
+        element.id
+        for element in section_assignment.value.elts
+        if isinstance(element, ast.Name)
+    ]
+    if len(section_names) != len(section_assignment.value.elts) or len(set(section_names)) != len(section_names):
+        return False
+    imported_sections = {
+        alias.asname: alias.name
+        for node in tree.body
+        if isinstance(node, ast.ImportFrom) and node.level == 1 and node.module is None
+        for alias in node.names
+        if alias.asname and alias.name != "*"
+    }
+    expected_sections = {
+        path.resolve()
+        for path in base_package.glob("*.py")
+        if path.name not in {"__init__.py", "__main__.py"}
+    }
+    actual_sections: set[Path] = set()
+    actual_exports: set[str] = set()
+    for section_name in section_names:
+        module = imported_sections.get(section_name)
+        if not module:
+            return False
+        module_path = base_package / Path(*module.split("."))
+        target = module_path.with_suffix(".py") if module_path.with_suffix(".py").is_file() else module_path / "__init__.py"
+        if not target.is_file() or target.is_symlink():
+            return False
+        try:
+            resolved_target = target.resolve()
+            resolved_target.relative_to(base_package.resolve())
+        except (OSError, ValueError):
+            return False
+        target_tree = _parse_source(target.read_text(encoding="utf-8"), target)
+        if "__all__" not in _unconditional_top_level_names(target_tree):
+            return False
+        assignments = [
+            node
+            for node in target_tree.body
+            if isinstance(node, ast.Assign)
+            and any(isinstance(item, ast.Name) and item.id == "__all__" for item in node.targets)
+        ]
+        try:
+            declared = ast.literal_eval(assignments[-1].value)
+        except (IndexError, TypeError, ValueError, SyntaxError):
+            declared = None
+        if isinstance(declared, (list, tuple, set)) and all(isinstance(name, str) for name in declared):
+            actual_exports.update(declared)
+        else:
+            actual_exports.update(
+                item.name
+                for item in target_tree.body
+                if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+                and not item.name.startswith("_")
+            )
+        actual_sections.add(resolved_target)
+    if actual_sections != expected_sections or actual_exports != package_exports:
         return False
     allowed_calls: set[int] = set()
     matched_loop = False

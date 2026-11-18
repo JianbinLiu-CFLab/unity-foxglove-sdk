@@ -618,6 +618,38 @@ class CanonicalEntrypointContractTests(unittest.TestCase):
             finally:
                 temporary.cleanup()
 
+    def test_main_block_only_rejects_empty_dynamic_section_tuple(self) -> None:
+        """A dynamic export loop with no registered section cannot approve the package entrypoint."""
+        temporary, repository, base = self._create_repository()
+        try:
+            initializer = repository / "Scripts/smoke/fixture/__init__.py"
+            initializer.write_text(
+                initializer.read_text(encoding="utf-8").replace(
+                    "_PHASE192_SECTION_MODULES = (_phase192_section_0,)\n",
+                    "_PHASE192_SECTION_MODULES = ()\n",
+                ),
+                encoding="utf-8",
+            )
+            base = self._commit(repository, "remove dynamic section membership")
+            (repository / "Scripts/smoke/fixture/__main__.py").write_text(
+                "from . import *\n"
+                "if __name__ == '__main__':\n"
+                "    raise SystemExit(main())\n",
+                encoding="utf-8",
+            )
+            head = self._commit(repository, "append main block")
+            self.assertEqual(
+                1,
+                compare_identity_surfaces.compare_revisions(
+                    repository,
+                    base,
+                    head,
+                    strict=False,
+                ),
+            )
+        finally:
+            temporary.cleanup()
+
         temporary, repository, base = self._create_repository()
         try:
             (repository / "Scripts/smoke/fixture/live.py").write_text(
