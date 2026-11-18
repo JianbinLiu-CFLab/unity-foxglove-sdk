@@ -62,13 +62,22 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
             entrypoint_body
             or (
                 "def run_entrypoint():\n"
-                "    return 0\n"
+                "    from .live import main\n"
+                "    return main()\n"
                 "__all__ = [\"run_entrypoint\"]\n"
             ),
             encoding="utf-8",
         )
+        if entrypoint_body is None:
+            (package / "live.py").write_text(
+                "def main():\n"
+                "    return 0\n"
+                "__all__ = [\"main\"]\n",
+                encoding="utf-8",
+            )
         (package / "__init__.py").write_text(
-            initializer_body or "from .entrypoint import *\n",
+            initializer_body
+            or "from .entrypoint import *\nfrom .live import *\n",
             encoding="utf-8",
         )
         return facade
