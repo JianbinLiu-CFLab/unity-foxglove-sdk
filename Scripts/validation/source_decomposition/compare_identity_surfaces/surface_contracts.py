@@ -678,9 +678,16 @@ def _dynamic_initializer_exports_are_trusted(
         for candidate in ast.walk(target)
         if isinstance(candidate, ast.Name)
     }
-    matched_loop = tree.body[matched_loop_index]
-    if isinstance(matched_loop, ast.For) and isinstance(matched_loop.iter, ast.Name):
-        allowed_binding_references.add(id(matched_loop.iter))
+    for outer in ast.walk(tree):
+        if not (
+            isinstance(outer, ast.For)
+            and isinstance(outer.target, ast.Name)
+            and outer.target.id == "_phase192_section"
+            and isinstance(outer.iter, ast.Name)
+            and outer.iter.id == "_PHASE192_SECTION_MODULES"
+        ):
+            continue
+        allowed_binding_references.add(id(outer.iter))
     for candidate in ast.walk(tree):
         if (
             isinstance(candidate, ast.Name)
