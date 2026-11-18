@@ -182,5 +182,3 @@ class CanonicalEntrypointFixtureMixin:
             + initializer_source[tuple_end:]
         )
         initializer.write_text(initializer_source, encoding="utf-8")
-
-
