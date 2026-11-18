@@ -306,6 +306,40 @@ class CanonicalEntrypointEdgeTests(CanonicalEntrypointFixtureMixin, unittest.Tes
         finally:
             temporary.cleanup()
 
+    def test_new_entrypoint_rejects_extra_imports(self) -> None:
+        """A new module entrypoint cannot execute an extra imported module."""
+        temporary, repository, base = self._create_repository(
+            extra_source=(
+                "def side_effect():\n"
+                "    return 0\n"
+                "\n"
+                "__all__ = ['side_effect']\n"
+            )
+        )
+        try:
+            entrypoint = repository / "Scripts/smoke/fixture/__main__.py"
+            entrypoint.unlink()
+            base = self._commit(repository, "remove base module entrypoint")
+            entrypoint.write_text(
+                "from . import *\n"
+                "from .extra import side_effect\n"
+                "if __name__ == '__main__':\n"
+                "    raise SystemExit(main())\n",
+                encoding="utf-8",
+            )
+            head = self._commit(repository, "add extra module entrypoint import")
+            self.assertEqual(
+                1,
+                compare_identity_surfaces.compare_revisions(
+                    repository,
+                    base,
+                    head,
+                    strict=False,
+                ),
+            )
+        finally:
+            temporary.cleanup()
+
     def test_new_main_entrypoint_is_compatible_without_a_base_entrypoint(self) -> None:
         """A newly added module entrypoint may dispatch the canonical package main."""
         temporary, repository, base = self._create_repository()

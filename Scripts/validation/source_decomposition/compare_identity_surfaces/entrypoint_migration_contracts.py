@@ -145,7 +145,16 @@ def _new_module_entrypoint_is_canonical(path: Path) -> bool:
         body.pop(0)
     if len(body) < 2 or not isinstance(body[-1], ast.If):
         return False
-    if any(not isinstance(statement, (ast.Import, ast.ImportFrom)) for statement in body[:-1]):
+    imports = body[:-1]
+    if len(imports) != 1 or not isinstance(imports[0], ast.ImportFrom):
+        return False
+    imported = imports[0]
+    if (
+        imported.level != 1
+        or len(imported.names) != 1
+        or imported.names[0].asname is not None
+        or imported.names[0].name not in {"*", "main"}
+    ):
         return False
     guard = body[-1]
     if not (
