@@ -210,6 +210,36 @@ class CanonicalEntrypointEdgeTests(CanonicalEntrypointFixtureMixin, unittest.Tes
         finally:
             temporary.cleanup()
 
+    def test_new_entrypoint_rejects_unresolved_target_import(self) -> None:
+        """A target section with a missing import cannot satisfy callable proof."""
+        temporary, repository, base = self._create_repository(
+            live_source=(
+                "import definitely_missing_xyz\n\n"
+                "def main():\n"
+                "    return 0\n\n"
+                "__all__ = ['main']\n"
+            )
+        )
+        try:
+            entrypoint = repository / "Scripts/smoke/fixture/__main__.py"
+            entrypoint.unlink()
+            base = self._commit(repository, "remove base module entrypoint")
+            entrypoint.write_text(
+                "from . import *\n"
+                "if __name__ == '__main__':\n"
+                "    raise SystemExit(main())\n",
+                encoding="utf-8",
+            )
+            head = self._commit(repository, "add canonical module entrypoint")
+            with compare_identity_surfaces._revision_checkout(repository, head) as head_root:
+                self.assertFalse(
+                    entrypoint_migration_contracts._new_module_entrypoint_is_canonical(
+                        head_root / "Scripts/smoke/fixture/__main__.py"
+                    )
+                )
+        finally:
+            temporary.cleanup()
+
     def test_standard_migration_rejects_symlinked_entrypoint_section(self) -> None:
         """A symlink cannot provide the standard forwarding section implementation."""
         temporary, repository, base = self._create_repository()

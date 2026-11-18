@@ -11,6 +11,9 @@ from Scripts.validation.source_decomposition.compare_identity_surfaces.surface_c
 from Scripts.validation.source_decomposition.identity_surface_conditions import (
     _conditional_only_public_names,
 )
+from Scripts.validation.source_decomposition.identity_initializer_contracts import (
+    _absolute_import_resolves,
+)
 
 
 def _entrypoint_zero_arg_function(node: ast.AST) -> bool:
@@ -55,6 +58,16 @@ def _entrypoint_binding_is_zero_arg_callable(
     if resolved_target in seen:
         return False
     next_seen = seen | {resolved_target}
+    for imported in tree.body:
+        if isinstance(imported, ast.Import) or (
+            isinstance(imported, ast.ImportFrom)
+            and imported.level == 0
+            and imported.module != "__future__"
+        ):
+            if not _absolute_import_resolves(imported):
+                return False
+    if target.name != "__init__.py" and _entrypoint_section_exports(target) is None:
+        return False
     if any(
         isinstance(node, ast.Name)
         and node.id == name
