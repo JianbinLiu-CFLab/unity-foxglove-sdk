@@ -367,17 +367,23 @@ def _approved_main_block_only_contract(
         return False
     called_name = called_names[0]
     package_name = base_package.name
-    if not any(
-        isinstance(node, ast.ImportFrom)
-        and node.names
-        and len(node.names) == 1
-        and node.names[0].name == "*"
-        and node.names[0].asname is None
-        and (
+    star_imports = [
+        node
+        for node in ast.walk(base_facade_tree)
+        if (
+            isinstance(node, ast.ImportFrom)
+            and node.names
+            and len(node.names) == 1
+            and node.names[0].name == "*"
+            and node.names[0].asname is None
+        )
+    ]
+    if not star_imports or any(
+        not (
             (node.level == 1 and node.module in {None, package_name})
             or (node.level == 0 and node.module == package_name)
         )
-        for node in ast.walk(base_facade_tree)
+        for node in star_imports
     ):
         return False
     for node in ast.walk(base_facade_tree):
