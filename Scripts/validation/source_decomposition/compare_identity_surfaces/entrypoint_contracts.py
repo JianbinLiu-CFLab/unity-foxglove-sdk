@@ -156,6 +156,24 @@ def _entrypoint_contract(
     def stable_exports(target: Path) -> set[str]:
         """Internal helper for stable_exports."""
         target_tree = _parse_source(target.read_text(encoding="utf-8"), target)
+        for statement in ast.walk(target_tree):
+            if isinstance(statement, ast.Assign):
+                targets = statement.targets
+            elif isinstance(statement, (ast.AnnAssign, ast.AugAssign)):
+                targets = [statement.target]
+            elif isinstance(statement, ast.Delete):
+                targets = statement.targets
+            else:
+                continue
+            if any(
+                any(
+                    isinstance(candidate, ast.Name)
+                    and candidate.id in {"__all__", "_PHASE192_SECTION_MODULES"}
+                    for candidate in ast.walk(target_node)
+                )
+                for target_node in targets
+            ):
+                return set()
         names = _top_level_names(target_tree, include_imports=True)
         names.difference_update(_conditional_only_public_names(target_tree, include_private=True))
         return names
