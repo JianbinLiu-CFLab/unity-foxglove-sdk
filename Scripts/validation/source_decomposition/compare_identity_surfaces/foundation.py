@@ -641,6 +641,7 @@ def _approved_namespace_change(
     head_relative = head_relative or relative
     from .entrypoint_contracts import (
         _approved_entrypoint_contract,
+        _approved_entrypoint_section,
         _approved_initializer_contract,
     )
 
