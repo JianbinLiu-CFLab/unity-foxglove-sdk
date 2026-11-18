@@ -1,9 +1,49 @@
 from __future__ import annotations
 
+import sys
+
 from .foundation import *
-from Scripts.validation.source_decomposition.identity_initializer_contracts import (
-    _absolute_import_resolves,
-)
+
+_STATIC_EXTERNAL_IMPORT_ROOTS = frozenset({
+    "_ros2_windows_env",
+    "phase179_foxrun_ros2_inbound_acceptance",
+    "phase179_zenoh_topology",
+})
+
+
+def _static_scripts_module_exists(module: str, source_path: Path) -> bool:
+    """Return whether a repository-local Scripts module exists without importing it."""
+    scripts_root = next(
+        (candidate for candidate in (source_path, *source_path.parents) if candidate.name == "Scripts"),
+        None,
+    )
+    if scripts_root is None or not module.startswith("Scripts."):
+        return False
+    target = scripts_root.joinpath(*module.split(".")[1:])
+    return target.with_suffix(".py").is_file() or (target / "__init__.py").is_file()
+
+
+def _absolute_import_resolves_without_execution(
+    node: ast.Import | ast.ImportFrom,
+    source_path: Path,
+) -> bool:
+    """Resolve an absolute import using static module names and paths only."""
+    stdlib_roots = set(getattr(sys, "stdlib_module_names", ()))
+    if isinstance(node, ast.Import):
+        return all(
+            (alias.name.split(".", 1)[0] in stdlib_roots)
+            or (alias.name.split(".", 1)[0] in _STATIC_EXTERNAL_IMPORT_ROOTS)
+            or _static_scripts_module_exists(alias.name, source_path)
+            for alias in node.names
+        )
+    if node.level or not node.module:
+        return False
+    root = node.module.split(".", 1)[0]
+    return (
+        root in stdlib_roots
+        or root in _STATIC_EXTERNAL_IMPORT_ROOTS
+        or _static_scripts_module_exists(node.module, source_path)
+    )
 
 
 def _unconditional_top_level_bindings(tree: ast.Module) -> dict[str, ast.AST]:
@@ -442,7 +482,7 @@ def _entrypoint_section_exports(section: Path) -> set[str] | None:
             and imported.level == 0
             and imported.module != "__future__"
         ):
-            if not _absolute_import_resolves(imported):
+            if not _absolute_import_resolves_without_execution(imported, section):
                 return None
     bindings = _unconditional_top_level_bindings(tree)
     assignments = [
@@ -503,7 +543,7 @@ def _entrypoint_initializer_exports(
             and imported.level == 0
             and imported.module != "__future__"
         ):
-            if not _absolute_import_resolves(imported):
+            if not _absolute_import_resolves_without_execution(imported, initializer):
                 return None
     assignments = [node for node in tree.body if isinstance(node, ast.Assign) and any(
         isinstance(target, ast.Name) and target.id == "__all__" for target in node.targets

@@ -4,6 +4,7 @@ from Scripts.validation.source_decomposition.compare_identity_surfaces.surface_c
     _entrypoint_module_bindings,
     _entrypoint_section_exports,
     _entrypoint_function_accepts_positional,
+    _absolute_import_resolves_without_execution,
     _function_signature_is_inert,
     _public_globals_listcomp,
     _unconditional_top_level_bindings,
@@ -12,11 +13,6 @@ from Scripts.validation.source_decomposition.compare_identity_surfaces.surface_c
 from Scripts.validation.source_decomposition.identity_surface_conditions import (
     _conditional_only_public_names,
 )
-from Scripts.validation.source_decomposition.identity_initializer_contracts import (
-    _absolute_import_resolves,
-)
-
-
 def _entrypoint_resolve_module(package: Path, module: str) -> Path | None:
     """Resolve a relative module path to a regular file inside one package."""
     module_path = package.joinpath(*module.split("."))
@@ -54,7 +50,7 @@ def _entrypoint_binding_is_zero_arg_callable(
             and imported.level == 0
             and imported.module != "__future__"
         ):
-            if not _absolute_import_resolves(imported):
+            if not _absolute_import_resolves_without_execution(imported, target):
                 return False
     if target.name != "__init__.py" and _entrypoint_section_exports(target) is None:
         return False
@@ -147,6 +143,12 @@ def _entrypoint_package_main_is_callable(package: Path) -> bool:
 
 def _new_module_entrypoint_is_canonical(path: Path) -> bool:
     """Return whether a newly added module entrypoint dispatches to callable ``main``."""
+    if not path.is_file() or path.is_symlink():
+        return False
+    try:
+        path.resolve().relative_to(path.parent.resolve())
+    except (OSError, ValueError):
+        return False
     try:
         tree = _parse_source(path.read_text(encoding="utf-8"), path)
     except (OSError, SyntaxError, ValueError):
