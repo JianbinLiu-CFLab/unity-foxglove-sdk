@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from .foundation import *
 from .surface_contracts import *
-from .surface_contracts import _public_globals_listcomp
 from Scripts.validation.source_decomposition.compare_identity_surfaces.entrypoint_migration_contracts import (
     _entrypoint_executable_body_is_safe,
     _approved_entrypoint_contract_impl,
     _approved_initializer_contract_impl,
+    _stable_entrypoint_exports,
 )
 _INVALID_ENTRYPOINT_CONTRACT = "__phase192_invalid_entrypoint__"
 
@@ -156,51 +156,7 @@ def _entrypoint_contract(
 
     def stable_exports(target: Path) -> set[str]:
         """Internal helper for stable_exports."""
-        target_tree = _parse_source(target.read_text(encoding="utf-8"), target)
-        for statement in ast.walk(target_tree):
-            if isinstance(statement, ast.Assign):
-                targets = statement.targets
-                value = statement.value
-            elif isinstance(statement, (ast.AnnAssign, ast.AugAssign)):
-                targets = [statement.target]
-                value = statement.value
-            elif isinstance(statement, ast.Delete):
-                targets = statement.targets
-                value = None
-            else:
-                continue
-            for target_node in targets:
-                target_names = {
-                    candidate.id
-                    for candidate in ast.walk(target_node)
-                    if isinstance(candidate, ast.Name)
-                }
-                if "__all__" in target_names:
-                    literal = None
-                    try:
-                        literal = ast.literal_eval(value) if value is not None else None
-                    except (TypeError, ValueError, SyntaxError):
-                        pass
-                    canonical_dynamic = (
-                        isinstance(value, ast.Call)
-                        and isinstance(value.func, ast.Name)
-                        and value.func.id == "sorted"
-                        and len(value.args) == 1
-                        and isinstance(value.args[0], ast.Name)
-                        and value.args[0].id == "_PHASE192_EXPORT_NAMES"
-                        and not value.keywords
-                    )
-                    if not (
-                        isinstance(literal, (list, tuple, set))
-                        and all(isinstance(name, str) for name in literal)
-                    ) and not canonical_dynamic and not _public_globals_listcomp(value):
-                        return set()
-                if "_PHASE192_SECTION_MODULES" in target_names:
-                    if not isinstance(statement, ast.Assign) or not isinstance(value, ast.Tuple):
-                        return set()
-        names = _top_level_names(target_tree, include_imports=True)
-        names.difference_update(_conditional_only_public_names(target_tree, include_private=True))
-        return names
+        return _stable_entrypoint_exports(target)
 
     package_exports: set[str] = set()
     if package_init.is_file():

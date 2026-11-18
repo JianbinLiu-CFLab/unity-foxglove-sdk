@@ -4,8 +4,61 @@ from Scripts.validation.source_decomposition.compare_identity_surfaces.surface_c
     _entrypoint_module_bindings,
     _entrypoint_section_exports,
     _function_signature_is_inert,
+    _public_globals_listcomp,
     _unconditional_top_level_names,
 )
+from Scripts.validation.source_decomposition.identity_surface_conditions import (
+    _conditional_only_public_names,
+)
+
+
+def _stable_entrypoint_exports(target: Path) -> set[str]:
+    """Return public bindings after rejecting unsafe export rebinding."""
+    target_tree = _parse_source(target.read_text(encoding="utf-8"), target)
+    for statement in ast.walk(target_tree):
+        if isinstance(statement, ast.Assign):
+            targets = statement.targets
+            value = statement.value
+        elif isinstance(statement, (ast.AnnAssign, ast.AugAssign)):
+            targets = [statement.target]
+            value = statement.value
+        elif isinstance(statement, ast.Delete):
+            targets = statement.targets
+            value = None
+        else:
+            continue
+        for target_node in targets:
+            target_names = {
+                candidate.id
+                for candidate in ast.walk(target_node)
+                if isinstance(candidate, ast.Name)
+            }
+            if "__all__" in target_names:
+                literal = None
+                try:
+                    literal = ast.literal_eval(value) if value is not None else None
+                except (TypeError, ValueError, SyntaxError):
+                    pass
+                canonical_dynamic = (
+                    isinstance(value, ast.Call)
+                    and isinstance(value.func, ast.Name)
+                    and value.func.id == "sorted"
+                    and len(value.args) == 1
+                    and isinstance(value.args[0], ast.Name)
+                    and value.args[0].id == "_PHASE192_EXPORT_NAMES"
+                    and not value.keywords
+                )
+                if not (
+                    isinstance(literal, (list, tuple, set))
+                    and all(isinstance(name, str) for name in literal)
+                ) and not canonical_dynamic and not _public_globals_listcomp(value):
+                    return set()
+            if "_PHASE192_SECTION_MODULES" in target_names:
+                if not isinstance(statement, ast.Assign) or not isinstance(value, ast.Tuple):
+                    return set()
+    names = _top_level_names(target_tree, include_imports=True)
+    names.difference_update(_conditional_only_public_names(target_tree, include_private=True))
+    return names
 
 def _mechanically_transformed_entrypoint_body(facade: Path) -> tuple[ast.stmt, ...] | None:
     """Return the trusted facade main block after the standard mechanical rewrite."""
