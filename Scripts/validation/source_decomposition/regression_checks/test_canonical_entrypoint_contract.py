@@ -136,6 +136,7 @@ class CanonicalEntrypointContractTests(CanonicalEntrypointFixtureMixin, unittest
             "        raise SystemExit(1)\n"
         )
         temporary, repository, base = self._create_repository(
+            live_source="def main(argv):\n    return 0\n\n__all__ = ['main']\n",
             facade_source=facade_source,
             extra_source="VALUE = 0\n__all__ = []\n",
         )

@@ -119,6 +119,74 @@ class CanonicalEntrypointEdgeTests(CanonicalEntrypointFixtureMixin, unittest.Tes
         finally:
             temporary.cleanup()
 
+    def test_main_block_only_rejects_unresolved_section_import(self) -> None:
+        """A section with a missing absolute import cannot provide main."""
+        temporary, repository, base = self._create_repository(
+            live_source=(
+                "import definitely_missing_xyz\n\n"
+                "def main():\n"
+                "    return 0\n\n"
+                "__all__ = ['main']\n"
+            )
+        )
+        try:
+            entrypoint = repository / "Scripts/smoke/fixture/__main__.py"
+            entrypoint.write_text(
+                entrypoint.read_text(encoding="utf-8")
+                + "if __name__ == '__main__':\n"
+                + "    raise SystemExit(main())\n",
+                encoding="utf-8",
+            )
+            head = self._commit(repository, "append main block")
+            with (
+                compare_identity_surfaces._revision_checkout(repository, base) as base_root,
+                compare_identity_surfaces._revision_checkout(repository, head) as head_root,
+            ):
+                self.assertFalse(
+                    entrypoint_migration_contracts._approved_main_block_only_contract(
+                        base_root,
+                        head_root,
+                        "Scripts/smoke/fixture.py",
+                        "Scripts/smoke/fixture.py",
+                    )
+                )
+        finally:
+            temporary.cleanup()
+
+    def test_main_block_only_rejects_unresolved_initializer_import(self) -> None:
+        """A package initializer with a missing absolute import cannot export main."""
+        temporary, repository, base = self._create_repository()
+        try:
+            initializer = repository / "Scripts/smoke/fixture/__init__.py"
+            initializer.write_text(
+                "import definitely_missing_xyz\n"
+                + initializer.read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+            base = self._commit(repository, "add unresolved initializer import")
+            entrypoint = repository / "Scripts/smoke/fixture/__main__.py"
+            entrypoint.write_text(
+                entrypoint.read_text(encoding="utf-8")
+                + "if __name__ == '__main__':\n"
+                + "    raise SystemExit(main())\n",
+                encoding="utf-8",
+            )
+            head = self._commit(repository, "append main block")
+            with (
+                compare_identity_surfaces._revision_checkout(repository, base) as base_root,
+                compare_identity_surfaces._revision_checkout(repository, head) as head_root,
+            ):
+                self.assertFalse(
+                    entrypoint_migration_contracts._approved_main_block_only_contract(
+                        base_root,
+                        head_root,
+                        "Scripts/smoke/fixture.py",
+                        "Scripts/smoke/fixture.py",
+                    )
+                )
+        finally:
+            temporary.cleanup()
+
     def test_main_block_only_rejects_local_main_rebinding(self) -> None:
         """A local rebinding can replace the imported main before the guard runs."""
         temporary, repository, base = self._create_repository(
@@ -261,6 +329,33 @@ class CanonicalEntrypointEdgeTests(CanonicalEntrypointFixtureMixin, unittest.Tes
             except OSError as error:
                 self.skipTest(f"symlink unavailable: {error}")
             self.assertFalse(entrypoint_contracts._approved_entrypoint_section(entrypoint))
+        finally:
+            temporary.cleanup()
+
+    def test_standard_migration_rejects_delegate_with_required_argument(self) -> None:
+        """A standard wrapper cannot call a delegate that requires an argument."""
+        temporary, repository, base = self._create_repository(
+            live_source=(
+                "def main(required):\n"
+                "    return required\n\n"
+                "__all__ = ['main']\n"
+            )
+        )
+        try:
+            self._migrate_to_standard_entrypoint(repository)
+            head = self._commit(repository, "migrate standard entrypoint")
+            with (
+                compare_identity_surfaces._revision_checkout(repository, base) as base_root,
+                compare_identity_surfaces._revision_checkout(repository, head) as head_root,
+            ):
+                self.assertFalse(
+                    entrypoint_contracts._approved_entrypoint_contract(
+                        head_root,
+                        "Scripts/smoke/fixture.py",
+                        base_root=base_root,
+                        base_relative="Scripts/smoke/fixture.py",
+                    )
+                )
         finally:
             temporary.cleanup()
 

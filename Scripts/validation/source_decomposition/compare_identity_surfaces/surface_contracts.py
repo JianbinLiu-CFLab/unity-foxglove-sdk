@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from .foundation import *
+from Scripts.validation.source_decomposition.identity_initializer_contracts import (
+    _absolute_import_resolves,
+)
 
 
 def _unconditional_top_level_bindings(tree: ast.Module) -> dict[str, ast.AST]:
@@ -135,6 +138,22 @@ def _function_signature_is_inert(node: ast.FunctionDef | ast.AsyncFunctionDef) -
         argument.annotation is not None or argument.type_comment
         for argument in (*arguments.posonlyargs, *arguments.args, *arguments.kwonlyargs)
     )
+
+
+def _entrypoint_function_accepts_positional(node: ast.AST, positional_count: int) -> bool:
+    """Return whether a function accepts a call with the requested positional arguments."""
+    if not isinstance(node, ast.FunctionDef) or node.decorator_list:
+        return False
+    arguments = node.args
+    positional = (*arguments.posonlyargs, *arguments.args)
+    required = len(positional) - len(arguments.defaults)
+    if required > positional_count:
+        return False
+    if arguments.vararg is None and positional_count > len(positional):
+        return False
+    if any(default is None for default in arguments.kw_defaults):
+        return False
+    return True
 
 def _relative_import_contract(
     tree: ast.Module,
@@ -417,6 +436,14 @@ def _entrypoint_section_exports(section: Path) -> set[str] | None:
         _relative_import_contract(tree, section.parent, section)
     except (OSError, SyntaxError, ValueError):
         return None
+    for imported in tree.body:
+        if isinstance(imported, ast.Import) or (
+            isinstance(imported, ast.ImportFrom)
+            and imported.level == 0
+            and imported.module != "__future__"
+        ):
+            if not _absolute_import_resolves(imported):
+                return None
     bindings = _unconditional_top_level_bindings(tree)
     assignments = [
         node
@@ -470,6 +497,14 @@ def _entrypoint_initializer_exports(
     if not initializer.is_file():
         return None
     tree = _parse_source(initializer.read_text(encoding="utf-8"), initializer)
+    for imported in tree.body:
+        if isinstance(imported, ast.Import) or (
+            isinstance(imported, ast.ImportFrom)
+            and imported.level == 0
+            and imported.module != "__future__"
+        ):
+            if not _absolute_import_resolves(imported):
+                return None
     assignments = [node for node in tree.body if isinstance(node, ast.Assign) and any(
         isinstance(target, ast.Name) and target.id == "__all__" for target in node.targets
     )]

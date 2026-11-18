@@ -3,6 +3,7 @@ from Scripts.validation.source_decomposition.compare_identity_surfaces.surface_c
     _entrypoint_initializer_exports,
     _entrypoint_module_bindings,
     _entrypoint_section_exports,
+    _entrypoint_function_accepts_positional,
     _function_signature_is_inert,
     _public_globals_listcomp,
     _unconditional_top_level_bindings,
@@ -14,19 +15,6 @@ from Scripts.validation.source_decomposition.identity_surface_conditions import 
 from Scripts.validation.source_decomposition.identity_initializer_contracts import (
     _absolute_import_resolves,
 )
-
-
-def _entrypoint_zero_arg_function(node: ast.AST) -> bool:
-    """Return whether a function definition accepts a zero-argument call."""
-    if not isinstance(node, ast.FunctionDef) or node.decorator_list:
-        return False
-    arguments = node.args
-    positional = (*arguments.posonlyargs, *arguments.args)
-    if len(arguments.defaults) < len(positional):
-        return False
-    if any(default is None for default in arguments.kw_defaults):
-        return False
-    return True
 
 
 def _entrypoint_resolve_module(package: Path, module: str) -> Path | None:
@@ -47,8 +35,10 @@ def _entrypoint_binding_is_zero_arg_callable(
     target: Path,
     name: str,
     seen: frozenset[Path] = frozenset(),
+    *,
+    positional_count: int = 0,
 ) -> bool:
-    """Prove that one statically resolved binding accepts a zero-argument call."""
+    """Prove that one statically resolved binding accepts the requested call."""
     try:
         resolved_target = target.resolve()
         resolved_target.relative_to(package.resolve())
@@ -92,7 +82,7 @@ def _entrypoint_binding_is_zero_arg_callable(
             return False
     bindings = _unconditional_top_level_bindings(tree)
     binding = bindings.get(name)
-    if _entrypoint_zero_arg_function(binding):
+    if _entrypoint_function_accepts_positional(binding, positional_count):
         return True
     if isinstance(binding, ast.ImportFrom):
         if binding.level != 1:
@@ -114,6 +104,7 @@ def _entrypoint_binding_is_zero_arg_callable(
                 target_module,
                 alias.name,
                 next_seen,
+                positional_count=positional_count,
             )
         module_target = _entrypoint_resolve_module(package, alias.name)
         if module_target is not None:
@@ -124,6 +115,7 @@ def _entrypoint_binding_is_zero_arg_callable(
             initializer,
             alias.name,
             next_seen,
+            positional_count=positional_count,
         )
     if target.name != "__init__.py":
         return False
@@ -134,7 +126,13 @@ def _entrypoint_binding_is_zero_arg_callable(
     ]
     return any(
         name in (_entrypoint_section_exports(section) or set())
-        and _entrypoint_binding_is_zero_arg_callable(package, section, name, next_seen)
+        and _entrypoint_binding_is_zero_arg_callable(
+            package,
+            section,
+            name,
+            next_seen,
+            positional_count=positional_count,
+        )
         for section in sections
     )
 
@@ -441,6 +439,11 @@ def _entrypoint_body_matches_mechanical_transform(
         )
     if not body_matches:
         return False
+    call_counts: dict[str, set[int]] = {}
+    for statement in body:
+        for node in ast.walk(statement):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+                call_counts.setdefault(node.func.id, set()).add(len(node.args))
     imported_names: set[str] = set()
     for node in imports:
         if isinstance(node, ast.Import):
@@ -462,6 +465,16 @@ def _entrypoint_body_matches_mechanical_transform(
         bindings = _unconditional_top_level_names(_parse_source(target.read_text(encoding="utf-8"), target))
         if exports is None or any(alias.name not in exports or alias.name not in bindings for alias in node.names):
             return False
+        for alias in node.names:
+            bound_name = alias.asname or alias.name
+            for positional_count in call_counts.get(bound_name, ()):
+                if not _entrypoint_binding_is_zero_arg_callable(
+                    path.parent,
+                    target,
+                    alias.name,
+                    positional_count=positional_count,
+                ):
+                    return False
         imported_names.update(alias.asname or alias.name for alias in node.names)
     allowed_names = {
         "BaseException", "Exception", "FileNotFoundError", "InconclusiveError", "KeyboardInterrupt",
