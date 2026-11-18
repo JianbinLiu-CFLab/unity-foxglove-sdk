@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 from .foundation import *
+from .entrypoint_migration_contracts import (
+    _approved_main_block_only_contract,
+    _initializer_path_is_repository_rooted,
+)
 from .entrypoint_contracts import (
     _approved_entrypoint_contract,
     _approved_initializer_contract,
@@ -552,8 +556,7 @@ def _compare_surfaces(
             base_contract = tuple(base_conditional_contract or ())
             head_contract = tuple(head_conditional_contract or ())
             if (
-                not approved_namespace_change
-                and relative == "Scripts/package/validate_source_generator_dll.py"
+                relative == "Scripts/package/validate_source_generator_dll.py"
                 and base_contract != head_contract
             ):
                 errors.append(f"CONDITIONAL_CONTRACT_CHANGED {relative}")
@@ -588,8 +591,8 @@ def _compare_surfaces(
             ):
                 errors.append(f"CONDITIONAL_CONTRACT_CHANGED {relative}")
         if (
-            "__phase192_unsafe_entrypoint_call__" in tuple(base_entrypoint_contract or ())
-            or "__phase192_unsafe_entrypoint_call__" in tuple(head_entrypoint_contract or ())
+            "__phase192_invalid_entrypoint__" in tuple(base_entrypoint_contract or ())
+            or "__phase192_invalid_entrypoint__" in tuple(head_entrypoint_contract or ())
         ):
             errors.append(f"MODULE_ENTRYPOINT_CHANGED {relative}")
         elif base_entrypoint and head_entrypoint:
@@ -617,6 +620,8 @@ def _compare_surfaces(
                             _current_source_decomposition_relative(relative)
                             if migrated_relative
                             else relative,
+                            base_root=base_root,
+                            base_relative=relative,
                         )
                     )
                 ):

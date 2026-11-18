@@ -22,6 +22,7 @@ from . import template_registry as _phase192_section_1
 from . import initializer_contracts as _phase192_section_2
 from . import namespace_access as _phase192_section_3
 from . import surface_contracts as _phase192_section_4
+from . import entrypoint_migration_contracts as _phase192_section_9
 from . import entrypoint_contracts as _phase192_section_5
 from . import section_validation as _phase192_section_6
 from . import surface_compare as _phase192_section_7
@@ -32,6 +33,7 @@ _PHASE192_SECTION_MODULES = (
     _phase192_section_2,
     _phase192_section_3,
     _phase192_section_4,
+    _phase192_section_9,
     _phase192_section_5,
     _phase192_section_6,
     _phase192_section_7,

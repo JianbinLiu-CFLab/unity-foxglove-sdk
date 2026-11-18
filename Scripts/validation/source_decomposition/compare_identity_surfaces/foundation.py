@@ -360,7 +360,6 @@ def _facade_entrypoint_is_standard(tree: ast.Module, relative: str) -> bool:
         expected,
         include_attributes=False,
     )
-
 def _single_run_entrypoint_binding(tree: ast.Module) -> bool:
     """Return whether run_entrypoint has exactly one synchronous function binding."""
     bindings: list[ast.AST] = []
@@ -381,7 +380,6 @@ def _single_run_entrypoint_binding(tree: ast.Module) -> bool:
         and isinstance(bindings[0], ast.FunctionDef)
         and bindings[0].name == "run_entrypoint"
     )
-
 def _approved_test_facade_removal(
     relative: str,
     base_root: Path,
@@ -403,7 +401,6 @@ def _approved_test_facade_removal(
     if not base_package.is_dir() or not head_package.is_dir():
         return False
     from .entrypoint_contracts import _approved_initializer_contract
-
     head_relative = relative
     if not (head_root / relative.removesuffix(".py")).is_dir():
         head_relative = _current_source_decomposition_relative(relative)
@@ -437,7 +434,6 @@ def _approved_test_facade_removal(
         return False
     if base_main.is_file() and base_main.read_bytes() != head_main.read_bytes():
         return False
-
     def package_files(package: Path) -> dict[str, Path]:
         """Return every tracked package file except the generated root initializer."""
         return {
@@ -445,7 +441,6 @@ def _approved_test_facade_removal(
             for path in package.rglob("*")
             if path.is_file() and not (path == package / "__init__.py")
         }
-
     base_files = package_files(base_package)
     head_files = package_files(head_package)
     if set(base_files) != set(head_files):
@@ -454,7 +449,6 @@ def _approved_test_facade_removal(
         base_files[name].read_bytes() == head_files[name].read_bytes()
         for name in base_files
     )
-
 def _initializer_exact_identity_signature(
     root: Path,
     relative: str,
@@ -521,7 +515,6 @@ def _initializer_exact_identity_signature(
         or set(module_aliases) != set(section_aliases.values())
     ):
         return None
-
     def is_legacy_hook_node(node: ast.AST) -> bool:
         """Return whether a top-level node belongs to the trusted discovery hook."""
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -530,7 +523,6 @@ def _initializer_exact_identity_signature(
             isinstance(target, ast.Name) and target.id == "_phase192_load_tests_used"
             for target in node.targets
         )
-
     body = list(tree.body)
     if allow_legacy_hook_removal:
         while body and is_legacy_hook_node(body[-1]):
@@ -539,7 +531,6 @@ def _initializer_exact_identity_signature(
             return None
     elif any(is_legacy_hook_node(node) for node in body):
         return None
-
     signature: list[str] = []
     imports_marker_added = False
     imports_closed = False
@@ -650,11 +641,15 @@ def _approved_namespace_change(
     head_relative = head_relative or relative
     from .entrypoint_contracts import (
         _approved_entrypoint_contract,
-        _approved_entrypoint_section,
         _approved_initializer_contract,
     )
 
-    if not _approved_entrypoint_contract(head_root, head_relative):
+    if not _approved_entrypoint_contract(
+        head_root,
+        head_relative,
+        base_root=base_root,
+        base_relative=relative,
+    ):
         return False
     if not _approved_initializer_contract(
         head_root,
@@ -690,7 +685,7 @@ def _approved_namespace_change(
     added_sections = head_sections - base_sections
     if changed_existing - {"entrypoint.py"} or added_sections - {"entrypoint.py"}:
         return False
-    return _approved_entrypoint_section(head_package / "entrypoint.py")
+    return True
 
 
 def _discovery_contract_errors(
@@ -748,222 +743,6 @@ def _discovery_contract_errors(
             errors.append(f"INVALID_DISCOVERY_FACADE_REMOVAL {relative}")
     return errors
 
-def _approved_main_block_only_contract(
-    base_root: Path,
-    head_root: Path,
-    base_relative: str,
-    head_relative: str,
-) -> bool:
-    """Return whether only a safe main block was appended to a package entrypoint."""
-    if base_relative != head_relative:
-        return False
-    base_facade = base_root / base_relative
-    head_facade = head_root / head_relative
-    base_package = base_facade.with_suffix("")
-    head_package = head_facade.with_suffix("")
-    base_main = base_package / "__main__.py"
-    head_main = head_package / "__main__.py"
-    if (
-        not base_facade.is_file()
-        or not head_facade.is_file()
-        or base_facade.is_symlink()
-        or head_facade.is_symlink()
-        or base_package.is_symlink()
-        or head_package.is_symlink()
-        or not base_main.is_file()
-        or not head_main.is_file()
-        or base_main.is_symlink()
-        or head_main.is_symlink()
-    ):
-        return False
-    if base_facade.read_bytes() != head_facade.read_bytes():
-        return False
-
-    def relative_files(package: Path) -> set[str]:
-        """Return all package files relative to the package directory."""
-        if any(path.is_symlink() for path in package.rglob("*")):
-            return set()
-        return {
-            path.relative_to(package).as_posix()
-            for path in package.rglob("*")
-            if path.is_file() and path != package / "__main__.py"
-        }
-
-    base_files = relative_files(base_package)
-    head_files = relative_files(head_package)
-    if not base_files or base_files != head_files:
-        return False
-    for relative in base_files:
-        if (base_package / relative).read_bytes() != (head_package / relative).read_bytes():
-            return False
-
-    try:
-        base_tree = _parse_source(base_main.read_text(encoding="utf-8"), base_main)
-        head_tree = _parse_source(head_main.read_text(encoding="utf-8"), head_main)
-    except (OSError, SyntaxError, ValueError):
-        return False
-    if len(head_tree.body) != len(base_tree.body) + 1:
-        return False
-    if any(
-        ast.dump(base_node, include_attributes=False)
-        != ast.dump(head_node, include_attributes=False)
-        for base_node, head_node in zip(base_tree.body, head_tree.body)
-    ):
-        return False
-
-    def is_main_guard(node: ast.stmt) -> bool:
-        """Return whether a top-level statement is a module main guard."""
-        if not isinstance(node, ast.If) or not isinstance(node.test, ast.Compare):
-            return False
-        if len(node.test.ops) != 1:
-            return False
-        if not isinstance(node.test.ops[0], ast.Eq):
-            return False
-        left, right = node.test.left, node.test.comparators[0]
-        return (
-            isinstance(left, ast.Name)
-            and left.id == "__name__"
-            and isinstance(right, ast.Constant)
-            and right.value == "__main__"
-        ) or (
-            isinstance(right, ast.Name)
-            and right.id == "__name__"
-            and isinstance(left, ast.Constant)
-            and left.value == "__main__"
-        )
-
-    if any(is_main_guard(node) for node in base_tree.body):
-        return False
-    main_block = head_tree.body[-1]
-    if not (
-        isinstance(main_block, ast.If)
-        and not main_block.orelse
-        and isinstance(main_block.test, ast.Compare)
-        and isinstance(main_block.test.left, ast.Name)
-        and main_block.test.left.id == "__name__"
-        and len(main_block.test.ops) == 1
-        and isinstance(main_block.test.ops[0], ast.Eq)
-        and len(main_block.test.comparators) == 1
-        and isinstance(main_block.test.comparators[0], ast.Constant)
-        and main_block.test.comparators[0].value == "__main__"
-        and len(main_block.body) == 1
-        and isinstance(main_block.body[0], ast.Raise)
-    ):
-        return False
-    raise_node = main_block.body[0]
-    if not (
-        isinstance(raise_node.exc, ast.Call)
-        and isinstance(raise_node.exc.func, ast.Name)
-        and raise_node.exc.func.id == "SystemExit"
-        and len(raise_node.exc.args) == 1
-        and not raise_node.exc.keywords
-        and isinstance(raise_node.exc.args[0], ast.Call)
-        and isinstance(raise_node.exc.args[0].func, ast.Name)
-        and not raise_node.exc.args[0].args
-        and not raise_node.exc.args[0].keywords
-    ):
-        return False
-    called_name = raise_node.exc.args[0].func.id
-    if called_name != "main":
-        return False
-
-    def section_exports(section: Path) -> set[str]:
-        """Return names exported by one existing package section."""
-        exports = getattr(importlib.import_module(__package__ + ".surface_contracts"), "_entrypoint_section_exports")(section)
-        return set() if exports is None else exports
-
-    def top_level_binding_names(node: ast.stmt) -> set[str]:
-        """Return names a top-level statement can bind in a package section."""
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            return {node.name}
-        if isinstance(node, ast.Import):
-            return {alias.asname or alias.name.split(".", 1)[0] for alias in node.names}
-        if isinstance(node, ast.ImportFrom):
-            return {
-                alias.asname or alias.name
-                for alias in node.names
-                if alias.name != "*"
-            } | ({"*"} if any(alias.name == "*" for alias in node.names) else set())
-        names = {
-            child.id
-            for child in ast.walk(node)
-            if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Store)
-        }
-        names.update(
-            child.name
-            for child in ast.walk(node)
-            if isinstance(child, ast.ExceptHandler) and child.name
-        )
-        return names
-
-    base_sections = [
-        path
-        for path in base_package.glob("*.py")
-        if path.name not in {"__init__.py", "__main__.py"}
-    ]
-    candidate = next(
-        (
-            section
-            for section in base_sections
-            for tree in (_parse_source(section.read_text(encoding="utf-8"), section),)
-            for node_index, node in enumerate(tree.body)
-            if isinstance(node, ast.FunctionDef)
-            and node.name == called_name
-            and not node.decorator_list
-            and not node.args.vararg
-            and not node.args.kwarg
-            and len(node.args.defaults) == len(node.args.posonlyargs) + len(node.args.args)
-            and all(default is not None for default in node.args.kw_defaults)
-            and sum(
-                isinstance(candidate_node, ast.FunctionDef)
-                and candidate_node.name == called_name
-                for candidate_node in tree.body
-            ) == 1
-            and max(
-                binding_index
-                for binding_index, candidate_node in enumerate(tree.body)
-                if called_name in top_level_binding_names(candidate_node)
-                or "*" in top_level_binding_names(candidate_node)
-            ) == node_index
-        ),
-        None,
-    )
-    if candidate is None:
-        return False
-    import_nodes = [
-        node
-        for node in base_tree.body
-        if isinstance(node, ast.ImportFrom) and node.level == 1
-    ]
-    if not import_nodes:
-        return False
-    package_exports = set().union(*(section_exports(section) for section in base_sections))
-
-    initializer_exports = getattr(importlib.import_module(__package__ + ".surface_contracts"), "_entrypoint_initializer_exports")
-    package_initializer_exports = initializer_exports(base_package, package_exports)
-    exports_by_module = {
-        section.stem: section_exports(section)
-        for section in base_sections
-    }
-    for node in import_nodes:
-        if node.module is None:
-            if package_initializer_exports is None:
-                continue
-            if any(alias.name == "*" for alias in node.names) and called_name in package_initializer_exports:
-                return True
-            if any((alias.asname or alias.name) == called_name and alias.name in package_initializer_exports for alias in node.names):
-                return True
-            continue
-        module_exports = exports_by_module.get(node.module)
-        if module_exports is None:
-            continue
-        module_bindings = getattr(importlib.import_module(__package__ + ".surface_contracts"), "_entrypoint_module_bindings")(base_package, node.module)
-        if any(alias.name == "*" for alias in node.names) and called_name in module_exports:
-            if called_name in module_bindings:
-                return True
-        if any((alias.asname or alias.name) == called_name and alias.name in module_exports and alias.name in module_bindings for alias in node.names):
-            return True
-    return False
 
 
-__all__ = ['_REVIEWED_IDENTITY_TOOLING_SECTIONS', '_reviewed_identity_tooling_test_split', 'argparse', 'ast', 'copy', 'hashlib', 'importlib', 'json', 'keyword', 're', 'contextmanager', 'lru_cache', 'Path', 'subprocess', 'tarfile', 'tempfile', 'Iterator', 'Mapping', 'REPOSITORY_ROOT', '_TRY_TYPES', '_TYPE_ALIAS_TYPE', '_SECTION_NAME_RE', 'SPLIT_ROOTS', 'IDENTITY_WAIVER_PATH', '_legacy_relative_path', '_canonical_source_decomposition_relative', '_current_source_decomposition_relative', '_resolve_source_decomposition_path', '_load_identity_waivers', '_git', '_extract_archive_safely', '_revision_checkout', '_FUNCTION_BODY_RISK_NAMES', '_ENVIRONMENT_MUTATORS', '_without_function_bodies', '_function_body_and_environment_risk_signatures', '_parse_source', '_section_modules_for_root', '_section_package_for_facade', '_split_facades', '_top_level_names', '_direct_import_bound_names', '_declared_public_names', '_PHASE192_TEMPLATE_IMPORTS', '_PHASE192_TEMPLATE_CALLS', '_PHASE192_TEMPLATE_METHODS', '_facade_entrypoint_is_standard', '_single_run_entrypoint_binding', '_approved_test_facade_removal', '_initializer_exact_identity_signature', '_initializer_signatures_compatible', '_approved_namespace_change', '_discovery_contract_errors', '_approved_main_block_only_contract']
+__all__ = ['_REVIEWED_IDENTITY_TOOLING_SECTIONS', '_reviewed_identity_tooling_test_split', 'argparse', 'ast', 'copy', 'hashlib', 'importlib', 'json', 'keyword', 're', 'contextmanager', 'lru_cache', 'Path', 'subprocess', 'tarfile', 'tempfile', 'Iterator', 'Mapping', 'REPOSITORY_ROOT', '_TRY_TYPES', '_TYPE_ALIAS_TYPE', '_SECTION_NAME_RE', 'SPLIT_ROOTS', 'IDENTITY_WAIVER_PATH', '_legacy_relative_path', '_canonical_source_decomposition_relative', '_current_source_decomposition_relative', '_resolve_source_decomposition_path', '_load_identity_waivers', '_git', '_extract_archive_safely', '_revision_checkout', '_FUNCTION_BODY_RISK_NAMES', '_ENVIRONMENT_MUTATORS', '_without_function_bodies', '_function_body_and_environment_risk_signatures', '_parse_source', '_section_modules_for_root', '_section_package_for_facade', '_split_facades', '_top_level_names', '_direct_import_bound_names', '_declared_public_names', '_PHASE192_TEMPLATE_IMPORTS', '_PHASE192_TEMPLATE_CALLS', '_PHASE192_TEMPLATE_METHODS', '_facade_entrypoint_is_standard', '_single_run_entrypoint_binding', '_approved_test_facade_removal', '_initializer_exact_identity_signature', '_initializer_signatures_compatible', '_approved_namespace_change', '_discovery_contract_errors']

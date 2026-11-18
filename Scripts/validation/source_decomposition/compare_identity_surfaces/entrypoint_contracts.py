@@ -3,8 +3,7 @@ from __future__ import annotations
 from .foundation import *
 from .surface_contracts import *
 
-_UNSAFE_ENTRYPOINT_CONTRACT = "__phase192_unsafe_entrypoint_call__"
-
+_INVALID_ENTRYPOINT_CONTRACT = "__phase192_invalid_entrypoint__"
 
 def _is_safe_unittest_main_call(call: ast.Call) -> bool:
     """Return whether a unittest.main call has only literal safe options."""
@@ -35,7 +34,6 @@ def _is_safe_unittest_main_call(call: ast.Call) -> bool:
             for keyword in call.keywords
         )
     )
-
 def _is_unittest_module_entrypoint(tree: ast.Module) -> bool:
     """Return whether an entrypoint explicitly delegates to unittest.main."""
     for node in tree.body:
@@ -71,13 +69,9 @@ def _is_unittest_module_entrypoint(tree: ast.Module) -> bool:
         if _is_safe_unittest_main_call(call):
             return True
     return False
-
-
 def _entrypoint_contract_signatures(tree: ast.Module) -> tuple[str, ...]:
     """Return ordered normalized top-level AST signatures for entrypoint compatibility."""
     return tuple(ast.dump(statement, include_attributes=False) for statement in tree.body)
-
-
 
 
 
@@ -787,7 +781,7 @@ def _entrypoint_contract(
     contract = _entrypoint_contract_signatures(normalized)
     risks = _namespace_risk_signatures(normalized)
     if invalid_entrypoint:
-        contract = (_UNSAFE_ENTRYPOINT_CONTRACT,)
+        contract = (_INVALID_ENTRYPOINT_CONTRACT,)
     return True, digest, contract, risks
 
 from Scripts.validation.source_decomposition.identity_initializer_contracts import (
@@ -879,7 +873,11 @@ def _entrypoint_block_is_standard(
     )
 
 
-def _approved_entrypoint_section(path: Path) -> bool:
+def _approved_entrypoint_section(
+    path: Path,
+    *,
+    expected_body: tuple[ast.stmt, ...] | None = None,
+) -> bool:
     """Return whether an entrypoint section exports a safe run_entrypoint function."""
     try:
         tree = _parse_source(path.read_text(encoding="utf-8"), path)
@@ -907,7 +905,7 @@ def _approved_entrypoint_section(path: Path) -> bool:
     ):
         return False
 
-    if not _entrypoint_executable_body_is_safe(tree, path, definitions[0]):
+    if not _entrypoint_executable_body_is_safe(tree, path, definitions[0], expected_body):
         return False
     for node in tree.body:
         if isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
@@ -936,7 +934,13 @@ def _approved_entrypoint_section(path: Path) -> bool:
     return True
 
 
-def _approved_entrypoint_contract(root: Path, relative: str) -> bool:
+def _approved_entrypoint_contract(
+    root: Path,
+    relative: str,
+    *,
+    base_root: Path | None = None,
+    base_relative: str | None = None,
+) -> bool:
     """Return whether a changed facade and module entrypoint use one forwarding template."""
     facade = root / relative
     package = facade.with_suffix("")
@@ -948,6 +952,13 @@ def _approved_entrypoint_contract(root: Path, relative: str) -> bool:
         module_tree = _parse_source(module_entrypoint.read_text(encoding="utf-8"), module_entrypoint)
     except (OSError, SyntaxError, ValueError):
         return False
+    expected_body = None
+    if base_root is not None:
+        expected_body = _mechanically_transformed_entrypoint_body(
+            base_root / (base_relative or relative)
+        )
+        if expected_body is None:
+            return False
     return (
         _facade_entrypoint_is_standard(
             facade_tree,
@@ -958,7 +969,10 @@ def _approved_entrypoint_contract(root: Path, relative: str) -> bool:
             import_level=1,
             import_module="entrypoint",
         )
-        and _approved_entrypoint_section(package / "entrypoint.py")
+        and _approved_entrypoint_section(
+            package / "entrypoint.py",
+            expected_body=expected_body,
+        )
     )
 
 

@@ -76,6 +76,131 @@ def _public_globals_listcomp(value: ast.AST) -> bool:
     )
 
 
+def _mechanically_transformed_entrypoint_body(facade: Path) -> tuple[ast.stmt, ...] | None:
+    """Return the trusted facade main block after the standard mechanical rewrite."""
+    try:
+        tree = _parse_source(facade.read_text(encoding="utf-8"), facade)
+    except (OSError, SyntaxError, ValueError):
+        return None
+    guards = [
+        node
+        for node in tree.body
+        if (
+            isinstance(node, ast.If)
+            and isinstance(node.test, ast.Compare)
+            and len(node.test.ops) == 1
+            and isinstance(node.test.ops[0], ast.Eq)
+            and isinstance(node.test.left, ast.Name)
+            and node.test.left.id == "__name__"
+            and len(node.test.comparators) == 1
+            and isinstance(node.test.comparators[0], ast.Constant)
+            and node.test.comparators[0].value == "__main__"
+        )
+    ]
+    if len(guards) != 1 or guards[0].orelse:
+        return None
+
+    class MechanicalTransformer(ast.NodeTransformer):
+        """Rewrite the trusted facade exit protocol for a callable wrapper."""
+
+        def visit_Name(self, node: ast.Name) -> ast.AST:
+            """Use the standard ``sys`` binding inside the new wrapper."""
+            if node.id == "_phase192_sys":
+                node.id = "sys"
+            return node
+
+        def visit_Raise(self, node: ast.Raise) -> ast.AST:
+            """Convert one SystemExit return into the wrapper's return value."""
+            exception = node.exc
+            if (
+                isinstance(exception, ast.Call)
+                and isinstance(exception.func, ast.Name)
+                and exception.func.id == "SystemExit"
+                and len(exception.args) == 1
+                and not exception.keywords
+            ):
+                return ast.copy_location(ast.Return(value=self.visit(exception.args[0])), node)
+            return self.generic_visit(node)
+
+    transformed = tuple(
+        MechanicalTransformer().visit(copy.deepcopy(statement))
+        for statement in guards[0].body
+    )
+    ast.fix_missing_locations(ast.Module(body=list(transformed), type_ignores=[]))
+    if any(
+        isinstance(node, ast.Raise)
+        and isinstance(node.exc, ast.Call)
+        and isinstance(node.exc.func, ast.Name)
+        and node.exc.func.id == "SystemExit"
+        for statement in transformed
+        for node in ast.walk(statement)
+    ):
+        return None
+    return transformed
+
+
+def _entrypoint_body_matches_mechanical_transform(
+    tree: ast.Module,
+    path: Path,
+    function: ast.FunctionDef,
+    expected_body: tuple[ast.stmt, ...],
+) -> bool:
+    """Return whether a wrapper body is the trusted mechanical transformation."""
+    body = list(function.body)
+    imports: list[ast.Import | ast.ImportFrom] = []
+    while body and isinstance(body[0], (ast.Import, ast.ImportFrom)):
+        imports.append(body.pop(0))
+    if not imports or ast.dump(ast.Module(body=body, type_ignores=[]), include_attributes=False) != ast.dump(
+        ast.Module(body=list(expected_body), type_ignores=[]), include_attributes=False
+    ):
+        return False
+    imported_names: set[str] = set()
+    for node in imports:
+        if isinstance(node, ast.Import):
+            if any(alias.name != "sys" or alias.asname for alias in node.names):
+                return False
+            imported_names.update(alias.asname or alias.name.split(".", 1)[0] for alias in node.names)
+            continue
+        if node.level != 1 or not node.module or any(alias.name == "*" for alias in node.names):
+            return False
+        target_base = path.parent.joinpath(*node.module.split("."))
+        target = target_base.with_suffix(".py") if target_base.with_suffix(".py").is_file() else target_base / "__init__.py"
+        if not target.is_file() or target.is_symlink():
+            return False
+        try:
+            target.resolve().relative_to(path.parent.resolve())
+        except (OSError, ValueError):
+            return False
+        exports = _entrypoint_section_exports(target)
+        bindings = _unconditional_top_level_names(_parse_source(target.read_text(encoding="utf-8"), target))
+        if exports is None or any(alias.name not in exports or alias.name not in bindings for alias in node.names):
+            return False
+        imported_names.update(alias.asname or alias.name for alias in node.names)
+    allowed_names = {
+        "BaseException", "Exception", "FileNotFoundError", "InconclusiveError", "KeyboardInterrupt",
+        "RuntimeError", "SystemExit", "TimeoutError", "print",
+    }
+    loaded_names = {
+        node.id
+        for statement in body
+        for node in ast.walk(statement)
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load)
+    }
+    bound_names = {
+        node.id
+        for statement in body
+        for node in ast.walk(statement)
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store)
+    }
+    bound_names.update(
+        node.name
+        for statement in body
+        for node in ast.walk(statement)
+        if isinstance(node, ast.ExceptHandler) and node.name
+    )
+    return loaded_names <= imported_names | allowed_names | bound_names
+
+
 def _entrypoint_section_exports(section: Path) -> set[str] | None:
     """Return statically proven exports from one unchanged source section."""
     tree = _parse_source(section.read_text(encoding="utf-8"), section)
@@ -444,8 +569,11 @@ def _entrypoint_executable_body_is_safe(
     tree: ast.Module,
     path: Path,
     function: ast.FunctionDef,
+    expected_body: tuple[ast.stmt, ...] | None = None,
 ) -> bool:
     """Return whether the forwarding function has only reviewed executable statements."""
+    if expected_body is not None:
+        return _entrypoint_body_matches_mechanical_transform(tree, path, function, expected_body)
     imported_names: set[str] = set()
     delegate_names: set[str] = set()
     dangerous_bound_names: set[str] = set()
@@ -863,4 +991,4 @@ _REVIEWED_DIRECT_ENTRYPOINTS = frozenset({
     "Scripts/ros2forunity/windows/lyrical/regression_checks/test_validate_r2fu_runtime_package.py",
 })
 
-__all__ = ['_relative_import_contract', '_symbols', '_section_exports', '_initializer_lines', '_initializer_digest', '_NAMESPACE_RISK_ATTRIBUTES', '_NAMESPACE_RISK_MODULE_ATTRIBUTES', '_NAMESPACE_RISK_NAMES', '_namespace_risk_signatures', '_is_phase121_configuration_path', '_ENTRYPOINT_IMPORT_ROOTS', '_REVIEWED_DIRECT_ENTRYPOINTS', '_entrypoint_section_imports_are_trusted', '_function_signature_is_inert', '_entrypoint_executable_body_is_safe']
+__all__ = ['_relative_import_contract', '_symbols', '_section_exports', '_initializer_lines', '_initializer_digest', '_NAMESPACE_RISK_ATTRIBUTES', '_NAMESPACE_RISK_MODULE_ATTRIBUTES', '_NAMESPACE_RISK_NAMES', '_namespace_risk_signatures', '_is_phase121_configuration_path', '_ENTRYPOINT_IMPORT_ROOTS', '_REVIEWED_DIRECT_ENTRYPOINTS', '_entrypoint_section_imports_are_trusted', '_function_signature_is_inert', '_mechanically_transformed_entrypoint_body', '_entrypoint_body_matches_mechanical_transform', '_entrypoint_executable_body_is_safe']

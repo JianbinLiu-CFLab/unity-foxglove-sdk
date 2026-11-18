@@ -53,6 +53,7 @@ class CanonicalEntrypointContractTests(unittest.TestCase):
         self,
         repository: Path,
         *,
+        facade_source: str | None = None,
         live_source: str | None = None,
         main_source: str | None = None,
     ) -> Path:
@@ -60,14 +61,17 @@ class CanonicalEntrypointContractTests(unittest.TestCase):
         package = repository / "Scripts/smoke/fixture"
         package.mkdir(parents=True)
         (repository / "Scripts/smoke/fixture.py").write_text(
-            "from __future__ import annotations\n"
-            "import sys as _phase192_sys\n"
-            "if __package__:\n"
-            "    from .fixture import *\n"
-            "else:\n"
-            "    from fixture import *\n"
-            "if __name__ == '__main__':\n"
-            "    raise SystemExit(main())\n",
+            facade_source
+            or (
+                "from __future__ import annotations\n"
+                "import sys as _phase192_sys\n"
+                "if __package__:\n"
+                "    from .fixture import *\n"
+                "else:\n"
+                "    from fixture import *\n"
+                "if __name__ == '__main__':\n"
+                "    raise SystemExit(main())\n"
+            ),
             encoding="utf-8",
         )
         (package / "__init__.py").write_text(
@@ -100,6 +104,7 @@ class CanonicalEntrypointContractTests(unittest.TestCase):
     def _create_repository(
         self,
         *,
+        facade_source: str | None = None,
         live_source: str | None = None,
         main_source: str | None = None,
     ) -> tuple[tempfile.TemporaryDirectory[str], Path, str]:
@@ -110,6 +115,7 @@ class CanonicalEntrypointContractTests(unittest.TestCase):
         subprocess.run(["git", "config", "core.autocrlf", "false"], cwd=repository, check=True)
         self._create_phase184_fixture(
             repository,
+            facade_source=facade_source,
             live_source=live_source,
             main_source=main_source,
         )
@@ -174,6 +180,68 @@ class CanonicalEntrypointContractTests(unittest.TestCase):
                     head,
                     strict=False,
                 ),
+            )
+        finally:
+            temporary.cleanup()
+
+    def test_standard_migration_preserves_exception_exit_contract(self) -> None:
+        """The standard wrapper mechanically preserves legacy exit and stderr handling."""
+        facade_source = (
+            "from __future__ import annotations\n"
+            "import sys as _phase192_sys\n"
+            "if __package__:\n"
+            "    from .fixture import *\n"
+            "else:\n"
+            "    from fixture import *\n"
+            "if __name__ == '__main__':\n"
+            "    try:\n"
+            "        raise SystemExit(main(_phase192_sys.argv[1:]))\n"
+            "    except KeyboardInterrupt:\n"
+            "        raise SystemExit(130)\n"
+            "    except Exception as exc:\n"
+            "        print(f'[fixture] FAIL: {exc}', file=_phase192_sys.stderr)\n"
+            "        raise SystemExit(1)\n"
+        )
+        temporary, repository, base = self._create_repository(facade_source=facade_source)
+        try:
+            self._migrate_to_standard_entrypoint(repository)
+            (repository / "Scripts/smoke/fixture/entrypoint.py").write_text(
+                "def run_entrypoint():\n"
+                "    import sys\n"
+                "    from .live import main\n"
+                "    try:\n"
+                "        return main(sys.argv[1:])\n"
+                "    except KeyboardInterrupt:\n"
+                "        return 130\n"
+                "    except Exception as exc:\n"
+                "        print(f'[fixture] FAIL: {exc}', file=sys.stderr)\n"
+                "        return 1\n"
+                "\n"
+                "__all__ = ['run_entrypoint']\n",
+                encoding="utf-8",
+            )
+            head = self._commit(repository, "preserve entrypoint exit contract")
+            self.assertEqual(
+                0,
+                compare_identity_surfaces.compare_revisions(repository, base, head, strict=False),
+            )
+            (repository / "Scripts/smoke/fixture/entrypoint.py").write_text(
+                "def run_entrypoint():\n"
+                "    import sys\n"
+                "    from .live import main\n"
+                "    try:\n"
+                "        return main(sys.argv[1:])\n"
+                "    except Exception as exc:\n"
+                "        print(f'[fixture] FAIL: {exc}', file=sys.stderr)\n"
+                "        return 1\n"
+                "\n"
+                "__all__ = ['run_entrypoint']\n",
+                encoding="utf-8",
+            )
+            rejected = self._commit(repository, "drop keyboard interrupt branch")
+            self.assertEqual(
+                1,
+                compare_identity_surfaces.compare_revisions(repository, base, rejected, strict=False),
             )
         finally:
             temporary.cleanup()
