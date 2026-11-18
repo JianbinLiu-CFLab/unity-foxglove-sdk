@@ -63,7 +63,7 @@ def _bound_names_in_statement(statement: ast.stmt) -> set[str]:
             if alias.name != "*":
                 names.add(alias.asname or alias.name)
     elif isinstance(statement, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
-        targets = statement.targets if isinstance(statement, ast.Assign) else [statement.target]
+        targets = statement.targets if isinstance(statement, (ast.Assign, ast.AugAssign)) else [statement.target]
         for target in targets:
             add_target(target)
     elif isinstance(statement, (ast.For, ast.AsyncFor)):
