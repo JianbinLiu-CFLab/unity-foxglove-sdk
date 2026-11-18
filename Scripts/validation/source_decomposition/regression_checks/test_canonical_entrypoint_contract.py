@@ -214,6 +214,40 @@ class CanonicalEntrypointContractTests(unittest.TestCase):
         finally:
             temporary.cleanup()
 
+    def test_standard_migration_rejects_noncall_delegate_and_keywords(self) -> None:
+        """A standard forwarding body must call its delegate without keyword arguments."""
+        variants = (
+            (
+                "import sys\n"
+                "def run_entrypoint():\n"
+                "    return sys\n"
+                "\n"
+                "__all__ = ['run_entrypoint']\n",
+            ),
+            (
+                "def run_entrypoint():\n"
+                "    from .live import main\n"
+                "    return main(foo=1)\n"
+                "\n"
+                "__all__ = ['run_entrypoint']\n",
+            ),
+        )
+        for (entrypoint_source,) in variants:
+            temporary, repository, base = self._create_repository()
+            try:
+                self._migrate_to_standard_entrypoint(repository)
+                (repository / "Scripts/smoke/fixture/entrypoint.py").write_text(
+                    entrypoint_source,
+                    encoding="utf-8",
+                )
+                head = self._commit(repository, "unsafe forwarding body")
+                self.assertEqual(
+                    1,
+                    compare_identity_surfaces.compare_revisions(repository, base, head, strict=False),
+                )
+            finally:
+                temporary.cleanup()
+
     def test_standard_migration_rejects_new_section(self) -> None:
         """A standard migration cannot add a second non-entrypoint section."""
         temporary, repository, base = self._create_repository()
@@ -649,6 +683,43 @@ class CanonicalEntrypointContractTests(unittest.TestCase):
             )
         finally:
             temporary.cleanup()
+
+    def test_main_block_only_rejects_dynamic_export_order_and_reset(self) -> None:
+        """The export set must be initialized, filled, and sorted in that order exactly once."""
+        initializer_mutations = (
+            lambda source: source.replace(
+                "__all__ = sorted(_PHASE192_EXPORT_NAMES)\n",
+                "",
+            ).replace(
+                "_PHASE192_EXPORT_NAMES = set()\n",
+                "_PHASE192_EXPORT_NAMES = set()\n__all__ = sorted(_PHASE192_EXPORT_NAMES)\n",
+            ),
+            lambda source: source + "_PHASE192_EXPORT_NAMES = set()\n",
+        )
+        for mutate in initializer_mutations:
+            temporary, repository, base = self._create_repository()
+            try:
+                initializer = repository / "Scripts/smoke/fixture/__init__.py"
+                initializer.write_text(mutate(initializer.read_text(encoding="utf-8")), encoding="utf-8")
+                base = self._commit(repository, "break dynamic export order")
+                (repository / "Scripts/smoke/fixture/__main__.py").write_text(
+                    "from . import *\n"
+                    "if __name__ == '__main__':\n"
+                    "    raise SystemExit(main())\n",
+                    encoding="utf-8",
+                )
+                head = self._commit(repository, "append main block")
+                self.assertEqual(
+                    1,
+                    compare_identity_surfaces.compare_revisions(
+                        repository,
+                        base,
+                        head,
+                        strict=False,
+                    ),
+                )
+            finally:
+                temporary.cleanup()
 
         temporary, repository, base = self._create_repository()
         try:

@@ -450,6 +450,8 @@ def _entrypoint_executable_body_is_safe(
                 for argument in statement.args
             ):
                 return False
+            if statement.keywords:
+                return False
     if dangerous_bound_names & imported_names:
         return False
     body = list(function.body)
@@ -457,11 +459,11 @@ def _entrypoint_executable_body_is_safe(
         return False
     if any(not isinstance(statement, (ast.Import, ast.ImportFrom, ast.Return)) for statement in body):
         return False
-    if body[-1].value is not None:
-        for statement in ast.walk(body[-1].value):
-            if isinstance(statement, ast.Name) and statement.id not in imported_names:
-                return False
-    return True
+    return (
+        isinstance(body[-1].value, ast.Call)
+        and isinstance(body[-1].value.func, ast.Name)
+        and body[-1].value.func.id in delegate_names
+    )
 
 
 def _entrypoint_initializer_exports(
@@ -509,8 +511,10 @@ def _dynamic_initializer_exports_are_trusted(
     base_package: Path,
 ) -> bool:
     """Return whether a dynamic initializer follows the reviewed export loop."""
-    all_assignment = any(
-        isinstance(node, ast.Assign)
+    all_assignments = [
+        (index, node)
+        for index, node in enumerate(tree.body)
+        if isinstance(node, ast.Assign)
         and any(isinstance(target, ast.Name) and target.id == "__all__" for target in node.targets)
         and isinstance(node.value, ast.Call)
         and isinstance(node.value.func, ast.Name)
@@ -519,22 +523,22 @@ def _dynamic_initializer_exports_are_trusted(
         and isinstance(node.value.args[0], ast.Name)
         and node.value.args[0].id == "_PHASE192_EXPORT_NAMES"
         and not node.value.keywords
-        for node in tree.body
-    )
-    if not all_assignment:
+    ]
+    if len(all_assignments) != 1:
         return False
-    section_assignment = next(
-        (
-            node
-            for node in tree.body
-            if isinstance(node, ast.Assign)
-            and any(
-                isinstance(target, ast.Name) and target.id == "_PHASE192_SECTION_MODULES"
-                for target in node.targets
-            )
-        ),
-        None,
-    )
+    all_assignment_index, _all_assignment = all_assignments[0]
+    section_assignments = [
+        (index, node)
+        for index, node in enumerate(tree.body)
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name) and target.id == "_PHASE192_SECTION_MODULES"
+            for target in node.targets
+        )
+    ]
+    if len(section_assignments) != 1:
+        return False
+    section_assignment_index, section_assignment = section_assignments[0]
     if (
         section_assignment is None
         or not isinstance(section_assignment.value, ast.Tuple)
@@ -601,8 +605,8 @@ def _dynamic_initializer_exports_are_trusted(
     if actual_sections != expected_sections or actual_exports != package_exports:
         return False
     allowed_calls: set[int] = set()
-    matched_loop = False
-    for outer in tree.body:
+    matched_loop_index: int | None = None
+    for outer_index, outer in enumerate(tree.body):
         if not (
             isinstance(outer, ast.For)
             and isinstance(outer.target, ast.Name)
@@ -692,8 +696,24 @@ def _dynamic_initializer_exports_are_trusted(
                     and not statement.value.keywords
                 ):
                     recorded = True
-            matched_loop = matched_loop or copied and recorded
-    if not matched_loop:
+            if copied and recorded:
+                if matched_loop_index is not None:
+                    return False
+                matched_loop_index = outer_index
+    if matched_loop_index is None:
+        return False
+    if not section_assignment_index < matched_loop_index < all_assignment_index:
+        return False
+    export_set_assignments = [
+        index
+        for index, node in enumerate(tree.body)
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name) and target.id == "_PHASE192_EXPORT_NAMES"
+            for target in node.targets
+        )
+    ]
+    if len(export_set_assignments) != 1 or export_set_assignments[0] >= matched_loop_index:
         return False
     for node in tree.body:
         if isinstance(node, ast.Assign):
