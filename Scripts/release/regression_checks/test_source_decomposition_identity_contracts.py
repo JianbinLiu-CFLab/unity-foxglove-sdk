@@ -102,7 +102,6 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
             capture_output=True,
             text=True,
         ).stdout.strip()
-
     def test_forwarding_entrypoint_contract_accepts_standard_template(self) -> None:
         """A facade and module entrypoint that import the section wrapper pass."""
         with tempfile.TemporaryDirectory() as temporary:
@@ -124,7 +123,6 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
                     "Scripts/example_tool.py",
                 )
             )
-
     def test_forwarding_entrypoint_contract_rejects_inline_and_shadowed_logic(self) -> None:
         """Inline logic, a second main block, and a local wrapper binding are rejected."""
         variants = (
@@ -161,7 +159,6 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
                         "Scripts/example_tool.py",
                     )
                 )
-
     def test_forwarding_entrypoint_contract_rejects_missing_direct_execution_bootstrap(self) -> None:
         """A facade without the repository-root bootstrap cannot be executed directly."""
         with tempfile.TemporaryDirectory() as temporary:
@@ -190,7 +187,6 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
                     "Scripts/example_tool.py",
                 )
             )
-
     def test_entrypoint_section_rejects_import_time_side_effect(self) -> None:
         """A newly approved entrypoint section cannot mutate process state on import."""
         with tempfile.TemporaryDirectory() as temporary:
@@ -210,7 +206,6 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
                     facade.with_suffix("") / "entrypoint.py"
                 )
             )
-
     def test_entrypoint_section_rejects_runtime_environment_and_file_access(self) -> None:
         """The forwarding function cannot read process secrets or filesystem contents."""
         for source in (
@@ -235,7 +230,6 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
                         facade.with_suffix("") / "entrypoint.py"
                     )
                 )
-
     def test_entrypoint_section_rejects_unreviewed_delegate_calls(self) -> None:
         """The forwarding function can call only an exported relative delegate without arguments."""
         with tempfile.TemporaryDirectory() as temporary:
@@ -275,7 +269,6 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
                     facade.with_suffix("") / "entrypoint.py"
                 )
             )
-
     def test_entrypoint_section_rejects_async_and_required_arguments(self) -> None:
         """The synchronous zero-argument wrapper contract rejects incompatible callables."""
         for source in (
@@ -290,7 +283,6 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
                         facade.with_suffix("") / "entrypoint.py"
                     )
                 )
-
     def test_entrypoint_section_rejects_decorated_helpers(self) -> None:
         """Top-level helper decorators cannot execute during section import."""
         with tempfile.TemporaryDirectory() as temporary:
@@ -313,7 +305,6 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
                     facade.with_suffix("") / "entrypoint.py"
                 )
             )
-
     def test_entrypoint_section_rejects_duplicate_run_entrypoint_bindings(self) -> None:
         """Only one synchronous function may bind the exported entrypoint name."""
         sources = (
@@ -376,7 +367,6 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
                         facade.with_suffix("") / "entrypoint.py"
                     )
                 )
-
     def test_entrypoint_section_rejects_executable_return_annotation(self) -> None:
         """Import-time return annotations cannot execute arbitrary calls."""
         with tempfile.TemporaryDirectory() as temporary:
@@ -395,7 +385,6 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
                     facade.with_suffix("") / "entrypoint.py"
                 )
             )
-
     def test_entrypoint_section_rejects_executable_helper_signatures(self) -> None:
         """Helper defaults and annotations cannot execute during section import."""
         sources = (
@@ -423,7 +412,6 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
                         facade.with_suffix("") / "entrypoint.py"
                     )
                 )
-
     def test_discovery_runtime_fixture_counts_each_test_once(self) -> None:
         """Hermetic unittest discovery reports one id for each test without a hook."""
         script = (
@@ -458,7 +446,6 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
             )
             self.assertEqual(0, result.returncode, result.stderr)
             self.assertEqual("1 1", result.stdout.strip())
-
     def test_repository_discovery_reports_unique_identity_tooling_ids(self) -> None:
         """Repository discovery must not execute a split test facade twice."""
         script = (
@@ -494,7 +481,6 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
         count, unique = (int(value) for value in result.stdout.strip().split())
         self.assertGreater(count, 0)
         self.assertEqual(count, unique)
-
     def test_initializer_contract_requires_exact_generated_body_without_hook(self) -> None:
         """Initializer approval allows only removal of the trusted legacy hook."""
         generated = (
@@ -555,7 +541,6 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
                     base_relative=relative,
                 )
             )
-
     def test_discovery_contract_rejects_new_duplicate_facade(self) -> None:
         """A test facade beside a test package is rejected as duplicate discovery."""
         with tempfile.TemporaryDirectory() as base_temporary, tempfile.TemporaryDirectory() as head_temporary:
@@ -585,7 +570,6 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
                 "DUPLICATE_DISCOVERY_FACADE Scripts/regression_checks/testfoo.py",
                 surface_compare._discovery_contract_errors(base, head),
             )
-
     def test_discovery_contract_removal_preserves_sections(self) -> None:
         """Removing a test facade cannot remove or alter any package section."""
         with tempfile.TemporaryDirectory() as base_temporary, tempfile.TemporaryDirectory() as head_temporary:
@@ -616,7 +600,6 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
                 return_value=True,
             ):
                 self.assertFalse(surface_compare._approved_test_facade_removal(relative, base, head))
-
     def test_discovery_contract_removal_preserves_manifest_order(self) -> None:
         """Removing a test facade cannot reorder manifest-backed sections."""
         with tempfile.TemporaryDirectory() as base_temporary, tempfile.TemporaryDirectory() as head_temporary:
@@ -647,7 +630,6 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
                 return_value=True,
             ):
                 self.assertFalse(surface_compare._approved_test_facade_removal(relative, base, head))
-
     def test_discovery_contract_removal_preserves_module_entrypoint(self) -> None:
         """Removing a test facade cannot alter the retained module entrypoint."""
         with tempfile.TemporaryDirectory() as base_temporary, tempfile.TemporaryDirectory() as head_temporary:
@@ -668,7 +650,6 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
                 return_value=True,
             ):
                 self.assertFalse(surface_compare._approved_test_facade_removal(relative, base, head))
-
     def test_discovery_contract_removal_rejects_added_section(self) -> None:
         """Removing a test facade cannot add a new package section."""
         with tempfile.TemporaryDirectory() as base_temporary, tempfile.TemporaryDirectory() as head_temporary:
@@ -687,7 +668,6 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
                 return_value=True,
             ):
                 self.assertFalse(surface_compare._approved_test_facade_removal(relative, base, head))
-
     def test_discovery_contract_removal_rejects_initializer_change(self) -> None:
         """Removing a facade cannot hide an unrelated retained initializer change."""
         with tempfile.TemporaryDirectory() as base_temporary, tempfile.TemporaryDirectory() as head_temporary:
@@ -702,7 +682,6 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
             )
             (head / relative).unlink()
             self.assertFalse(surface_compare._approved_test_facade_removal(relative, base, head))
-
     def test_discovery_contract_removal_rejects_nested_module_change(self) -> None:
         """Removing a test facade cannot hide changed nested Python modules."""
         with tempfile.TemporaryDirectory() as base_temporary, tempfile.TemporaryDirectory() as head_temporary:
