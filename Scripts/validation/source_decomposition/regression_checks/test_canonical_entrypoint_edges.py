@@ -179,6 +179,68 @@ class CanonicalEntrypointEdgeTests(CanonicalEntrypointFixtureMixin, unittest.Tes
         finally:
             temporary.cleanup()
 
+    def test_new_wildcard_entrypoint_requires_effective_initializer_exports(self) -> None:
+        """A wildcard entrypoint requires main in the initializer's effective exports."""
+        temporary, repository, base = self._create_repository()
+        try:
+            initializer = repository / "Scripts/smoke/fixture/__init__.py"
+            initializer.write_text(
+                "from .live import main\n"
+                "__all__ = []\n",
+                encoding="utf-8",
+            )
+            (repository / "Scripts/smoke/fixture/__main__.py").unlink()
+            base = self._commit(repository, "remove wildcard main export")
+            entrypoint = repository / "Scripts/smoke/fixture/__main__.py"
+            entrypoint.write_text(
+                "from . import *\n"
+                "if __name__ == '__main__':\n"
+                "    raise SystemExit(main())\n",
+                encoding="utf-8",
+            )
+            head = self._commit(repository, "add wildcard main entrypoint")
+            self.assertEqual(
+                1,
+                compare_identity_surfaces.compare_revisions(
+                    repository,
+                    base,
+                    head,
+                    strict=False,
+                ),
+            )
+        finally:
+            temporary.cleanup()
+
+    def test_new_entrypoint_requires_zero_arg_callable_main(self) -> None:
+        """A newly added main entrypoint must resolve to a zero-argument callable."""
+        for live_source in (
+            "main = 1\n__all__ = ['main']\n",
+            "def main(required):\n    return required\n\n__all__ = ['main']\n",
+        ):
+            temporary, repository, base = self._create_repository(live_source=live_source)
+            try:
+                entrypoint = repository / "Scripts/smoke/fixture/__main__.py"
+                entrypoint.unlink()
+                base = self._commit(repository, "remove base module entrypoint")
+                entrypoint.write_text(
+                    "from . import *\n"
+                    "if __name__ == '__main__':\n"
+                    "    raise SystemExit(main())\n",
+                    encoding="utf-8",
+                )
+                head = self._commit(repository, "add invalid main entrypoint")
+                self.assertEqual(
+                    1,
+                    compare_identity_surfaces.compare_revisions(
+                        repository,
+                        base,
+                        head,
+                        strict=False,
+                    ),
+                )
+            finally:
+                temporary.cleanup()
+
     def test_new_main_entrypoint_is_compatible_without_a_base_entrypoint(self) -> None:
         """A newly added module entrypoint may dispatch the canonical package main."""
         temporary, repository, base = self._create_repository()

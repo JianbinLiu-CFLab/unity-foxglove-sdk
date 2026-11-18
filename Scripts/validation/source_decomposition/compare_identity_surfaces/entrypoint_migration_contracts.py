@@ -5,11 +5,196 @@ from Scripts.validation.source_decomposition.compare_identity_surfaces.surface_c
     _entrypoint_section_exports,
     _function_signature_is_inert,
     _public_globals_listcomp,
+    _unconditional_top_level_bindings,
     _unconditional_top_level_names,
 )
 from Scripts.validation.source_decomposition.identity_surface_conditions import (
     _conditional_only_public_names,
 )
+
+
+def _entrypoint_zero_arg_function(node: ast.AST) -> bool:
+    """Return whether a function definition accepts a zero-argument call."""
+    if not isinstance(node, ast.FunctionDef) or node.decorator_list:
+        return False
+    arguments = node.args
+    positional = (*arguments.posonlyargs, *arguments.args)
+    if len(arguments.defaults) < len(positional):
+        return False
+    if any(default is None for default in arguments.kw_defaults):
+        return False
+    return True
+
+
+def _entrypoint_resolve_module(package: Path, module: str) -> Path | None:
+    """Resolve a relative module path to a regular file inside one package."""
+    module_path = package.joinpath(*module.split("."))
+    target = module_path.with_suffix(".py") if module_path.with_suffix(".py").is_file() else module_path / "__init__.py"
+    if not target.is_file() or target.is_symlink():
+        return None
+    try:
+        target.resolve().relative_to(package.resolve())
+    except (OSError, ValueError):
+        return None
+    return target
+
+
+def _entrypoint_binding_is_zero_arg_callable(
+    package: Path,
+    target: Path,
+    name: str,
+    seen: frozenset[Path] = frozenset(),
+) -> bool:
+    """Prove that one statically resolved binding accepts a zero-argument call."""
+    try:
+        resolved_target = target.resolve()
+        resolved_target.relative_to(package.resolve())
+        tree = _parse_source(target.read_text(encoding="utf-8"), target)
+    except (OSError, SyntaxError, ValueError):
+        return False
+    if resolved_target in seen:
+        return False
+    next_seen = seen | {resolved_target}
+    if target.name == "__init__.py":
+        sections = [
+            section
+            for section in package.glob("*.py")
+            if section.name not in {"__init__.py", "__main__.py"}
+        ]
+        package_exports: set[str] = set()
+        for section in sections:
+            exports = _entrypoint_section_exports(section)
+            if exports is None:
+                return False
+            package_exports.update(exports)
+        initializer_exports = _entrypoint_initializer_exports(package, package_exports)
+        if initializer_exports is None or name not in initializer_exports:
+            return False
+    bindings = _unconditional_top_level_bindings(tree)
+    binding = bindings.get(name)
+    if _entrypoint_zero_arg_function(binding):
+        return True
+    if isinstance(binding, ast.ImportFrom):
+        alias = next(
+            (
+                candidate
+                for candidate in binding.names
+                if (candidate.asname or candidate.name) == name
+            ),
+            None,
+        )
+        if alias is None or alias.name == "*":
+            return False
+        if binding.module:
+            target_module = _entrypoint_resolve_module(package, binding.module)
+            return target_module is not None and _entrypoint_binding_is_zero_arg_callable(
+                package,
+                target_module,
+                alias.name,
+                next_seen,
+            )
+        module_target = _entrypoint_resolve_module(package, alias.name)
+        if module_target is not None:
+            return False
+        initializer = package / "__init__.py"
+        return initializer.is_file() and _entrypoint_binding_is_zero_arg_callable(
+            package,
+            initializer,
+            alias.name,
+            next_seen,
+        )
+    if target.name != "__init__.py":
+        return False
+    sections = [
+        section
+        for section in package.glob("*.py")
+        if section.name not in {"__init__.py", "__main__.py"}
+    ]
+    return any(
+        name in (_entrypoint_section_exports(section) or set())
+        and _entrypoint_binding_is_zero_arg_callable(package, section, name, next_seen)
+        for section in sections
+    )
+
+
+def _entrypoint_package_main_is_callable(package: Path) -> bool:
+    """Prove that the package wildcard export resolves to a zero-argument main."""
+    initializer = package / "__init__.py"
+    if not initializer.is_file():
+        return False
+    return _entrypoint_binding_is_zero_arg_callable(package, initializer, "main")
+
+
+def _new_module_entrypoint_is_canonical(path: Path) -> bool:
+    """Return whether a newly added module entrypoint dispatches to callable ``main``."""
+    try:
+        tree = _parse_source(path.read_text(encoding="utf-8"), path)
+    except (OSError, SyntaxError, ValueError):
+        return False
+    body = list(tree.body)
+    if body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant):
+        if not isinstance(body[0].value.value, str):
+            return False
+        body.pop(0)
+    if len(body) < 2 or not isinstance(body[-1], ast.If):
+        return False
+    if any(not isinstance(statement, (ast.Import, ast.ImportFrom)) for statement in body[:-1]):
+        return False
+    guard = body[-1]
+    if not (
+        isinstance(guard.test, ast.Compare)
+        and len(guard.test.ops) == 1
+        and isinstance(guard.test.ops[0], ast.Eq)
+        and isinstance(guard.test.left, ast.Name)
+        and guard.test.left.id == "__name__"
+        and len(guard.test.comparators) == 1
+        and isinstance(guard.test.comparators[0], ast.Constant)
+        and guard.test.comparators[0].value == "__main__"
+        and not guard.orelse
+        and len(guard.body) == 1
+    ):
+        return False
+    statement = guard.body[0]
+    if not (
+        isinstance(statement, ast.Raise)
+        and isinstance(statement.exc, ast.Call)
+        and isinstance(statement.exc.func, ast.Name)
+        and statement.exc.func.id == "SystemExit"
+        and len(statement.exc.args) == 1
+        and not statement.exc.keywords
+        and isinstance(statement.exc.args[0], ast.Call)
+        and isinstance(statement.exc.args[0].func, ast.Name)
+        and statement.exc.args[0].func.id == "main"
+        and not statement.exc.args[0].args
+        and not statement.exc.args[0].keywords
+    ):
+        return False
+    package = path.parent
+    binds_main = False
+    for imported in body[:-1]:
+        if not isinstance(imported, ast.ImportFrom) or imported.level != 1:
+            continue
+        for alias in imported.names:
+            if alias.asname == "main" and alias.name != "main":
+                return False
+            if (alias.name == "*" and imported.module is None):
+                if not _entrypoint_package_main_is_callable(package):
+                    return False
+                binds_main = True
+            elif alias.name == "main" and alias.asname is None:
+                target = (
+                    package / "__init__.py"
+                    if imported.module is None
+                    else _entrypoint_resolve_module(package, imported.module)
+                )
+                if target is None or not _entrypoint_binding_is_zero_arg_callable(
+                    package,
+                    target,
+                    "main",
+                ):
+                    return False
+                binds_main = True
+    return binds_main
 
 
 def _stable_entrypoint_exports(target: Path) -> set[str]:
