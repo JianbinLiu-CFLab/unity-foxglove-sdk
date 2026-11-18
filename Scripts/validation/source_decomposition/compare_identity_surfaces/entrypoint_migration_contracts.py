@@ -70,6 +70,53 @@ def _mechanically_transformed_entrypoint_body(facade: Path) -> tuple[ast.stmt, .
     return transformed
 
 
+def _mechanical_entrypoint_imports(
+    facade: Path,
+    expected_body: tuple[ast.stmt, ...],
+) -> tuple[ast.Import | ast.ImportFrom, ...] | None:
+    """Return the unique section imports required by a trusted legacy body."""
+    allowed_names = {
+        "BaseException", "Exception", "FileNotFoundError", "InconclusiveError", "KeyboardInterrupt",
+        "RuntimeError", "SystemExit", "TimeoutError", "print",
+    }
+    delegate_names: list[str] = []
+    for statement in expected_body:
+        for node in ast.walk(statement):
+            if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name):
+                continue
+            if node.func.id not in allowed_names and node.func.id not in delegate_names:
+                delegate_names.append(node.func.id)
+    package = facade.with_suffix("")
+    sections = [
+        path
+        for path in sorted(package.glob("*.py"))
+        if path.name not in {"__init__.py", "__main__.py", "entrypoint.py"}
+    ]
+    imports: list[ast.Import | ast.ImportFrom] = []
+    if any(
+        isinstance(node, ast.Name) and node.id == "sys" and isinstance(node.ctx, ast.Load)
+        for statement in expected_body
+        for node in ast.walk(statement)
+    ):
+        imports.append(ast.Import(names=[ast.alias(name="sys")]))
+    for name in delegate_names:
+        owners = []
+        for section in sections:
+            exports = _entrypoint_section_exports(section)
+            if exports is not None and name in exports:
+                owners.append(section.stem)
+        if len(owners) != 1:
+            return None
+        imports.append(
+            ast.ImportFrom(
+                module=owners[0],
+                names=[ast.alias(name=name)],
+                level=1,
+            )
+        )
+    return tuple(imports)
+
+
 def _standard_entrypoint_body(entrypoint: Path) -> tuple[ast.stmt, ...] | None:
     """Return the trusted body of an already migrated run_entrypoint function."""
     try:
@@ -86,10 +133,7 @@ def _standard_entrypoint_body(entrypoint: Path) -> tuple[ast.stmt, ...] | None:
     function = definitions[0]
     if function.decorator_list or not _function_signature_is_inert(function):
         return None
-    body = list(function.body)
-    while body and isinstance(body[0], (ast.Import, ast.ImportFrom)):
-        body.pop(0)
-    return tuple(body) if body else None
+    return tuple(function.body) if function.body else None
 
 
 def _entrypoint_body_matches_mechanical_transform(
@@ -97,15 +141,31 @@ def _entrypoint_body_matches_mechanical_transform(
     path: Path,
     function: ast.FunctionDef,
     expected_body: tuple[ast.stmt, ...],
+    expected_imports: tuple[ast.Import | ast.ImportFrom, ...] | None = None,
 ) -> bool:
     """Return whether a wrapper body is the trusted mechanical transformation."""
-    body = list(function.body)
+    full_body = list(function.body)
+    body = list(full_body)
     imports: list[ast.Import | ast.ImportFrom] = []
     while body and isinstance(body[0], (ast.Import, ast.ImportFrom)):
         imports.append(body.pop(0))
-    if not imports or ast.dump(ast.Module(body=body, type_ignores=[]), include_attributes=False) != ast.dump(
-        ast.Module(body=list(expected_body), type_ignores=[]), include_attributes=False
-    ):
+    if expected_imports is None:
+        body_matches = ast.dump(
+            ast.Module(body=full_body, type_ignores=[]),
+            include_attributes=False,
+        ) == ast.dump(
+            ast.Module(body=list(expected_body), type_ignores=[]),
+            include_attributes=False,
+        )
+    else:
+        body_matches = (
+            bool(imports)
+            and ast.dump(ast.Module(body=imports, type_ignores=[]), include_attributes=False)
+            == ast.dump(ast.Module(body=list(expected_imports), type_ignores=[]), include_attributes=False)
+            and ast.dump(ast.Module(body=body, type_ignores=[]), include_attributes=False)
+            == ast.dump(ast.Module(body=list(expected_body), type_ignores=[]), include_attributes=False)
+        )
+    if not body_matches:
         return False
     imported_names: set[str] = set()
     for node in imports:
@@ -160,10 +220,17 @@ def _entrypoint_executable_body_is_safe(
     path: Path,
     function: ast.FunctionDef,
     expected_body: tuple[ast.stmt, ...] | None = None,
+    expected_imports: tuple[ast.Import | ast.ImportFrom, ...] | None = None,
 ) -> bool:
     """Return whether the forwarding function has only reviewed executable statements."""
     if expected_body is not None:
-        return _entrypoint_body_matches_mechanical_transform(tree, path, function, expected_body)
+        return _entrypoint_body_matches_mechanical_transform(
+            tree,
+            path,
+            function,
+            expected_body,
+            expected_imports,
+        )
     imported_names: set[str] = set()
     delegate_names: set[str] = set()
     dangerous_bound_names: set[str] = set()
@@ -257,6 +324,8 @@ def _entrypoint_executable_body_is_safe(
         return False
     if any(not isinstance(statement, (ast.Import, ast.ImportFrom, ast.Return)) for statement in body):
         return False
+    if body[-1].value is None or isinstance(body[-1].value, ast.Constant):
+        return True
     return (
         isinstance(body[-1].value, ast.Call)
         and isinstance(body[-1].value.func, ast.Name)
@@ -542,15 +611,19 @@ def _approved_entrypoint_contract_impl(
     except (OSError, SyntaxError, ValueError):
         return False
     expected_body = None
+    expected_imports = None
     if base_root is not None:
         base_facade = base_root / (base_relative or relative)
-        if _facade_already_has_standard_run_entrypoint(base_facade):
+        base_is_standard = _facade_already_has_standard_run_entrypoint(base_facade)
+        if base_is_standard:
             expected_body = _standard_entrypoint_body(
                 base_facade.with_suffix("") / "entrypoint.py"
             )
         else:
             expected_body = _mechanically_transformed_entrypoint_body(base_facade)
-        if expected_body is None:
+            if expected_body is not None:
+                expected_imports = _mechanical_entrypoint_imports(base_facade, expected_body)
+        if expected_body is None or (not base_is_standard and expected_imports is None):
             return False
     return (
         _facade_entrypoint_is_standard(facade_tree, relative)
@@ -562,6 +635,7 @@ def _approved_entrypoint_contract_impl(
         and approved_entrypoint_section(
             package / "entrypoint.py",
             expected_body=expected_body,
+            expected_imports=expected_imports,
         )
     )
 

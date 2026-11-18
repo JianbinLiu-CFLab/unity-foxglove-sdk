@@ -423,8 +423,8 @@ def _entrypoint_section_exports(section: Path) -> set[str] | None:
     if not assignments:
         return {
             name
-            for name, binding in bindings.items()
-            if not name.startswith("_") and isinstance(binding, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+            for name in bindings
+            if not name.startswith("_")
         }
     value = assignments[-1].value
     try:
@@ -437,8 +437,8 @@ def _entrypoint_section_exports(section: Path) -> set[str] | None:
     if _public_globals_listcomp(value):
         return {
             name
-            for name, binding in bindings.items()
-            if not name.startswith("_") and isinstance(binding, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+            for name in bindings
+            if not name.startswith("_")
         }
     return None
 
@@ -728,6 +728,13 @@ def _dynamic_initializer_exports_are_trusted(
         ):
             return False
         for candidate in ast.walk(node):
+            if (
+                isinstance(candidate, ast.Call)
+                and isinstance(candidate.func, ast.Attribute)
+                and isinstance(candidate.func.value, ast.Name)
+                and candidate.func.value.id in {"__all__", "_PHASE192_SECTION_MODULES"}
+            ):
+                return False
             if not isinstance(candidate, ast.Call) or not isinstance(candidate.func, ast.Attribute):
                 continue
             if (

@@ -33,6 +33,40 @@ class CanonicalEntrypointContractTests(CanonicalEntrypointFixtureMixin, unittest
         finally:
             temporary.cleanup()
 
+    def test_standard_migration_rejects_delegate_import_from_wrong_section(self) -> None:
+        """The migrated wrapper must import the legacy delegate from its unique owner section."""
+        extra_source = (
+            "def main():\n    return 0\n\n"
+            "def image_republisher_main():\n    return 0\n\n"
+            "def sanitize_name():\n    return 0\n\n"
+            "def wait_for_raw_image():\n    return 0\n\n"
+            "__all__ = ['main', 'image_republisher_main', 'sanitize_name', 'wait_for_raw_image']\n"
+        )
+        variants = (
+            "from .extra import main\n",
+            "from .extra import image_republisher_main as main\n",
+            "from .extra import sanitize_name as main\n",
+        )
+        for import_line in variants:
+            with self.subTest(import_line=import_line):
+                temporary, repository, base = self._create_repository(extra_source=extra_source)
+                try:
+                    self._migrate_to_standard_entrypoint(repository)
+                    (repository / "Scripts/smoke/fixture/entrypoint.py").write_text(
+                        "def run_entrypoint():\n"
+                        f"    {import_line}"
+                        "    return main()\n\n"
+                        "__all__ = ['run_entrypoint']\n",
+                        encoding="utf-8",
+                    )
+                    head = self._commit(repository, "change delegate import owner")
+                    self.assertEqual(
+                        1,
+                        compare_identity_surfaces.compare_revisions(repository, base, head, strict=False),
+                    )
+                finally:
+                    temporary.cleanup()
+
     def test_standard_migration_preserves_exception_exit_contract(self) -> None:
         """The standard wrapper mechanically preserves legacy exit and stderr handling."""
         facade_source = (
@@ -591,7 +625,12 @@ class CanonicalEntrypointContractTests(CanonicalEntrypointFixtureMixin, unittest
 
     def test_main_block_only_rejects_dynamic_export_mutations(self) -> None:
         """Mutating or deleting a dynamic export after synchronization is incompatible."""
-        for mutation in ("del main\n", "_PHASE192_EXPORT_NAMES.clear()\n"):
+        for mutation in (
+            "del main\n",
+            "_PHASE192_EXPORT_NAMES.clear()\n",
+            "__all__.append('missing')\n",
+            "_PHASE192_SECTION_MODULES.append(None)\n",
+        ):
             temporary, repository, base = self._create_repository()
             try:
                 initializer = repository / "Scripts/smoke/fixture/__init__.py"

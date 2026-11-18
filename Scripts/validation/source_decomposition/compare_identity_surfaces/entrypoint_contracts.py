@@ -885,6 +885,7 @@ def _approved_entrypoint_section(
     path: Path,
     *,
     expected_body: tuple[ast.stmt, ...] | None = None,
+    expected_imports: tuple[ast.Import | ast.ImportFrom, ...] | None = None,
 ) -> bool:
     """Return whether an entrypoint section exports a safe run_entrypoint function."""
     try:
@@ -913,7 +914,13 @@ def _approved_entrypoint_section(
     ):
         return False
 
-    if not _entrypoint_executable_body_is_safe(tree, path, definitions[0], expected_body):
+    if not _entrypoint_executable_body_is_safe(
+        tree,
+        path,
+        definitions[0],
+        expected_body,
+        expected_imports,
+    ):
         return False
     for node in tree.body:
         if isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):

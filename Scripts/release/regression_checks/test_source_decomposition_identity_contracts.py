@@ -122,6 +122,18 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
                     "Scripts/example_tool.py",
                 )
             )
+
+    def test_entrypoint_section_accepts_safe_local_constant_return(self) -> None:
+        """A migrated section can retain a side-effect-free local constant return."""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            facade = self._write_package(root)
+            self.assertTrue(
+                surface_compare._approved_entrypoint_section(
+                    facade.with_suffix("") / "entrypoint.py"
+                )
+            )
+
     def test_forwarding_entrypoint_contract_rejects_inline_and_shadowed_logic(self) -> None:
         """Inline logic, a second main block, and a local wrapper binding are rejected."""
         variants = (
