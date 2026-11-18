@@ -869,37 +869,8 @@ def _approved_main_block_only_contract(
 
     def section_exports(section: Path) -> set[str]:
         """Return names exported by one existing package section."""
-        tree = _parse_source(section.read_text(encoding="utf-8"), section)
-        bound_names = getattr(importlib.import_module(__package__ + ".surface_contracts"), "_unconditional_top_level_names")(tree)
-        for node in tree.body:
-            if not (
-                isinstance(node, ast.Assign)
-                and any(isinstance(target, ast.Name) and target.id == "__all__" for target in node.targets)
-            ):
-                continue
-            try:
-                names = ast.literal_eval(node.value)
-            except (TypeError, ValueError, SyntaxError):
-                return {
-                    item.name
-                    for item in tree.body
-                    if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
-                    and not item.name.startswith("_")
-                }
-            if isinstance(names, (list, tuple, set)) and all(isinstance(name, str) for name in names):
-                return set(names) if set(names) <= bound_names else set()
-            return {
-                item.name
-                for item in tree.body
-                if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
-                and not item.name.startswith("_")
-            }
-        return {
-            node.name
-            for node in tree.body
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
-            and not node.name.startswith("_")
-        }
+        exports = getattr(importlib.import_module(__package__ + ".surface_contracts"), "_entrypoint_section_exports")(section)
+        return set() if exports is None else exports
 
     def top_level_binding_names(node: ast.stmt) -> set[str]:
         """Return names a top-level statement can bind in a package section."""

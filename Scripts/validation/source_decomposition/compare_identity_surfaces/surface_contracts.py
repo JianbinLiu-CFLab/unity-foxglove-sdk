@@ -3,30 +3,110 @@ from __future__ import annotations
 from .foundation import *
 
 
-def _unconditional_top_level_names(tree: ast.Module) -> set[str]:
-    """Return names bound by unconditional top-level statements."""
-    names: set[str] = set()
+def _unconditional_top_level_bindings(tree: ast.Module) -> dict[str, ast.AST]:
+    """Return final bindings from unconditional top-level statements."""
+    bindings: dict[str, ast.AST] = {}
 
-    def add_target(target: ast.AST) -> None:
-        """Collect direct assignment targets."""
+    def bind_target(target: ast.AST, statement: ast.AST) -> None:
+        """Record direct assignment targets."""
         if isinstance(target, ast.Name):
-            names.add(target.id)
+            bindings[target.id] = statement
         elif isinstance(target, (ast.Tuple, ast.List)):
             for item in target.elts:
-                add_target(item)
+                bind_target(item, statement)
 
     for node in tree.body:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            names.add(node.name)
+            bindings[node.name] = node
         elif isinstance(node, ast.Import):
-            names.update(alias.asname or alias.name.split(".", 1)[0] for alias in node.names)
+            for alias in node.names:
+                bindings[alias.asname or alias.name.split(".", 1)[0]] = node
         elif isinstance(node, ast.ImportFrom):
-            names.update(alias.asname or alias.name for alias in node.names if alias.name != "*")
+            for alias in node.names:
+                if alias.name != "*":
+                    bindings[alias.asname or alias.name] = node
         elif isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
             targets = node.targets if isinstance(node, ast.Assign) else [node.target]
             for target in targets:
-                add_target(target)
-    return names
+                bind_target(target, node)
+        elif isinstance(node, ast.Delete):
+            for target in node.targets:
+                for candidate in ast.walk(target):
+                    if isinstance(candidate, ast.Name):
+                        bindings.pop(candidate.id, None)
+    return bindings
+
+
+def _unconditional_top_level_names(tree: ast.Module) -> set[str]:
+    """Return names bound by unconditional top-level statements."""
+    return set(_unconditional_top_level_bindings(tree))
+
+
+def _public_globals_listcomp(value: ast.AST) -> bool:
+    """Return whether a value is the reviewed public-globals export expression."""
+    if not isinstance(value, ast.ListComp) or not isinstance(value.elt, ast.Name) or value.elt.id != "name":
+        return False
+    if len(value.generators) != 1:
+        return False
+    generator = value.generators[0]
+    if not (
+        isinstance(generator.target, ast.Name)
+        and generator.target.id == "name"
+        and isinstance(generator.iter, ast.Call)
+        and isinstance(generator.iter.func, ast.Name)
+        and generator.iter.func.id == "globals"
+        and not generator.iter.args
+        and not generator.iter.keywords
+        and len(generator.ifs) == 1
+    ):
+        return False
+    condition = generator.ifs[0]
+    return (
+        isinstance(condition, ast.UnaryOp)
+        and isinstance(condition.op, ast.Not)
+        and isinstance(condition.operand, ast.Call)
+        and isinstance(condition.operand.func, ast.Attribute)
+        and isinstance(condition.operand.func.value, ast.Name)
+        and condition.operand.func.value.id == "name"
+        and condition.operand.func.attr == "startswith"
+        and len(condition.operand.args) == 1
+        and isinstance(condition.operand.args[0], ast.Constant)
+        and condition.operand.args[0].value == "__"
+        and not condition.operand.keywords
+    )
+
+
+def _entrypoint_section_exports(section: Path) -> set[str] | None:
+    """Return statically proven exports from one unchanged source section."""
+    tree = _parse_source(section.read_text(encoding="utf-8"), section)
+    bindings = _unconditional_top_level_bindings(tree)
+    assignments = [
+        node
+        for node in tree.body
+        if isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == "__all__" for target in node.targets)
+    ]
+    if not assignments:
+        return {
+            name
+            for name, binding in bindings.items()
+            if not name.startswith("_") and isinstance(binding, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+        }
+    value = assignments[-1].value
+    try:
+        declared = ast.literal_eval(value)
+    except (TypeError, ValueError, SyntaxError):
+        declared = None
+    if isinstance(declared, (list, tuple, set)) and all(isinstance(name, str) for name in declared):
+        names = set(declared)
+        return names if names <= set(bindings) else None
+    if _public_globals_listcomp(value):
+        return {
+            name
+            for name, binding in bindings.items()
+            if not name.startswith("_") and isinstance(binding, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+        }
+    return None
 
 _SAFE_STDLIB_ENTRYPOINT_SYMBOLS = {
     "argparse": frozenset({
@@ -485,8 +565,16 @@ def _entrypoint_initializer_exports(
     except (TypeError, ValueError, SyntaxError):
         names = None
     if isinstance(names, (list, tuple, set)) and all(isinstance(name, str) for name in names):
-        bound_names = _unconditional_top_level_names(tree)
-        return set(names) if set(names) <= bound_names else None
+        bindings = _unconditional_top_level_bindings(tree)
+        declared = set(names)
+        if not declared <= set(bindings):
+            return None
+        if any(
+            not isinstance(bindings[name], (ast.Import, ast.ImportFrom, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+            for name in declared
+        ):
+            return None
+        return declared
     if _dynamic_initializer_exports_are_trusted(tree, package_exports, base_package):
         return package_exports
     return None
@@ -579,28 +667,10 @@ def _dynamic_initializer_exports_are_trusted(
             resolved_target.relative_to(base_package.resolve())
         except (OSError, ValueError):
             return False
-        target_tree = _parse_source(target.read_text(encoding="utf-8"), target)
-        if "__all__" not in _unconditional_top_level_names(target_tree):
+        exports = _entrypoint_section_exports(target)
+        if exports is None:
             return False
-        assignments = [
-            node
-            for node in target_tree.body
-            if isinstance(node, ast.Assign)
-            and any(isinstance(item, ast.Name) and item.id == "__all__" for item in node.targets)
-        ]
-        try:
-            declared = ast.literal_eval(assignments[-1].value)
-        except (IndexError, TypeError, ValueError, SyntaxError):
-            declared = None
-        if isinstance(declared, (list, tuple, set)) and all(isinstance(name, str) for name in declared):
-            actual_exports.update(declared)
-        else:
-            actual_exports.update(
-                item.name
-                for item in target_tree.body
-                if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
-                and not item.name.startswith("_")
-            )
+        actual_exports.update(exports)
         actual_sections.add(resolved_target)
     if actual_sections != expected_sections or actual_exports != package_exports:
         return False
@@ -715,6 +785,27 @@ def _dynamic_initializer_exports_are_trusted(
     ]
     if len(export_set_assignments) != 1 or export_set_assignments[0] >= matched_loop_index:
         return False
+    for index, node in enumerate(tree.body):
+        targets = (
+            node.targets
+            if isinstance(node, (ast.Assign, ast.Delete))
+            else [node.target]
+            if isinstance(node, (ast.AnnAssign, ast.AugAssign))
+            else ()
+        )
+        for target in targets:
+            if any(
+                isinstance(candidate, ast.Name) and candidate.id in section_names
+                for candidate in ast.walk(target)
+            ):
+                return False
+        if index < matched_loop_index and any(
+            isinstance(candidate, ast.Attribute)
+            and isinstance(candidate.value, ast.Name)
+            and candidate.value.id in section_names
+            for candidate in ast.walk(node)
+        ):
+            return False
     for node in tree.body:
         if isinstance(node, ast.Assign):
             for target in node.targets:
