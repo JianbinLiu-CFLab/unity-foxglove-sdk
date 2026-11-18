@@ -26,6 +26,7 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
         module_body: str | None = None,
         entrypoint_body: str | None = None,
         initializer_body: str | None = None,
+        live_body: str | None = None,
         relative: str = "Scripts/example_tool.py",
     ) -> Path:
         """Create a hermetic split facade fixture."""
@@ -62,24 +63,17 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
             entrypoint_body
             or (
                 "def run_entrypoint():\n"
-                "    from .live import main\n"
-                "    return main()\n"
+                "    return 0\n"
                 "__all__ = [\"run_entrypoint\"]\n"
             ),
             encoding="utf-8",
         )
-        if entrypoint_body is None:
-            (package / "live.py").write_text(
-                "def main():\n"
-                "    return 0\n"
-                "__all__ = [\"main\"]\n",
-                encoding="utf-8",
-            )
         (package / "__init__.py").write_text(
-            initializer_body
-            or "from .entrypoint import *\nfrom .live import *\n",
+            initializer_body or "from .entrypoint import *\n",
             encoding="utf-8",
         )
+        if live_body is not None:
+            (package / "live.py").write_text(live_body, encoding="utf-8")
         return facade
 
     @staticmethod
@@ -113,7 +107,17 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
         """A facade and module entrypoint that import the section wrapper pass."""
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            self._write_package(root)
+            facade = self._write_package(
+                root,
+                entrypoint_body=(
+                    "def run_entrypoint():\n"
+                    "    from .live import main\n"
+                    "    return main()\n"
+                    "__all__ = ['run_entrypoint']\n"
+                ),
+                initializer_body="from .entrypoint import *\nfrom .live import *\n",
+                live_body="def main():\n    return 0\n__all__ = ['main']\n",
+            )
             self.assertTrue(
                 surface_compare._approved_entrypoint_contract(
                     root,
@@ -842,9 +846,27 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
                     "if __name__ == \"__main__\":\n"
                     "    raise SystemExit(run_entrypoint())\n"
                 ),
+                entrypoint_body=(
+                    "def run_entrypoint():\n"
+                    "    from .live import main\n"
+                    "    return main()\n"
+                    "__all__ = ['run_entrypoint']\n"
+                ),
+                initializer_body="from .entrypoint import *\nfrom .live import *\n",
+                live_body="def main():\n    return 0\n__all__ = ['main']\n",
             )
             base = self._commit(repository, "base")
-            self._write_package(repository)
+            self._write_package(
+                repository,
+                entrypoint_body=(
+                    "def run_entrypoint():\n"
+                    "    from .live import main\n"
+                    "    return main()\n"
+                    "__all__ = ['run_entrypoint']\n"
+                ),
+                initializer_body="from .entrypoint import *\nfrom .live import *\n",
+                live_body="def main():\n    return 0\n__all__ = ['main']\n",
+            )
             head = self._commit(repository, "head")
             with mock.patch(
                 "Scripts.validation.source_decomposition.compare_identity_surfaces.entrypoint_contracts._approved_initializer_contract",
