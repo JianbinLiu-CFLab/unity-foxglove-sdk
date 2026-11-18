@@ -870,6 +870,7 @@ def _approved_main_block_only_contract(
     def section_exports(section: Path) -> set[str]:
         """Return names exported by one existing package section."""
         tree = _parse_source(section.read_text(encoding="utf-8"), section)
+        bound_names = getattr(importlib.import_module(__package__ + ".surface_contracts"), "_unconditional_top_level_names")(tree)
         for node in tree.body:
             if not (
                 isinstance(node, ast.Assign)
@@ -886,7 +887,7 @@ def _approved_main_block_only_contract(
                     and not item.name.startswith("_")
                 }
             if isinstance(names, (list, tuple, set)) and all(isinstance(name, str) for name in names):
-                return set(names)
+                return set(names) if set(names) <= bound_names else set()
             return {
                 item.name
                 for item in tree.body
@@ -985,9 +986,11 @@ def _approved_main_block_only_contract(
         module_exports = exports_by_module.get(node.module)
         if module_exports is None:
             continue
+        module_bindings = getattr(importlib.import_module(__package__ + ".surface_contracts"), "_entrypoint_module_bindings")(base_package, node.module)
         if any(alias.name == "*" for alias in node.names) and called_name in module_exports:
-            return True
-        if any((alias.asname or alias.name) == called_name and alias.name in module_exports for alias in node.names):
+            if called_name in module_bindings:
+                return True
+        if any((alias.asname or alias.name) == called_name and alias.name in module_exports and alias.name in module_bindings for alias in node.names):
             return True
     return False
 

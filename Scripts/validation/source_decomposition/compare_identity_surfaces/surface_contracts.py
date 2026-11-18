@@ -398,7 +398,11 @@ def _entrypoint_executable_body_is_safe(
                 return False
             module_path = path.parent / Path(*statement.module.split("."))
             target = module_path.with_suffix(".py") if module_path.with_suffix(".py").is_file() else module_path / "__init__.py"
-            if not target.is_file():
+            if not target.is_file() or target.is_symlink():
+                return False
+            try:
+                target.resolve().relative_to(path.parent.resolve())
+            except (OSError, ValueError):
                 return False
             target_tree = _parse_source(target.read_text(encoding="utf-8"), target)
             bound_names = _unconditional_top_level_names(target_tree)
@@ -479,13 +483,27 @@ def _entrypoint_initializer_exports(
     except (TypeError, ValueError, SyntaxError):
         names = None
     if isinstance(names, (list, tuple, set)) and all(isinstance(name, str) for name in names):
-        return set(names) & _unconditional_top_level_names(tree)
-    if _dynamic_initializer_exports_are_trusted(tree):
+        bound_names = _unconditional_top_level_names(tree)
+        return set(names) if set(names) <= bound_names else None
+    if _dynamic_initializer_exports_are_trusted(tree, package_exports):
         return package_exports
     return None
 
 
-def _dynamic_initializer_exports_are_trusted(tree: ast.Module) -> bool:
+def _entrypoint_module_bindings(package: Path, module: str) -> set[str]:
+    """Return unconditional bindings from a relative entrypoint target."""
+    module_path = package / Path(*module.split("."))
+    target = module_path.with_suffix(".py") if module_path.with_suffix(".py").is_file() else module_path / "__init__.py"
+    if not target.is_file() or target.is_symlink():
+        return set()
+    try:
+        target.resolve().relative_to(package.resolve())
+    except (OSError, ValueError):
+        return set()
+    return _unconditional_top_level_names(_parse_source(target.read_text(encoding="utf-8"), target))
+
+
+def _dynamic_initializer_exports_are_trusted(tree: ast.Module, package_exports: set[str]) -> bool:
     """Return whether a dynamic initializer follows the reviewed export loop."""
     all_assignment = any(
         isinstance(node, ast.Assign)
@@ -596,6 +614,45 @@ def _dynamic_initializer_exports_are_trusted(tree: ast.Module) -> bool:
             matched_loop = matched_loop or copied and recorded
     if not matched_loop:
         return False
+    for node in tree.body:
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name) and target.id == "_PHASE192_EXPORT_NAMES":
+                    if not (
+                        isinstance(node.value, ast.Call)
+                        and isinstance(node.value.func, ast.Name)
+                        and node.value.func.id == "set"
+                        and not node.value.args
+                        and not node.value.keywords
+                    ):
+                        return False
+        if isinstance(node, ast.Delete):
+            if any(
+                isinstance(candidate, ast.Name) and candidate.id in package_exports
+                for candidate in ast.walk(node)
+            ):
+                return False
+        if any(
+            isinstance(candidate, ast.Constant) and candidate.value in package_exports
+            for candidate in ast.walk(node)
+        ):
+            return False
+        for candidate in ast.walk(node):
+            if not isinstance(candidate, ast.Call) or not isinstance(candidate.func, ast.Attribute):
+                continue
+            if (
+                isinstance(candidate.func.value, ast.Name)
+                and candidate.func.value.id == "_PHASE192_EXPORT_NAMES"
+                and candidate.func.attr != "add"
+            ):
+                return False
+            if (
+                isinstance(candidate.func.value, ast.Call)
+                and isinstance(candidate.func.value.func, ast.Name)
+                and candidate.func.value.func.id == "globals"
+                and candidate.func.attr in {"clear", "pop", "popitem", "setdefault", "update", "__delitem__"}
+            ):
+                return False
     return all(
         not (
             isinstance(node, ast.Call)
