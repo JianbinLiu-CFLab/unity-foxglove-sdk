@@ -367,6 +367,64 @@ def _normalized_source_digest(path: Path) -> str:
     return hashlib.sha256(normalized).hexdigest()
 
 
+def _new_module_entrypoint_is_canonical(path: Path) -> bool:
+    """Return whether a newly added module entrypoint dispatches only to ``main``."""
+    try:
+        tree = _parse_source(path.read_text(encoding="utf-8"), path)
+    except (OSError, SyntaxError, ValueError):
+        return False
+    body = list(tree.body)
+    if body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant):
+        if not isinstance(body[0].value.value, str):
+            return False
+        body.pop(0)
+    if len(body) < 2 or not isinstance(body[-1], ast.If):
+        return False
+    if any(not isinstance(statement, (ast.Import, ast.ImportFrom)) for statement in body[:-1]):
+        return False
+    guard = body[-1]
+    if not (
+        isinstance(guard.test, ast.Compare)
+        and len(guard.test.ops) == 1
+        and isinstance(guard.test.ops[0], ast.Eq)
+        and isinstance(guard.test.left, ast.Name)
+        and guard.test.left.id == "__name__"
+        and len(guard.test.comparators) == 1
+        and isinstance(guard.test.comparators[0], ast.Constant)
+        and guard.test.comparators[0].value == "__main__"
+        and not guard.orelse
+        and len(guard.body) == 1
+    ):
+        return False
+    statement = guard.body[0]
+    if not (
+        isinstance(statement, ast.Raise)
+        and isinstance(statement.exc, ast.Call)
+        and isinstance(statement.exc.func, ast.Name)
+        and statement.exc.func.id == "SystemExit"
+        and len(statement.exc.args) == 1
+        and not statement.exc.keywords
+        and isinstance(statement.exc.args[0], ast.Call)
+        and isinstance(statement.exc.args[0].func, ast.Name)
+        and statement.exc.args[0].func.id == "main"
+        and not statement.exc.args[0].args
+        and not statement.exc.args[0].keywords
+    ):
+        return False
+    binds_main = False
+    for imported in body[:-1]:
+        if not isinstance(imported, ast.ImportFrom) or imported.level != 1:
+            continue
+        for alias in imported.names:
+            if alias.asname == "main" and alias.name != "main":
+                return False
+            if alias.name == "main" and alias.asname is None:
+                binds_main = True
+            if alias.name == "*" and imported.module is None:
+                binds_main = True
+    return binds_main
+
+
 def _identity_helper_source_contract(root: Path) -> tuple[tuple[str, str | None], ...]:
     """Return source digests for identity helpers used by the checker."""
     contract: list[tuple[str, str | None]] = []
@@ -594,6 +652,19 @@ def _compare_surfaces(
             or "__phase192_invalid_entrypoint__" in tuple(head_entrypoint_contract or ())
         ):
             errors.append(f"MODULE_ENTRYPOINT_CHANGED {relative}")
+        elif not strict and not base_entrypoint and head_entrypoint:
+            head_module_relative = (
+                _current_source_decomposition_relative(relative)
+                if migrated_relative
+                else relative
+            )
+            head_module_entrypoint = (
+                head_root / head_module_relative.removesuffix(".py") / "__main__.py"
+                if head_root is not None
+                else None
+            )
+            if head_module_entrypoint is None or not _new_module_entrypoint_is_canonical(head_module_entrypoint):
+                errors.append(f"MODULE_ENTRYPOINT_CHANGED {relative}")
         elif base_entrypoint and head_entrypoint:
             if strict and base_entrypoint_digest != head_entrypoint_digest:
                 errors.append(f"MODULE_ENTRYPOINT_CHANGED {relative}")

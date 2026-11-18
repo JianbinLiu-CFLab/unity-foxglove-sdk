@@ -425,11 +425,24 @@ def _entrypoint_section_exports(section: Path) -> set[str] | None:
         and any(isinstance(target, ast.Name) and target.id == "__all__" for target in node.targets)
     ]
     if not assignments:
+        if any(
+            isinstance(node, ast.Name) and node.id == "__all__"
+            for node in ast.walk(tree)
+        ):
+            return None
         return {
             name
             for name in bindings
             if not name.startswith("_")
         }
+    final_assignment_nodes = {id(node) for node in ast.walk(assignments[-1])}
+    if any(
+        isinstance(node, ast.Name)
+        and node.id == "__all__"
+        and id(node) not in final_assignment_nodes
+        for node in ast.walk(tree)
+    ):
+        return None
     value = assignments[-1].value
     try:
         declared = ast.literal_eval(value)
