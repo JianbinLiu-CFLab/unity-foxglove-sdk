@@ -119,6 +119,97 @@ class CanonicalEntrypointEdgeTests(CanonicalEntrypointFixtureMixin, unittest.Tes
         finally:
             temporary.cleanup()
 
+    def test_main_block_only_rejects_local_main_rebinding(self) -> None:
+        """A local rebinding can replace the imported main before the guard runs."""
+        temporary, repository, base = self._create_repository(
+            main_source="from .live import main\nmain = 1\n",
+        )
+        try:
+            entrypoint = repository / "Scripts/smoke/fixture/__main__.py"
+            entrypoint.write_text(
+                entrypoint.read_text(encoding="utf-8")
+                + "if __name__ == '__main__':\n"
+                + "    raise SystemExit(main())\n",
+                encoding="utf-8",
+            )
+            head = self._commit(repository, "append main block")
+            with (
+                compare_identity_surfaces._revision_checkout(repository, base) as base_root,
+                compare_identity_surfaces._revision_checkout(repository, head) as head_root,
+            ):
+                self.assertFalse(
+                    entrypoint_migration_contracts._approved_main_block_only_contract(
+                        base_root,
+                        head_root,
+                        "Scripts/smoke/fixture.py",
+                        "Scripts/smoke/fixture.py",
+                    )
+                )
+        finally:
+            temporary.cleanup()
+
+    def test_main_block_only_rejects_multiple_main_imports(self) -> None:
+        """Multiple main imports leave the appended guard bound to the last target."""
+        temporary, repository, base = self._create_repository(
+            extra_source="def main():\n    return 1\n\n__all__ = ['main']\n",
+            main_source="from .live import main\nfrom .extra import main\n",
+        )
+        try:
+            entrypoint = repository / "Scripts/smoke/fixture/__main__.py"
+            entrypoint.write_text(
+                entrypoint.read_text(encoding="utf-8")
+                + "if __name__ == '__main__':\n"
+                + "    raise SystemExit(main())\n",
+                encoding="utf-8",
+            )
+            head = self._commit(repository, "append main block")
+            with (
+                compare_identity_surfaces._revision_checkout(repository, base) as base_root,
+                compare_identity_surfaces._revision_checkout(repository, head) as head_root,
+            ):
+                self.assertFalse(
+                    entrypoint_migration_contracts._approved_main_block_only_contract(
+                        base_root,
+                        head_root,
+                        "Scripts/smoke/fixture.py",
+                        "Scripts/smoke/fixture.py",
+                    )
+                )
+        finally:
+            temporary.cleanup()
+
+    def test_new_entrypoint_rejects_absolute_import_binding(self) -> None:
+        """An absolute import cannot be resolved as a package-relative delegate."""
+        temporary, repository, base = self._create_repository(
+            extra_source=(
+                "def main():\n"
+                "    return 0\n\n"
+                "def helper():\n"
+                "    return 0\n\n"
+                "__all__ = ['helper']\n"
+            ),
+            live_source="from extra import main\n__all__ = ['main']\n",
+        )
+        try:
+            entrypoint = repository / "Scripts/smoke/fixture/__main__.py"
+            entrypoint.unlink()
+            base = self._commit(repository, "remove base module entrypoint")
+            entrypoint.write_text(
+                "from . import *\n"
+                "if __name__ == '__main__':\n"
+                "    raise SystemExit(main())\n",
+                encoding="utf-8",
+            )
+            head = self._commit(repository, "add canonical module entrypoint")
+            with compare_identity_surfaces._revision_checkout(repository, head) as head_root:
+                self.assertFalse(
+                    entrypoint_migration_contracts._new_module_entrypoint_is_canonical(
+                        head_root / "Scripts/smoke/fixture/__main__.py"
+                    )
+                )
+        finally:
+            temporary.cleanup()
+
     def test_standard_migration_rejects_symlinked_entrypoint_section(self) -> None:
         """A symlink cannot provide the standard forwarding section implementation."""
         temporary, repository, base = self._create_repository()

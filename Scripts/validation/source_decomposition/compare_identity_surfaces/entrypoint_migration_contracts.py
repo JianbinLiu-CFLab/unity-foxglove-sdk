@@ -82,6 +82,8 @@ def _entrypoint_binding_is_zero_arg_callable(
     if _entrypoint_zero_arg_function(binding):
         return True
     if isinstance(binding, ast.ImportFrom):
+        if binding.level != 1:
+            return False
         alias = next(
             (
                 candidate
@@ -750,6 +752,13 @@ def _approved_main_block_only_contract(
     called_name = raise_node.exc.args[0].func.id
     if called_name != "main":
         return False
+    if any(
+        isinstance(node, ast.Name)
+        and node.id == called_name
+        and isinstance(node.ctx, (ast.Store, ast.Del))
+        for node in ast.walk(base_tree)
+    ):
+        return False
 
     def section_exports(section: Path) -> set[str]:
         """Return names exported by one existing package section."""
@@ -836,6 +845,7 @@ def _approved_main_block_only_contract(
         for section in base_sections
     }
     delegate_found = False
+    delegate_binding_count = 0
     for node in import_nodes:
         if node.module is None:
             if package_initializer_exports is None:
@@ -845,10 +855,12 @@ def _approved_main_block_only_contract(
                     if called_name not in package_initializer_exports:
                         return False
                     delegate_found = True
+                    delegate_binding_count += 1
                 elif alias.name not in package_initializer_exports:
                     return False
                 elif (alias.asname or alias.name) == called_name:
                     delegate_found = True
+                    delegate_binding_count += 1
             continue
         module_exports = exports_by_module.get(node.module)
         if module_exports is None:
@@ -861,12 +873,14 @@ def _approved_main_block_only_contract(
                 if called_name not in module_exports or called_name not in module_bindings:
                     return False
                 delegate_found = True
+                delegate_binding_count += 1
                 continue
             if alias.name not in module_exports or alias.name not in module_bindings:
                 return False
             if (alias.asname or alias.name) == called_name:
                 delegate_found = True
-    return delegate_found
+                delegate_binding_count += 1
+    return delegate_found and delegate_binding_count == 1
 
 
 def _approved_entrypoint_contract_impl(
