@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from .foundation import *
-from .entrypoint_migration_contracts import (
+from Scripts.validation.source_decomposition.compare_identity_surfaces.entrypoint_migration_contracts import (
     _approved_main_block_only_contract,
 )
 from .entrypoint_contracts import (

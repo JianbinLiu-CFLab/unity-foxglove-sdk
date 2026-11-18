@@ -1,5 +1,5 @@
-from .foundation import *
-from .surface_contracts import (
+from Scripts.validation.source_decomposition.compare_identity_surfaces.foundation import *
+from Scripts.validation.source_decomposition.compare_identity_surfaces.surface_contracts import (
     _entrypoint_initializer_exports,
     _entrypoint_module_bindings,
     _entrypoint_section_exports,

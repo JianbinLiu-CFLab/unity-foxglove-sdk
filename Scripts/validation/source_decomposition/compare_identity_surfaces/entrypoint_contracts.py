@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from .foundation import *
 from .surface_contracts import *
-from .entrypoint_migration_contracts import (
+from Scripts.validation.source_decomposition.compare_identity_surfaces.entrypoint_migration_contracts import (
     _entrypoint_executable_body_is_safe,
     _approved_entrypoint_contract_impl,
     _approved_initializer_contract_impl,
