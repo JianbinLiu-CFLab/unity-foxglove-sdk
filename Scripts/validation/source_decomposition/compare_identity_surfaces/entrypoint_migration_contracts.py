@@ -5,43 +5,43 @@ from .surface_contracts import (
     _entrypoint_section_exports,
 )
 
-def _initializer_path_is_repository_rooted(tree: ast.Module, relative: str) -> bool:
-    """Return whether the generated facade path is rooted at the package location."""
-    expected = ast.parse(
-        "_PHASE192_FACADE_FILE = _Phase192Path(__file__).resolve().parents[1] / "
-        f"{Path(relative).name!r}\n"
-        "_PHASE192_PARENT = _PHASE192_FACADE_FILE.parent\n"
-    ).body
-    assignments = [
-        node for node in ast.walk(tree)
-        if isinstance(node, ast.Assign)
-        and len(node.targets) == 1
-        and isinstance(node.targets[0], ast.Name)
-        and node.targets[0].id in {"_PHASE192_FACADE_FILE", "_PHASE192_PARENT"}
-    ]
-    if len(assignments) != 2 or any(node not in tree.body for node in assignments):
+def _facade_already_has_standard_run_entrypoint(facade: Path) -> bool:
+    """Return whether a facade already delegates through run_entrypoint."""
+    try:
+        tree = _parse_source(facade.read_text(encoding="utf-8"), facade)
+    except (OSError, SyntaxError, ValueError):
         return False
-    if [node.targets[0].id for node in assignments] != [
-        "_PHASE192_FACADE_FILE", "_PHASE192_PARENT"
-    ] or any(
-        ast.dump(node, include_attributes=False) != ast.dump(expected[index], include_attributes=False)
-        for index, node in enumerate(assignments)
-    ):
-        return False
-    file_assignment = ast.parse("__file__ = str(_PHASE192_FACADE_FILE)\n").body[0]
-    return all(
-        node in tree.body and ast.dump(node, include_attributes=False) == ast.dump(file_assignment, include_attributes=False)
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Assign)
-        and any(isinstance(target, ast.Name) and target.id == "__file__" for target in node.targets)
-    ) and any(
-        isinstance(node, ast.ImportFrom)
-        and node.module == "pathlib"
-        and node.level == 0
-        and len(node.names) == 1
-        and node.names[0].name == "Path"
-        and node.names[0].asname == "_Phase192Path"
+    guards = [
+        node
         for node in tree.body
+        if (
+            isinstance(node, ast.If)
+            and isinstance(node.test, ast.Compare)
+            and len(node.test.ops) == 1
+            and isinstance(node.test.ops[0], ast.Eq)
+            and isinstance(node.test.left, ast.Name)
+            and node.test.left.id == "__name__"
+            and len(node.test.comparators) == 1
+            and isinstance(node.test.comparators[0], ast.Constant)
+            and node.test.comparators[0].value == "__main__"
+            and not node.orelse
+        )
+    ]
+    if len(guards) != 1 or len(guards[0].body) != 1:
+        return False
+    statement = guards[0].body[0]
+    return (
+        isinstance(statement, ast.Raise)
+        and isinstance(statement.exc, ast.Call)
+        and isinstance(statement.exc.func, ast.Name)
+        and statement.exc.func.id == "SystemExit"
+        and len(statement.exc.args) == 1
+        and not statement.exc.keywords
+        and isinstance(statement.exc.args[0], ast.Call)
+        and isinstance(statement.exc.args[0].func, ast.Name)
+        and statement.exc.args[0].func.id == "run_entrypoint"
+        and not statement.exc.args[0].args
+        and not statement.exc.args[0].keywords
     )
 
 def _approved_main_block_only_contract(
@@ -165,7 +165,7 @@ def _approved_main_block_only_contract(
 
     def section_exports(section: Path) -> set[str]:
         """Return names exported by one existing package section."""
-        exports = getattr(importlib.import_module(__package__ + ".surface_contracts"), "_entrypoint_section_exports")(section)
+        exports = _entrypoint_section_exports(section)
         return set() if exports is None else exports
 
     def top_level_binding_names(node: ast.stmt) -> set[str]:
@@ -235,8 +235,7 @@ def _approved_main_block_only_contract(
         return False
     package_exports = set().union(*(section_exports(section) for section in base_sections))
 
-    initializer_exports = getattr(importlib.import_module(__package__ + ".surface_contracts"), "_entrypoint_initializer_exports")
-    package_initializer_exports = initializer_exports(base_package, package_exports)
+    package_initializer_exports = _entrypoint_initializer_exports(base_package, package_exports)
     exports_by_module = {
         section.stem: section_exports(section)
         for section in base_sections
@@ -253,7 +252,7 @@ def _approved_main_block_only_contract(
         module_exports = exports_by_module.get(node.module)
         if module_exports is None:
             continue
-        module_bindings = getattr(importlib.import_module(__package__ + ".surface_contracts"), "_entrypoint_module_bindings")(base_package, node.module)
+        module_bindings = _entrypoint_module_bindings(base_package, node.module)
         if any(alias.name == "*" for alias in node.names) and called_name in module_exports:
             if called_name in module_bindings:
                 return True
@@ -262,4 +261,4 @@ def _approved_main_block_only_contract(
     return False
 
 
-__all__ = ['_initializer_path_is_repository_rooted', '_approved_main_block_only_contract']
+__all__ = ['_facade_already_has_standard_run_entrypoint', '_approved_main_block_only_contract']

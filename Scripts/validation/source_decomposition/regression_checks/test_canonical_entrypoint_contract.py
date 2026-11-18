@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import tempfile
 import unittest
@@ -54,6 +55,7 @@ class CanonicalEntrypointContractTests(unittest.TestCase):
         repository: Path,
         *,
         facade_source: str | None = None,
+        extra_source: str | None = None,
         live_source: str | None = None,
         main_source: str | None = None,
     ) -> Path:
@@ -74,10 +76,17 @@ class CanonicalEntrypointContractTests(unittest.TestCase):
             ),
             encoding="utf-8",
         )
+        if extra_source is not None:
+            (package / "extra.py").write_text(extra_source, encoding="utf-8")
+        section_imports = "from . import live as _phase192_section_0\n"
+        section_tuple = "_PHASE192_SECTION_MODULES = (_phase192_section_0,)\n"
+        if extra_source is not None:
+            section_imports += "from . import extra as _phase192_section_1\n"
+            section_tuple = "_PHASE192_SECTION_MODULES = (_phase192_section_0, _phase192_section_1)\n"
         (package / "__init__.py").write_text(
-            "from . import live as _phase192_section_0\n"
-            "_PHASE192_SECTION_MODULES = (_phase192_section_0,)\n"
-            "_PHASE192_EXPORT_NAMES = set()\n"
+            section_imports
+            + section_tuple
+            + "_PHASE192_EXPORT_NAMES = set()\n"
             "for _phase192_section in _PHASE192_SECTION_MODULES:\n"
             "    for _phase192_name in _phase192_section.__all__:\n"
             "        globals()[_phase192_name] = getattr(_phase192_section, _phase192_name)\n"
@@ -105,6 +114,7 @@ class CanonicalEntrypointContractTests(unittest.TestCase):
         self,
         *,
         facade_source: str | None = None,
+        extra_source: str | None = None,
         live_source: str | None = None,
         main_source: str | None = None,
     ) -> tuple[tempfile.TemporaryDirectory[str], Path, str]:
@@ -116,6 +126,7 @@ class CanonicalEntrypointContractTests(unittest.TestCase):
         self._create_phase184_fixture(
             repository,
             facade_source=facade_source,
+            extra_source=extra_source,
             live_source=live_source,
             main_source=main_source,
         )
@@ -152,19 +163,28 @@ class CanonicalEntrypointContractTests(unittest.TestCase):
             encoding="utf-8",
         )
         initializer = package / "__init__.py"
-        initializer.write_text(
-            initializer.read_text(encoding="utf-8")
-            .replace(
-                "from . import live as _phase192_section_0\n",
-                "from . import live as _phase192_section_0\n"
-                "from . import entrypoint as _phase192_section_1\n",
-            )
-            .replace(
-                "_PHASE192_SECTION_MODULES = (_phase192_section_0,)\n",
-                "_PHASE192_SECTION_MODULES = (_phase192_section_0, _phase192_section_1)\n",
-            ),
-            encoding="utf-8",
+        initializer_source = initializer.read_text(encoding="utf-8")
+        section_indices = [
+            int(value)
+            for value in re.findall(r"_phase192_section_(\d+)", initializer_source)
+        ]
+        next_index = max(section_indices, default=-1) + 1
+        alias = f"_phase192_section_{next_index}"
+        initializer_source = initializer_source.replace(
+            "_PHASE192_SECTION_MODULES = (",
+            f"from . import entrypoint as {alias}\n\n_PHASE192_SECTION_MODULES = (",
+            1,
         )
+        tuple_start = initializer_source.index("_PHASE192_SECTION_MODULES = ")
+        tuple_end = initializer_source.index(")", tuple_start)
+        tuple_body = initializer_source[tuple_start:tuple_end]
+        tuple_insertion = f"    {alias},\n" if "\n" in tuple_body else f", {alias}"
+        initializer_source = (
+            initializer_source[:tuple_end]
+            + tuple_insertion
+            + initializer_source[tuple_end:]
+        )
+        initializer.write_text(initializer_source, encoding="utf-8")
 
     def test_standard_entrypoint_migration_is_compatible(self) -> None:
         """The five-file standard migration is compatible with the base surface."""
@@ -202,7 +222,10 @@ class CanonicalEntrypointContractTests(unittest.TestCase):
             "        print(f'[fixture] FAIL: {exc}', file=_phase192_sys.stderr)\n"
             "        raise SystemExit(1)\n"
         )
-        temporary, repository, base = self._create_repository(facade_source=facade_source)
+        temporary, repository, base = self._create_repository(
+            facade_source=facade_source,
+            extra_source="VALUE = 0\n__all__ = []\n",
+        )
         try:
             self._migrate_to_standard_entrypoint(repository)
             (repository / "Scripts/smoke/fixture/entrypoint.py").write_text(
@@ -224,6 +247,15 @@ class CanonicalEntrypointContractTests(unittest.TestCase):
             self.assertEqual(
                 0,
                 compare_identity_surfaces.compare_revisions(repository, base, head, strict=False),
+            )
+            (repository / "Scripts/smoke/fixture/extra.py").write_text(
+                "# unrelated section edit\nVALUE = 0\n__all__ = []\n",
+                encoding="utf-8",
+            )
+            unrelated = self._commit(repository, "edit unrelated section")
+            self.assertEqual(
+                0,
+                compare_identity_surfaces.compare_revisions(repository, base, unrelated, strict=False),
             )
             (repository / "Scripts/smoke/fixture/entrypoint.py").write_text(
                 "def run_entrypoint():\n"

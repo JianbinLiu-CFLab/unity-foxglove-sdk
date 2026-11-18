@@ -3,7 +3,6 @@ from __future__ import annotations
 from .foundation import *
 from .entrypoint_migration_contracts import (
     _approved_main_block_only_contract,
-    _initializer_path_is_repository_rooted,
 )
 from .entrypoint_contracts import (
     _approved_entrypoint_contract,

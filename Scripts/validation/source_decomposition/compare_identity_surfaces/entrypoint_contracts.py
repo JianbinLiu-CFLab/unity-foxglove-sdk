@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from .foundation import *
 from .surface_contracts import *
-
+from .entrypoint_migration_contracts import (
+    _facade_already_has_standard_run_entrypoint,
+)
 _INVALID_ENTRYPOINT_CONTRACT = "__phase192_invalid_entrypoint__"
-
 def _is_safe_unittest_main_call(call: ast.Call) -> bool:
     """Return whether a unittest.main call has only literal safe options."""
     return (
@@ -954,11 +955,11 @@ def _approved_entrypoint_contract(
         return False
     expected_body = None
     if base_root is not None:
-        expected_body = _mechanically_transformed_entrypoint_body(
-            base_root / (base_relative or relative)
-        )
-        if expected_body is None:
-            return False
+        base_facade = base_root / (base_relative or relative)
+        if not _facade_already_has_standard_run_entrypoint(base_facade):
+            expected_body = _mechanically_transformed_entrypoint_body(base_facade)
+            if expected_body is None:
+                return False
     return (
         _facade_entrypoint_is_standard(
             facade_tree,

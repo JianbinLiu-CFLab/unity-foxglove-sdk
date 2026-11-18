@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import ast
 import os
 import subprocess
 import sys
@@ -540,23 +539,6 @@ class SourceDecompositionIdentityContractTests(unittest.TestCase):
                     base_relative=relative,
                 )
             )
-    def test_initializer_path_contract_rejects_shadow_module_path(self) -> None:
-        """A generated initializer must derive its facade path from the package location."""
-        cases = (
-            (True, "from pathlib import Path as _Phase192Path\n_PHASE192_FACADE_FILE = _Phase192Path(__file__).resolve().parents[1] / 'test_tool.py'\n_PHASE192_PARENT = _PHASE192_FACADE_FILE.parent\n"),
-            (False, "from pathlib import Path as _Phase192Path\n_PHASE192_FACADE_FILE = _Phase192Path('/tmp/attacker') / 'test_tool.py'\n_PHASE192_PARENT = _PHASE192_FACADE_FILE.parent\n"),
-            (False, "from pathlib import Path as _Phase192Path\n_PHASE192_FACADE_FILE = _Phase192Path(__file__).resolve().parents[1] / 'test_tool.py'\n_PHASE192_PARENT = _PHASE192_FACADE_FILE.parent\nif True:\n    _PHASE192_FACADE_FILE = _Phase192Path('/tmp/attacker') / 'test_tool.py'\n"),
-            (False, "_PHASE192_PARENT = _PHASE192_FACADE_FILE.parent\n_PHASE192_FACADE_FILE = _Phase192Path(__file__).resolve().parents[1] / 'test_tool.py'\n"),
-            (False, "from pathlib import Path as _Phase192Path\n_PHASE192_FACADE_FILE = _Phase192Path(__file__).resolve().parents[1] / 'test_tool.py'\n__file__ = '/tmp/attacker/__init__.py'\n_PHASE192_PARENT = _PHASE192_FACADE_FILE.parent\n"),
-        )
-        for expected, source in cases:
-            with self.subTest(expected=expected):
-                self.assertEqual(
-                    expected,
-                    surface_compare._initializer_path_is_repository_rooted(
-                        ast.parse(source), "Scripts/regression_checks/test_tool.py"
-                    ),
-                )
     def test_discovery_contract_rejects_new_duplicate_facade(self) -> None:
         """A test facade beside a test package is rejected as duplicate discovery."""
         with tempfile.TemporaryDirectory() as base_temporary, tempfile.TemporaryDirectory() as head_temporary:
