@@ -34,6 +34,8 @@ def _stable_entrypoint_exports(target: Path) -> set[str]:
                 if isinstance(candidate, ast.Name)
             }
             if "__all__" in target_names:
+                if not isinstance(statement, ast.Assign):
+                    return set()
                 literal = None
                 try:
                     literal = ast.literal_eval(value) if value is not None else None
