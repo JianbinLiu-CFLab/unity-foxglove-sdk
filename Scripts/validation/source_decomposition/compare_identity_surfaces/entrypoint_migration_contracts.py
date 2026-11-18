@@ -44,6 +44,7 @@ def _entrypoint_binding_is_zero_arg_callable(
     if resolved_target in seen:
         return False
     next_seen = seen | {resolved_target}
+    target_package = target.parent
     for imported in tree.body:
         if isinstance(imported, ast.Import) or (
             isinstance(imported, ast.ImportFrom)
@@ -64,7 +65,7 @@ def _entrypoint_binding_is_zero_arg_callable(
     if target.name == "__init__.py":
         sections = [
             section
-            for section in package.glob("*.py")
+            for section in target_package.glob("*.py")
             if section.name not in {"__init__.py", "__main__.py"}
         ]
         package_exports: set[str] = set()
@@ -73,7 +74,7 @@ def _entrypoint_binding_is_zero_arg_callable(
             if exports is None:
                 return False
             package_exports.update(exports)
-        initializer_exports = _entrypoint_initializer_exports(package, package_exports)
+        initializer_exports = _entrypoint_initializer_exports(target_package, package_exports)
         if initializer_exports is None or name not in initializer_exports:
             return False
     bindings = _unconditional_top_level_bindings(tree)
@@ -94,20 +95,20 @@ def _entrypoint_binding_is_zero_arg_callable(
         if alias is None or alias.name == "*":
             return False
         if binding.module:
-            target_module = _entrypoint_resolve_module(package, binding.module)
+            target_module = _entrypoint_resolve_module(target_package, binding.module)
             return target_module is not None and _entrypoint_binding_is_zero_arg_callable(
-                package,
+                target_package,
                 target_module,
                 alias.name,
                 next_seen,
                 positional_count=positional_count,
             )
-        module_target = _entrypoint_resolve_module(package, alias.name)
+        module_target = _entrypoint_resolve_module(target_package, alias.name)
         if module_target is not None:
             return False
-        initializer = package / "__init__.py"
+        initializer = target_package / "__init__.py"
         return initializer.is_file() and _entrypoint_binding_is_zero_arg_callable(
-            package,
+            target_package,
             initializer,
             alias.name,
             next_seen,
@@ -117,13 +118,13 @@ def _entrypoint_binding_is_zero_arg_callable(
         return False
     sections = [
         section
-        for section in package.glob("*.py")
+        for section in target_package.glob("*.py")
         if section.name not in {"__init__.py", "__main__.py"}
     ]
     return any(
         name in (_entrypoint_section_exports(section) or set())
         and _entrypoint_binding_is_zero_arg_callable(
-            package,
+            target_package,
             section,
             name,
             next_seen,
