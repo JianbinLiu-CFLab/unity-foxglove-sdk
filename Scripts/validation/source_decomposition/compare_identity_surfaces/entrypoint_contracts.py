@@ -886,6 +886,12 @@ def _approved_entrypoint_section(
     expected_imports: tuple[ast.Import | ast.ImportFrom, ...] | None = None,
 ) -> bool:
     """Return whether an entrypoint section exports a safe run_entrypoint function."""
+    if not path.is_file() or path.is_symlink():
+        return False
+    try:
+        path.resolve().relative_to(path.parent.resolve())
+    except (OSError, ValueError):
+        return False
     try:
         tree = _parse_source(path.read_text(encoding="utf-8"), path)
     except (OSError, SyntaxError, ValueError):
