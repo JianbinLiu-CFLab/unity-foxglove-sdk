@@ -512,7 +512,7 @@ def _dynamic_initializer_exports_are_trusted(
     ]
     if len(all_assignments) != 1:
         return False
-    all_assignment_index, _all_assignment = all_assignments[0]
+    all_assignment_index, all_assignment = all_assignments[0]
     section_assignments = [
         (index, node)
         for index, node in enumerate(tree.body)
@@ -672,6 +672,22 @@ def _dynamic_initializer_exports_are_trusted(
         return False
     if not section_assignment_index < matched_loop_index < all_assignment_index:
         return False
+    allowed_binding_references = {
+        id(candidate)
+        for target in (*all_assignment.targets, *section_assignment.targets)
+        for candidate in ast.walk(target)
+        if isinstance(candidate, ast.Name)
+    }
+    matched_loop = tree.body[matched_loop_index]
+    if isinstance(matched_loop, ast.For) and isinstance(matched_loop.iter, ast.Name):
+        allowed_binding_references.add(id(matched_loop.iter))
+    for candidate in ast.walk(tree):
+        if (
+            isinstance(candidate, ast.Name)
+            and candidate.id in {"__all__", "_PHASE192_SECTION_MODULES"}
+            and id(candidate) not in allowed_binding_references
+        ):
+            return False
     export_set_assignments = [
         index
         for index, node in enumerate(tree.body)

@@ -67,6 +67,32 @@ class CanonicalEntrypointContractTests(CanonicalEntrypointFixtureMixin, unittest
                 finally:
                     temporary.cleanup()
 
+    def test_already_migrated_entrypoint_rejects_delegate_import_change(self) -> None:
+        """A later change cannot replace the trusted delegate import in a migrated wrapper."""
+        temporary, repository, base = self._create_repository(
+            extra_source="def main():\n    return 0\n\n__all__ = ['main']\n",
+        )
+        try:
+            self._migrate_to_standard_entrypoint(repository)
+            migrated = self._commit(repository, "standard entrypoint migration")
+            entrypoint = repository / "Scripts/smoke/fixture/entrypoint.py"
+            entrypoint.write_text(
+                entrypoint.read_text(encoding="utf-8").replace(".live", ".extra"),
+                encoding="utf-8",
+            )
+            changed = self._commit(repository, "change migrated delegate import")
+            self.assertEqual(
+                1,
+                compare_identity_surfaces.compare_revisions(
+                    repository,
+                    migrated,
+                    changed,
+                    strict=False,
+                ),
+            )
+        finally:
+            temporary.cleanup()
+
     def test_standard_migration_preserves_exception_exit_contract(self) -> None:
         """The standard wrapper mechanically preserves legacy exit and stderr handling."""
         facade_source = (
@@ -629,7 +655,12 @@ class CanonicalEntrypointContractTests(CanonicalEntrypointFixtureMixin, unittest
             "del main\n",
             "_PHASE192_EXPORT_NAMES.clear()\n",
             "__all__.append('missing')\n",
+            "__all__ = make_all()\n",
+            "__all__ += ['missing']\n",
+            "del __all__\n",
+            "value = __all__\n",
             "_PHASE192_SECTION_MODULES.append(None)\n",
+            "value = _PHASE192_SECTION_MODULES\n",
         ):
             temporary, repository, base = self._create_repository()
             try:
