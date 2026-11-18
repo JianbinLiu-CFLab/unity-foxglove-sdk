@@ -6,7 +6,6 @@ from Scripts.validation.source_decomposition.compare_identity_surfaces.entrypoin
     _entrypoint_executable_body_is_safe,
     _approved_entrypoint_contract_impl,
     _approved_initializer_contract_impl,
-    _stable_entrypoint_exports,
 )
 _INVALID_ENTRYPOINT_CONTRACT = "__phase192_invalid_entrypoint__"
 
@@ -156,7 +155,10 @@ def _entrypoint_contract(
 
     def stable_exports(target: Path) -> set[str]:
         """Internal helper for stable_exports."""
-        return _stable_entrypoint_exports(target)
+        target_tree = _parse_source(target.read_text(encoding="utf-8"), target)
+        names = _top_level_names(target_tree, include_imports=True)
+        names.difference_update(_conditional_only_public_names(target_tree, include_private=True))
+        return names
 
     package_exports: set[str] = set()
     if package_init.is_file():

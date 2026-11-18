@@ -375,58 +375,7 @@ class CanonicalEntrypointContractTests(CanonicalEntrypointFixtureMixin, unittest
         finally:
             temporary.cleanup()
 
-    def test_main_block_only_rejects_section_and_initializer_changes(self) -> None:
-        """Main-block-only approval rejects any section or initializer change."""
-        for target, content in (
-            (
-                "Scripts/smoke/fixture/live.py",
-                "def main():\n    return 1\n\n__all__ = ['main']\n",
-            ),
-            (
-                "Scripts/smoke/fixture/__init__.py",
-                "from . import live as _phase192_section_0\nVALUE = 1\n",
-            ),
-        ):
-            temporary, repository, base = self._create_repository()
-            try:
-                (repository / target).write_text(content, encoding="utf-8")
-                (repository / "Scripts/smoke/fixture/__main__.py").write_text(
-                    "from . import *\n"
-                    "if __name__ == '__main__':\n"
-                    "    raise SystemExit(main())\n",
-                    encoding="utf-8",
-                )
-                head = self._commit(repository, "invalid main block migration")
-                self.assertEqual(
-                    1,
-                    compare_identity_surfaces.compare_revisions(repository, base, head, strict=False),
-                )
-            finally:
-                temporary.cleanup()
 
-    def test_main_block_only_rejects_invalid_call_shapes(self) -> None:
-        """Required, async, decorated, and missing calls remain incompatible."""
-        variants = (
-            (None, "missing()"),
-            ("def main(required):\n    return required\n\n__all__ = ['main']\n", "main()"),
-            (None, "main(1)"),
-        )
-        for live_source, call in variants:
-            temporary, repository, base = self._create_repository(live_source=live_source)
-            try:
-                (repository / "Scripts/smoke/fixture/__main__.py").write_text(
-                    "from . import *\n"
-                    "if __name__ == '__main__':\n"
-                    f"    raise SystemExit({call})\n",
-                    encoding="utf-8",
-                )
-                head = self._commit(repository, "invalid main call")
-                self.assertEqual(
-                    1,
-                    compare_identity_surfaces.compare_revisions(repository, base, head, strict=False),
-                )
-            finally:
-                temporary.cleanup()
 
     def test_unlisted_relative_entrypoint_is_one_gate_error(self) -> None:
         """An unlisted relative entrypoint reports one gate error without a traceback."""
@@ -476,28 +425,6 @@ class CanonicalEntrypointContractTests(CanonicalEntrypointFixtureMixin, unittest
             finally:
                 temporary.cleanup()
 
-    def test_main_block_only_rejects_async_and_decorated_section_function(self) -> None:
-        """The called section function must be synchronous and undecorated."""
-        variants = (
-            "async def main():\n    return 0\n\n__all__ = ['main']\n",
-            "def decorator(function):\n    return function\n\n@decorator\ndef main():\n    return 0\n\n__all__ = ['main']\n",
-        )
-        for section in variants:
-            temporary, repository, base = self._create_repository(live_source=section)
-            try:
-                (repository / "Scripts/smoke/fixture/__main__.py").write_text(
-                    "from . import *\n"
-                    "if __name__ == '__main__':\n"
-                    "    raise SystemExit(main())\n",
-                    encoding="utf-8",
-                )
-                head = self._commit(repository, "invalid section entrypoint")
-                self.assertEqual(
-                    1,
-                    compare_identity_surfaces.compare_revisions(repository, base, head, strict=False),
-                )
-            finally:
-                temporary.cleanup()
 
     def test_stale_base_revision_fails(self) -> None:
         """A missing base revision remains a hard compatibility failure."""
@@ -538,370 +465,13 @@ class CanonicalEntrypointContractTests(CanonicalEntrypointFixtureMixin, unittest
         finally:
             temporary.cleanup()
 
-    def test_main_block_only_requires_initializer_wildcard_export(self) -> None:
-        """A wildcard module entrypoint requires the unchanged initializer to export its callable."""
-        temporary, repository, base = self._create_repository()
-        try:
-            (repository / "Scripts/smoke/fixture/__init__.py").write_text(
-                "__all__ = []\n",
-                encoding="utf-8",
-            )
-            base = self._commit(repository, "suppress package wildcard export")
-            (repository / "Scripts/smoke/fixture/__main__.py").write_text(
-                "from . import *\n"
-                "if __name__ == '__main__':\n"
-                "    raise SystemExit(main())\n",
-                encoding="utf-8",
-            )
-            head = self._commit(repository, "append main block")
-            self.assertEqual(
-                1,
-                compare_identity_surfaces.compare_revisions(
-                    repository,
-                    base,
-                    head,
-                    strict=False,
-                ),
-            )
-        finally:
-            temporary.cleanup()
 
-    def test_main_block_only_rejects_conditional_or_unbound_exports(self) -> None:
-        """Conditional definitions and literal-only initializer exports cannot satisfy wildcard resolution."""
-        temporary, repository, base = self._create_repository()
-        try:
-            (repository / "Scripts/smoke/fixture/live.py").write_text(
-                "if False:\n"
-                "    def main():\n"
-                "        return 0\n"
-                "__all__ = ['main']\n",
-                encoding="utf-8",
-            )
-            base = self._commit(repository, "make section export conditional")
-            (repository / "Scripts/smoke/fixture/__main__.py").write_text(
-                "from . import *\n"
-                "if __name__ == '__main__':\n"
-                "    raise SystemExit(main())\n",
-                encoding="utf-8",
-            )
-            head = self._commit(repository, "append conditional main block")
-            self.assertEqual(
-                1,
-                compare_identity_surfaces.compare_revisions(
-                    repository,
-                    base,
-                    head,
-                    strict=False,
-                ),
-            )
-        finally:
-            temporary.cleanup()
 
-        temporary, repository, base = self._create_repository()
-        try:
-            (repository / "Scripts/smoke/fixture/__init__.py").write_text(
-                "from .live import main\n"
-                "__all__ = ['main', 'missing']\n",
-                encoding="utf-8",
-            )
-            base = self._commit(repository, "declare incomplete initializer export")
-            (repository / "Scripts/smoke/fixture/__main__.py").write_text(
-                "from . import *\n"
-                "if __name__ == '__main__':\n"
-                "    raise SystemExit(main())\n",
-                encoding="utf-8",
-            )
-            head = self._commit(repository, "append incomplete main block")
-            self.assertEqual(
-                1,
-                compare_identity_surfaces.compare_revisions(
-                    repository,
-                    base,
-                    head,
-                    strict=False,
-                ),
-            )
-        finally:
-            temporary.cleanup()
 
-        temporary, repository, base = self._create_repository()
-        try:
-            (repository / "Scripts/smoke/fixture/__init__.py").write_text(
-                "from . import live as _phase192_section_0\n"
-                "__all__ = ['main']\n",
-                encoding="utf-8",
-            )
-            base = self._commit(repository, "declare unbound initializer export")
-            (repository / "Scripts/smoke/fixture/__main__.py").write_text(
-                "from . import *\n"
-                "if __name__ == '__main__':\n"
-                "    raise SystemExit(main())\n",
-                encoding="utf-8",
-            )
-            head = self._commit(repository, "append unbound main block")
-            self.assertEqual(
-                1,
-                compare_identity_surfaces.compare_revisions(
-                    repository,
-                    base,
-                    head,
-                    strict=False,
-                ),
-            )
-        finally:
-            temporary.cleanup()
 
-    def test_main_block_only_rejects_alias_mismatch_and_unreviewed_dynamic_exports(self) -> None:
-        """Aliased imports and unrelated dynamic export calls cannot satisfy the entrypoint contract."""
-        temporary, repository, base = self._create_repository(main_source="from . import live as entrypoint\n")
-        try:
-            (repository / "Scripts/smoke/fixture/__main__.py").write_text(
-                "from . import live as entrypoint\n"
-                "if __name__ == '__main__':\n"
-                "    raise SystemExit(main())\n",
-                encoding="utf-8",
-            )
-            head = self._commit(repository, "call the source name instead of the alias")
-            self.assertEqual(
-                1,
-                compare_identity_surfaces.compare_revisions(
-                    repository,
-                    base,
-                    head,
-                    strict=False,
-                ),
-            )
-        finally:
-            temporary.cleanup()
 
-    def test_main_block_only_rejects_dynamic_export_mutations(self) -> None:
-        """Mutating or deleting a dynamic export after synchronization is incompatible."""
-        for mutation in (
-            "del main\n",
-            "_PHASE192_EXPORT_NAMES.clear()\n",
-            "__all__.append('missing')\n",
-            "__all__ = make_all()\n",
-            "__all__ += ['missing']\n",
-            "del __all__\n",
-            "value = __all__\n",
-            "_PHASE192_SECTION_MODULES.append(None)\n",
-            "value = _PHASE192_SECTION_MODULES\n",
-        ):
-            temporary, repository, base = self._create_repository()
-            try:
-                initializer = repository / "Scripts/smoke/fixture/__init__.py"
-                initializer.write_text(
-                    initializer.read_text(encoding="utf-8") + mutation,
-                    encoding="utf-8",
-                )
-                base = self._commit(repository, "mutate dynamic exports")
-                (repository / "Scripts/smoke/fixture/__main__.py").write_text(
-                    "from . import *\n"
-                    "if __name__ == '__main__':\n"
-                    "    raise SystemExit(main())\n",
-                    encoding="utf-8",
-                )
-                head = self._commit(repository, "append main block")
-                self.assertEqual(
-                    1,
-                    compare_identity_surfaces.compare_revisions(
-                        repository,
-                        base,
-                        head,
-                        strict=False,
-                    ),
-                )
-            finally:
-                temporary.cleanup()
 
-    def test_main_block_only_rejects_empty_dynamic_section_tuple(self) -> None:
-        """A dynamic export loop with no registered section cannot approve the package entrypoint."""
-        temporary, repository, base = self._create_repository()
-        try:
-            initializer = repository / "Scripts/smoke/fixture/__init__.py"
-            initializer.write_text(
-                initializer.read_text(encoding="utf-8").replace(
-                    "_PHASE192_SECTION_MODULES = (_phase192_section_0,)\n",
-                    "_PHASE192_SECTION_MODULES = ()\n",
-                ),
-                encoding="utf-8",
-            )
-            base = self._commit(repository, "remove dynamic section membership")
-            (repository / "Scripts/smoke/fixture/__main__.py").write_text(
-                "from . import *\n"
-                "if __name__ == '__main__':\n"
-                "    raise SystemExit(main())\n",
-                encoding="utf-8",
-            )
-            head = self._commit(repository, "append main block")
-            self.assertEqual(
-                1,
-                compare_identity_surfaces.compare_revisions(
-                    repository,
-                    base,
-                    head,
-                    strict=False,
-                ),
-            )
-        finally:
-            temporary.cleanup()
 
-    def test_main_block_only_rejects_dynamic_export_order_and_reset(self) -> None:
-        """The export set must be initialized, filled, and sorted in that order exactly once."""
-        initializer_mutations = (
-            lambda source: source.replace(
-                "__all__ = sorted(_PHASE192_EXPORT_NAMES)\n",
-                "",
-            ).replace(
-                "_PHASE192_EXPORT_NAMES = set()\n",
-                "_PHASE192_EXPORT_NAMES = set()\n__all__ = sorted(_PHASE192_EXPORT_NAMES)\n",
-            ),
-            lambda source: source + "_PHASE192_EXPORT_NAMES = set()\n",
-        )
-        for mutate in initializer_mutations:
-            temporary, repository, base = self._create_repository()
-            try:
-                initializer = repository / "Scripts/smoke/fixture/__init__.py"
-                initializer.write_text(mutate(initializer.read_text(encoding="utf-8")), encoding="utf-8")
-                base = self._commit(repository, "break dynamic export order")
-                (repository / "Scripts/smoke/fixture/__main__.py").write_text(
-                    "from . import *\n"
-                    "if __name__ == '__main__':\n"
-                    "    raise SystemExit(main())\n",
-                    encoding="utf-8",
-                )
-                head = self._commit(repository, "append main block")
-                self.assertEqual(
-                    1,
-                    compare_identity_surfaces.compare_revisions(
-                        repository,
-                        base,
-                        head,
-                        strict=False,
-                    ),
-                )
-            finally:
-                temporary.cleanup()
-
-        temporary, repository, base = self._create_repository()
-        try:
-            (repository / "Scripts/smoke/fixture/live.py").write_text(
-                "if False:\n"
-                "    def main():\n"
-                "        return 0\n"
-                "__all__ = ['main']\n",
-                encoding="utf-8",
-            )
-            (repository / "Scripts/smoke/fixture/__main__.py").write_text(
-                "from .live import main\n",
-                encoding="utf-8",
-            )
-            base = self._commit(repository, "create direct conditional import")
-            (repository / "Scripts/smoke/fixture/__main__.py").write_text(
-                "from .live import main\n"
-                "if __name__ == '__main__':\n"
-                "    raise SystemExit(main())\n",
-                encoding="utf-8",
-            )
-            head = self._commit(repository, "append direct main block")
-            self.assertEqual(
-                1,
-                compare_identity_surfaces.compare_revisions(
-                    repository,
-                    base,
-                    head,
-                    strict=False,
-                ),
-            )
-        finally:
-            temporary.cleanup()
-
-        temporary, repository, base = self._create_repository()
-        try:
-            initializer = repository / "Scripts/smoke/fixture/__init__.py"
-            initializer.write_text(
-                initializer.read_text(encoding="utf-8")
-                + "getattr(_phase192_section_0, 'main')\n",
-                encoding="utf-8",
-            )
-            base = self._commit(repository, "add unrelated dynamic export call")
-            (repository / "Scripts/smoke/fixture/__main__.py").write_text(
-                "from . import *\n"
-                "if __name__ == '__main__':\n"
-                "    raise SystemExit(main())\n",
-                encoding="utf-8",
-            )
-            head = self._commit(repository, "append main block")
-            self.assertEqual(
-                1,
-                compare_identity_surfaces.compare_revisions(
-                    repository,
-                    base,
-                    head,
-                    strict=False,
-                ),
-            )
-        finally:
-            temporary.cleanup()
-
-    def test_main_block_only_rejects_noncanonical_exported_callable(self) -> None:
-        """A known exported helper cannot become the package entrypoint."""
-        temporary, repository, base = self._create_repository(
-            live_source=(
-                "def main():\n"
-                "    return 0\n"
-                "\n"
-                "def helper():\n"
-                "    return 0\n"
-                "\n"
-                "__all__ = ['main', 'helper']\n"
-            )
-        )
-        try:
-            (repository / "Scripts/smoke/fixture/__main__.py").write_text(
-                "from . import *\n"
-                "if __name__ == '__main__':\n"
-                "    raise SystemExit(helper())\n",
-                encoding="utf-8",
-            )
-            head = self._commit(repository, "append helper main block")
-            self.assertEqual(
-                1,
-                compare_identity_surfaces.compare_revisions(
-                    repository,
-                    base,
-                    head,
-                    strict=False,
-                ),
-            )
-        finally:
-            temporary.cleanup()
-
-    def test_new_unsafe_module_entrypoint_is_incompatible_without_a_base_entrypoint(self) -> None:
-        """An unsafe newly added module entrypoint cannot bypass the compatibility gate."""
-        temporary, repository, base = self._create_repository()
-        try:
-            entrypoint = repository / "Scripts/smoke/fixture/__main__.py"
-            entrypoint.unlink()
-            base = self._commit(repository, "remove base module entrypoint")
-            entrypoint.write_text(
-                "from . import *\n"
-                "if __name__ == '__main__':\n"
-                "    raise SystemExit(missing())\n",
-                encoding="utf-8",
-            )
-            head = self._commit(repository, "add unsafe module entrypoint")
-            self.assertEqual(
-                1,
-                compare_identity_surfaces.compare_revisions(
-                    repository,
-                    base,
-                    head,
-                    strict=False,
-                ),
-            )
-        finally:
-            temporary.cleanup()
 
     def test_missing_origin_main_revision_fails(self) -> None:
         """A fixture without origin/main cannot satisfy the compatibility gate."""
@@ -956,6 +526,117 @@ class CanonicalEntrypointContractTests(CanonicalEntrypointFixtureMixin, unittest
                     head,
                     strict=False,
                 ),
+            )
+        finally:
+            temporary.cleanup()
+
+    def test_main_block_only_rejects_guard_mismatch(self) -> None:
+        """The appended guard must equal the trusted facade guard exactly."""
+        for block in (
+            "if __name__ == '__main__':\n    raise SystemExit(main(1))\n",
+            "if __name__ == '__main__':\n    raise SystemExit(main() or 0)\n",
+            "if __name__ == '__main__':\n    print('extra')\n    raise SystemExit(main())\n",
+        ):
+            temporary, repository, base = self._create_repository()
+            try:
+                (repository / "Scripts/smoke/fixture/__main__.py").write_text(
+                    "from . import *\n" + block,
+                    encoding="utf-8",
+                )
+                head = self._commit(repository, "mismatch facade main guard")
+                self.assertEqual(
+                    1,
+                    compare_identity_surfaces.compare_revisions(repository, base, head, strict=False),
+                )
+            finally:
+                temporary.cleanup()
+
+    def test_main_block_only_rejects_main_import_change(self) -> None:
+        """The base module entrypoint import must remain the package wildcard."""
+        temporary, repository, base = self._create_repository()
+        try:
+            (repository / "Scripts/smoke/fixture/__main__.py").write_text(
+                "from .live import main\n"
+                "if __name__ == '__main__':\n"
+                "    raise SystemExit(main())\n",
+                encoding="utf-8",
+            )
+            head = self._commit(repository, "change module entrypoint import")
+            self.assertEqual(
+                1,
+                compare_identity_surfaces.compare_revisions(repository, base, head, strict=False),
+            )
+        finally:
+            temporary.cleanup()
+
+    def test_main_block_only_rejects_facade_main_binding(self) -> None:
+        """The facade cannot bind the delegated name outside its package star import."""
+        facade_source = (
+            "from __future__ import annotations\n"
+            "import sys as _phase192_sys\n"
+            "if __package__:\n"
+            "    from .fixture import *\n"
+            "else:\n"
+            "    from fixture import *\n"
+            "main = 0\n"
+            "if __name__ == '__main__':\n"
+            "    raise SystemExit(main())\n"
+        )
+        temporary, repository, base = self._create_repository(facade_source=facade_source)
+        try:
+            (repository / "Scripts/smoke/fixture/__main__.py").write_text(
+                "from . import *\n"
+                "if __name__ == '__main__':\n"
+                "    raise SystemExit(main())\n",
+                encoding="utf-8",
+            )
+            head = self._commit(repository, "bind facade main locally")
+            self.assertEqual(
+                1,
+                compare_identity_surfaces.compare_revisions(repository, base, head, strict=False),
+            )
+        finally:
+            temporary.cleanup()
+
+    def test_main_block_only_rejects_package_file_change(self) -> None:
+        """A main-block-only change cannot modify another package file."""
+        temporary, repository, base = self._create_repository()
+        try:
+            (repository / "Scripts/smoke/fixture/__main__.py").write_text(
+                "from . import *\n"
+                "if __name__ == '__main__':\n"
+                "    raise SystemExit(main())\n",
+                encoding="utf-8",
+            )
+            (repository / "Scripts/smoke/fixture/live.py").write_text(
+                "def main():\n    return 1\n\n__all__ = ['main']\n",
+                encoding="utf-8",
+            )
+            head = self._commit(repository, "change package section with main block")
+            self.assertEqual(
+                1,
+                compare_identity_surfaces.compare_revisions(repository, base, head, strict=False),
+            )
+        finally:
+            temporary.cleanup()
+
+    def test_main_block_only_rejects_noncanonical_base_module(self) -> None:
+        """A pre-existing module entrypoint with extra statements cannot be extended."""
+        temporary, repository, base = self._create_repository(
+            main_source="from . import *\nvalue = 1\n",
+        )
+        try:
+            (repository / "Scripts/smoke/fixture/__main__.py").write_text(
+                "from . import *\n"
+                "value = 1\n"
+                "if __name__ == '__main__':\n"
+                "    raise SystemExit(main())\n",
+                encoding="utf-8",
+            )
+            head = self._commit(repository, "extend noncanonical module entrypoint")
+            self.assertEqual(
+                1,
+                compare_identity_surfaces.compare_revisions(repository, base, head, strict=False),
             )
         finally:
             temporary.cleanup()

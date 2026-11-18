@@ -3,7 +3,6 @@ from __future__ import annotations
 from .foundation import *
 from Scripts.validation.source_decomposition.compare_identity_surfaces.entrypoint_migration_contracts import (
     _approved_main_block_only_contract,
-    _new_module_entrypoint_is_canonical,
 )
 from .entrypoint_contracts import (
     _approved_entrypoint_contract,
@@ -596,18 +595,7 @@ def _compare_surfaces(
         ):
             errors.append(f"MODULE_ENTRYPOINT_CHANGED {relative}")
         elif not strict and not base_entrypoint and head_entrypoint:
-            head_module_relative = (
-                _current_source_decomposition_relative(relative)
-                if migrated_relative
-                else relative
-            )
-            head_module_entrypoint = (
-                head_root / head_module_relative.removesuffix(".py") / "__main__.py"
-                if head_root is not None
-                else None
-            )
-            if head_module_entrypoint is None or not _new_module_entrypoint_is_canonical(head_module_entrypoint):
-                errors.append(f"MODULE_ENTRYPOINT_CHANGED {relative}")
+            errors.append(f"MODULE_ENTRYPOINT_CHANGED {relative}")
         elif base_entrypoint and head_entrypoint:
             if strict and base_entrypoint_digest != head_entrypoint_digest:
                 errors.append(f"MODULE_ENTRYPOINT_CHANGED {relative}")
