@@ -678,25 +678,10 @@ def _approved_namespace_change(
         if path.name not in {"__init__.py", "__main__.py"}
     }
 
-    def source_contract_changed(name: str) -> bool:
-        """Return whether one retained section changed its parsed source contract."""
-        base_path = base_package / name
-        head_path = head_package / name
-        try:
-            return ast.dump(
-                _parse_source(base_path.read_text(encoding="utf-8"), base_path),
-                include_attributes=False,
-            ) != ast.dump(
-                _parse_source(head_path.read_text(encoding="utf-8"), head_path),
-                include_attributes=False,
-            )
-        except (OSError, SyntaxError, ValueError):
-            return True
-
     changed_existing = {
         name
         for name in base_sections & head_sections
-        if source_contract_changed(name)
+        if (base_package / name).read_bytes() != (head_package / name).read_bytes()
     }
     added_sections = head_sections - base_sections
     if changed_existing - {"entrypoint.py"} or added_sections - {"entrypoint.py"}:

@@ -3,9 +3,13 @@ from __future__ import annotations
 from .foundation import *
 from .surface_contracts import *
 from .entrypoint_migration_contracts import (
-    _facade_already_has_standard_run_entrypoint,
+    _entrypoint_executable_body_is_safe,
+    _approved_entrypoint_contract_impl,
+    _approved_initializer_contract_impl,
 )
 _INVALID_ENTRYPOINT_CONTRACT = "__phase192_invalid_entrypoint__"
+
+
 def _is_safe_unittest_main_call(call: ast.Call) -> bool:
     """Return whether a unittest.main call has only literal safe options."""
     return (
@@ -35,6 +39,8 @@ def _is_safe_unittest_main_call(call: ast.Call) -> bool:
             for keyword in call.keywords
         )
     )
+
+
 def _is_unittest_module_entrypoint(tree: ast.Module) -> bool:
     """Return whether an entrypoint explicitly delegates to unittest.main."""
     for node in tree.body:
@@ -70,10 +76,11 @@ def _is_unittest_module_entrypoint(tree: ast.Module) -> bool:
         if _is_safe_unittest_main_call(call):
             return True
     return False
+
+
 def _entrypoint_contract_signatures(tree: ast.Module) -> tuple[str, ...]:
     """Return ordered normalized top-level AST signatures for entrypoint compatibility."""
     return tuple(ast.dump(statement, include_attributes=False) for statement in tree.body)
-
 
 
 def _reviewed_direct_entrypoint_absolute_import(
@@ -943,37 +950,13 @@ def _approved_entrypoint_contract(
     base_relative: str | None = None,
 ) -> bool:
     """Return whether a changed facade and module entrypoint use one forwarding template."""
-    facade = root / relative
-    package = facade.with_suffix("")
-    module_entrypoint = package / "__main__.py"
-    if not facade.is_file() or not module_entrypoint.is_file():
-        return False
-    try:
-        facade_tree = _parse_source(facade.read_text(encoding="utf-8"), facade)
-        module_tree = _parse_source(module_entrypoint.read_text(encoding="utf-8"), module_entrypoint)
-    except (OSError, SyntaxError, ValueError):
-        return False
-    expected_body = None
-    if base_root is not None:
-        base_facade = base_root / (base_relative or relative)
-        if not _facade_already_has_standard_run_entrypoint(base_facade):
-            expected_body = _mechanically_transformed_entrypoint_body(base_facade)
-            if expected_body is None:
-                return False
-    return (
-        _facade_entrypoint_is_standard(
-            facade_tree,
-            relative,
-        )
-        and _entrypoint_block_is_standard(
-            module_tree,
-            import_level=1,
-            import_module="entrypoint",
-        )
-        and _approved_entrypoint_section(
-            package / "entrypoint.py",
-            expected_body=expected_body,
-        )
+    return _approved_entrypoint_contract_impl(
+        root,
+        relative,
+        base_root=base_root,
+        base_relative=base_relative,
+        entrypoint_block_is_standard=_entrypoint_block_is_standard,
+        approved_entrypoint_section=_approved_entrypoint_section,
     )
 
 
@@ -985,16 +968,11 @@ def _approved_initializer_contract(
     base_relative: str | None = None,
 ) -> bool:
     """Return whether the initializer is an exact trusted-base template match."""
-    if base_root is None:
-        return False
-    head_signature = _initializer_exact_identity_signature(root, relative)
-    base_signature = _initializer_exact_identity_signature(
-        base_root,
-        base_relative or relative,
-        allow_legacy_hook_removal=True,
+    return _approved_initializer_contract_impl(
+        root,
+        relative,
+        base_root=base_root,
+        base_relative=base_relative,
     )
-    if head_signature is None or base_signature is None:
-        return False
-    return _initializer_signatures_compatible(base_signature, head_signature)
 
-__all__ = ['_is_safe_unittest_main_call', '_is_unittest_module_entrypoint', '_entrypoint_contract_signatures', '_reviewed_direct_entrypoint_absolute_import', '_entrypoint_contract', '_SAFE_BUILTIN_NAMES', '_SAFE_IMPORT_ROOTS', '_absolute_import_resolves', '_contract_preserves_order', '_definitely_bound_names', '_initializer_is_additive', '_initializer_statements_match', '_initializer_bound_names', '_is_docstring_statement', '_literal_assignment_target_matches', '_literal_initializer_value', '_literal_truth_value', '_loaded_names', '_module_spec_exists', '_safe_annotation_expression', '_safe_class_definition', '_safe_definition_expression', '_safe_function_definition', '_safe_inert_initializer_condition', '_safe_initializer_addition', '_safe_runtime_expression', '_section_alias_bindings', '_section_tuple_names', '_sections_preserve_order', '_statement_bound_names', '_statement_deleted_names', '_statement_loaded_names', '_entrypoint_block_is_standard', '_approved_entrypoint_section', '_approved_entrypoint_contract', '_approved_initializer_contract', ]
+__all__ = ['_reviewed_direct_entrypoint_absolute_import', '_entrypoint_contract', '_SAFE_BUILTIN_NAMES', '_SAFE_IMPORT_ROOTS', '_absolute_import_resolves', '_contract_preserves_order', '_definitely_bound_names', '_initializer_is_additive', '_initializer_statements_match', '_initializer_bound_names', '_is_docstring_statement', '_literal_assignment_target_matches', '_literal_initializer_value', '_literal_truth_value', '_loaded_names', '_module_spec_exists', '_safe_annotation_expression', '_safe_class_definition', '_safe_definition_expression', '_safe_function_definition', '_safe_inert_initializer_condition', '_safe_initializer_addition', '_safe_runtime_expression', '_section_alias_bindings', '_section_tuple_names', '_sections_preserve_order', '_statement_bound_names', '_statement_deleted_names', '_entrypoint_block_is_standard', '_approved_entrypoint_section', '_approved_entrypoint_contract', '_approved_initializer_contract', ]

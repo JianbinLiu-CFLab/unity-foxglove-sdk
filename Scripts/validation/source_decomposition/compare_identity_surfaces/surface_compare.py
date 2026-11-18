@@ -625,6 +625,33 @@ def _compare_surfaces(
                     )
                 ):
                     errors.append(f"MODULE_ENTRYPOINT_CHANGED {relative}")
+        if not strict and base_root is not None and head_root is not None:
+            head_relative = (
+                _current_source_decomposition_relative(relative)
+                if migrated_relative
+                else relative
+            )
+            base_section = base_root / relative.removesuffix(".py") / "entrypoint.py"
+            head_section = head_root / head_relative.removesuffix(".py") / "entrypoint.py"
+            if base_section.is_file() and head_section.is_file() and base_section.read_bytes() != head_section.read_bytes():
+                try:
+                    base_facade_tree = _parse_source(
+                        (base_root / relative).read_text(encoding="utf-8"),
+                        base_root / relative,
+                    )
+                except (OSError, SyntaxError, ValueError):
+                    base_facade_tree = None
+                if (
+                    base_facade_tree is not None
+                    and _facade_entrypoint_is_standard(base_facade_tree, relative)
+                    and not _approved_entrypoint_contract(
+                        head_root,
+                        head_relative,
+                        base_root=base_root,
+                        base_relative=relative,
+                    )
+                ):
+                    errors.append(f"MODULE_ENTRYPOINT_CHANGED {relative}")
         if not strict and base_owner_map and head_owner_map:
             base_owners = dict(base_owner_map)
             head_owners = dict(head_owner_map)
