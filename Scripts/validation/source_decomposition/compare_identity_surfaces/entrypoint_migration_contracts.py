@@ -55,6 +55,13 @@ def _entrypoint_binding_is_zero_arg_callable(
     if resolved_target in seen:
         return False
     next_seen = seen | {resolved_target}
+    if any(
+        isinstance(node, ast.Name)
+        and node.id == name
+        and isinstance(node.ctx, (ast.Store, ast.Del))
+        for node in ast.walk(tree)
+    ):
+        return False
     if target.name == "__init__.py":
         sections = [
             section
@@ -171,6 +178,7 @@ def _new_module_entrypoint_is_canonical(path: Path) -> bool:
         return False
     package = path.parent
     binds_main = False
+    main_binding_count = 0
     for imported in body[:-1]:
         if not isinstance(imported, ast.ImportFrom) or imported.level != 1:
             continue
@@ -181,6 +189,7 @@ def _new_module_entrypoint_is_canonical(path: Path) -> bool:
                 if not _entrypoint_package_main_is_callable(package):
                     return False
                 binds_main = True
+                main_binding_count += 1
             elif alias.name == "main" and alias.asname is None:
                 target = (
                     package / "__init__.py"
@@ -194,7 +203,8 @@ def _new_module_entrypoint_is_canonical(path: Path) -> bool:
                 ):
                     return False
                 binds_main = True
-    return binds_main
+                main_binding_count += 1
+    return binds_main and main_binding_count == 1
 
 
 def _stable_entrypoint_exports(target: Path) -> set[str]:

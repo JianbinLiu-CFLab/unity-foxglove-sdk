@@ -241,6 +241,71 @@ class CanonicalEntrypointEdgeTests(CanonicalEntrypointFixtureMixin, unittest.Tes
             finally:
                 temporary.cleanup()
 
+    def test_new_entrypoint_rejects_main_shadowing_after_wildcard_import(self) -> None:
+        """A later explicit main import cannot shadow the package wildcard delegate."""
+        temporary, repository, base = self._create_repository(
+            extra_source="def main():\n    return 1\n\n__all__ = ['main']\n",
+        )
+        try:
+            entrypoint = repository / "Scripts/smoke/fixture/__main__.py"
+            entrypoint.unlink()
+            base = self._commit(repository, "remove base module entrypoint")
+            entrypoint.write_text(
+                "from . import *\n"
+                "from .extra import main\n"
+                "if __name__ == '__main__':\n"
+                "    raise SystemExit(main())\n",
+                encoding="utf-8",
+            )
+            head = self._commit(repository, "shadow wildcard main")
+            self.assertEqual(
+                1,
+                compare_identity_surfaces.compare_revisions(
+                    repository,
+                    base,
+                    head,
+                    strict=False,
+                ),
+            )
+        finally:
+            temporary.cleanup()
+
+    def test_new_entrypoint_rejects_conditional_main_rebinding(self) -> None:
+        """A conditional main rebinding cannot pass callable export proof."""
+        temporary, repository, base = self._create_repository(
+            live_source=(
+                "def main():\n"
+                "    return 0\n"
+                "\n"
+                "if True:\n"
+                "    main = 1\n"
+                "\n"
+                "__all__ = ['main']\n"
+            )
+        )
+        try:
+            entrypoint = repository / "Scripts/smoke/fixture/__main__.py"
+            entrypoint.unlink()
+            base = self._commit(repository, "remove base module entrypoint")
+            entrypoint.write_text(
+                "from . import *\n"
+                "if __name__ == '__main__':\n"
+                "    raise SystemExit(main())\n",
+                encoding="utf-8",
+            )
+            head = self._commit(repository, "rebind conditional main")
+            self.assertEqual(
+                1,
+                compare_identity_surfaces.compare_revisions(
+                    repository,
+                    base,
+                    head,
+                    strict=False,
+                ),
+            )
+        finally:
+            temporary.cleanup()
+
     def test_new_main_entrypoint_is_compatible_without_a_base_entrypoint(self) -> None:
         """A newly added module entrypoint may dispatch the canonical package main."""
         temporary, repository, base = self._create_repository()
