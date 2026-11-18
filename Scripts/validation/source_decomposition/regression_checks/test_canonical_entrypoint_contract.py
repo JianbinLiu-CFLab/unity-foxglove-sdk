@@ -93,6 +93,30 @@ class CanonicalEntrypointContractTests(CanonicalEntrypointFixtureMixin, unittest
         finally:
             temporary.cleanup()
 
+    def test_standard_migration_rejects_unresolved_imported_delegate(self) -> None:
+        """A section import without a target binding cannot authorize the delegate."""
+        temporary, repository, base = self._create_repository(
+            live_source="from .extra import main\n__all__ = ['main']\n",
+            extra_source="VALUE = 0\n__all__ = []\n",
+        )
+        try:
+            self._migrate_to_standard_entrypoint(repository)
+            head = self._commit(repository, "migrate unresolved imported delegate")
+            with (
+                compare_identity_surfaces._revision_checkout(repository, base) as base_root,
+                compare_identity_surfaces._revision_checkout(repository, head) as head_root,
+            ):
+                self.assertFalse(
+                    entrypoint_contracts._approved_entrypoint_contract(
+                        head_root,
+                        "Scripts/smoke/fixture.py",
+                        base_root=base_root,
+                        base_relative="Scripts/smoke/fixture.py",
+                    )
+                )
+        finally:
+            temporary.cleanup()
+
     def test_standard_migration_preserves_exception_exit_contract(self) -> None:
         """The standard wrapper mechanically preserves legacy exit and stderr handling."""
         facade_source = (

@@ -412,7 +412,11 @@ def _is_phase121_configuration_path(
 
 def _entrypoint_section_exports(section: Path) -> set[str] | None:
     """Return statically proven exports from one unchanged source section."""
-    tree = _parse_source(section.read_text(encoding="utf-8"), section)
+    try:
+        tree = _parse_source(section.read_text(encoding="utf-8"), section)
+        _relative_import_contract(tree, section.parent, section)
+    except (OSError, SyntaxError, ValueError):
+        return None
     bindings = _unconditional_top_level_bindings(tree)
     assignments = [
         node
@@ -488,7 +492,12 @@ def _entrypoint_module_bindings(package: Path, module: str) -> set[str]:
         target.resolve().relative_to(package.resolve())
     except (OSError, ValueError):
         return set()
-    return _unconditional_top_level_names(_parse_source(target.read_text(encoding="utf-8"), target))
+    try:
+        tree = _parse_source(target.read_text(encoding="utf-8"), target)
+        _relative_import_contract(tree, package, target)
+    except (OSError, SyntaxError, ValueError):
+        return set()
+    return _unconditional_top_level_names(tree)
 
 
 def _dynamic_initializer_exports_are_trusted(
