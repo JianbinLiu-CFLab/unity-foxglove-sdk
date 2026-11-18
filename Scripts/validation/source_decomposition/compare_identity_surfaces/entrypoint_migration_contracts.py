@@ -4,7 +4,7 @@ from Scripts.validation.source_decomposition.compare_identity_surfaces.surface_c
     _entrypoint_module_bindings,
     _entrypoint_section_exports,
     _entrypoint_function_accepts_positional,
-    _absolute_import_resolves_without_execution,
+    _static_import_contract_is_safe,
     _function_signature_is_inert,
     _public_globals_listcomp,
     _unconditional_top_level_bindings,
@@ -45,14 +45,8 @@ def _entrypoint_binding_is_zero_arg_callable(
         return False
     next_seen = seen | {resolved_target}
     target_package = target.parent
-    for imported in tree.body:
-        if isinstance(imported, ast.Import) or (
-            isinstance(imported, ast.ImportFrom)
-            and imported.level == 0
-            and imported.module != "__future__"
-        ):
-            if not _absolute_import_resolves_without_execution(imported, target):
-                return False
+    if not _static_import_contract_is_safe(target):
+        return False
     if target.name != "__init__.py" and _entrypoint_section_exports(target) is None:
         return False
     if any(

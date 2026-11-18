@@ -11,18 +11,6 @@ _STATIC_EXTERNAL_IMPORT_ROOTS = frozenset({
 })
 
 
-def _static_scripts_module_exists(module: str, source_path: Path) -> bool:
-    """Return whether a repository-local Scripts module exists without importing it."""
-    scripts_root = next(
-        (candidate for candidate in (source_path, *source_path.parents) if candidate.name == "Scripts"),
-        None,
-    )
-    if scripts_root is None or not module.startswith("Scripts."):
-        return False
-    target = scripts_root.joinpath(*module.split(".")[1:])
-    return target.with_suffix(".py").is_file() or (target / "__init__.py").is_file()
-
-
 def _absolute_import_resolves_without_execution(
     node: ast.Import | ast.ImportFrom,
     source_path: Path,
@@ -33,7 +21,6 @@ def _absolute_import_resolves_without_execution(
         return all(
             (alias.name.split(".", 1)[0] in stdlib_roots)
             or (alias.name.split(".", 1)[0] in _STATIC_EXTERNAL_IMPORT_ROOTS)
-            or _static_scripts_module_exists(alias.name, source_path)
             for alias in node.names
         )
     if node.level or not node.module:
@@ -42,8 +29,64 @@ def _absolute_import_resolves_without_execution(
     return (
         root in stdlib_roots
         or root in _STATIC_EXTERNAL_IMPORT_ROOTS
-        or _static_scripts_module_exists(node.module, source_path)
     )
+
+
+def _static_import_contract_is_safe(
+    source_path: Path,
+    seen: frozenset[Path] = frozenset(),
+) -> bool:
+    """Validate local relative imports recursively without executing code."""
+    try:
+        resolved = source_path.resolve()
+        tree = _parse_source(source_path.read_text(encoding="utf-8"), source_path)
+    except (OSError, SyntaxError, ValueError):
+        return False
+    if resolved in seen:
+        return True
+    next_seen = seen | {resolved}
+    package = source_path.parent
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            if not _absolute_import_resolves_without_execution(node, source_path):
+                return False
+            continue
+        if not isinstance(node, ast.ImportFrom):
+            continue
+        if not node.level:
+            if node.module != "__future__" and not _absolute_import_resolves_without_execution(node, source_path):
+                return False
+            continue
+        if node.level != 1:
+            return False
+        targets: list[Path] = []
+        if node.module:
+            target_base = package.joinpath(*node.module.split("."))
+            target = (
+                target_base.with_suffix(".py")
+                if target_base.with_suffix(".py").is_file()
+                else target_base / "__init__.py"
+            )
+            targets.append(target)
+        else:
+            for alias in node.names:
+                if alias.name == "*":
+                    targets = [package / "__init__.py"]
+                    break
+                candidate = package / f"{alias.name}.py"
+                candidate_package = package / alias.name / "__init__.py"
+                if candidate.is_file():
+                    targets.append(candidate)
+                elif candidate_package.is_file():
+                    targets.append(candidate_package)
+                else:
+                    targets = [package / "__init__.py"]
+                    break
+        if any(not target.is_file() for target in targets):
+            return False
+        if any(not _static_import_contract_is_safe(target, next_seen) for target in targets):
+            return False
+    return True
 
 
 def _unconditional_top_level_bindings(tree: ast.Module) -> dict[str, ast.AST]:
@@ -476,14 +519,8 @@ def _entrypoint_section_exports(section: Path) -> set[str] | None:
         _relative_import_contract(tree, section.parent, section)
     except (OSError, SyntaxError, ValueError):
         return None
-    for imported in tree.body:
-        if isinstance(imported, ast.Import) or (
-            isinstance(imported, ast.ImportFrom)
-            and imported.level == 0
-            and imported.module != "__future__"
-        ):
-            if not _absolute_import_resolves_without_execution(imported, section):
-                return None
+    if not _static_import_contract_is_safe(section):
+        return None
     bindings = _unconditional_top_level_bindings(tree)
     assignments = [
         node
@@ -537,14 +574,8 @@ def _entrypoint_initializer_exports(
     if not initializer.is_file():
         return None
     tree = _parse_source(initializer.read_text(encoding="utf-8"), initializer)
-    for imported in tree.body:
-        if isinstance(imported, ast.Import) or (
-            isinstance(imported, ast.ImportFrom)
-            and imported.level == 0
-            and imported.module != "__future__"
-        ):
-            if not _absolute_import_resolves_without_execution(imported, initializer):
-                return None
+    if not _static_import_contract_is_safe(initializer):
+        return None
     assignments = [node for node in tree.body if isinstance(node, ast.Assign) and any(
         isinstance(target, ast.Name) and target.id == "__all__" for target in node.targets
     )]

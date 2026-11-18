@@ -361,6 +361,85 @@ class CanonicalEntrypointEdgeTests(CanonicalEntrypointFixtureMixin, unittest.Tes
         finally:
             temporary.cleanup()
 
+    def test_new_entrypoint_rejects_nested_import_failure(self) -> None:
+        """A nested initializer import failure cannot be hidden by a direct main binding."""
+        temporary, repository, base = self._create_repository(
+            live_source="from .sub import main\n__all__ = ['main']\n",
+        )
+        try:
+            nested = repository / "Scripts/smoke/fixture/sub"
+            nested.mkdir()
+            (nested / "__init__.py").write_text(
+                "from .inner import helper\n"
+                "def main():\n"
+                "    return 0\n\n"
+                "__all__ = ['main']\n",
+                encoding="utf-8",
+            )
+            (nested / "inner.py").write_text(
+                "import definitely_missing_xyz\n"
+                "def helper():\n"
+                "    return 0\n\n"
+                "__all__ = ['helper']\n",
+                encoding="utf-8",
+            )
+            entrypoint = repository / "Scripts/smoke/fixture/__main__.py"
+            entrypoint.unlink()
+            base = self._commit(repository, "remove base module entrypoint")
+            entrypoint.write_text(
+                "from . import *\n"
+                "if __name__ == '__main__':\n"
+                "    raise SystemExit(main())\n",
+                encoding="utf-8",
+            )
+            head = self._commit(repository, "add nested import entrypoint")
+            with compare_identity_surfaces._revision_checkout(repository, head) as head_root:
+                self.assertFalse(
+                    entrypoint_migration_contracts._new_module_entrypoint_is_canonical(
+                        head_root / "Scripts/smoke/fixture/__main__.py"
+                    )
+                )
+        finally:
+            temporary.cleanup()
+
+    def test_main_block_only_rejects_unreviewed_scripts_import(self) -> None:
+        """Repository-local absolute modules require an explicit reviewed contract."""
+        temporary, repository, base = self._create_repository(
+            live_source=(
+                "import Scripts.evil\n\n"
+                "def main():\n"
+                "    return 0\n\n"
+                "__all__ = ['main']\n"
+            )
+        )
+        try:
+            (repository / "Scripts/evil.py").write_text(
+                "print('unexpected import')\n",
+                encoding="utf-8",
+            )
+            entrypoint = repository / "Scripts/smoke/fixture/__main__.py"
+            entrypoint.write_text(
+                entrypoint.read_text(encoding="utf-8")
+                + "if __name__ == '__main__':\n"
+                + "    raise SystemExit(main())\n",
+                encoding="utf-8",
+            )
+            head = self._commit(repository, "append main block")
+            with (
+                compare_identity_surfaces._revision_checkout(repository, base) as base_root,
+                compare_identity_surfaces._revision_checkout(repository, head) as head_root,
+            ):
+                self.assertFalse(
+                    entrypoint_migration_contracts._approved_main_block_only_contract(
+                        base_root,
+                        head_root,
+                        "Scripts/smoke/fixture.py",
+                        "Scripts/smoke/fixture.py",
+                    )
+                )
+        finally:
+            temporary.cleanup()
+
     def test_standard_migration_rejects_symlinked_entrypoint_section(self) -> None:
         """A symlink cannot provide the standard forwarding section implementation."""
         temporary, repository, base = self._create_repository()
