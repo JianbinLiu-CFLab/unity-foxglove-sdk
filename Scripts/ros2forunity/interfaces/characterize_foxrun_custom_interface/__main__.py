@@ -5,4 +5,10 @@ import sys
 from . import main
 
 if __name__ == "__main__":
-    raise SystemExit(main(sys.argv[1:]))
+    try:
+        raise SystemExit(main())
+    except KeyboardInterrupt:
+        raise SystemExit(130)
+    except Exception as exc:
+        print(f"[phase181-characterization] FAIL: {exc}", file=sys.stderr)
+        raise SystemExit(1)
