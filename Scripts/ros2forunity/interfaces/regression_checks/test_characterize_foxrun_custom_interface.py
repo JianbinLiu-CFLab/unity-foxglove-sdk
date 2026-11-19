@@ -35,6 +35,57 @@ class CustomInterfaceCharacterizationTests(unittest.TestCase):
         self.assertTrue(package.is_dir())
         self.assertTrue((package / "__main__.py").is_file())
 
+    def test_module_entrypoint_matches_facade_failure_exit_contract(self) -> None:
+        """The characterization module entrypoint preserves the facade failure contract."""
+        import subprocess
+
+        script = r'''
+import importlib
+import runpy
+import sys
+from unittest import mock
+
+package_name = sys.argv[1]
+case = sys.argv[2]
+package = importlib.import_module(package_name)
+cli = importlib.import_module(package_name + ".cli")
+sys.argv = [package_name]
+
+def effect(*args, **kwargs):
+    if case == "return":
+        return 3
+    if case == "keyboard":
+        raise KeyboardInterrupt
+    raise RuntimeError("boom")
+
+package_main = mock.Mock(side_effect=effect)
+cli_main = mock.Mock(side_effect=effect)
+try:
+    with mock.patch.object(package, "main", package_main):
+        with mock.patch.object(cli, "main", cli_main):
+            runpy.run_module(package_name + ".__main__", run_name="__main__")
+except BaseException:
+    print("PACKAGE_CALLS=" + repr(package_main.call_args_list))
+    print("CLI_CALLS=" + repr(cli_main.call_args_list))
+    raise
+'''
+        package_name = "Scripts.ros2forunity.interfaces.characterize_foxrun_custom_interface"
+        for case, expected_return in (("return", 3), ("keyboard", 130), ("runtime", 1)):
+            with self.subTest(case=case):
+                completed = subprocess.run(
+                    [sys.executable, "-c", script, package_name, case],
+                    cwd=Path(__file__).resolve().parents[4],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    timeout=60,
+                )
+                self.assertEqual(expected_return, completed.returncode)
+                self.assertIn("PACKAGE_CALLS=[call()]", completed.stdout)
+                self.assertIn("CLI_CALLS=[]", completed.stdout)
+                if case == "runtime":
+                    self.assertIn("[phase181-characterization] FAIL: boom", completed.stderr)
+
     def test_package_reload_preserves_characterize_submodule(self) -> None:
         """Reloading the facade must not replace the characterize submodule with its function."""
         self.assertEqual("module", type(sys.modules[characterization.__name__ + ".characterization_core"]).__name__)

@@ -74,6 +74,58 @@ class BridgePhaseTests:
         self.assertTrue(package.is_dir())
         self.assertTrue((package / "__main__.py").is_file())
 
+    def test_phase160_module_entrypoint_matches_facade_failure_exit_contract(self) -> None:
+        """The Phase160 module entrypoint preserves the facade failure contract."""
+        import subprocess
+
+        script = r'''
+import importlib
+import runpy
+import sys
+from unittest import mock
+
+package_name = sys.argv[1]
+case = sys.argv[2]
+package = importlib.import_module(package_name)
+cli = importlib.import_module(package_name + ".cli")
+sys.argv = [package_name]
+
+def effect(*args, **kwargs):
+    if case == "return":
+        return 3
+    if case == "keyboard":
+        raise KeyboardInterrupt
+    raise RuntimeError("boom")
+
+package_main = mock.Mock(side_effect=effect)
+cli_main = mock.Mock(side_effect=effect)
+try:
+    with mock.patch.object(package, "main", package_main):
+        with mock.patch.object(cli, "main", cli_main):
+            runpy.run_module(package_name + ".__main__", run_name="__main__")
+except BaseException:
+    print("PACKAGE_CALLS=" + repr(package_main.call_args_list))
+    print("CLI_CALLS=" + repr(cli_main.call_args_list))
+    raise
+'''
+        package_name = "Scripts.smoke.ros2.phase160_humble_lidar_deskew_acceptance"
+        for case, expected_return in (("return", 3), ("keyboard", 130), ("runtime", 1)):
+            with self.subTest(case=case):
+                completed = subprocess.run(
+                    [sys.executable, "-c", script, package_name, case],
+                    cwd=ROOT,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    timeout=60,
+                )
+                self.assertEqual(expected_return, completed.returncode)
+                self.assertIn("PACKAGE_CALLS=[call([])]", completed.stdout)
+                self.assertIn("CLI_CALLS=[]", completed.stdout)
+                if case == "runtime":
+                    self.assertIn("[phase160-humble] FAIL: boom", completed.stderr)
+                    self.assertIn("Check Unity Console", completed.stderr)
+
     def test_phase138h_t_field_requires_exact_datatype_match(self) -> None:
         """PointCloud2 t-field validation should not accept substring datatype matches."""
         module = load_smoke_module("phase138h_t_field_under_test", "ros2/phase138h_pointcloud2_t_field_ros2_acceptance.py")
