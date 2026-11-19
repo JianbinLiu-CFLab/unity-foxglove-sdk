@@ -106,6 +106,8 @@ class LoaderIsolationTests(IdentityToolingBase):
                 for name, module in sys.modules.items()
                 if name == "Scripts" or name.startswith("Scripts.")
             }
+            missing = object()
+            previous_fixture = sys.modules.get("phase_namespace_fixture", missing)
             for name in tuple(saved_modules):
                 sys.modules.pop(name, None)
             sys.path.insert(0, str(root))
@@ -128,6 +130,9 @@ class LoaderIsolationTests(IdentityToolingBase):
                 for name in tuple(sys.modules):
                     if name == "Scripts" or name.startswith("Scripts."):
                         sys.modules.pop(name, None)
+                sys.modules.pop("phase_namespace_fixture", None)
+                if previous_fixture is not missing:
+                    sys.modules["phase_namespace_fixture"] = previous_fixture
                 sys.modules.update(saved_modules)
 
     def test_load_fresh_module_restores_path_for_import_setup_failures(self) -> None:
