@@ -325,6 +325,17 @@ class CanonicalEntrypointEdgeTests(CanonicalEntrypointFixtureMixin, unittest.Tes
                 base_root / relative_package,
                 ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
             )
+            import ast
+
+            base_main = base_root / relative_package / "__main__.py"
+            base_tree = ast.parse(base_main.read_text(encoding="utf-8"))
+            base_main.write_text(
+                ast.unparse(
+                    ast.Module(body=base_tree.body[:-1], type_ignores=[])
+                )
+                + "\n",
+                encoding="utf-8",
+            )
             head_root = base_root / "head"
             shutil.copytree(base_root / "Scripts", head_root / "Scripts")
             module_entrypoint = head_root / relative_package / "__main__.py"
