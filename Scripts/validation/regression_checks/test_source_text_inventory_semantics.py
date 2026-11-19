@@ -48,6 +48,8 @@ class SourceTextInventorySemanticTests(_FixtureSupport, unittest.TestCase):
             '    Ci("--phase-renamed", "renamed", RenamedValidation.Validate, evidence: ValidationEvidence.Behavior),\n'
             '    Ci("--phase-enclosing", "enclosing", EnclosingValidation.Validate, evidence: ValidationEvidence.Behavior),\n'
             '    Ci("--phase-other", "other", OtherValidation.Validate, includeInDefault: false, evidence: ValidationEvidence.Behavior),\n'
+            '    Ci("--phase-multi-a", "multi a", MultiValidation.Validate, evidence: ValidationEvidence.Behavior),\n'
+            '    Ci("--phase-multi-b", "multi b", MultiValidation.ValidateOther, evidence: ValidationEvidence.Behavior),\n'
             "}\n",
             encoding="utf-8",
         )
@@ -66,6 +68,10 @@ class SourceTextInventorySemanticTests(_FixtureSupport, unittest.TestCase):
             "Tests/Runtime/InactiveDeclaration.cs": "#if false\npublic static partial class PartialValidation\n#else\npublic static class InactiveHolder\n#endif\n{ " + probe + " }\n",
             "Tests/Runtime/AmbiguousTypes.cs": "public static class RenamedValidation { " + probe + " }\npublic static class EnclosingValidation { " + probe + " }\n",
             "Tests/Unit/PartialHelper.cs": "public static partial class PartialValidation { " + probe + " }\n",
+            "Tests/Runtime/MultiValidation.cs": "namespace Fixture.Tests\n{\n    public static partial class MultiValidation { " + probe + " }\n}\n",
+            "Tests/Runtime/Decomposed/MultiValidation/VerifyMulti.cs": "namespace Fixture.Tests\n{\n    public static partial class MultiValidation { " + probe + " }\n}\n",
+            "Tests/Runtime/VerbatimDirective.cs": "public static class VerbatimHolder { const string Text = @\"\n#if false\n\"; " + probe + " }\nnamespace Fixture.Tests\n{\n    public static partial class PartialValidation { " + probe + " }\n}\n",
+            "Tests/Runtime/CommentDirective.cs": "/*\n#if false\n*/\nnamespace Fixture.Tests\n{\n    public static partial class PartialValidation { " + probe + " }\n}\n",
         }
         for relative, text in files.items():
             path = root / "Packages/fixture" / relative
@@ -96,6 +102,10 @@ class SourceTextInventorySemanticTests(_FixtureSupport, unittest.TestCase):
             "Tests/Runtime/InactiveDeclaration.cs": {""},
             "Tests/Runtime/AmbiguousTypes.cs": {""},
             "Tests/Unit/PartialHelper.cs": {""},
+            "Tests/Runtime/MultiValidation.cs": {"--phase-multi-a"},
+            "Tests/Runtime/Decomposed/MultiValidation/VerifyMulti.cs": {""},
+            "Tests/Runtime/VerbatimDirective.cs": {"--phase-partial"},
+            "Tests/Runtime/CommentDirective.cs": {"--phase-partial"},
         }
         with tempfile.TemporaryDirectory() as directory:
             root = self._declared_type_fixture(directory)
