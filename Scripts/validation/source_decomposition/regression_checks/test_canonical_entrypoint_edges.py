@@ -540,6 +540,12 @@ class CanonicalEntrypointEdgeTests(CanonicalEntrypointFixtureMixin, unittest.Tes
         cases = (
             ("missing sys", "from . import main\n"),
             ("missing main", "import sys\n"),
+            ("rebound main", "import sys\nfrom . import main\nmain = None\n"),
+            ("deleted main", "import sys\nfrom . import main\ndel main\n"),
+            (
+                "defined main",
+                "import sys\nfrom . import main\ndef main():\n    return 0\n",
+            ),
         )
         for name, preamble in cases:
             with self.subTest(name=name):
