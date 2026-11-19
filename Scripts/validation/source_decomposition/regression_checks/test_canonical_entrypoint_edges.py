@@ -520,6 +520,68 @@ class CanonicalEntrypointEdgeTests(CanonicalEntrypointFixtureMixin, unittest.Tes
                 finally:
                     temporary.cleanup()
 
+    def test_module_entrypoint_full_guard_rejects_unbound_facade_guard_names(self) -> None:
+        """Every non-builtin name used by the trusted guard must be imported by the package."""
+        facade_source = (
+            "from __future__ import annotations\n"
+            "if __package__:\n"
+            "    from .fixture import *\n"
+            "else:\n"
+            "    from fixture import *\n"
+            "if __name__ == '__main__':\n"
+            "    try:\n"
+            "        raise SystemExit(main(sys.argv[1:]))\n"
+            "    except KeyboardInterrupt:\n"
+            "        raise SystemExit(130)\n"
+            "    except Exception as exc:\n"
+            "        print(f'[fixture] FAIL: {exc}', file=sys.stderr)\n"
+            "        raise SystemExit(1)\n"
+        )
+        cases = (
+            ("missing sys", "from . import main\n"),
+            ("missing main", "import sys\n"),
+        )
+        for name, preamble in cases:
+            with self.subTest(name=name):
+                base_main = (
+                    "from __future__ import annotations\n"
+                    + preamble
+                    + "if __name__ == '__main__':\n"
+                    + "    raise SystemExit(main())\n"
+                )
+                head_main = base_main.replace(
+                    "    raise SystemExit(main())\n",
+                    "    try:\n"
+                    "        raise SystemExit(main(sys.argv[1:]))\n"
+                    "    except KeyboardInterrupt:\n"
+                    "        raise SystemExit(130)\n"
+                    "    except Exception as exc:\n"
+                    "        print(f'[fixture] FAIL: {exc}', file=sys.stderr)\n"
+                    "        raise SystemExit(1)\n",
+                )
+                temporary, repository, base = self._create_repository(
+                    facade_source=facade_source,
+                    main_source=base_main,
+                    live_source="def main(argv=None):\n    return 0\n\n__all__ = ['main']\n",
+                )
+                try:
+                    (repository / "Scripts/smoke/fixture/__main__.py").write_text(
+                        head_main,
+                        encoding="utf-8",
+                    )
+                    self._commit(repository, f"reject {name} facade guard name")
+                    with compare_identity_surfaces._revision_checkout(repository, base) as base_root:
+                        self.assertFalse(
+                            entrypoint_migration_contracts._approved_module_entrypoint_guard_contract(
+                                base_root,
+                                repository,
+                                "Scripts/smoke/fixture.py",
+                                "Scripts/smoke/fixture.py",
+                            )
+                        )
+                finally:
+                    temporary.cleanup()
+
     def test_module_entrypoint_full_guard_rejects_mismatch_and_symlink(self) -> None:
         """A mirrored module guard must match the trusted guard and regular package files."""
         facade_source = (
