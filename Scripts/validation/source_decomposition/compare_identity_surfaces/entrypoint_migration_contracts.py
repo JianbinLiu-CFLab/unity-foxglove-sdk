@@ -414,10 +414,10 @@ def _approved_module_entrypoint_guard_contract(
     head_relative: str,
 ) -> bool:
     """Return whether a package guard exactly mirrors its trusted facade guard."""
-    if base_relative != head_relative:
+    if Path(base_relative).name != Path(head_relative).name:
         return False
-    base_facade = base_root / base_relative
-    head_facade = head_root / head_relative
+    base_facade = _resolve_source_decomposition_path(base_root, base_relative)
+    head_facade = _resolve_source_decomposition_path(head_root, head_relative)
     base_package = base_facade.with_suffix("")
     head_package = head_facade.with_suffix("")
     if (
@@ -529,14 +529,32 @@ def _approved_module_entrypoint_guard_contract(
     }
     facade_bound_names = set()
     facade_loaded_names = set()
+    facade_uses_sys = False
+    facade_has_local_sys_binding = False
     for node in ast.walk(facade_guard):
         if isinstance(node, ast.Name):
             if isinstance(node.ctx, ast.Load):
                 facade_loaded_names.add(node.id)
+                facade_uses_sys |= node.id in {"sys", "_phase192_sys"}
             elif isinstance(node.ctx, ast.Store):
                 facade_bound_names.add(node.id)
+                facade_has_local_sys_binding |= node.id in {"sys", "_phase192_sys"}
         elif isinstance(node, ast.ExceptHandler) and node.name:
             facade_bound_names.add(node.name)
+            facade_has_local_sys_binding |= node.name in {"sys", "_phase192_sys"}
+        elif isinstance(node, ast.arg):
+            facade_has_local_sys_binding |= node.arg in {"sys", "_phase192_sys"}
+        elif isinstance(node, ast.alias):
+            facade_has_local_sys_binding |= (
+                node.asname in {"sys", "_phase192_sys"}
+                or (node.asname is None and node.name.split(".", 1)[0] in {"sys", "_phase192_sys"})
+            )
+        elif isinstance(node, (ast.AsyncFunctionDef, ast.ClassDef, ast.FunctionDef)):
+            facade_has_local_sys_binding |= node.name in {"sys", "_phase192_sys"}
+        elif isinstance(node, (ast.MatchAs, ast.MatchStar)):
+            facade_has_local_sys_binding |= node.name in {"sys", "_phase192_sys"}
+    if facade_uses_sys and facade_has_local_sys_binding:
+        return False
     required_guard_names = {
         "sys" if name == "_phase192_sys" else name
         for name in facade_loaded_names - facade_bound_names - allowed_guard_names
