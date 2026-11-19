@@ -145,6 +145,14 @@ def load_fresh_module(module_name: str, facade: Path) -> ModuleType:
     package_dir = facade.with_suffix("")
     saved_modules: dict[str, ModuleType] = {}
     initial_module_names = set(sys.modules)
+
+    def remove_module_tree(name: str) -> None:
+        """Save and remove a cached module together with its descendants."""
+        for candidate in tuple(sys.modules):
+            if candidate == name or candidate.startswith(name + "."):
+                saved_modules.setdefault(candidate, sys.modules[candidate])
+                sys.modules.pop(candidate, None)
+
     target_scripts_prefix: str | None = None
     try:
         relative_facade = facade.relative_to(source_root)
@@ -291,13 +299,11 @@ def load_fresh_module(module_name: str, facade: Path) -> ModuleType:
                     or loaded_name.startswith(target_scripts_prefix + ".")
                 )
             ):
-                saved_modules[loaded_name] = loaded_module
-                sys.modules.pop(loaded_name, None)
+                remove_module_tree(loaded_name)
                 continue
             remove = should_remove(loaded_name, loaded_module)
             if remove:
-                saved_modules[loaded_name] = loaded_module
-                sys.modules.pop(loaded_name, None)
+                remove_module_tree(loaded_name)
         importlib.invalidate_caches()
         spec = importlib.util.spec_from_file_location(module_name, facade)
         if spec is None or spec.loader is None:
