@@ -91,9 +91,10 @@ def _validate_existing_local_entries(
     dependencies: Mapping[str, object],
     manifest_parent: Path,
     package_root: Path,
-) -> None:
+) -> dict[str, dict]:
     """Reject forged local-looking entries before any manifest mutation."""
     package_root = package_root.resolve()
+    existing: dict[str, dict] = {}
     for package_id, value in dependencies.items():
         if not isinstance(package_id, str) or not package_id.startswith(LOCAL_PACKAGE_PREFIX):
             continue
@@ -116,6 +117,8 @@ def _validate_existing_local_entries(
             raise ManifestCompositionError(f"invalid local package manifest: {package_id}") from exc
         if not isinstance(package_data, dict) or package_data.get("name") != package_id:
             raise ManifestCompositionError(f"local package name does not match entry: {package_id}")
+        existing[package_id] = package_data
+    return existing
 
 
 def _validate_selected_packages(
@@ -139,6 +142,27 @@ def _validate_selected_packages(
                 raise ManifestCompositionError(f"declared local dependency is absent: {package_id} -> {dependency}")
             if version != package_data[dependency].get("version"):
                 raise ManifestCompositionError(f"declared local dependency version mismatch: {package_id} -> {dependency}")
+
+
+def _should_remove_existing_package(
+    package_id: str,
+    package_data: Mapping[str, object],
+    selected: set[str],
+    selected_data: Mapping[str, Mapping[str, object]],
+) -> bool:
+    """Return whether an existing local package conflicts with the chosen profile."""
+    if package_id.startswith(RUNTIME_PREFIX):
+        return package_id not in {name for name in selected if name.startswith(RUNTIME_PREFIX)}
+    if package_id.startswith(TYPESUPPORT_PREFIX):
+        return package_id not in {name for name in selected if name.startswith(TYPESUPPORT_PREFIX)}
+    conflicts = package_data.get("unity2foxgloveConflicts", ())
+    if isinstance(conflicts, list) and selected.intersection(conflicts):
+        return True
+    for data in selected_data.values():
+        selected_conflicts = data.get("unity2foxgloveConflicts", ())
+        if isinstance(selected_conflicts, list) and package_id in selected_conflicts:
+            return True
+    return False
 
 
 def _line_ending(raw: bytes) -> bytes:
@@ -200,10 +224,10 @@ def compose_manifest(
 
     package_root = Path(package_root).expanduser().resolve()
     dependencies = document["dependencies"]
-    _validate_existing_local_entries(dependencies, manifest_path.parent, package_root)
+    existing_local = _validate_existing_local_entries(dependencies, manifest_path.parent, package_root)
     selected = _selected_packages(profile, distro)
-    package_data = {package_id: _load_package(package_root, package_id) for package_id in selected}
-    _validate_selected_packages(selected, package_data)
+    selected_data = {package_id: _load_package(package_root, package_id) for package_id in selected}
+    _validate_selected_packages(selected, selected_data)
     if any(package_id.startswith(RUNTIME_PREFIX) for package_id in selected):
         legacy_runtime = project / "Assets" / "Ros2ForUnity"
         if legacy_runtime.exists():
@@ -214,10 +238,9 @@ def compose_manifest(
     selected_set = set(selected)
     removed = [
         package_id
-        for package_id in list(updated_dependencies)
-        if isinstance(package_id, str)
-        and package_id.startswith(LOCAL_PACKAGE_PREFIX)
-        and package_id not in selected_set
+        for package_id, package_data in existing_local.items()
+        if package_id not in selected_set
+        and _should_remove_existing_package(package_id, package_data, selected_set, selected_data)
     ]
     for package_id in removed:
         del updated_dependencies[package_id]

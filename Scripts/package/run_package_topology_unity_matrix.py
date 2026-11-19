@@ -49,15 +49,18 @@ def _new_project(root: Path, name: str) -> Path:
 def _run_unity(unity: Path, project: Path, log_path: Path, timeout_seconds: int) -> dict[str, object]:
     """Run Unity in batch mode and classify package or compiler diagnostics."""
     log_path.parent.mkdir(parents=True, exist_ok=True)
+    repository_root = Path(__file__).resolve().parents[2]
+    project_argument = os.path.relpath(project, repository_root).replace(os.sep, "/")
+    log_argument = os.path.relpath(log_path, repository_root).replace(os.sep, "/")
     command = [
         str(unity),
         "-batchmode",
         "-nographics",
         "-quit",
         "-projectPath",
-        project.as_posix(),
+        project_argument,
         "-logFile",
-        log_path.as_posix(),
+        log_argument,
     ]
     timed_out = False
     try:

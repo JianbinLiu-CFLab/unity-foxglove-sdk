@@ -85,6 +85,19 @@ class ComposeUnityManifestTests(unittest.TestCase):
             self.assertIn("dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.jazzy.win64", dependencies)
             self.assertEqual("1.0.0", dependencies["com.unity.modules.jsonserialize"])
 
+    def test_preserves_nonconflicting_first_party_package(self) -> None:
+        """A non-conflicting bridge package remains available to demo assets."""
+        with self._project() as project:
+            manifest_path = project / "Packages" / "manifest.json"
+            manifest = self._read_manifest(project)
+            manifest["dependencies"]["dev.unity2foxglove.ros2bridge"] = (
+                "file:../../../../../Packages/dev.unity2foxglove.ros2bridge"
+            )
+            manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+            result = self._run(project, "native-custom", "jazzy")
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertIn("dev.unity2foxglove.ros2bridge", self._read_manifest(project)["dependencies"])
+
     def test_rejects_external_fake_local_entry_without_writing(self) -> None:
         """A local-looking package entry outside the repository is rejected before writing."""
         with self._project() as project:
