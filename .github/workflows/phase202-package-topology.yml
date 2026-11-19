@@ -82,7 +82,7 @@ jobs:
         if: github.event.inputs.mode == 'resolution' || github.event.inputs.mode == 'all'
         shell: pwsh
         run: >-
-          python -B -m Scripts.package.run_phase202_unity_package_matrix
+          python -B -m Scripts.package.run_package_topology_unity_matrix
           --mode resolution
           --output build/phase202/unity/resolution
 
@@ -90,7 +90,7 @@ jobs:
         if: github.event.inputs.mode == 'matrix' || github.event.inputs.mode == 'all'
         shell: pwsh
         run: >-
-          python -B -m Scripts.package.run_phase202_unity_package_matrix
+          python -B -m Scripts.package.run_package_topology_unity_matrix
           --mode matrix
           --output build/phase202/unity/matrix
 
@@ -127,3 +127,4 @@ jobs:
           name: phase202-package-topology-${{ github.run_id }}-${{ github.run_attempt }}
           path: build/phase202/unity
           if-no-files-found: warn
+
