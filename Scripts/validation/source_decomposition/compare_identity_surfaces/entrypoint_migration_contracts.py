@@ -520,15 +520,35 @@ def _approved_module_entrypoint_guard_contract(
         isinstance(node, ast.Name) and node.id == "_phase192_sys"
         for node in ast.walk(facade_guard)
     )
-    if facade_uses_private_sys and not any(
-        isinstance(statement, ast.Import)
-        and any(
-            alias.name == "sys" and alias.asname in {None, "sys"}
-            for alias in statement.names
-        )
-        for statement in head_tree.body[:head_index]
-    ):
-        return False
+    if facade_uses_private_sys:
+        sys_imported = False
+        for statement in head_tree.body[:head_index]:
+            if isinstance(statement, ast.Import):
+                for alias in statement.names:
+                    if alias.name == "sys" and alias.asname in {None, "sys"}:
+                        sys_imported = True
+                    elif alias.asname == "sys":
+                        return False
+            for node in ast.walk(statement):
+                if isinstance(node, ast.Name) and node.id == "sys" and isinstance(
+                    node.ctx,
+                    (ast.Store, ast.Del),
+                ):
+                    return False
+                if isinstance(node, ast.ExceptHandler) and node.name == "sys":
+                    return False
+                if isinstance(
+                    node,
+                    (ast.AsyncFunctionDef, ast.ClassDef, ast.FunctionDef),
+                ) and node.name == "sys":
+                    return False
+                if isinstance(node, ast.ImportFrom) and any(
+                    alias.asname == "sys" or (alias.name == "sys" and alias.asname is None)
+                    for alias in node.names
+                ):
+                    return False
+        if not sys_imported:
+            return False
 
     class FacadeSystemAliasNormalizer(ast.NodeTransformer):
         """Normalize the reviewed facade's private sys alias for comparison."""
