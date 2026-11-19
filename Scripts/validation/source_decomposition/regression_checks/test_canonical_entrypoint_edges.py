@@ -7,6 +7,7 @@ from pathlib import Path
 
 from Scripts.validation.source_decomposition import compare_identity_surfaces
 from Scripts.validation.source_decomposition.compare_identity_surfaces import entrypoint_contracts
+from Scripts.validation.source_decomposition.compare_identity_surfaces import foundation
 from Scripts.validation.source_decomposition.compare_identity_surfaces import entrypoint_migration_contracts
 from Scripts.validation.source_decomposition.regression_checks.canonical_entrypoint_fixtures import (
     CanonicalEntrypointFixtureMixin,
@@ -15,6 +16,232 @@ from Scripts.validation.source_decomposition.regression_checks.canonical_entrypo
 
 class CanonicalEntrypointEdgeTests(CanonicalEntrypointFixtureMixin, unittest.TestCase):
     """Exercise hostile edge cases for canonical entrypoint compatibility."""
+
+    def test_standard_migration_accepts_one_leading_run_entrypoint_docstring(self) -> None:
+        """A single leading string docstring is ignored in the mechanical body comparison."""
+        temporary, repository, base = self._create_repository()
+        try:
+            self._migrate_to_standard_entrypoint(repository)
+            entrypoint = repository / "Scripts/smoke/fixture/entrypoint.py"
+            entrypoint.write_text(
+                entrypoint.read_text(encoding="utf-8").replace(
+                    "def run_entrypoint():\n",
+                    'def run_entrypoint():\n    """Run the legacy delegate."""\n',
+                    1,
+                ),
+                encoding="utf-8",
+            )
+            with compare_identity_surfaces._revision_checkout(repository, base) as base_root:
+                self.assertTrue(
+                    entrypoint_contracts._approved_entrypoint_contract(
+                        repository,
+                        "Scripts/smoke/fixture.py",
+                        base_root=base_root,
+                        base_relative="Scripts/smoke/fixture.py",
+                    )
+                )
+        finally:
+            temporary.cleanup()
+
+    def test_already_standard_migration_accepts_one_leading_run_entrypoint_docstring(self) -> None:
+        """A standard-base wrapper may add one leading string docstring without changing its body."""
+        temporary, repository, _ = self._create_repository()
+        try:
+            self._migrate_to_standard_entrypoint(repository)
+            base = self._commit(repository, "standard entrypoint")
+            entrypoint = repository / "Scripts/smoke/fixture/entrypoint.py"
+            entrypoint.write_text(
+                entrypoint.read_text(encoding="utf-8").replace(
+                    "def run_entrypoint():\n",
+                    'def run_entrypoint():\n    """Run the standard delegate."""\n',
+                    1,
+                ),
+                encoding="utf-8",
+            )
+            with compare_identity_surfaces._revision_checkout(repository, base) as base_root:
+                self.assertTrue(
+                    entrypoint_contracts._approved_entrypoint_contract(
+                        repository,
+                        "Scripts/smoke/fixture.py",
+                        base_root=base_root,
+                        base_relative="Scripts/smoke/fixture.py",
+                    )
+                )
+        finally:
+            temporary.cleanup()
+
+    def test_standard_docstring_baseline_remains_compatible(self) -> None:
+        """A trusted standard wrapper with a leading docstring remains compatible unchanged."""
+        temporary, repository, _ = self._create_repository()
+        try:
+            self._migrate_to_standard_entrypoint(repository)
+            entrypoint = repository / "Scripts/smoke/fixture/entrypoint.py"
+            entrypoint.write_text(
+                entrypoint.read_text(encoding="utf-8").replace(
+                    "def run_entrypoint():\n",
+                    'def run_entrypoint():\n    """Run the trusted delegate."""\n',
+                    1,
+                ),
+                encoding="utf-8",
+            )
+            base = self._commit(repository, "standard entrypoint with docstring")
+            with compare_identity_surfaces._revision_checkout(repository, base) as base_root:
+                self.assertTrue(
+                    entrypoint_contracts._approved_entrypoint_contract(
+                        repository,
+                        "Scripts/smoke/fixture.py",
+                        base_root=base_root,
+                        base_relative="Scripts/smoke/fixture.py",
+                    )
+                )
+        finally:
+            temporary.cleanup()
+
+    def test_legacy_guard_string_and_run_entrypoint_docstring_are_compatible(self) -> None:
+        """A trusted legacy guard string does not block a leading run_entrypoint docstring."""
+        temporary, repository, base = self._create_repository(
+            facade_source=(
+                "from __future__ import annotations\n"
+                "import sys as _phase192_sys\n"
+                "if __package__:\n"
+                "    from .fixture import *\n"
+                "else:\n"
+                "    from fixture import *\n"
+                "if __name__ == '__main__':\n"
+                "    \"\"\"Legacy guard note.\"\"\"\n"
+                "    raise SystemExit(main())\n"
+            )
+        )
+        try:
+            self._migrate_to_standard_entrypoint(repository)
+            entrypoint = repository / "Scripts/smoke/fixture/entrypoint.py"
+            entrypoint.write_text(
+                entrypoint.read_text(encoding="utf-8").replace(
+                    "def run_entrypoint():\n",
+                    'def run_entrypoint():\n    """Run the legacy delegate."""\n',
+                    1,
+                ),
+                encoding="utf-8",
+            )
+            with compare_identity_surfaces._revision_checkout(repository, base) as base_root:
+                self.assertTrue(
+                    entrypoint_contracts._approved_entrypoint_contract(
+                        repository,
+                        "Scripts/smoke/fixture.py",
+                        base_root=base_root,
+                        base_relative="Scripts/smoke/fixture.py",
+                    )
+                )
+        finally:
+            temporary.cleanup()
+
+    def test_standard_migration_rejects_nonleading_or_nonstring_run_entrypoint_docstrings(self) -> None:
+        """Only one exact leading string expression is accepted as a run_entrypoint docstring."""
+        cases = (
+            (
+                "after import",
+                "    from .live import main\n    \"\"\"late\"\"\"\n    return main()\n",
+            ),
+            (
+                "after statement",
+                "    from .live import main\n    return main()\n    \"\"\"late\"\"\"\n",
+            ),
+            (
+                "consecutive strings",
+                "    \"\"\"first\"\"\"\n    \"\"\"second\"\"\"\n    from .live import main\n    return main()\n",
+            ),
+            (
+                "bytes",
+                "    b'bytes'\n    from .live import main\n    return main()\n",
+            ),
+            (
+                "f-string",
+                "    f'formatted'\n    from .live import main\n    return main()\n",
+            ),
+            (
+                "binary operation",
+                "    'a' + 'b'\n    from .live import main\n    return main()\n",
+            ),
+            (
+                "only docstring",
+                "    \"\"\"only\"\"\"\n",
+            ),
+        )
+        for name, body in cases:
+            with self.subTest(name=name):
+                temporary, repository, base = self._create_repository()
+                try:
+                    self._migrate_to_standard_entrypoint(repository)
+                    entrypoint = repository / "Scripts/smoke/fixture/entrypoint.py"
+                    source = entrypoint.read_text(encoding="utf-8")
+                    function_start = source.index("def run_entrypoint():")
+                    function_end = source.index("\n\n__all__", function_start)
+                    entrypoint.write_text(
+                        source[:function_start]
+                        + "def run_entrypoint():\n"
+                        + body
+                        + source[function_end:],
+                        encoding="utf-8",
+                    )
+                    with compare_identity_surfaces._revision_checkout(repository, base) as base_root:
+                        self.assertFalse(
+                            entrypoint_contracts._approved_entrypoint_contract(
+                                repository,
+                                "Scripts/smoke/fixture.py",
+                                base_root=base_root,
+                                base_relative="Scripts/smoke/fixture.py",
+                            )
+                        )
+                finally:
+                    temporary.cleanup()
+
+    def test_namespace_change_rejects_symlinked_existing_section(self) -> None:
+        """A migrated package cannot replace an existing section with an external symlink."""
+        temporary, repository, base = self._create_repository()
+        try:
+            self._migrate_to_standard_entrypoint(repository)
+            package = repository / "Scripts/smoke/fixture"
+            section = package / "live.py"
+            outside = Path(temporary.name).parent / f"{Path(temporary.name).name}_live.py"
+            outside.write_bytes(section.read_bytes())
+            section.unlink()
+            try:
+                os.symlink(outside, section)
+            except OSError as error:
+                self.skipTest(f"symlink unavailable: {error}")
+            with compare_identity_surfaces._revision_checkout(repository, base) as base_root:
+                self.assertFalse(
+                    foundation._approved_namespace_change(
+                        "Scripts/smoke/fixture.py",
+                        base_root,
+                        repository,
+                    )
+                )
+        finally:
+            temporary.cleanup()
+
+    def test_namespace_change_rejects_symlinked_package_subdirectory(self) -> None:
+        """A migrated package cannot contain a symlinked child directory."""
+        temporary, repository, base = self._create_repository()
+        try:
+            self._migrate_to_standard_entrypoint(repository)
+            package = repository / "Scripts/smoke/fixture"
+            outside = Path(temporary.name).parent / f"{Path(temporary.name).name}_nested"
+            outside.mkdir()
+            try:
+                os.symlink(outside, package / "nested", target_is_directory=True)
+            except OSError as error:
+                self.skipTest(f"symlink unavailable: {error}")
+            with compare_identity_surfaces._revision_checkout(repository, base) as base_root:
+                self.assertFalse(
+                    foundation._approved_namespace_change(
+                        "Scripts/smoke/fixture.py",
+                        base_root,
+                        repository,
+                    )
+                )
+        finally:
+            temporary.cleanup()
 
 
 
