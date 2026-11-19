@@ -9,13 +9,17 @@ PATH_LITERAL_PATTERN = re.compile(
     r'"([^"\r\n]+(?:\.cs|\.py|\.md|\.json|\.yml|\.yaml|\.csproj|\.props|\.targets|\.asmdef|\.meta|\.txt|\.xml|\.cpp|\.h|\.dll|\.so))"'
 )
 PATH_LIKE_LITERAL_PATTERN = re.compile(r'"([^"\r\n]*[/\\][^"\r\n]*)"')
-READER_CALL_PATTERN = re.compile(
-    r"\b(?P<reader>ReadRepoText|ReadRequiredRepoText|ReadText|ReadRuntimeSource|"
+SEED_READER_ALTERNATIVES = (
+    r"ReadRepoText|ReadRequiredRepoText|ReadText|ReadRuntimeSource|"
     r"ReadPointCloudPublisherSources|ReadCameraPublisherSources|ReadProductPublisherText|"
     r"ReadRepoDirectoryText|Text|PhaseValidationSourceHelpers\s*\.\s*Read[A-Za-z_]\w*"
     r"(?:Sources?|SourcePath|Text)|TestSources\s*\.\s*(?:Text|Runtime|ExtractMethod|"
-    r"Slice|SourceGeneratorSources)|RuntimeSource)\s*\("
+    r"Slice|SourceGeneratorSources)|RuntimeSource"
 )
+READER_CALL_PATTERN = re.compile(rf"\b(?P<reader>{SEED_READER_ALTERNATIVES})\s*\(")
+SEED_READER_NAME = re.compile(rf"(?:{SEED_READER_ALTERNATIVES})")
+_ACTIVE_READER_PATTERN: list[re.Pattern[str]] = [READER_CALL_PATTERN]
+_PATH_READER_PATTERNS: dict[str, re.Pattern[str]] = {}
 VARIABLE_READER_PATTERN = re.compile(
     r"(?:var|string)\s+(?P<name>[A-Za-z_]\w*)\s*=\s*"
     r"(?P<reader>ReadRepoText|ReadRequiredRepoText|PhaseValidationSourceHelpers\."
@@ -59,6 +63,18 @@ def _clear_text_caches() -> None:
     _BRACE_CACHE.clear()
     _LINE_START_CACHE.clear()
     _PRODUCT_TYPE_CACHE.clear()
+    _PATH_READER_PATTERNS.clear()
+    _ACTIVE_READER_PATTERN[0] = READER_CALL_PATTERN
+
+
+def _reader_call_pattern() -> re.Pattern[str]:
+    """Return the reader-call pattern active for the file being scanned."""
+    return _ACTIVE_READER_PATTERN[0]
+
+
+def _activate_reader_pattern(path: Path | None = None) -> None:
+    """Select the discovered reader pattern for one validation file, or the seed pattern."""
+    _ACTIVE_READER_PATTERN[0] = _PATH_READER_PATTERNS.get(str(path), READER_CALL_PATTERN) if path else READER_CALL_PATTERN
 
 
 def classify(target: str, line: str) -> str:
@@ -151,7 +167,10 @@ def _reader_target(reader: dict[str, object], paths: dict[str, str]) -> str | No
         path_index = 0
     if path_index >= len(arguments):
         return None
-    return _extract_argument_path(arguments[path_index], paths)
+    target = _extract_argument_path(arguments[path_index], paths)
+    if target is None and not SEED_READER_NAME.fullmatch(name):
+        target = next((value for value in map(lambda item: _extract_argument_path(item, paths), arguments) if value), None)
+    return target
 
 
 def _split_arguments(argument: str) -> list[str]:
