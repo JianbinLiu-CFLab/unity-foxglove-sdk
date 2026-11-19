@@ -63,6 +63,7 @@ cli = importlib.import_module(package_name + ".cli")
 sys.argv = [package_name]
 
 def effect(*args, **kwargs):
+    """Return or raise the requested facade outcome for the subprocess probe."""
     if case == "return":
         return 3
     if case == "keyboard":
