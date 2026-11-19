@@ -847,25 +847,43 @@ def _validation_metadata(root: Path, source_file: str) -> tuple[str, str]:
         / "Runtime"
         / "PhaseValidationRegistry.cs"
     )
+    source_path = root / source_file
     if registry.is_file():
         text = registry.read_text(encoding="utf-8", errors="replace")
         entry_start = re.compile(
             r"^\s*(?P<kind>Ci|Local|DefaultOnly)\(\"(?P<flag>--[A-Za-z0-9-]+)\"", re.MULTILINE
         )
         matches = list(entry_start.finditer(text))
-        for index, match in enumerate(matches):
-            end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
-            block = text[match.start() : end]
-            entrypoint = re.search(rf"\b{re.escape(stem)}\.(?P<entry>Validate\w*)\b", block)
-            if entrypoint:
-                default = "false" if re.search(r"\bincludeInDefault\s*:\s*false\b", block) else "true"
-                result = (
-                    match.group("flag"),
-                    f"{match.group('kind')}|{default}|{entrypoint.group('entry')}",
+        blocks = [
+            (match, text[match.start() : matches[index + 1].start() if index + 1 < len(matches) else len(text)])
+            for index, match in enumerate(matches)
+        ]
+
+        def registered(type_name: str) -> tuple[str, str] | None:
+            """Return the first registry entry that dispatches to a type's Validate method."""
+            for match, block in blocks:
+                entrypoint = re.search(rf"\b{re.escape(type_name)}\.(?P<entry>Validate\w*)\b", block)
+                if entrypoint:
+                    default = "false" if re.search(r"\bincludeInDefault\s*:\s*false\b", block) else "true"
+                    return match.group("flag"), f"{match.group('kind')}|{default}|{entrypoint.group('entry')}"
+            return None
+
+        result = registered(stem)
+        if result is None and "/Tests/Runtime/" in f"/{source_file}" and source_path.is_file():
+            namespace = re.search(r"\bnamespace\s+([A-Za-z_][\w.]*)", _strip_csharp_comments_and_strings(text))
+            parts = namespace.group(1).split(".") if namespace else []
+            visible = {".".join(parts[:size]) for size in range(len(parts) + 1)}
+            declared = {
+                entry
+                for type_namespace, type_name in _top_level_type_declarations(
+                    source_path.read_text(encoding="utf-8", errors="replace")
                 )
-                _VALIDATION_METADATA_CACHE[cache_key] = result
-                return result
-    source_path = root / source_file
+                if type_namespace in visible and (entry := registered(type_name)) is not None
+            }
+            result = declared.pop() if len(declared) == 1 else None
+        if result is not None:
+            _VALIDATION_METADATA_CACHE[cache_key] = result
+            return result
     if source_path.is_file():
         source = source_path.read_text(encoding="utf-8", errors="replace")
         test_entries: list[str] = []

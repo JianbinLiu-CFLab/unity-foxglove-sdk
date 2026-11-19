@@ -539,6 +539,57 @@ def _strip_csharp_comments_and_strings(text: str) -> str:
     return result
 
 
+def _top_level_type_declarations(text: str) -> list[tuple[str, str]]:
+    """Return namespace and name pairs for top-level types outside literal-false preprocessor branches."""
+    kept: list[str] = []
+    branches: list[tuple[bool, bool]] = []
+    for line in text.splitlines(keepends=True):
+        directive = line.strip()
+        if directive.startswith("#if"):
+            condition = directive[3:].strip()
+            branches.append((condition != "false", condition == "true"))
+        elif directive.startswith("#elif") and branches:
+            taken = branches[-1][1]
+            condition = directive[5:].strip()
+            branches[-1] = (not taken and condition != "false", taken or condition == "true")
+        elif directive.startswith("#else") and branches:
+            branches[-1] = (not branches[-1][1], True)
+        elif directive.startswith("#endif") and branches:
+            branches.pop()
+        elif all(active for active, _ in branches):
+            kept.append(line)
+            continue
+        kept.append("\n")
+    masked = _strip_csharp_comments_and_strings("".join(kept))
+    token = re.compile(
+        r"\bnamespace\s+(?P<namespace>[A-Za-z_][\w.]*)\s*(?P<terminator>[{;])"
+        r"|\b(?:(?:record\s+)?(?:class|struct)|interface|record)\s+(?P<type>[A-Za-z_]\w*)"
+        r"|(?P<brace>[{}])"
+    )
+    namespaces: list[tuple[str, int]] = []
+    file_namespace = ""
+    depth = 0
+    declarations: list[tuple[str, str]] = []
+    for match in token.finditer(masked):
+        if match.group("namespace"):
+            if match.group("terminator") == ";":
+                file_namespace = match.group("namespace")
+            else:
+                namespaces.append((match.group("namespace"), depth))
+                depth += 1
+        elif match.group("type"):
+            if depth == (namespaces[-1][1] + 1 if namespaces else 0):
+                namespace = ".".join(name for name, _ in namespaces) if namespaces else file_namespace
+                declarations.append((namespace, match.group("type")))
+        elif match.group("brace") == "{":
+            depth += 1
+        else:
+            depth -= 1
+            if namespaces and depth == namespaces[-1][1]:
+                namespaces.pop()
+    return declarations
+
+
 def _csharp_comment_text(text: str) -> str:
     """Return C# line and block comment text while ignoring strings and chars."""
     cached = _COMMENT_CACHE.get(text)
