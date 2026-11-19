@@ -233,7 +233,7 @@ class RegressionInventoryTests(unittest.TestCase):
                 self.assertIn('except Exception as exc:', source)
                 self.assertIn(f'[{label}] FAIL:', source)
         module_entrypoint = (root / 'Scripts/ros2forunity/interfaces/characterize_foxrun_custom_interface/__main__.py').read_text(encoding='utf-8')
-        self.assertIn('main(sys.argv[1:])', module_entrypoint)
+        self.assertIn('raise SystemExit(main())', module_entrypoint)
 
     def test_phase138u_public_cli_maps_process_exceptions(self):
         """Phase138U main and run_cli retain stable public exit-code mapping."""
