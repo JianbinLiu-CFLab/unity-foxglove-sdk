@@ -2,6 +2,46 @@ from __future__ import annotations
 
 from .foundation import *
 
+
+def _unconditional_top_level_bindings(tree: ast.Module) -> dict[str, ast.AST]:
+    """Return final bindings from unconditional top-level statements."""
+    bindings: dict[str, ast.AST] = {}
+
+    def bind_target(target: ast.AST, statement: ast.AST) -> None:
+        """Record direct assignment targets."""
+        if isinstance(target, ast.Name):
+            bindings[target.id] = statement
+        elif isinstance(target, (ast.Tuple, ast.List)):
+            for item in target.elts:
+                bind_target(item, statement)
+
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            bindings[node.name] = node
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                bindings[alias.asname or alias.name.split(".", 1)[0]] = node
+        elif isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                if alias.name != "*":
+                    bindings[alias.asname or alias.name] = node
+        elif isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            for target in targets:
+                bind_target(target, node)
+        elif isinstance(node, ast.Delete):
+            for target in node.targets:
+                for candidate in ast.walk(target):
+                    if isinstance(candidate, ast.Name):
+                        bindings.pop(candidate.id, None)
+    return bindings
+
+
+def _unconditional_top_level_names(tree: ast.Module) -> set[str]:
+    """Return names bound by unconditional top-level statements."""
+    return set(_unconditional_top_level_bindings(tree))
+
+
 _SAFE_STDLIB_ENTRYPOINT_SYMBOLS = {
     "argparse": frozenset({
         "Action", "ArgumentParser", "ArgumentTypeError", "FileType", "HelpFormatter",
@@ -60,6 +100,7 @@ def _function_signature_is_inert(node: ast.FunctionDef | ast.AsyncFunctionDef) -
         argument.annotation is not None or argument.type_comment
         for argument in (*arguments.posonlyargs, *arguments.args, *arguments.kwonlyargs)
     )
+
 
 def _relative_import_contract(
     tree: ast.Module,
@@ -332,6 +373,71 @@ def _is_phase121_configuration_path(
             return False
     parts = tuple(part for part in candidate.parts if part not in {".", ""})
     return parts == target
+
+
+
+def _entrypoint_section_exports(section: Path) -> set[str] | None:
+    """Return statically proven exports from one unchanged source section."""
+    try:
+        tree = _parse_source(section.read_text(encoding="utf-8"), section)
+        _relative_import_contract(tree, section.parent, section)
+    except (OSError, SyntaxError, ValueError):
+        return None
+    bindings = _unconditional_top_level_bindings(tree)
+    assignments = [
+        node
+        for node in tree.body
+        if isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == "__all__" for target in node.targets)
+    ]
+    if not assignments:
+        if any(isinstance(node, ast.Name) and node.id == "__all__" for node in ast.walk(tree)):
+            return None
+        return {name for name in bindings if not name.startswith("_")}
+    final_assignment_nodes = {id(node) for node in ast.walk(assignments[-1])}
+    if any(
+        isinstance(node, ast.Name)
+        and node.id == "__all__"
+        and id(node) not in final_assignment_nodes
+        for node in ast.walk(tree)
+    ):
+        return None
+    value = assignments[-1].value
+    try:
+        declared = ast.literal_eval(value)
+    except (TypeError, ValueError, SyntaxError):
+        declared = None
+    if isinstance(declared, (list, tuple, set)) and all(isinstance(name, str) for name in declared):
+        names = set(declared)
+        return names if names <= set(bindings) else None
+    if (
+        isinstance(value, ast.ListComp)
+        and isinstance(value.elt, ast.Name)
+        and value.elt.id == "name"
+        and len(value.generators) == 1
+        and isinstance(value.generators[0].target, ast.Name)
+        and value.generators[0].target.id == "name"
+        and isinstance(value.generators[0].iter, ast.Call)
+        and isinstance(value.generators[0].iter.func, ast.Name)
+        and value.generators[0].iter.func.id == "globals"
+        and not value.generators[0].iter.args
+        and not value.generators[0].iter.keywords
+        and len(value.generators[0].ifs) == 1
+        and isinstance(value.generators[0].ifs[0], ast.UnaryOp)
+        and isinstance(value.generators[0].ifs[0].op, ast.Not)
+        and isinstance(value.generators[0].ifs[0].operand, ast.Call)
+        and isinstance(value.generators[0].ifs[0].operand.func, ast.Attribute)
+        and isinstance(value.generators[0].ifs[0].operand.func.value, ast.Name)
+        and value.generators[0].ifs[0].operand.func.value.id == "name"
+        and value.generators[0].ifs[0].operand.func.attr == "startswith"
+        and len(value.generators[0].ifs[0].operand.args) == 1
+        and isinstance(value.generators[0].ifs[0].operand.args[0], ast.Constant)
+        and value.generators[0].ifs[0].operand.args[0].value == "__"
+        and not value.generators[0].ifs[0].operand.keywords
+    ):
+        return {name for name in bindings if not name.startswith("_")}
+    return None
+
 
 _ENTRYPOINT_IMPORT_ROOTS = frozenset({"Scripts", "argparse", "sys", "unittest"})
 

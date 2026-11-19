@@ -360,7 +360,6 @@ def _facade_entrypoint_is_standard(tree: ast.Module, relative: str) -> bool:
         expected,
         include_attributes=False,
     )
-
 def _single_run_entrypoint_binding(tree: ast.Module) -> bool:
     """Return whether run_entrypoint has exactly one synchronous function binding."""
     bindings: list[ast.AST] = []
@@ -381,7 +380,6 @@ def _single_run_entrypoint_binding(tree: ast.Module) -> bool:
         and isinstance(bindings[0], ast.FunctionDef)
         and bindings[0].name == "run_entrypoint"
     )
-
 def _approved_test_facade_removal(
     relative: str,
     base_root: Path,
@@ -403,7 +401,6 @@ def _approved_test_facade_removal(
     if not base_package.is_dir() or not head_package.is_dir():
         return False
     from .entrypoint_contracts import _approved_initializer_contract
-
     head_relative = relative
     if not (head_root / relative.removesuffix(".py")).is_dir():
         head_relative = _current_source_decomposition_relative(relative)
@@ -437,7 +434,6 @@ def _approved_test_facade_removal(
         return False
     if base_main.is_file() and base_main.read_bytes() != head_main.read_bytes():
         return False
-
     def package_files(package: Path) -> dict[str, Path]:
         """Return every tracked package file except the generated root initializer."""
         return {
@@ -445,7 +441,6 @@ def _approved_test_facade_removal(
             for path in package.rglob("*")
             if path.is_file() and not (path == package / "__init__.py")
         }
-
     base_files = package_files(base_package)
     head_files = package_files(head_package)
     if set(base_files) != set(head_files):
@@ -454,7 +449,6 @@ def _approved_test_facade_removal(
         base_files[name].read_bytes() == head_files[name].read_bytes()
         for name in base_files
     )
-
 def _initializer_exact_identity_signature(
     root: Path,
     relative: str,
@@ -464,7 +458,12 @@ def _initializer_exact_identity_signature(
     """Return the exact initializer template with section names normalized."""
     path = root / relative.removesuffix(".py") / "__init__.py"
     package = path.parent
-    if not path.is_file():
+    if (
+        not package.is_dir()
+        or package.is_symlink()
+        or not path.is_file()
+        or path.is_symlink()
+    ):
         return None
     try:
         sections = _section_modules_for_root(root)(package)
@@ -521,7 +520,6 @@ def _initializer_exact_identity_signature(
         or set(module_aliases) != set(section_aliases.values())
     ):
         return None
-
     def is_legacy_hook_node(node: ast.AST) -> bool:
         """Return whether a top-level node belongs to the trusted discovery hook."""
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -530,7 +528,6 @@ def _initializer_exact_identity_signature(
             isinstance(target, ast.Name) and target.id == "_phase192_load_tests_used"
             for target in node.targets
         )
-
     body = list(tree.body)
     if allow_legacy_hook_removal:
         while body and is_legacy_hook_node(body[-1]):
@@ -539,7 +536,6 @@ def _initializer_exact_identity_signature(
             return None
     elif any(is_legacy_hook_node(node) for node in body):
         return None
-
     signature: list[str] = []
     imports_marker_added = False
     imports_closed = False
@@ -654,7 +650,12 @@ def _approved_namespace_change(
         _approved_initializer_contract,
     )
 
-    if not _approved_entrypoint_contract(head_root, head_relative):
+    if not _approved_entrypoint_contract(
+        head_root,
+        head_relative,
+        base_root=base_root,
+        base_relative=relative,
+    ):
         return False
     if not _approved_initializer_contract(
         head_root,
@@ -682,6 +683,7 @@ def _approved_namespace_change(
         for path in head_package.glob("*.py")
         if path.name not in {"__init__.py", "__main__.py"}
     }
+
     changed_existing = {
         name
         for name in base_sections & head_sections
@@ -690,7 +692,7 @@ def _approved_namespace_change(
     added_sections = head_sections - base_sections
     if changed_existing - {"entrypoint.py"} or added_sections - {"entrypoint.py"}:
         return False
-    return _approved_entrypoint_section(head_package / "entrypoint.py")
+    return True
 
 
 def _discovery_contract_errors(
@@ -748,72 +750,6 @@ def _discovery_contract_errors(
             errors.append(f"INVALID_DISCOVERY_FACADE_REMOVAL {relative}")
     return errors
 
-def _initializer_path_is_repository_rooted(tree: ast.Module, relative: str) -> bool:
-    """Return whether the generated facade path is rooted at the package's repository path."""
-    expected = ast.parse(
-        "_PHASE192_FACADE_FILE = _Phase192Path(__file__).resolve().parents[1] / "
-        f"{Path(relative).name!r}\n"
-        "_PHASE192_PARENT = _PHASE192_FACADE_FILE.parent\n"
-    )
-    assignments = [
-        node
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Assign)
-        and len(node.targets) == 1
-        and isinstance(node.targets[0], ast.Name)
-        and node.targets[0].id in {"_PHASE192_FACADE_FILE", "_PHASE192_PARENT"}
-    ]
-    expected_assignments = {
-        node.targets[0].id: node
-        for node in expected.body
-        if isinstance(node, ast.Assign)
-    }
-    if len(assignments) != len(expected_assignments):
-        return False
-    assignments_by_name = {
-        node.targets[0].id: node
-        for node in assignments
-        if node in tree.body
-    }
-    if (
-        set(assignments_by_name) != set(expected_assignments)
-        or len(assignments_by_name) != len(assignments)
-    ):
-        return False
-    if [
-        node.targets[0].id
-        for node in tree.body
-        if node in assignments
-    ] != ["_PHASE192_FACADE_FILE", "_PHASE192_PARENT"]:
-        return False
-    if any(
-        ast.dump(assignments_by_name[name], include_attributes=False)
-        != ast.dump(expected_assignments[name], include_attributes=False)
-        for name in expected_assignments
-    ):
-        return False
-    expected_file_assignment = ast.parse(
-        "__file__ = str(_PHASE192_FACADE_FILE)\n"
-    ).body[0]
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Assign):
-            continue
-        if not any(isinstance(target, ast.Name) and target.id == "__file__" for target in node.targets):
-            continue
-        if node not in tree.body or ast.dump(node, include_attributes=False) != ast.dump(
-            expected_file_assignment,
-            include_attributes=False,
-        ):
-            return False
-    return any(
-        isinstance(node, ast.ImportFrom)
-        and node.module == "pathlib"
-        and node.level == 0
-        and len(node.names) == 1
-        and node.names[0].name == "Path"
-        and node.names[0].asname == "_Phase192Path"
-        for node in tree.body
-    )
 
 
-__all__ = ['_REVIEWED_IDENTITY_TOOLING_SECTIONS', '_reviewed_identity_tooling_test_split', 'argparse', 'ast', 'copy', 'hashlib', 'importlib', 'json', 'keyword', 're', 'contextmanager', 'lru_cache', 'Path', 'subprocess', 'tarfile', 'tempfile', 'Iterator', 'Mapping', 'REPOSITORY_ROOT', '_TRY_TYPES', '_TYPE_ALIAS_TYPE', '_SECTION_NAME_RE', 'SPLIT_ROOTS', 'IDENTITY_WAIVER_PATH', '_legacy_relative_path', '_canonical_source_decomposition_relative', '_current_source_decomposition_relative', '_resolve_source_decomposition_path', '_load_identity_waivers', '_git', '_extract_archive_safely', '_revision_checkout', '_FUNCTION_BODY_RISK_NAMES', '_ENVIRONMENT_MUTATORS', '_without_function_bodies', '_function_body_and_environment_risk_signatures', '_parse_source', '_section_modules_for_root', '_section_package_for_facade', '_split_facades', '_top_level_names', '_direct_import_bound_names', '_declared_public_names', '_PHASE192_TEMPLATE_IMPORTS', '_PHASE192_TEMPLATE_CALLS', '_PHASE192_TEMPLATE_METHODS', '_facade_entrypoint_is_standard', '_single_run_entrypoint_binding', '_approved_test_facade_removal', '_initializer_exact_identity_signature', '_initializer_signatures_compatible', '_approved_namespace_change', '_discovery_contract_errors', '_initializer_path_is_repository_rooted']
+__all__ = ['_REVIEWED_IDENTITY_TOOLING_SECTIONS', '_reviewed_identity_tooling_test_split', 'argparse', 'ast', 'copy', 'hashlib', 'importlib', 'json', 'keyword', 're', 'contextmanager', 'lru_cache', 'Path', 'subprocess', 'tarfile', 'tempfile', 'Iterator', 'Mapping', 'REPOSITORY_ROOT', '_TRY_TYPES', '_TYPE_ALIAS_TYPE', '_SECTION_NAME_RE', 'SPLIT_ROOTS', 'IDENTITY_WAIVER_PATH', '_legacy_relative_path', '_canonical_source_decomposition_relative', '_current_source_decomposition_relative', '_resolve_source_decomposition_path', '_load_identity_waivers', '_git', '_extract_archive_safely', '_revision_checkout', '_FUNCTION_BODY_RISK_NAMES', '_ENVIRONMENT_MUTATORS', '_without_function_bodies', '_function_body_and_environment_risk_signatures', '_parse_source', '_section_modules_for_root', '_section_package_for_facade', '_split_facades', '_top_level_names', '_direct_import_bound_names', '_declared_public_names', '_PHASE192_TEMPLATE_IMPORTS', '_PHASE192_TEMPLATE_CALLS', '_PHASE192_TEMPLATE_METHODS', '_facade_entrypoint_is_standard', '_single_run_entrypoint_binding', '_approved_test_facade_removal', '_initializer_exact_identity_signature', '_initializer_signatures_compatible', '_approved_namespace_change', '_discovery_contract_errors']
