@@ -17,7 +17,6 @@ __file__ = str(_PHASE192_FACADE_FILE)
 del _Phase192Path, _PHASE192_FACADE_FILE
 
 import hashlib
-import json
 from pathlib import Path
 from typing import Mapping
 
@@ -40,6 +39,8 @@ def _repair_tracked_addon_package_metadata(request: CandidateBuildRequest) -> Pa
 
 def _repair_tracked_addon_interface_identity(request: CandidateBuildRequest) -> Path:
     """Refresh generated add-on digest references after interface regeneration."""
+    import json
+
     interface_digest = verify_candidate_source_lock(request)
     repository_root = _repo_root(request).resolve()
     package_root = repository_root / "Packages" / addon_package_id(request.distro)
