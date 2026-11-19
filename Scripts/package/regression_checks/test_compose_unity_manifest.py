@@ -71,10 +71,18 @@ class ComposeUnityManifestTests(unittest.TestCase):
             manifest["dependencies"] = {
                 "com.unity.modules.jsonserialize": "1.0.0",
                 "dev.unity2foxglove.ros2forunity.runtime.humble.win64": (
-                    "file:../../../../../Packages/dev.unity2foxglove.ros2forunity.runtime.humble.win64"
+                    "file:"
+                    + os.path.relpath(
+                        ROOT / "Packages" / "dev.unity2foxglove.ros2forunity.runtime.humble.win64",
+                        manifest_path.parent,
+                    ).replace(os.sep, "/")
                 ),
                 "dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.jazzy.win64": (
-                    "file:../../../../../Packages/dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.jazzy.win64"
+                    "file:"
+                    + os.path.relpath(
+                        ROOT / "Packages" / "dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.jazzy.win64",
+                        manifest_path.parent,
+                    ).replace(os.sep, "/")
                 ),
             }
             manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
@@ -91,7 +99,11 @@ class ComposeUnityManifestTests(unittest.TestCase):
             manifest_path = project / "Packages" / "manifest.json"
             manifest = self._read_manifest(project)
             manifest["dependencies"]["dev.unity2foxglove.ros2bridge"] = (
-                "file:../../../../../Packages/dev.unity2foxglove.ros2bridge"
+                "file:"
+                + os.path.relpath(
+                    ROOT / "Packages" / "dev.unity2foxglove.ros2bridge",
+                    manifest_path.parent,
+                ).replace(os.sep, "/")
             )
             manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
             result = self._run(project, "native-custom", "jazzy")
