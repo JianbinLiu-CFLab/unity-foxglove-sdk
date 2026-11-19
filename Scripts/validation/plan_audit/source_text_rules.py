@@ -23,6 +23,7 @@ PURE_SOURCE_FLAGS = {
     "--phase164-33",
     "--phase164-56",
     "--phase77",
+    "--phase86",
     "--phase132",
 }
 PILOT_FLAGS = ("--phase86", "--phase134-1", "--phase72")

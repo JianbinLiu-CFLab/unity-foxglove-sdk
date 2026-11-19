@@ -83,7 +83,7 @@ namespace Unity.FoxgloveSDK.Tests
             Ci("--phase83", "Phase 83: validation for raw PointCloud QoS budget, LOD,", Phase83Validation.Validate, evidence: ValidationEvidence.Behavior),
             Ci("--phase84", "Phase 84: validation for raw PointCloud voxel-grid LOD", Phase84Validation.Validate, evidence: ValidationEvidence.Behavior),
             Ci("--phase85", "Phase 85: validation for point-cloud Inspector UX and smoke evidence", Phase85Validation.Validate, evidence: ValidationEvidence.Behavior),
-            Ci("--phase86", "Phase 86: validation for runtime hardening bugfixes", Phase86Validation.Validate, evidence: ValidationEvidence.Behavior),
+            Ci("--phase86", "Phase 86: validation for runtime hardening bugfixes", Phase86Validation.Validate, evidence: ValidationEvidence.Structural),
             Ci("--phase87", "Phase 87: validation for CompressedPointCloud / Draco spike scaffolding", Phase87Validation.Validate, evidence: ValidationEvidence.Behavior),
             Ci("--phase88", "Phase 88: validation for Draco CompressedPointCloud evidence tooling", Phase88Validation.Validate, evidence: ValidationEvidence.Behavior),
             Ci("--phase89", "Phase 89: validation for Draco CompressedPointCloud productization", Phase89Validation.Validate, evidence: ValidationEvidence.Behavior),
