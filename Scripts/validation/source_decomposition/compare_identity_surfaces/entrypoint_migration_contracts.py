@@ -82,6 +82,18 @@ def _mechanical_entrypoint_imports(
                 continue
             if node.func.id not in allowed_names and node.func.id not in delegate_names:
                 delegate_names.append(node.func.id)
+    bound_names = set()
+    loaded_names = set()
+    for statement in expected_body:
+        for node in ast.walk(statement):
+            if isinstance(node, ast.Name):
+                (loaded_names if isinstance(node.ctx, ast.Load) else bound_names).add(node.id)
+            elif isinstance(node, ast.ExceptHandler) and node.name:
+                bound_names.add(node.name)
+            elif isinstance(node, ast.alias):
+                bound_names.add(node.asname or node.name.split(".", 1)[0])
+    if loaded_names - (allowed_names | set(delegate_names) | bound_names | {"sys"}):
+        return None
     package = facade.with_suffix("")
     sections = [
         path
@@ -169,25 +181,6 @@ def _entrypoint_body_matches_mechanical_transform(
             ast.Module(body=list(expected_body), type_ignores=[]),
             include_attributes=False,
         )
-    )
-
-
-def _entrypoint_executable_body_is_safe(
-    tree: ast.Module,
-    path: Path,
-    function: ast.FunctionDef,
-    expected_body: tuple[ast.stmt, ...] | None = None,
-    expected_imports: tuple[ast.Import | ast.ImportFrom, ...] | None = None,
-) -> bool:
-    """Return whether the wrapper has a trusted base-derived body."""
-    if expected_body is None:
-        return False
-    return _entrypoint_body_matches_mechanical_transform(
-        tree,
-        path,
-        function,
-        expected_body,
-        expected_imports,
     )
 
 
@@ -376,6 +369,7 @@ def _approved_main_block_only_contract(
             and len(node.names) == 1
             and node.names[0].name == "*"
             and node.names[0].asname is None
+            and node.lineno < facade_guard.lineno
         )
     ]
     if not star_imports or any(
@@ -413,10 +407,11 @@ def _approved_entrypoint_contract_impl(
     module_entrypoint = package / "__main__.py"
     if (
         not facade.is_file()
-        or not module_entrypoint.is_file()
         or facade.is_symlink()
-        or module_entrypoint.is_symlink()
+        or not package.is_dir()
         or package.is_symlink()
+        or not module_entrypoint.is_file()
+        or module_entrypoint.is_symlink()
     ):
         return False
     try:
@@ -464,6 +459,19 @@ def _approved_initializer_contract_impl(
     """Validate the exact trusted-base initializer transition."""
     if base_root is None:
         return False
+    for root_path, root_relative in (
+        (root, relative),
+        (base_root, base_relative or relative),
+    ):
+        package = root_path / root_relative.removesuffix(".py")
+        initializer = package / "__init__.py"
+        if (
+            not package.is_dir()
+            or package.is_symlink()
+            or not initializer.is_file()
+            or initializer.is_symlink()
+        ):
+            return False
     head_signature = _initializer_exact_identity_signature(root, relative)
     base_signature = _initializer_exact_identity_signature(
         base_root,

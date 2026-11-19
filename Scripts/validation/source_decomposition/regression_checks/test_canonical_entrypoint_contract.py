@@ -211,6 +211,37 @@ class CanonicalEntrypointContractTests(CanonicalEntrypointFixtureMixin, unittest
         finally:
             temporary.cleanup()
 
+    def test_standard_migration_rejects_unimported_body_binding(self) -> None:
+        """The mechanical import contract rejects body names without a section owner."""
+        facade_source = (
+            "from __future__ import annotations\n"
+            "import sys as _phase192_sys\n"
+            "if __package__:\n"
+            "    from .fixture import *\n"
+            "else:\n"
+            "    from fixture import *\n"
+            "DEFAULT_CONFIG = 0\n"
+            "if __name__ == '__main__':\n"
+            "    raise SystemExit(main(DEFAULT_CONFIG))\n"
+        )
+        temporary, repository, base = self._create_repository(facade_source=facade_source)
+        try:
+            self._migrate_to_standard_entrypoint(repository)
+            (repository / "Scripts/smoke/fixture/entrypoint.py").write_text(
+                "def run_entrypoint():\n"
+                "    from .live import main\n"
+                "    return main(DEFAULT_CONFIG)\n\n"
+                "__all__ = ['run_entrypoint']\n",
+                encoding="utf-8",
+            )
+            head = self._commit(repository, "use unimported body binding")
+            self.assertEqual(
+                1,
+                compare_identity_surfaces.compare_revisions(repository, base, head, strict=False),
+            )
+        finally:
+            temporary.cleanup()
+
     def test_standard_migration_rejects_existing_section_change(self) -> None:
         """A standard migration cannot hide a changed existing section."""
         temporary, repository, base = self._create_repository()
@@ -623,6 +654,105 @@ class CanonicalEntrypointContractTests(CanonicalEntrypointFixtureMixin, unittest
                 1,
                 compare_identity_surfaces.compare_revisions(repository, base, head, strict=False),
             )
+        finally:
+            temporary.cleanup()
+
+    def test_main_block_only_rejects_star_import_after_facade_guard(self) -> None:
+        """The trusted facade must bind the delegated name before its guard runs."""
+        facade_source = (
+            "if __name__ == '__main__':\n"
+            "    raise SystemExit(main())\n"
+            "from .fixture import *\n"
+        )
+        temporary, repository, base = self._create_repository(facade_source=facade_source)
+        try:
+            (repository / "Scripts/smoke/fixture/__main__.py").write_text(
+                "from . import *\n"
+                "if __name__ == '__main__':\n"
+                "    raise SystemExit(main())\n",
+                encoding="utf-8",
+            )
+            head = self._commit(repository, "move facade star import after guard")
+            self.assertEqual(
+                1,
+                compare_identity_surfaces.compare_revisions(repository, base, head, strict=False),
+            )
+        finally:
+            temporary.cleanup()
+
+    def test_standard_migration_rejects_symlinked_facade(self) -> None:
+        """A migrated facade must be a regular file inside the checkout."""
+        temporary, repository, base = self._create_repository()
+        try:
+            self._migrate_to_standard_entrypoint(repository)
+            facade = repository / "Scripts/smoke/fixture.py"
+            facade_source = facade.read_text(encoding="utf-8")
+            facade.unlink()
+            outside = repository / "external_facade.py"
+            outside.write_text(facade_source, encoding="utf-8")
+            try:
+                os.symlink(outside, facade)
+            except OSError as error:
+                self.skipTest(f"symlink unavailable: {error}")
+            self._commit(repository, "symlink migrated facade")
+            with compare_identity_surfaces._revision_checkout(repository, base) as base_root:
+                self.assertFalse(
+                    entrypoint_contracts._approved_entrypoint_contract(
+                        repository,
+                        "Scripts/smoke/fixture.py",
+                        base_root=base_root,
+                        base_relative="Scripts/smoke/fixture.py",
+                    )
+                )
+        finally:
+            temporary.cleanup()
+
+    def test_standard_migration_rejects_symlinked_package_directory(self) -> None:
+        """A migrated package cannot redirect section reads through a symlink."""
+        temporary, repository, base = self._create_repository()
+        try:
+            self._migrate_to_standard_entrypoint(repository)
+            package = repository / "Scripts/smoke/fixture"
+            outside = repository / "external_fixture_package"
+            package.rename(outside)
+            try:
+                os.symlink(outside, package, target_is_directory=True)
+            except OSError as error:
+                self.skipTest(f"symlink unavailable: {error}")
+            with compare_identity_surfaces._revision_checkout(repository, base) as base_root:
+                self.assertFalse(
+                    entrypoint_contracts._approved_entrypoint_contract(
+                        repository,
+                        "Scripts/smoke/fixture.py",
+                        base_root=base_root,
+                        base_relative="Scripts/smoke/fixture.py",
+                    )
+                )
+        finally:
+            temporary.cleanup()
+
+    def test_standard_migration_rejects_symlinked_package_initializer(self) -> None:
+        """A migrated package initializer must be a regular file in the package."""
+        temporary, repository, base = self._create_repository()
+        try:
+            self._migrate_to_standard_entrypoint(repository)
+            initializer = repository / "Scripts/smoke/fixture/__init__.py"
+            outside = repository / "external_fixture_initializer.py"
+            outside.write_text(initializer.read_text(encoding="utf-8"), encoding="utf-8")
+            initializer.unlink()
+            try:
+                os.symlink(outside, initializer)
+            except OSError as error:
+                self.skipTest(f"symlink unavailable: {error}")
+            with compare_identity_surfaces._revision_checkout(repository, base) as base_root:
+                self.assertFalse(
+                    entrypoint_contracts._approved_initializer_contract(
+                        repository,
+                        "Scripts/smoke/fixture.py",
+                        base_root=base_root,
+                        base_relative="Scripts/smoke/fixture.py",
+                    )
+                )
         finally:
             temporary.cleanup()
 
