@@ -97,6 +97,44 @@ class CanonicalEntrypointEdgeTests(CanonicalEntrypointFixtureMixin, unittest.Tes
         finally:
             temporary.cleanup()
 
+    def test_legacy_guard_string_and_run_entrypoint_docstring_are_compatible(self) -> None:
+        """A trusted legacy guard string does not block a leading run_entrypoint docstring."""
+        temporary, repository, base = self._create_repository(
+            facade_source=(
+                "from __future__ import annotations\n"
+                "import sys as _phase192_sys\n"
+                "if __package__:\n"
+                "    from .fixture import *\n"
+                "else:\n"
+                "    from fixture import *\n"
+                "if __name__ == '__main__':\n"
+                "    \"\"\"Legacy guard note.\"\"\"\n"
+                "    raise SystemExit(main())\n"
+            )
+        )
+        try:
+            self._migrate_to_standard_entrypoint(repository)
+            entrypoint = repository / "Scripts/smoke/fixture/entrypoint.py"
+            entrypoint.write_text(
+                entrypoint.read_text(encoding="utf-8").replace(
+                    "def run_entrypoint():\n",
+                    'def run_entrypoint():\n    """Run the legacy delegate."""\n',
+                    1,
+                ),
+                encoding="utf-8",
+            )
+            with compare_identity_surfaces._revision_checkout(repository, base) as base_root:
+                self.assertTrue(
+                    entrypoint_contracts._approved_entrypoint_contract(
+                        repository,
+                        "Scripts/smoke/fixture.py",
+                        base_root=base_root,
+                        base_relative="Scripts/smoke/fixture.py",
+                    )
+                )
+        finally:
+            temporary.cleanup()
+
     def test_standard_migration_rejects_nonleading_or_nonstring_run_entrypoint_docstrings(self) -> None:
         """Only one exact leading string expression is accepted as a run_entrypoint docstring."""
         cases = (
