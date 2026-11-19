@@ -355,7 +355,7 @@ jobs:
             && [ "$trusted_revision" != "6858beeda351b406ca804f9e4ad7f29a596f6d23" ] \
             && [ "$trusted_revision" != "3e2637c529ec8a390bae8ff46c43053336aa7b0a" ] \
             && [ "$trusted_revision" != "5c94676c8017158fd4bb72498dcbe3fd5f4bcccc" ] \
-            && [ "$trusted_revision" != "433b7011ed96dfd8a1c8e4e7096f3fa3f1cd0914" ]; then
+            && [ "$trusted_revision" != "5fea776c46ae1fe92f226573484775f1690ae1ef" ]; then
             if [ "$actual_migration_checker_sha" != "$trusted_checker_sha" ]; then
               echo "Current checker differs from immutable base checker without a reviewed migration approval" >&2
               exit 1
@@ -474,11 +474,11 @@ jobs:
               exit 1
             fi
             migration_args=(--parser-migration-approval "$migration_approval_file")
-          elif [ "$trusted_revision" = "433b7011ed96dfd8a1c8e4e7096f3fa3f1cd0914" ]; then
+          elif [ "$trusted_revision" = "5fea776c46ae1fe92f226573484775f1690ae1ef" ]; then
             migration_approval_file="$RUNNER_TEMP/source-text-parser-maintenance-approval.json"
             cat > "$migration_approval_file" <<'MIGRATION_APPROVAL'
           {
-            "base_revision": "433b7011ed96dfd8a1c8e4e7096f3fa3f1cd0914",
+            "base_revision": "5fea776c46ae1fe92f226573484775f1690ae1ef",
             "checker_sha256": "ea0fba81d710b6bf740398f1531f210f3de1b696e4a088835900e426d1059ac9",
             "base_inventory_sha256": "7f101da604342c8879aab18b6b848a660722536000723074afc2e6a376d8ee6c",
             "current_inventory_sha256": "e6ddd88200d320dfb0e83336ded28819829be255b8b52c21e18dc1c09705e57b",
