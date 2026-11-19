@@ -72,9 +72,36 @@ def _bare_names_pattern(names: set[str]) -> re.Pattern[str] | None:
 
 
 def _qualified_alternatives(readers: set[tuple[tuple[tuple[str, ...], str], str]]) -> str:
-    """Return regex alternatives for Type.Reader calls of every discovered reader."""
+    """Return regex alternatives for Type.Reader calls of the given readers."""
     pairs = sorted({(owner.rsplit(".", 1)[-1], name) for (_, owner), name in readers})
     return "|".join(rf"{re.escape(owner)}\s*\.\s*{re.escape(name)}" for owner, name in pairs)
+
+
+def _parent(identity: str) -> str:
+    """Return the namespace or enclosing type that declares one type identity."""
+    return identity.rsplit(".", 1)[0] if "." in identity else ""
+
+
+def _visible_qualified_readers(
+    readers: set[tuple[tuple[tuple[str, ...], str], str]],
+    package: tuple[str, ...],
+    keys: set[tuple[tuple[str, ...], str]],
+    imports: list[tuple[str, str, str]],
+    declarations: dict[tuple[tuple[str, ...], str], set[str]],
+) -> set[tuple[tuple[tuple[str, ...], str], str]]:
+    """Keep readers whose type is visible from one file, preferring same-package declarations of that type name."""
+    scopes = {""}
+    for _, identity in keys:
+        parts = identity.split(".")
+        scopes.update(".".join(parts[:size]) for size in range(1, len(parts) + 1))
+    scopes.update(name.removeprefix("global::") for static, alias, name in imports if not static and not alias)
+    visible = {(key, name) for key, name in readers if _parent(key[1]) in scopes}
+    return {
+        ((reader_package, owner), name)
+        for (reader_package, owner), name in visible
+        if reader_package == package
+        or not any(_parent(identity) in scopes for identity in declarations.get((package, owner.rsplit(".", 1)[-1]), ()))
+    }
 
 
 def _visible_names(
@@ -135,15 +162,22 @@ def _discover_reader_patterns(root: Path, files: list[Path], units: dict[Path, d
             ):
                 readers.add((key, name))
                 changed = True
-    qualified = _qualified_alternatives(readers)
-    compiled: dict[tuple[str, ...], re.Pattern[str]] = {}
+    declarations: dict[tuple[tuple[str, ...], str], set[str]] = {}
+    for keys in declared.values():
+        for package, identity in keys:
+            declarations.setdefault((package, identity.rsplit(".", 1)[-1]), set()).add(identity)
+    compiled: dict[tuple[tuple[str, ...], str], re.Pattern[str]] = {}
     for path, keys in declared.items():
         names = sorted(
             name
             for name in {name for key in keys for name in _visible_names(readers, key)}
             if not _text_module.SEED_READER_NAME.fullmatch(name)
         )
-        cache_key = tuple(names)
+        package = path.relative_to(root).parts[:2]
+        qualified = _qualified_alternatives(
+            _visible_qualified_readers(readers, package, keys, list(units[path].get("imports", ())), declarations)
+        )
+        cache_key = (tuple(names), qualified)
         if cache_key not in compiled:
             extra = []
             if names:

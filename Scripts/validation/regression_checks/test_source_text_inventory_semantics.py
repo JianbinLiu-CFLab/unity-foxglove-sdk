@@ -44,16 +44,19 @@ class SourceTextInventorySemanticTests(_FixtureSupport, unittest.TestCase):
         statements: str,
         extra_files: dict[str, str] | None = None,
         base_statements: str = "",
+        prelude: str = "",
     ) -> tuple[int, str]:
         """Add statements to a registered entrypoint behind helper declarations and run the real gate."""
         template = (
-            "public static partial class FixtureValidation {{\n{helpers}\n"
+            prelude + "public static partial class FixtureValidation {{\n{helpers}\n"
             "    public static void Validate() {{\n{body}\n    }}\n}}\n"
         )
         with tempfile.TemporaryDirectory() as directory:
             root = self._git_fixture(directory, validation_text=template.format(helpers=helpers, body=base_statements))
             for relative, text in (extra_files or {}).items():
-                (root / "Packages/fixture/Tests/Runtime" / relative).write_text(text, encoding="utf-8")
+                path = root / relative if relative.startswith("Packages/") else root / "Packages/fixture/Tests/Runtime" / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(text, encoding="utf-8")
             subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
             subprocess.run(["git", "-C", str(root), "commit", "-q", "--allow-empty", "-m", "readers"], check=True)
             (root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs").write_text(
@@ -106,6 +109,36 @@ class SourceTextInventorySemanticTests(_FixtureSupport, unittest.TestCase):
                 code, output = self._reader_gate(helpers, statements, extra_files)
                 self.assertNotEqual(0, code, output)
                 self.assertRegex(output, r"SOURCE_TEXT_RATCHET_(?:CLASS_C_INCREASE|UNRESOLVED_INCREASE)")
+        code, output = self._reader_gate(
+            "",
+            f"var source = SourceReaders.Read({product});\n{check}",
+            {"SourceReaders.cs": "namespace Fixture.Readers {\n    internal static class SourceReaders {\n"
+             "        internal static string Read(string relativePath) => System.IO.File.ReadAllText(relativePath);\n    }\n}\n"},
+            prelude="using Fixture.Readers;\n",
+        )
+        self.assertNotEqual(0, code, output)
+        self.assertRegex(output, r"SOURCE_TEXT_RATCHET_CLASS_C_INCREASE")
+
+    def test_qualified_readers_stay_scoped_to_visible_declarations(self):
+        """Ignore Type.Read calls that bind to a same-named non-reader type in another namespace or package."""
+        product = '"Packages/fixture/Runtime/Product.cs"'
+        statements = f'var source = SourceReaders.Read({product});\nCheck(source.Contains("Product"));'
+        reader = "        internal static string Read(string relativePath) => System.IO.File.ReadAllText(relativePath);\n"
+        plain = "        internal static string Read(string relativePath) => relativePath;\n"
+        cases = {
+            "foreign namespace": ({
+                "Readers.cs": "namespace Fixture.Readers {\n    internal static class SourceReaders {\n" + reader + "    }\n}\n",
+                "Plain.cs": "namespace Fixture.Other {\n    internal static class SourceReaders {\n" + plain + "    }\n}\n",
+            }, "using Fixture.Other;\n"),
+            "foreign package": ({
+                "Packages/other/Tests/Runtime/SourceReaders.cs": "internal static class SourceReaders {\n" + reader + "}\n",
+                "Plain.cs": "internal static class SourceReaders {\n" + plain + "}\n",
+            }, ""),
+        }
+        for name, (extra_files, prelude) in cases.items():
+            with self.subTest(name):
+                code, output = self._reader_gate("", statements, extra_files, prelude=prelude)
+                self.assertEqual(0, code, output)
 
     def test_non_reader_calls_stay_outside_the_ratchet(self):
         """Keep member calls, non-text helpers, masked or inactive definitions, foreign namesakes and temp reads out."""
