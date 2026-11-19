@@ -227,6 +227,7 @@ Release and compliance: [v1.9.7 release notes](docs/releases/RELEASE_NOTES_v1.9.
 - WSS can load a project-supplied PFX. Verify generated CA fingerprints before trusting them.
 - The shared query token is suitable only as a lightweight trusted-local/LAN gate.
 - Do not expose parameter, service, client-publish, or replay-control surfaces to an untrusted network without an external production security boundary.
+- Native ROS2 For Unity inbound bridges trust every participant that can publish their topics. The RMW allocates incoming messages before SDK size checks run, so use publisher authorization such as SROS2 and a verified RMW size limit when publishers are not trusted. See the [ROS2 For Unity IMU inbound security boundary](Packages/dev.unity2foxglove.ros2forunity/README.md#imu-inbound-security-boundary).
 
 ## Contributor Verification
 
