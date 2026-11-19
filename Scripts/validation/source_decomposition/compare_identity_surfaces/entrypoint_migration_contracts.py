@@ -520,7 +520,6 @@ def _approved_module_entrypoint_guard_contract(
         "BaseException",
         "Exception",
         "FileNotFoundError",
-        "InconclusiveError",
         "KeyboardInterrupt",
         "RuntimeError",
         "SystemExit",
