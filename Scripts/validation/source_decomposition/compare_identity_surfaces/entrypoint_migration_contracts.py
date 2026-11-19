@@ -516,11 +516,48 @@ def _approved_module_entrypoint_guard_contract(
         or base_guard.body[0].exc.func.id != "SystemExit"
     ):
         return False
-    facade_uses_private_sys = any(
-        isinstance(node, ast.Name) and node.id == "_phase192_sys"
-        for node in ast.walk(facade_guard)
-    )
-    if facade_uses_private_sys:
+    allowed_guard_names = {
+        "BaseException",
+        "Exception",
+        "FileNotFoundError",
+        "InconclusiveError",
+        "KeyboardInterrupt",
+        "RuntimeError",
+        "SystemExit",
+        "TimeoutError",
+        "__name__",
+        "print",
+    }
+    facade_bound_names = set()
+    facade_loaded_names = set()
+    for node in ast.walk(facade_guard):
+        if isinstance(node, ast.Name):
+            if isinstance(node.ctx, ast.Load):
+                facade_loaded_names.add(node.id)
+            elif isinstance(node.ctx, ast.Store):
+                facade_bound_names.add(node.id)
+        elif isinstance(node, ast.ExceptHandler) and node.name:
+            facade_bound_names.add(node.name)
+    required_guard_names = {
+        "sys" if name == "_phase192_sys" else name
+        for name in facade_loaded_names - facade_bound_names - allowed_guard_names
+    }
+    package_imported_names = set()
+    for statement in head_tree.body[:head_index]:
+        if isinstance(statement, ast.Import):
+            package_imported_names.update(
+                alias.asname or alias.name.split(".", 1)[0]
+                for alias in statement.names
+            )
+        elif isinstance(statement, ast.ImportFrom):
+            package_imported_names.update(
+                alias.asname or alias.name
+                for alias in statement.names
+                if alias.name != "*"
+            )
+    if required_guard_names - package_imported_names:
+        return False
+    if "sys" in required_guard_names:
         sys_imported = False
         for statement in head_tree.body[:head_index]:
             if isinstance(statement, ast.Import):
