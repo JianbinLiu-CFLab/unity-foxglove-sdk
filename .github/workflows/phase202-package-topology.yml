@@ -1,0 +1,129 @@
+name: Phase202 package topology Unity harness
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Probe mode
+        required: true
+        default: all
+        type: choice
+        options:
+          - resolution
+          - matrix
+          - all
+      include_demo:
+        description: Compile the checked-out demo after native-custom jazzy composition
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: phase202-package-topology
+  cancel-in-progress: false
+
+jobs:
+  unity:
+    name: Phase202 package resolution and compile
+    runs-on: [self-hosted, Windows, X64, unity2foxglove-phase186-live]
+    timeout-minutes: 720
+    steps:
+      - name: Bootstrap PowerShell 7 on PATH
+        shell: cmd
+        run: |
+          set "POWERSHELL7=C:\Program Files\PowerShell\7"
+          if not exist "%POWERSHELL7%\pwsh.exe" (
+            echo PowerShell 7 MSI installation is required.
+            exit /b 1
+          )
+          echo %POWERSHELL7%>>"%GITHUB_PATH%"
+          set "PATH=%POWERSHELL7%;%PATH%"
+          where pwsh
+          pwsh -NoLogo -NoProfile -Command "$PSVersionTable.PSVersion.ToString()"
+
+      - name: Enable Git long-path support
+        shell: pwsh
+        run: |
+          $globalConfig = Join-Path $env:RUNNER_TEMP ("git-global-{0}.config" -f $env:GITHUB_RUN_ID)
+          "GIT_CONFIG_GLOBAL=$globalConfig" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          $env:GIT_CONFIG_GLOBAL = $globalConfig
+          git config --global core.longpaths true
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          clean: false
+
+      - name: Clean runner workspace while preserving Unity Library
+        shell: pwsh
+        run: git clean -ffdx -e 'Unity2Foxglove/Library/' -e 'Unity2Foxglove/Library-*/'
+
+      - name: Configure build temporary directories
+        shell: pwsh
+        run: |
+          $tempRoot = Join-Path $env:GITHUB_WORKSPACE 'build/tmp'
+          New-Item -ItemType Directory -Force -Path $tempRoot | Out-Null
+          "TEMP=$tempRoot" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "TMP=$tempRoot" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Unity gate process ownership dependency
+        shell: pwsh
+        run: python -m pip install --disable-pip-version-check --no-input psutil==7.0.0
+
+      - name: Run Phase202 package-manager probes
+        if: github.event.inputs.mode == 'resolution' || github.event.inputs.mode == 'all'
+        shell: pwsh
+        run: >-
+          python -B -m Scripts.package.run_phase202_unity_package_matrix
+          --mode resolution
+          --output build/phase202/unity/resolution
+
+      - name: Run Phase202 profile matrix
+        if: github.event.inputs.mode == 'matrix' || github.event.inputs.mode == 'all'
+        shell: pwsh
+        run: >-
+          python -B -m Scripts.package.run_phase202_unity_package_matrix
+          --mode matrix
+          --output build/phase202/unity/matrix
+
+      - name: Backup demo manifest and lock
+        if: github.event.inputs.include_demo == 'true'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path build/phase202/unity/demo | Out-Null
+          Copy-Item Unity2Foxglove/Packages/manifest.json build/phase202/unity/demo/manifest.json -Force
+          if (Test-Path Unity2Foxglove/Packages/packages-lock.json) {
+            Copy-Item Unity2Foxglove/Packages/packages-lock.json build/phase202/unity/demo/packages-lock.json -Force
+          }
+
+      - name: Compose and compile demo native-custom jazzy
+        if: github.event.inputs.include_demo == 'true'
+        shell: pwsh
+        run: |
+          python -B -m Scripts.package.compose_unity_manifest --project Unity2Foxglove --profile native-custom --distro jazzy
+          python -B Scripts/release/run_unity_batch_compile.py --project-path Unity2Foxglove --log-file build/phase202/unity/demo/unity.log --timeout-seconds 3600
+
+      - name: Restore demo manifest and lock
+        if: always() && github.event.inputs.include_demo == 'true'
+        shell: pwsh
+        run: |
+          Copy-Item build/phase202/unity/demo/manifest.json Unity2Foxglove/Packages/manifest.json -Force
+          if (Test-Path build/phase202/unity/demo/packages-lock.json) {
+            Copy-Item build/phase202/unity/demo/packages-lock.json Unity2Foxglove/Packages/packages-lock.json -Force
+          }
+
+      - name: Upload Phase202 Unity evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: phase202-package-topology-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/phase202/unity
+          if-no-files-found: warn
