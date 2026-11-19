@@ -35,6 +35,7 @@ def _new_project(root: Path, name: str) -> Path:
     """Create one empty Unity project below the owned evidence directory."""
     project = root / "projects" / name
     (project / "Packages").mkdir(parents=True, exist_ok=True)
+    (project / "Assets").mkdir(parents=True, exist_ok=True)
     (project / "ProjectSettings").mkdir(parents=True, exist_ok=True)
     (project / "ProjectSettings" / "ProjectVersion.txt").write_text(
         "m_EditorVersion: 6000.3.14f1\n", encoding="utf-8"
