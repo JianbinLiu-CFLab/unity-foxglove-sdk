@@ -109,15 +109,28 @@ class SourceTextInventorySemanticTests(_FixtureSupport, unittest.TestCase):
                 code, output = self._reader_gate(helpers, statements, extra_files)
                 self.assertNotEqual(0, code, output)
                 self.assertRegex(output, r"SOURCE_TEXT_RATCHET_(?:CLASS_C_INCREASE|UNRESOLVED_INCREASE)")
-        code, output = self._reader_gate(
-            "",
-            f"var source = SourceReaders.Read({product});\n{check}",
-            {"SourceReaders.cs": "namespace Fixture.Readers {\n    internal static class SourceReaders {\n"
-             "        internal static string Read(string relativePath) => System.IO.File.ReadAllText(relativePath);\n    }\n}\n"},
-            prelude="using Fixture.Readers;\n",
-        )
-        self.assertNotEqual(0, code, output)
-        self.assertRegex(output, r"SOURCE_TEXT_RATCHET_CLASS_C_INCREASE")
+        namespaced = {"SourceReaders.cs": "namespace Fixture.Readers {\n    internal static class SourceReaders {\n"
+                      "        internal static string Read(string relativePath) => System.IO.File.ReadAllText(relativePath);\n    }\n}\n"}
+        variants = {
+            "System.String": ("    private static System.String LoadThing(string path) => System.IO.File.ReadAllText(path);", "LoadThing", "", None),
+            "global String": ("    private static global::System.String LoadThing(string path) => System.IO.File.ReadAllText(path);", "LoadThing", "", None),
+            "nullable string": ("    private static string? LoadThing(string path) => System.IO.File.ReadAllText(path);", "LoadThing", "", None),
+            "nullable array": ("    private static string[]? LoadThing(string path) => System.IO.File.ReadAllLines(path);", "LoadThing", "", None),
+            "File alias": ("    private static string LoadThing(string path) => F.ReadAllText(path);", "LoadThing", "using F = System.IO.File;\n", None),
+            "async read": ("    private static string LoadThing(string path) => System.IO.File.ReadAllTextAsync(path).GetAwaiter().GetResult();", "LoadThing", "", None),
+            "FileInfo text": ("    private static string LoadThing(string path) => new System.IO.FileInfo(path).OpenText().ReadToEnd();", "LoadThing", "", None),
+            "this call": (local, "this.Read", "", None),
+            "type alias": ("", "SR.Read", "using SR = Fixture.Readers.SourceReaders;\n", namespaced),
+            "imported namespace": ("", "SourceReaders.Read", "using Fixture.Readers;\n", namespaced),
+            "fully qualified": ("", "Fixture.Readers.SourceReaders.Read", "", namespaced),
+        }
+        for name, (helpers, call, prelude, extra_files) in variants.items():
+            with self.subTest(name):
+                code, output = self._reader_gate(
+                    helpers, f"var source = {call}({product});\n{check}", extra_files, prelude=prelude
+                )
+                self.assertNotEqual(0, code, output)
+                self.assertRegex(output, r"SOURCE_TEXT_RATCHET_(?:CLASS_C_INCREASE|UNRESOLVED_INCREASE)")
 
     def test_qualified_readers_stay_scoped_to_visible_declarations(self):
         """Ignore Type.Read calls that bind to a same-named non-reader type in another namespace or package."""
@@ -138,6 +151,23 @@ class SourceTextInventorySemanticTests(_FixtureSupport, unittest.TestCase):
         for name, (extra_files, prelude) in cases.items():
             with self.subTest(name):
                 code, output = self._reader_gate("", statements, extra_files, prelude=prelude)
+                self.assertEqual(0, code, output)
+        explicit = {
+            "Readers.cs": "namespace Good {\n    internal static class SourceReaders {\n" + reader + "    }\n}\n",
+            "Plain.cs": "namespace Other {\n    internal static class SourceReaders {\n" + plain + "    }\n}\n",
+        }
+        member_seed = (
+            "    private sealed class Cursor { public string ReadText(string path) => \"Product\"; }\n"
+            "    private static string LoadThing(string path) => new Cursor().ReadText(path);"
+        )
+        for name, (helpers, call, extra_files, prelude) in {
+            "explicit foreign namespace": ("", "Other.SourceReaders.Read", explicit, "using Good;\n"),
+            "member seed call": (member_seed, "LoadThing", None, ""),
+        }.items():
+            with self.subTest(name):
+                code, output = self._reader_gate(
+                    helpers, f'var source = {call}({product});\nCheck(source.Contains("Product"));', extra_files, prelude=prelude
+                )
                 self.assertEqual(0, code, output)
 
     def test_non_reader_calls_stay_outside_the_ratchet(self):

@@ -12,10 +12,9 @@ except ImportError:
     import source_text_inventory_flow as _flow_module
     import source_text_inventory_text as _text_module
 
-READ_PRIMITIVE_PATTERN = re.compile(
-    r"\bFile\s*\.\s*(?:ReadAllText|ReadAllLines|ReadLines|OpenText)\s*\("
-    r"|\bnew\s+(?:[A-Za-z_]\w*\s*\.\s*)*StreamReader\s*\("
-)
+FILE_READ_MEMBERS = r"(?:ReadAllText|ReadAllLines|ReadLines|OpenText|OpenRead)(?:Async)?"
+FILE_TYPE_NAMES = frozenset({"File", "IO.File", "System.IO.File"})
+_PRIMITIVE_CACHE: dict[tuple[str, ...], re.Pattern[str]] = {}
 TEXT_RETURN_TYPES = frozenset(
     {
         "string",
@@ -51,30 +50,91 @@ def _active_lines(masked: str) -> list[bool]:
     return active
 
 
+def _normalize_return_type(value: str) -> str:
+    """Normalize C# aliases, global qualifiers, collection namespaces and nullable markers."""
+    value = re.sub(r"\s+", "", value).replace("global::", "").replace("?", "")
+    value = re.sub(r"\bSystem\.Collections\.Generic\.", "", value)
+    return re.sub(r"\b(?:System\.)?String\b", "string", value)
+
+
 def _return_type(masked: str, method: object) -> str:
-    """Return the declared return type written immediately before a method name."""
+    """Return the normalized return type written immediately before a method name."""
     prefix = masked[max(0, method.start - 200) : method.body_start]
     matches = list(
         re.finditer(
-            rf"(?P<type>[A-Za-z_][\w.]*(?:\s*<[^<>;{{}}()=]*>)?(?:\s*\[\s*\])?)\s+{re.escape(method.name)}\s*\(",
+            r"(?P<type>(?:global\s*::\s*)?[A-Za-z_][\w.]*(?:\s*<[^<>;{}()=]*>)?(?:\s*\?)?(?:\s*\[\s*\](?:\s*\?)?)?)\s+"
+            + re.escape(method.name)
+            + r"\s*\(",
             prefix,
         )
     )
-    return re.sub(r"\s+", "", matches[-1].group("type")) if matches else ""
+    return _normalize_return_type(matches[-1].group("type")) if matches else ""
 
 
-def _bare_names_pattern(names: set[str]) -> re.Pattern[str] | None:
-    """Match unqualified calls to discovered readers while excluding member access."""
-    if not names:
-        return None
+def _aliases(imports: list[tuple[str, str, str]]) -> tuple[tuple[str, ...], tuple[tuple[str, str], ...]]:
+    """Return File aliases and other type aliases declared by using directives."""
+    targets = [(alias, name.removeprefix("global::")) for static, alias, name in imports if alias and not static]
+    return (
+        tuple(sorted(alias for alias, target in targets if target in FILE_TYPE_NAMES)),
+        tuple(sorted((alias, target) for alias, target in targets if target not in FILE_TYPE_NAMES)),
+    )
+
+
+def _primitive_pattern(file_aliases: tuple[str, ...]) -> re.Pattern[str]:
+    """Match file-read primitives, including File aliases and FileInfo or stream readers."""
+    if file_aliases not in _PRIMITIVE_CACHE:
+        owners = "|".join(["File", *(re.escape(alias) for alias in file_aliases)])
+        _PRIMITIVE_CACHE[file_aliases] = re.compile(
+            rf"(?<![\w])(?:{owners})\s*\.\s*{FILE_READ_MEMBERS}\s*\("
+            r"|\.\s*OpenText\s*\("
+            r"|\bnew\s+(?:[A-Za-z_]\w*\s*\.\s*)*(?:StreamReader|FileStream)\s*\("
+        )
+    return _PRIMITIVE_CACHE[file_aliases]
+
+
+def _calls_seed(body: str) -> bool:
+    """Return whether a body calls a seed reader other than through an instance member access."""
+    for match in _text_module.READER_CALL_PATTERN.finditer(body):
+        prefix = body[: match.start()].rstrip()
+        if "." in match.group("reader") or not prefix.endswith("."):
+            return True
+        if re.search(r"(?<![\w.])this\s*$", prefix[:-1]):
+            return True
+    return False
+
+
+def _dotted(identity: str) -> str:
+    """Return a regex for a dotted identity that tolerates whitespace around dots."""
+    return r"\s*\.\s*".join(re.escape(part) for part in identity.split("."))
+
+
+def _call_forms(
+    readers: set[tuple[tuple[tuple[str, ...], str], str]],
+    short_visible: set[tuple[tuple[tuple[str, ...], str], str]] | None,
+    type_aliases: tuple[tuple[str, str], ...],
+) -> list[str]:
+    """Return fully qualified, visible short, and alias call forms for discovered readers."""
+    forms: list[str] = []
+    for reader in readers:
+        (_, owner), name = reader
+        method = re.escape(name)
+        simple = owner.rsplit(".", 1)[-1]
+        prefix = r"(?:global\s*::\s*)?" if "." in owner else r"global\s*::\s*"
+        forms.append(rf"(?<![\w.]){prefix}{_dotted(owner)}\s*\.\s*{method}")
+        if short_visible is None or reader in short_visible:
+            forms.append(rf"(?<![\w.]){re.escape(simple)}\s*\.\s*{method}")
+        forms.extend(
+            rf"(?<![\w.]){re.escape(alias)}\s*\.\s*{method}"
+            for alias, target in type_aliases
+            if target == owner or target == simple or owner.endswith("." + target)
+        )
+    return sorted(set(forms), key=len, reverse=True)
+
+
+def _bare_form(names: set[str]) -> str:
+    """Return a regex alternative for unqualified or this-qualified calls to named readers."""
     alternatives = "|".join(re.escape(name) for name in sorted(names, key=len, reverse=True))
-    return re.compile(rf"(?<![\w.])(?:{alternatives})\s*\(")
-
-
-def _qualified_alternatives(readers: set[tuple[tuple[tuple[str, ...], str], str]]) -> str:
-    """Return regex alternatives for Type.Reader calls of the given readers."""
-    pairs = sorted({(owner.rsplit(".", 1)[-1], name) for (_, owner), name in readers})
-    return "|".join(rf"{re.escape(owner)}\s*\.\s*{re.escape(name)}" for owner, name in pairs)
+    return rf"(?<![\w.])(?:this\s*\.\s*)?(?:{alternatives})" if names else ""
 
 
 def _parent(identity: str) -> str:
@@ -116,8 +176,9 @@ def _visible_names(
 
 def _discover_reader_patterns(root: Path, files: list[Path], units: dict[Path, dict[str, object]]) -> None:
     """Register per-file reader patterns for text-returning helpers that read files or other readers."""
-    candidates: list[tuple[tuple[tuple[str, ...], str], str, str]] = []
+    candidates: list[tuple[tuple[tuple[str, ...], str], str, str, Path]] = []
     declared: dict[Path, set[tuple[tuple[str, ...], str]]] = {}
+    aliases = {path: _aliases(list(units[path].get("imports", ()))) for path in files}
     for path in files:
         unit = units[path]
         text, masked, regions = str(unit["text"]), str(unit["masked"]), unit["regions"]
@@ -140,53 +201,57 @@ def _discover_reader_patterns(root: Path, files: list[Path], units: dict[Path, d
             )
             if owner is None or _return_type(masked, method) not in TEXT_RETURN_TYPES:
                 continue
-            candidates.append(((package, owner[2]), method.name, masked[method.body_start : method.body_end + 1]))
+            candidates.append(((package, owner[2]), method.name, masked[method.body_start : method.body_end + 1], path))
     readers: set[tuple[tuple[tuple[str, ...], str], str]] = set()
     changed = True
     while changed:
         changed = False
-        qualified = _qualified_alternatives(readers)
-        qualified_pattern = re.compile(rf"\b(?:{qualified})\s*\(") if qualified else None
-        bare_patterns: dict[tuple[tuple[str, ...], str], re.Pattern[str] | None] = {}
-        for key, name, body in candidates:
+        by_name: dict[str, set[tuple[tuple[tuple[str, ...], str], str]]] = {}
+        for reader in readers:
+            by_name.setdefault(reader[1], set()).add(reader)
+        call_patterns: dict[tuple[object, ...], re.Pattern[str] | None] = {}
+        for key, name, body, path in candidates:
             if (key, name) in readers:
                 continue
-            if key not in bare_patterns:
-                bare_patterns[key] = _bare_names_pattern(_visible_names(readers, key))
-            bare = bare_patterns[key]
-            if (
-                READ_PRIMITIVE_PATTERN.search(body)
-                or _text_module.READER_CALL_PATTERN.search(body)
-                or (qualified_pattern is not None and qualified_pattern.search(body))
-                or (bare is not None and bare.search(body))
-            ):
+            file_aliases, type_aliases = aliases[path]
+            hit = bool(_primitive_pattern(file_aliases).search(body) or _calls_seed(body))
+            present = frozenset(reader_name for reader_name in by_name if reader_name in body) if not hit else frozenset()
+            if present:
+                pattern_key = (key, type_aliases, present)
+                if pattern_key not in call_patterns:
+                    subset = set().union(*(by_name[reader_name] for reader_name in present))
+                    forms = _call_forms(subset, None, type_aliases)
+                    bare = _bare_form(_visible_names(subset, key))
+                    forms.extend([bare] if bare else [])
+                    call_patterns[pattern_key] = re.compile(rf"(?:{'|'.join(forms)})\s*\(") if forms else None
+                calls = call_patterns[pattern_key]
+                hit = calls is not None and calls.search(body) is not None
+            if hit:
                 readers.add((key, name))
                 changed = True
     declarations: dict[tuple[tuple[str, ...], str], set[str]] = {}
     for keys in declared.values():
         for package, identity in keys:
             declarations.setdefault((package, identity.rsplit(".", 1)[-1]), set()).add(identity)
-    compiled: dict[tuple[tuple[str, ...], str], re.Pattern[str]] = {}
+    compiled: dict[tuple[object, ...], re.Pattern[str]] = {}
     for path, keys in declared.items():
-        names = sorted(
+        masked = str(units[path]["masked"])
+        present = {reader for reader in readers if reader[1] in masked}
+        names = {
             name
-            for name in {name for key in keys for name in _visible_names(readers, key)}
+            for name in {name for key in keys for name in _visible_names(present, key)}
             if not _text_module.SEED_READER_NAME.fullmatch(name)
-        )
+        }
         package = path.relative_to(root).parts[:2]
-        qualified = _qualified_alternatives(
-            _visible_qualified_readers(readers, package, keys, list(units[path].get("imports", ())), declarations)
-        )
-        cache_key = (tuple(names), qualified)
+        visible = _visible_qualified_readers(present, package, keys, list(units[path].get("imports", ())), declarations)
+        forms = _call_forms(present, visible, aliases[path][1])
+        bare = _bare_form(names)
+        forms.extend([bare] if bare else [])
+        cache_key = tuple(forms)
         if cache_key not in compiled:
-            extra = []
-            if names:
-                extra.append("(?<![\\w.])(?:" + "|".join(re.escape(name) for name in sorted(names, key=len, reverse=True)) + ")")
-            if qualified:
-                extra.append(f"(?:{qualified})")
             compiled[cache_key] = (
-                re.compile(rf"\b(?P<reader>{_text_module.SEED_READER_ALTERNATIVES}|{'|'.join(extra)})\s*\(")
-                if extra
+                re.compile(rf"(?P<reader>\b(?:{_text_module.SEED_READER_ALTERNATIVES})|{'|'.join(forms)})\s*\(")
+                if forms
                 else _text_module.READER_CALL_PATTERN
             )
         _text_module._PATH_READER_PATTERNS[str(path)] = compiled[cache_key]
