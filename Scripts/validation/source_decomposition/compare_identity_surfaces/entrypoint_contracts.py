@@ -7,6 +7,7 @@ from Scripts.validation.source_decomposition.compare_identity_surfaces.entrypoin
     _entrypoint_body_matches_mechanical_transform,
 )
 def _is_safe_unittest_main_call(call: ast.Call) -> bool:
+    """Return whether a unittest.main call uses allowed options."""
     return (
         isinstance(call.func, ast.Attribute)
         and isinstance(call.func.value, ast.Name)
@@ -35,6 +36,7 @@ def _is_safe_unittest_main_call(call: ast.Call) -> bool:
         )
     )
 def _is_unittest_module_entrypoint(tree: ast.Module) -> bool:
+    """Return whether the module delegates to unittest.main."""
     for node in tree.body:
         if not isinstance(node, ast.If):
             continue
@@ -69,12 +71,14 @@ def _is_unittest_module_entrypoint(tree: ast.Module) -> bool:
             return True
     return False
 def _entrypoint_contract_signatures(tree: ast.Module) -> tuple[str, ...]:
+    """Return normalized AST signatures for entrypoint statements."""
     return tuple(ast.dump(statement, include_attributes=False) for statement in tree.body)
 def _reviewed_direct_entrypoint_absolute_import(
     path: Path,
     node: ast.Import | ast.ImportFrom,
     repository_root: Path | None,
 ) -> bool:
+    """Return whether an absolute import is reviewed."""
     if (
         repository_root is None
         or not isinstance(node, ast.ImportFrom)
@@ -106,6 +110,7 @@ def _entrypoint_contract(
     reject_conditional: bool = True,
     repository_root: Path | None = None,
 ) -> tuple[bool, str | None, tuple[str, ...], frozenset[str]]:
+    """Return the normalized module entrypoint contract."""
     if not path.is_file():
         return False, None, (), frozenset()
     source = path.read_text(encoding="utf-8")
@@ -136,6 +141,7 @@ def _entrypoint_contract(
         if node.level != 1 or id(node) not in relative_ids:
             raise ValueError(f"unsupported nested or parent-relative entrypoint import: {path}")
     def stable_exports(target: Path) -> set[str]:
+        """Return the stable exported names for a section."""
         target_tree = _parse_source(target.read_text(encoding="utf-8"), target)
         names = _top_level_names(target_tree, include_imports=True)
         names.difference_update(_conditional_only_public_names(target_tree, include_private=True))
@@ -290,6 +296,7 @@ def _entrypoint_contract(
     })
     entrypoint_builtins = frozenset(set(_SAFE_BUILTIN_NAMES) | {"sorted", "all", "any", "print"})
     def local_function_is_safe(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+        """Return whether a local helper definition is safe."""
         if not _safe_function_definition(
             node,
             frozenset(set(entrypoint_builtins) | imported_names | local_names | {"__doc__"}),
@@ -318,6 +325,7 @@ def _entrypoint_contract(
                     return False
         return True
     def is_main_guard(node: ast.If) -> bool:
+        """Return whether a node is the module main guard."""
         test = node.test
         return (
             isinstance(test, ast.Compare)
@@ -340,6 +348,7 @@ def _entrypoint_contract(
             )
         )
     def safe_value(node: ast.AST) -> bool:
+        """Return whether an expression is safe for the entrypoint."""
         if isinstance(node, (ast.Constant, ast.Name)):
             return True
         if isinstance(node, ast.Attribute):
@@ -352,6 +361,7 @@ def _entrypoint_contract(
             return all(safe_value(item) for item in node.elts)
         return False
     def is_safe_dispatch_call(node: ast.Call) -> bool:
+        """Return whether a dispatch call uses the allowed form."""
         if not isinstance(node.func, ast.Name):
             return False
         if node.func.id not in imported_names | local_names | dynamic_names | package_exports:
@@ -360,6 +370,7 @@ def _entrypoint_contract(
             safe_value(keyword_node.value) for keyword_node in node.keywords
         )
     def is_unittest_suite_assignment(target: str, value: ast.AST) -> bool:
+        """Return whether an assignment binds an allowed unittest suite."""
         if target == "suite":
             return (
                 isinstance(value, ast.Call)
@@ -417,6 +428,7 @@ def _entrypoint_contract(
             )
         return False
     def is_unittest_exit_expression(node: ast.AST) -> bool:
+        """Return whether an expression is an allowed unittest exit code."""
         return (
             isinstance(node, ast.IfExp)
             and isinstance(node.test, ast.Call)
@@ -432,6 +444,7 @@ def _entrypoint_contract(
             and node.orelse.value == 1
         )
     def safe_log_argument(node: ast.AST, exception_names: frozenset[str]) -> bool:
+        """Return whether an exception log argument is safe."""
         if isinstance(node, ast.Constant):
             return True
         if not isinstance(node, ast.JoinedStr):
@@ -453,6 +466,7 @@ def _entrypoint_contract(
         statements: list[ast.stmt],
         exception_names: frozenset[str] = frozenset(),
     ) -> bool:
+        """Validate statements inside a module entrypoint guard."""
         delegated = False
         for statement in statements:
             if isinstance(statement, ast.Expr) and isinstance(statement.value, ast.Call):
@@ -491,6 +505,7 @@ def _entrypoint_contract(
                         "FileNotFoundError", "InconclusiveError",
                     }
                     def allowed_handler_type(item: ast.AST) -> bool:
+                        """Return whether an exception handler type is allowed."""
                         return (
                             isinstance(item, ast.Name)
                             and item.id in allowed_handler_names
@@ -611,6 +626,7 @@ def _entrypoint_contract(
         if alias.name == "pathlib"
     }
     def is_safe_file_bootstrap(statement: ast.stmt) -> bool:
+        """Return whether a file bootstrap expression is safe."""
         if not isinstance(statement, ast.Expr) or not isinstance(statement.value, ast.Call):
             return False
         call = statement.value
@@ -759,6 +775,7 @@ def _entrypoint_block_is_standard(
     import_level: int,
     import_module: str,
 ) -> bool:
+    """Return whether a module entrypoint uses the standard wrapper."""
     body = list(tree.body)
     if body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant):
         if not isinstance(body[0].value.value, str):
@@ -815,6 +832,7 @@ def _approved_entrypoint_section(
     expected_body: tuple[ast.stmt, ...] | None = None,
     expected_imports: tuple[ast.Import | ast.ImportFrom, ...] | None = None,
 ) -> bool:
+    """Return whether an entrypoint section exports a safe wrapper."""
     if not path.is_file() or path.is_symlink():
         return False
     try:
@@ -876,6 +894,7 @@ def _approved_entrypoint_contract(
     base_root: Path | None = None,
     base_relative: str | None = None,
 ) -> bool:
+    """Return whether the facade matches a trusted entrypoint template."""
     return _approved_entrypoint_contract_impl(
         root,
         relative,
@@ -891,6 +910,7 @@ def _approved_initializer_contract(
     base_root: Path | None = None,
     base_relative: str | None = None,
 ) -> bool:
+    """Return whether the initializer matches the trusted transition."""
     return _approved_initializer_contract_impl(
         root,
         relative,
