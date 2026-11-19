@@ -431,4 +431,49 @@ class _Phase184FoxgloveDesktopLiveAcceptanceTests_validation:
                     self.assertIn("desktop-lease:close", harness.events)
 
 
+    def test_module_entrypoint_matches_facade_argument_contract(self):
+        """The package module delegates argument errors and help to the facade."""
+        commands = {
+            "module": [
+                sys.executable,
+                "-m",
+                "Scripts.smoke.foxrun.phase184_foxglove_desktop_live_acceptance",
+            ],
+            "facade": [sys.executable, str(COORDINATOR_PATH)],
+        }
+        failures = {
+            label: subprocess.run(
+                command,
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=60,
+            )
+            for label, command in commands.items()
+        }
+        self.assertEqual(2, failures["facade"].returncode)
+        self.assertEqual(
+            failures["facade"].returncode,
+            failures["module"].returncode,
+        )
+        for result in failures.values():
+            self.assertIn("the following arguments are required", result.stderr)
+
+        helps = {
+            label: subprocess.run(
+                command + ["--help"],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=60,
+            )
+            for label, command in commands.items()
+        }
+        for result in helps.values():
+            self.assertEqual(0, result.returncode)
+            self.assertIn("--unity-editor", result.stdout)
+
+
 __all__ = [name for name in globals() if not name.startswith("__")]
