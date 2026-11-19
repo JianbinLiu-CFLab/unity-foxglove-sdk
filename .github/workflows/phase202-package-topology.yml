@@ -110,7 +110,7 @@ jobs:
           --output build/phase202/unity/matrix
 
       - name: Backup demo manifest and lock
-        if: github.event_name == 'push' || github.event.inputs.include_demo == 'true'
+        if: always() && (github.event_name == 'push' || github.event.inputs.include_demo == 'true')
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path build/phase202/unity/demo | Out-Null
@@ -120,7 +120,7 @@ jobs:
           }
 
       - name: Compose and compile demo native-custom jazzy
-        if: github.event_name == 'push' || github.event.inputs.include_demo == 'true'
+        if: always() && (github.event_name == 'push' || github.event.inputs.include_demo == 'true')
         shell: pwsh
         run: |
           python -B -m Scripts.package.compose_unity_manifest --project Unity2Foxglove --profile native-custom --distro jazzy
@@ -133,6 +133,20 @@ jobs:
           Copy-Item build/phase202/unity/demo/manifest.json Unity2Foxglove/Packages/manifest.json -Force
           if (Test-Path build/phase202/unity/demo/packages-lock.json) {
             Copy-Item build/phase202/unity/demo/packages-lock.json Unity2Foxglove/Packages/packages-lock.json -Force
+          }
+
+      - name: Collect generated package outputs
+        if: always()
+        shell: pwsh
+        run: |
+          $destination = 'build/phase202/unity/generated-packages'
+          New-Item -ItemType Directory -Force -Path $destination | Out-Null
+          foreach ($path in @(git diff --name-only -- Packages/dev.unity2foxglove.foxrun.ros2.interfaces Packages/dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.humble.win64 Packages/dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.jazzy.win64 Packages/dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.lyrical.win64)) {
+            if (Test-Path -LiteralPath $path) {
+              $target = Join-Path $destination $path
+              New-Item -ItemType Directory -Force -Path (Split-Path $target) | Out-Null
+              Copy-Item -LiteralPath $path -Destination $target -Force
+            }
           }
 
       - name: Upload Phase202 Unity evidence

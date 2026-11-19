@@ -55,9 +55,9 @@ def _run_unity(unity: Path, project: Path, log_path: Path, timeout_seconds: int)
         "-nographics",
         "-quit",
         "-projectPath",
-        str(project),
+        project.as_posix(),
         "-logFile",
-        str(log_path),
+        log_path.as_posix(),
     ]
     timed_out = False
     try:
