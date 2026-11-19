@@ -151,7 +151,8 @@ namespace Unity2Foxglove.Tests.PlayMode
 
                 destroyedManager.StartServer();
                 Assert.That(destroyedManager.IsRunning, Is.True);
-                Assert.That(GetField(destroyedManager, "_runtime").GetValue(destroyedManager), Is.Not.Null);
+                var destroyedRuntime = destroyedManager.Runtime;
+                Assert.That(destroyedRuntime, Is.Not.Null);
                 SetField(destroyedManager, "_replayCursorEndpoint", new Unity.FoxgloveSDK.Core.UnityReplayCursorEndpoint());
                 var onDestroy = typeof(FoxgloveManager).GetMethod(
                     "OnDestroy",
@@ -160,6 +161,8 @@ namespace Unity2Foxglove.Tests.PlayMode
                 onDestroy.Invoke(destroyedManager, null);
                 Assert.That(destroyedManager.IsRunning, Is.False);
                 Assert.That(GetField(destroyedManager, "_runtime").GetValue(destroyedManager), Is.Null);
+                Assert.Throws<ObjectDisposedException>(
+                    () => destroyedRuntime.Start("destroyed-runtime-probe", "127.0.0.1", GetFreeLoopbackPort()));
                 Assert.That(GetField(destroyedManager, "_replayCursorEndpoint").GetValue(destroyedManager), Is.Null);
             }
             finally
