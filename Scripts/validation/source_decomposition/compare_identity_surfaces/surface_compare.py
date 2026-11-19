@@ -3,6 +3,7 @@ from __future__ import annotations
 from .foundation import *
 from Scripts.validation.source_decomposition.compare_identity_surfaces.entrypoint_migration_contracts import (
     _approved_main_block_only_contract,
+    _approved_module_entrypoint_guard_contract,
 )
 from .entrypoint_contracts import (
     _approved_entrypoint_contract,
@@ -480,19 +481,37 @@ def _compare_surfaces(
             head_public_symbols,
             head_nested_contract,
         ) = unpack(current)
-        approved_namespace_change = (
+        approved_module_entrypoint_guard = (
             not strict
             and base_root is not None
             and head_root is not None
-            and _approved_namespace_change(
-                relative,
+            and _approved_module_entrypoint_guard_contract(
                 base_root,
                 head_root,
-                head_relative=(
+                relative,
+                (
                     _current_source_decomposition_relative(relative)
                     if migrated_relative
                     else relative
                 ),
+            )
+        )
+        approved_namespace_change = (
+            approved_module_entrypoint_guard
+            or (
+                not strict
+                and base_root is not None
+                and head_root is not None
+                and _approved_namespace_change(
+                    relative,
+                    base_root,
+                    head_root,
+                    head_relative=(
+                        _current_source_decomposition_relative(relative)
+                        if migrated_relative
+                        else relative
+                    ),
+                )
             )
         )
         approved_main_block_only = (
@@ -609,6 +628,7 @@ def _compare_surfaces(
                 if (
                     entrypoint_changed
                     and not approved_main_block_only
+                    and not approved_module_entrypoint_guard
                     and (
                         head_root is None
                         or not _approved_entrypoint_contract(
