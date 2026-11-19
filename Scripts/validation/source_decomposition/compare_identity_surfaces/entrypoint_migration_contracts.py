@@ -153,6 +153,13 @@ def _entrypoint_body_matches_mechanical_transform(
 ) -> bool:
     """Return whether a wrapper body matches the trusted mechanical transformation."""
     full_body = list(function.body)
+    if (
+        full_body
+        and isinstance(full_body[0], ast.Expr)
+        and isinstance(full_body[0].value, ast.Constant)
+        and type(full_body[0].value.value) is str
+    ):
+        full_body.pop(0)
     body = list(full_body)
     imports: list[ast.Import | ast.ImportFrom] = []
     while body and isinstance(body[0], (ast.Import, ast.ImportFrom)):
