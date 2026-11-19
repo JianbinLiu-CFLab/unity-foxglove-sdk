@@ -539,6 +539,96 @@ def _strip_csharp_comments_and_strings(text: str) -> str:
     return result
 
 
+def _top_level_type_declarations(text: str) -> list[tuple[str, str]]:
+    """Return namespace and name pairs for top-level types outside literal-false preprocessor branches."""
+    kept: list[str] = []
+    branches: list[tuple[bool, bool]] = []
+    for line in text.splitlines(keepends=True):
+        directive = line.strip()
+        if directive.startswith("#if"):
+            condition = directive[3:].strip()
+            branches.append((condition != "false", condition == "true"))
+        elif directive.startswith("#elif") and branches:
+            taken = branches[-1][1]
+            condition = directive[5:].strip()
+            branches[-1] = (not taken and condition != "false", taken or condition == "true")
+        elif directive.startswith("#else") and branches:
+            branches[-1] = (not branches[-1][1], True)
+        elif directive.startswith("#endif") and branches:
+            branches.pop()
+        elif all(active for active, _ in branches):
+            kept.append(line)
+            continue
+        kept.append("\n")
+    masked = _strip_csharp_comments_and_strings("".join(kept))
+    token = re.compile(
+        r"\bnamespace\s+(?P<namespace>[A-Za-z_][\w.]*)\s*(?P<terminator>[{;])"
+        r"|\b(?:(?:record\s+)?(?:class|struct)|interface|record)\s+(?P<type>[A-Za-z_]\w*)"
+        r"|(?P<brace>[{}])"
+    )
+    namespaces: list[tuple[str, int]] = []
+    file_namespace = ""
+    depth = 0
+    declarations: list[tuple[str, str]] = []
+    for match in token.finditer(masked):
+        if match.group("namespace"):
+            if match.group("terminator") == ";":
+                file_namespace = match.group("namespace")
+            else:
+                namespaces.append((match.group("namespace"), depth))
+                depth += 1
+        elif match.group("type"):
+            if depth == (namespaces[-1][1] + 1 if namespaces else 0):
+                namespace = ".".join(name for name, _ in namespaces) if namespaces else file_namespace
+                declarations.append((namespace, match.group("type")))
+        elif match.group("brace") == "{":
+            depth += 1
+        else:
+            depth -= 1
+            if namespaces and depth == namespaces[-1][1]:
+                namespaces.pop()
+    return declarations
+
+
+def _registry_validation_entry(root: Path, source_file: str) -> tuple[str, str] | None:
+    """Resolve a validation file to its registry flag through its stem or one declared visible type."""
+    registry = root / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "PhaseValidationRegistry.cs"
+    if not registry.is_file():
+        return None
+    text = registry.read_text(encoding="utf-8", errors="replace")
+    entry_start = re.compile(r"^\s*(?P<kind>Ci|Local|DefaultOnly)\(\"(?P<flag>--[A-Za-z0-9-]+)\"", re.MULTILINE)
+    matches = list(entry_start.finditer(text))
+    blocks = [
+        (match, text[match.start() : matches[index + 1].start() if index + 1 < len(matches) else len(text)])
+        for index, match in enumerate(matches)
+    ]
+
+    def registered(type_name: str) -> tuple[str, str] | None:
+        """Return the first registry entry that dispatches to a type's Validate method."""
+        for match, block in blocks:
+            entrypoint = re.search(rf"\b{re.escape(type_name)}\.(?P<entry>Validate\w*)\b", block)
+            if entrypoint:
+                default = "false" if re.search(r"\bincludeInDefault\s*:\s*false\b", block) else "true"
+                return match.group("flag"), f"{match.group('kind')}|{default}|{entrypoint.group('entry')}"
+        return None
+
+    result = registered(Path(source_file).stem)
+    source_path = root / source_file
+    if result is not None or "/Tests/Runtime/" not in f"/{source_file}" or not source_path.is_file():
+        return result
+    namespace = re.search(r"\bnamespace\s+([A-Za-z_][\w.]*)", _strip_csharp_comments_and_strings(text))
+    parts = namespace.group(1).split(".") if namespace else []
+    visible = {".".join(parts[:size]) for size in range(len(parts) + 1)}
+    declared = {
+        entry
+        for type_namespace, type_name in _top_level_type_declarations(
+            source_path.read_text(encoding="utf-8", errors="replace")
+        )
+        if type_namespace in visible and (entry := registered(type_name)) is not None
+    }
+    return declared.pop() if len(declared) == 1 else None
+
+
 def _csharp_comment_text(text: str) -> str:
     """Return C# line and block comment text while ignoring strings and chars."""
     cached = _COMMENT_CACHE.get(text)

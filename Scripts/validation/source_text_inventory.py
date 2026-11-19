@@ -838,34 +838,11 @@ def _validation_metadata(root: Path, source_file: str) -> tuple[str, str]:
     cached = _VALIDATION_METADATA_CACHE.get(cache_key)
     if cached is not None:
         return cached
-    stem = Path(source_file).stem
-    registry = (
-        root
-        / "Packages"
-        / "dev.unity2foxglove.sdk"
-        / "Tests"
-        / "Runtime"
-        / "PhaseValidationRegistry.cs"
-    )
-    if registry.is_file():
-        text = registry.read_text(encoding="utf-8", errors="replace")
-        entry_start = re.compile(
-            r"^\s*(?P<kind>Ci|Local|DefaultOnly)\(\"(?P<flag>--[A-Za-z0-9-]+)\"", re.MULTILINE
-        )
-        matches = list(entry_start.finditer(text))
-        for index, match in enumerate(matches):
-            end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
-            block = text[match.start() : end]
-            entrypoint = re.search(rf"\b{re.escape(stem)}\.(?P<entry>Validate\w*)\b", block)
-            if entrypoint:
-                default = "false" if re.search(r"\bincludeInDefault\s*:\s*false\b", block) else "true"
-                result = (
-                    match.group("flag"),
-                    f"{match.group('kind')}|{default}|{entrypoint.group('entry')}",
-                )
-                _VALIDATION_METADATA_CACHE[cache_key] = result
-                return result
     source_path = root / source_file
+    result = _registry_validation_entry(root, source_file)
+    if result is not None:
+        _VALIDATION_METADATA_CACHE[cache_key] = result
+        return result
     if source_path.is_file():
         source = source_path.read_text(encoding="utf-8", errors="replace")
         test_entries: list[str] = []
