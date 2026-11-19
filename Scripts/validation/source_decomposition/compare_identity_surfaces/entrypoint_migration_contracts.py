@@ -542,50 +542,52 @@ def _approved_module_entrypoint_guard_contract(
         "sys" if name == "_phase192_sys" else name
         for name in facade_loaded_names - facade_bound_names - allowed_guard_names
     }
-    package_imported_names = set()
+    direct_import_counts = {name: 0 for name in required_guard_names}
+    invalidated_names = set()
     for statement in head_tree.body[:head_index]:
-        if isinstance(statement, ast.Import):
-            package_imported_names.update(
-                alias.asname or alias.name.split(".", 1)[0]
-                for alias in statement.names
-            )
-        elif isinstance(statement, ast.ImportFrom):
-            package_imported_names.update(
-                alias.asname or alias.name
-                for alias in statement.names
-                if alias.name != "*"
-            )
-    if required_guard_names - package_imported_names:
+        for node in ast.walk(statement):
+            if isinstance(node, ast.Import):
+                direct = node is statement
+                for alias in node.names:
+                    bound_name = alias.asname or alias.name.split(".", 1)[0]
+                    if bound_name not in required_guard_names:
+                        continue
+                    valid = bound_name != "sys" or (
+                        alias.name == "sys" and alias.asname in {None, "sys"}
+                    )
+                    if direct and valid:
+                        direct_import_counts[bound_name] += 1
+                    else:
+                        invalidated_names.add(bound_name)
+            elif isinstance(node, ast.ImportFrom):
+                direct = node is statement
+                for alias in node.names:
+                    if alias.name == "*":
+                        continue
+                    bound_name = alias.asname or alias.name
+                    if bound_name not in required_guard_names:
+                        continue
+                    if direct and bound_name != "sys":
+                        direct_import_counts[bound_name] += 1
+                    else:
+                        invalidated_names.add(bound_name)
+            elif isinstance(node, ast.Name) and node.id in required_guard_names and isinstance(
+                node.ctx,
+                (ast.Store, ast.Del),
+            ):
+                invalidated_names.add(node.id)
+            elif isinstance(node, ast.ExceptHandler) and node.name in required_guard_names:
+                invalidated_names.add(node.name)
+            elif isinstance(
+                node,
+                (ast.AsyncFunctionDef, ast.ClassDef, ast.FunctionDef),
+            ) and node.name in required_guard_names:
+                invalidated_names.add(node.name)
+    if any(
+        direct_import_counts[name] != 1 or name in invalidated_names
+        for name in required_guard_names
+    ):
         return False
-    if "sys" in required_guard_names:
-        sys_imported = False
-        for statement in head_tree.body[:head_index]:
-            if isinstance(statement, ast.Import):
-                for alias in statement.names:
-                    if alias.name == "sys" and alias.asname in {None, "sys"}:
-                        sys_imported = True
-                    elif alias.asname == "sys":
-                        return False
-            for node in ast.walk(statement):
-                if isinstance(node, ast.Name) and node.id == "sys" and isinstance(
-                    node.ctx,
-                    (ast.Store, ast.Del),
-                ):
-                    return False
-                if isinstance(node, ast.ExceptHandler) and node.name == "sys":
-                    return False
-                if isinstance(
-                    node,
-                    (ast.AsyncFunctionDef, ast.ClassDef, ast.FunctionDef),
-                ) and node.name == "sys":
-                    return False
-                if isinstance(node, ast.ImportFrom) and any(
-                    alias.asname == "sys" or (alias.name == "sys" and alias.asname is None)
-                    for alias in node.names
-                ):
-                    return False
-        if not sys_imported:
-            return False
 
     class FacadeSystemAliasNormalizer(ast.NodeTransformer):
         """Normalize the reviewed facade's private sys alias for comparison."""
