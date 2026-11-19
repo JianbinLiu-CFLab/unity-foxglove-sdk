@@ -673,6 +673,8 @@ def _approved_namespace_change(
         return False
     base_package = base_root / relative.removesuffix(".py")
     head_package = head_root / head_relative.removesuffix(".py")
+    if head_package.is_symlink() or any(path.is_symlink() for path in head_package.rglob("*")):
+        return False
     base_sections = {
         path.name
         for path in base_package.glob("*.py")
