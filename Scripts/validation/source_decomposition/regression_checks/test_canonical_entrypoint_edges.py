@@ -70,6 +70,33 @@ class CanonicalEntrypointEdgeTests(CanonicalEntrypointFixtureMixin, unittest.Tes
         finally:
             temporary.cleanup()
 
+    def test_standard_docstring_baseline_remains_compatible(self) -> None:
+        """A trusted standard wrapper with a leading docstring remains compatible unchanged."""
+        temporary, repository, _ = self._create_repository()
+        try:
+            self._migrate_to_standard_entrypoint(repository)
+            entrypoint = repository / "Scripts/smoke/fixture/entrypoint.py"
+            entrypoint.write_text(
+                entrypoint.read_text(encoding="utf-8").replace(
+                    "def run_entrypoint():\n",
+                    'def run_entrypoint():\n    """Run the trusted delegate."""\n',
+                    1,
+                ),
+                encoding="utf-8",
+            )
+            base = self._commit(repository, "standard entrypoint with docstring")
+            with compare_identity_surfaces._revision_checkout(repository, base) as base_root:
+                self.assertTrue(
+                    entrypoint_contracts._approved_entrypoint_contract(
+                        repository,
+                        "Scripts/smoke/fixture.py",
+                        base_root=base_root,
+                        base_relative="Scripts/smoke/fixture.py",
+                    )
+                )
+        finally:
+            temporary.cleanup()
+
     def test_standard_migration_rejects_nonleading_or_nonstring_run_entrypoint_docstrings(self) -> None:
         """Only one exact leading string expression is accepted as a run_entrypoint docstring."""
         cases = (
