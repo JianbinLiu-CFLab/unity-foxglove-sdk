@@ -9,7 +9,7 @@ SROS2 authorizes a publisher. It does not replace the RMW sample-size controls d
 Run these commands from a ROS2 installation that contains the `sros2` CLI. The Windows commands use PowerShell syntax. The same commands work from a POSIX shell after replacing the path.
 
 ```powershell
-$evidenceRoot = (Resolve-Path 'build/phase201').Path
+$evidenceRoot = Join-Path (Get-Location) 'build/phase201'
 $keystore = Join-Path $evidenceRoot 'sros2/keystore'
 New-Item -ItemType Directory -Force (Split-Path $keystore) | Out-Null
 ros2 security create_keystore $keystore
@@ -17,7 +17,7 @@ ros2 security create_enclave $keystore /unity2foxglove/unity
 ros2 security create_enclave $keystore /unity2foxglove/publisher
 ```
 
-Keep the keystore `private` directory and enclave `key.pem` files on the operator-controlled host. Copy only the required `public` and `enclaves` material to the Unity and publisher machines.
+Keep the keystore `private` directory and CA private keys on the operator-controlled host. Each deployed process must receive its own enclave directory, including that enclave's `key.pem`, through a protected channel. Copy only the required `public` material and the corresponding enclave files to each Unity or publisher machine. Never copy the CA private keys.
 
 ## 2. Restrict the publisher permissions
 
