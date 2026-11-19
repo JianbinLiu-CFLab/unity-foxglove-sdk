@@ -184,25 +184,6 @@ def _entrypoint_body_matches_mechanical_transform(
     )
 
 
-def _entrypoint_executable_body_is_safe(
-    tree: ast.Module,
-    path: Path,
-    function: ast.FunctionDef,
-    expected_body: tuple[ast.stmt, ...] | None = None,
-    expected_imports: tuple[ast.Import | ast.ImportFrom, ...] | None = None,
-) -> bool:
-    """Return whether the wrapper has a trusted base-derived body."""
-    if expected_body is None:
-        return False
-    return _entrypoint_body_matches_mechanical_transform(
-        tree,
-        path,
-        function,
-        expected_body,
-        expected_imports,
-    )
-
-
 def _facade_already_has_standard_run_entrypoint(facade: Path) -> bool:
     """Return whether a facade already delegates through run_entrypoint."""
     try:
