@@ -56,6 +56,31 @@ class CanonicalEntrypointEdgeTests(CanonicalEntrypointFixtureMixin, unittest.Tes
         finally:
             temporary.cleanup()
 
+    def test_standard_migration_rejects_symlinked_facade(self) -> None:
+        """A symlink cannot provide the standard forwarding facade implementation."""
+        temporary, repository, base = self._create_repository()
+        try:
+            self._migrate_to_standard_entrypoint(repository)
+            facade = repository / "Scripts/smoke/fixture.py"
+            outside = Path(temporary.name) / "outside_fixture.py"
+            outside.write_text(facade.read_text(encoding="utf-8"), encoding="utf-8")
+            facade.unlink()
+            try:
+                os.symlink(outside, facade)
+            except OSError as error:
+                self.skipTest(f"symlink unavailable: {error}")
+            with compare_identity_surfaces._revision_checkout(repository, base) as base_root:
+                self.assertFalse(
+                    entrypoint_contracts._approved_entrypoint_contract(
+                        repository,
+                        "Scripts/smoke/fixture.py",
+                        base_root=base_root,
+                        base_relative="Scripts/smoke/fixture.py",
+                    )
+                )
+        finally:
+            temporary.cleanup()
+
     def test_main_block_only_accepts_phase184_shape(self) -> None:
         """The reviewed Phase184 package accepts its exact appended module guard."""
         root = Path(__file__).resolve().parents[4]

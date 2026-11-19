@@ -384,7 +384,7 @@ def _approved_main_block_only_contract(
             or (node.level == 0 and node.module == package_name)
         )
         for node in star_imports
-    ):
+    ) or any(node.lineno >= facade_guard.lineno for node in star_imports):
         return False
     for node in ast.walk(base_facade_tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and node.name == called_name:
@@ -411,7 +411,13 @@ def _approved_entrypoint_contract_impl(
     facade = root / relative
     package = facade.with_suffix("")
     module_entrypoint = package / "__main__.py"
-    if not facade.is_file() or not module_entrypoint.is_file():
+    if (
+        not facade.is_file()
+        or not module_entrypoint.is_file()
+        or facade.is_symlink()
+        or module_entrypoint.is_symlink()
+        or package.is_symlink()
+    ):
         return False
     try:
         facade_tree = _parse_source(facade.read_text(encoding="utf-8"), facade)

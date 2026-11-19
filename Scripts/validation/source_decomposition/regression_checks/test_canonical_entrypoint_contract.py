@@ -598,6 +598,34 @@ class CanonicalEntrypointContractTests(CanonicalEntrypointFixtureMixin, unittest
         finally:
             temporary.cleanup()
 
+    def test_main_block_only_rejects_star_import_after_guard(self) -> None:
+        """The facade must bind its delegated name before its main guard."""
+        facade_source = (
+            "from __future__ import annotations\n"
+            "import sys as _phase192_sys\n"
+            "if __name__ == '__main__':\n"
+            "    raise SystemExit(main())\n"
+            "if __package__:\n"
+            "    from .fixture import *\n"
+            "else:\n"
+            "    from fixture import *\n"
+        )
+        temporary, repository, base = self._create_repository(facade_source=facade_source)
+        try:
+            (repository / "Scripts/smoke/fixture/__main__.py").write_text(
+                "from . import *\n"
+                "if __name__ == '__main__':\n"
+                "    raise SystemExit(main())\n",
+                encoding="utf-8",
+            )
+            head = self._commit(repository, "move facade star import after guard")
+            self.assertEqual(
+                1,
+                compare_identity_surfaces.compare_revisions(repository, base, head, strict=False),
+            )
+        finally:
+            temporary.cleanup()
+
     def test_main_block_only_rejects_package_file_change(self) -> None:
         """A main-block-only change cannot modify another package file."""
         temporary, repository, base = self._create_repository()
