@@ -84,7 +84,7 @@ jobs:
         if: github.event_name == 'push' || github.event.inputs.mode == 'matrix' || github.event.inputs.mode == 'all'
         shell: pwsh
         run: |
-          & 'C:\Program Files\Unity\Hub\Editor\6000.3.14f1\Editor\Unity.exe' -batchmode -nographics -quit -projectPath Unity2Foxglove -executeMethod Unity.FoxgloveSDK.Editor.FoxRunRos2InterfacePackageCommand.ExecuteFromCommandLine --generate -logFile build/phase202/unity/generate-interface.log
+          & 'C:\Program Files\Unity\Hub\Editor\6000.3.14f1\Editor\Unity.exe' -batchmode -nographics -projectPath Unity2Foxglove -executeMethod Unity.FoxgloveSDK.Editor.FoxRunRos2InterfacePackageCommand.ExecuteFromCommandLine --generate -quit -logFile build/phase202/unity/generate-interface.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -B Scripts/ros2forunity/interfaces/build_foxrun_custom_typesupport_addon.py --distro humble --repair-tracked-interface-identity
           python -B Scripts/ros2forunity/interfaces/build_foxrun_custom_typesupport_addon.py --distro jazzy --repair-tracked-interface-identity
@@ -141,12 +141,16 @@ jobs:
         run: |
           $destination = 'build/phase202/unity/generated-packages'
           New-Item -ItemType Directory -Force -Path $destination | Out-Null
-          foreach ($path in @(git diff --name-only -- Packages/dev.unity2foxglove.foxrun.ros2.interfaces Packages/dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.humble.win64 Packages/dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.jazzy.win64 Packages/dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.lyrical.win64)) {
-            if (Test-Path -LiteralPath $path) {
-              $target = Join-Path $destination $path
-              New-Item -ItemType Directory -Force -Path (Split-Path $target) | Out-Null
-              Copy-Item -LiteralPath $path -Destination $target -Force
-            }
+          $packages = @(
+            'Packages/dev.unity2foxglove.foxrun.ros2.interfaces',
+            'Packages/dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.humble.win64',
+            'Packages/dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.jazzy.win64',
+            'Packages/dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.lyrical.win64'
+          )
+          foreach ($package in $packages) {
+            $target = Join-Path $destination $package
+            New-Item -ItemType Directory -Force -Path $target | Out-Null
+            Copy-Item -LiteralPath $package -Destination $target -Recurse -Force
           }
 
       - name: Upload Phase202 Unity evidence
@@ -154,6 +158,12 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: phase202-package-topology-${{ github.run_id }}-${{ github.run_attempt }}
-          path: build/phase202/unity
+          path: |
+            build/phase202/unity/generated-packages
+            build/phase202/unity/resolution
+            build/phase202/unity/matrix/summary.json
+            build/phase202/unity/matrix/logs
+            build/phase202/unity/demo
+            build/phase202/unity/generate-interface.log
           if-no-files-found: warn
 
