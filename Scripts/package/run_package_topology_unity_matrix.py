@@ -41,7 +41,7 @@ def _new_project(root: Path, name: str) -> Path:
         "m_EditorVersion: 6000.3.14f1\n", encoding="utf-8"
     )
     (project / "Packages" / "manifest.json").write_text(
-        '{\n  "dependencies": {\n    "com.unity.modules.jsonserialize": "1.0.0"\n  }\n}\n',
+        '{\n  "dependencies": {\n    "com.unity.modules.imageconversion": "1.0.0",\n    "com.unity.modules.jsonserialize": "1.0.0"\n  }\n}\n',
         encoding="utf-8",
     )
     return project
