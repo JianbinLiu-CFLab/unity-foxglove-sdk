@@ -421,12 +421,25 @@ def _approved_entrypoint_contract_impl(
         return False
     expected_body = None
     expected_imports = None
+    expected_module_imports = None
+    base_is_standard = False
     if base_root is not None:
         base_facade = base_root / (base_relative or relative)
         base_is_standard = _facade_already_has_standard_run_entrypoint(base_facade)
         if base_is_standard:
-            expected_body = _standard_entrypoint_body(
-                base_facade.with_suffix("") / "entrypoint.py"
+            base_entrypoint = base_facade.with_suffix("") / "entrypoint.py"
+            expected_body = _standard_entrypoint_body(base_entrypoint)
+            try:
+                base_entrypoint_tree = _parse_source(
+                    base_entrypoint.read_text(encoding="utf-8"),
+                    base_entrypoint,
+                )
+            except (OSError, SyntaxError, ValueError):
+                return False
+            expected_module_imports = tuple(
+                node
+                for node in base_entrypoint_tree.body
+                if isinstance(node, (ast.Import, ast.ImportFrom))
             )
         else:
             expected_body = _mechanically_transformed_entrypoint_body(base_facade)
@@ -434,7 +447,7 @@ def _approved_entrypoint_contract_impl(
                 expected_imports = _mechanical_entrypoint_imports(base_facade, expected_body)
         if expected_body is None or (not base_is_standard and expected_imports is None):
             return False
-    return (
+    if not (
         _facade_entrypoint_is_standard(facade_tree, relative)
         and entrypoint_block_is_standard(
             module_tree,
@@ -446,7 +459,30 @@ def _approved_entrypoint_contract_impl(
             expected_body=expected_body,
             expected_imports=expected_imports,
         )
-    )
+    ):
+        return False
+    if base_is_standard:
+        head_entrypoint = package / "entrypoint.py"
+        try:
+            head_entrypoint_tree = _parse_source(
+                head_entrypoint.read_text(encoding="utf-8"),
+                head_entrypoint,
+            )
+        except (OSError, SyntaxError, ValueError):
+            return False
+        head_module_imports = tuple(
+            node
+            for node in head_entrypoint_tree.body
+            if isinstance(node, (ast.Import, ast.ImportFrom))
+        )
+        return ast.dump(
+            ast.Module(body=list(head_module_imports), type_ignores=[]),
+            include_attributes=False,
+        ) == ast.dump(
+            ast.Module(body=list(expected_module_imports or ()), type_ignores=[]),
+            include_attributes=False,
+        )
+    return True
 
 
 def _approved_initializer_contract_impl(

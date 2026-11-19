@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import subprocess
 import unittest
 from contextlib import redirect_stdout
 from io import StringIO
@@ -90,6 +91,48 @@ class CanonicalEntrypointContractTests(CanonicalEntrypointFixtureMixin, unittest
                     strict=False,
                 ),
             )
+        finally:
+            temporary.cleanup()
+
+    def test_already_migrated_entrypoint_rejects_module_import_change(self) -> None:
+        """An already-standard entrypoint cannot swap its trusted module imports."""
+        temporary = self._temporary_repository()
+        repository = Path(temporary.name)
+        try:
+            subprocess.run(["git", "init", "-q"], cwd=repository, check=True)
+            subprocess.run(
+                ["git", "config", "core.autocrlf", "false"],
+                cwd=repository,
+                check=True,
+            )
+            self._create_phase184_fixture(repository)
+            self._migrate_to_standard_entrypoint(repository)
+            entrypoint = repository / "Scripts/smoke/fixture/entrypoint.py"
+            entrypoint.write_text(
+                "from time import sleep as main\n\n"
+                "def run_entrypoint():\n"
+                "    return main()\n\n"
+                "__all__ = ['run_entrypoint']\n",
+                encoding="utf-8",
+            )
+            base = self._commit(repository, "standard entrypoint base")
+            entrypoint.write_text(
+                entrypoint.read_text(encoding="utf-8").replace(
+                    "from time import sleep as main",
+                    "from os import getpid as main",
+                    1,
+                ),
+                encoding="utf-8",
+            )
+            with compare_identity_surfaces._revision_checkout(repository, base) as base_root:
+                self.assertFalse(
+                    entrypoint_contracts._approved_entrypoint_contract(
+                        repository,
+                        "Scripts/smoke/fixture.py",
+                        base_root=base_root,
+                        base_relative="Scripts/smoke/fixture.py",
+                    )
+                )
         finally:
             temporary.cleanup()
 
