@@ -19,6 +19,7 @@ from Scripts.package.compose_unity_manifest import (
 )
 
 
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_UNITY = Path(r"C:\Program Files\Unity\Hub\Editor\6000.3.14f1\Editor\Unity.exe")
 ERROR_PATTERN = re.compile(
     r"Failed to resolve packages|Package Manager Error|error CS\d+|Compilation failed|Unable to resolve",
@@ -41,10 +42,22 @@ def _new_project(root: Path, name: str) -> Path:
         "m_EditorVersion: 6000.3.14f1\n", encoding="utf-8"
     )
     (project / "Packages" / "manifest.json").write_text(
-        '{\n  "dependencies": {\n    "com.unity.modules.imageconversion": "1.0.0",\n    "com.unity.modules.jsonserialize": "1.0.0"\n  }\n}\n',
+        json.dumps({"dependencies": _builtin_dependencies()}, indent=2) + "\n",
         encoding="utf-8",
     )
     return project
+
+
+def _builtin_dependencies() -> dict[str, str]:
+    """Return the Unity built-in modules used by the checked-in demo project."""
+    manifest = REPOSITORY_ROOT / "Unity2Foxglove" / "Packages" / "manifest.json"
+    document = json.loads(manifest.read_text(encoding="utf-8"))
+    dependencies = document.get("dependencies", {})
+    return {
+        name: version
+        for name, version in dependencies.items()
+        if isinstance(name, str) and name.startswith("com.unity.modules.")
+    }
 
 
 def _run_unity(unity: Path, project: Path, log_path: Path, timeout_seconds: int) -> dict[str, object]:
@@ -84,8 +97,10 @@ def _run_unity(unity: Path, project: Path, log_path: Path, timeout_seconds: int)
 
 def _write_manifest(project: Path, dependencies: dict[str, str]) -> None:
     """Write a strict manifest for a direct package-manager probe."""
+    combined = _builtin_dependencies()
+    combined.update(dependencies)
     (project / "Packages" / "manifest.json").write_text(
-        json.dumps({"dependencies": dependencies}, indent=2) + "\n", encoding="utf-8"
+        json.dumps({"dependencies": combined}, indent=2) + "\n", encoding="utf-8"
     )
 
 
