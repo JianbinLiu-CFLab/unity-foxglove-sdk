@@ -95,6 +95,18 @@ def _package_metadata(request: CandidateBuildRequest, package_root: Path) -> Non
     """Copy normalized add-on package metadata into the disposable candidate package."""
     source = _repo_root(request) / "Packages" / addon_package_id(request.distro) / "package.json"
     payload = _load_json(source, "repair-addon-package-json")
+    static_package = _load_json(
+        Path(request.static_interface_package) / "package.json",
+        "repair-static-interface-package-json",
+    )
+    static_version = static_package.get("version")
+    if not isinstance(static_version, str) or not static_version:
+        raise CandidateBuildError("repair-static-interface-package-json")
+    dependencies = payload.get("dependencies")
+    if not isinstance(dependencies, dict):
+        dependencies = {}
+        payload["dependencies"] = dependencies
+    dependencies[STATIC_INTERFACE_PACKAGE_ID] = static_version
     package_root.mkdir(parents=True, exist_ok=True)
     _write_utf8_lf(package_root / "package.json", json.dumps(payload, sort_keys=True, indent=2) + "\n")
 

@@ -23,6 +23,18 @@ from typing import Mapping
 from .models import *
 from .serialization import *
 
+
+def _repair_tracked_addon_package_metadata(request: CandidateBuildRequest) -> Path:
+    """Regenerate tracked add-on package metadata through the canonical generator."""
+    verify_candidate_source_lock(request)
+    repository_root = _repo_root(request).resolve()
+    package_root = repository_root / "Packages" / addon_package_id(request.distro)
+    if not package_root.is_dir():
+        raise CandidateBuildError("repair-tracked-typesupport-package")
+    _package_metadata(request, package_root)
+    _write_inventory(package_root)
+    return package_root / "package.json"
+
 def _repair_tracked_addon_catalog(request: CandidateBuildRequest) -> Path:
     """Regenerate tracked catalog and canonical legal metadata without payload rebuild.
 

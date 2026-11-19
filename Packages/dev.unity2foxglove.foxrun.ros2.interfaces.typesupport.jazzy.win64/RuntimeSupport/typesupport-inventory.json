@@ -8,11 +8,11 @@
       "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"
     },
     {
-      "byteLength": 810,
+      "byteLength": 878,
       "classification": "metadata",
       "path": "package.json",
       "role": "metadata",
-      "sha256": "c494316877ae83fcd5c3902f842d132524ee07e8ddde2b5080f0a2ebac851c30"
+      "sha256": "db9373f4504171407eccfc3d891c7029bf3565f6cfff8b6b1d00f393ac52143b"
     },
     {
       "byteLength": 309,
