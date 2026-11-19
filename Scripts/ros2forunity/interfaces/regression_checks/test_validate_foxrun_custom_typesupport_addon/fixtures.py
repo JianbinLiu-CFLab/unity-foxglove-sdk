@@ -40,7 +40,10 @@ class _Fixture:
 
     def _create(self) -> None:
         """Implement the internal create step."""
-        self.write_static("package.json", "{\"name\":\"dev.unity2foxglove.foxrun.ros2.interfaces\"}\n")
+        self.write_static(
+            "package.json",
+            "{\"name\":\"dev.unity2foxglove.foxrun.ros2.interfaces\",\"version\":\"0.1.0-preview.1\"}\n",
+        )
         self.write_static("README.md", "fixture\n")
         self.write_static("RuntimeSupport/foxrun-ros2-interface-settings.json", "{\"locked\":true}\n")
         self.write_static("Ros2Package~/package.xml", "<package/>\n")
@@ -120,6 +123,7 @@ class _Fixture:
                 "unity2foxgloveFoxRunCustomTypesupportAddOn": True,
                 "dependencies": {
                     "dev.unity2foxglove.ros2forunity": "0.1.0-preview.1",
+                    "dev.unity2foxglove.foxrun.ros2.interfaces": "0.1.0-preview.1",
                     runtime["packageName"]: runtime["packageVersion"],
                 },
             },

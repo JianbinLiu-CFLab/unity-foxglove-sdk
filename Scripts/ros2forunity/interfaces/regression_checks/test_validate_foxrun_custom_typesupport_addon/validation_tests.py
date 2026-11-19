@@ -31,6 +31,16 @@ class CustomTypesupportAddonValidationTests(unittest.TestCase):
                 result.package_id,
             )
 
+    def test_missing_static_interface_dependency_fails_closed(self) -> None:
+        """Reject an add-on that does not declare its static interface package."""
+        with self._fixture() as fixture:
+            package = fixture.package_json()
+            package["dependencies"].pop("dev.unity2foxglove.foxrun.ros2.interfaces")
+            fixture.write_json("package.json", package)
+            fixture.refresh_inventory()
+            with self.assertRaisesRegex(AddonValidationError, "repair-addon-dependencies"):
+                validate_addon(fixture.request)
+
     def test_portable_validation_compares_actual_base_runtime_hash_without_windows_metadata_probe(self) -> None:
         """Verify non-Windows package checks retain a real base-DLL identity gate."""
         with self._fixture() as fixture:
