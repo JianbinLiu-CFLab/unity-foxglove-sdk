@@ -180,6 +180,8 @@ the selected RMW. Untrusted publishers are outside the SDK-only protection
 boundary; this package does not claim an unverified Fast DDS or Zenoh parameter
 as a native allocation limit.
 
+For an opt-in DDS publisher authorization deployment, follow the [SROS2 inbound publisher trust guide](Documentation~/SROS2-Inbound-Publisher-Trust.md). The guide covers Fast DDS and Cyclone DDS enclaves, process-wide Cyclone sample-size configuration, and the Zenoh security boundary.
+
 ## FoxRun Custom ROS2 Interfaces
 
 The `FoxRun Custom ROS2 Interface` sample supports a locked, generated custom
