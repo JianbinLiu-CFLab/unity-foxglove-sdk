@@ -45,9 +45,6 @@ class McapConformanceToolTests(unittest.TestCase):
         package = MCAP_CONFORMANCE_PATH.with_suffix("")
         self.assertTrue(package.is_dir())
         self.assertTrue((package / "__main__.py").is_file())
-
-    def test_module_entrypoint_matches_facade_failure_exit_contract(self) -> None:
-        """The Phase121 module entrypoint preserves the facade failure contract."""
         import subprocess
 
         script = r'''
