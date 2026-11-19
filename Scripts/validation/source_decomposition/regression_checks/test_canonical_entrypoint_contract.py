@@ -211,6 +211,37 @@ class CanonicalEntrypointContractTests(CanonicalEntrypointFixtureMixin, unittest
         finally:
             temporary.cleanup()
 
+    def test_standard_migration_rejects_unimported_body_binding(self) -> None:
+        """The mechanical import contract rejects body names without a section owner."""
+        facade_source = (
+            "from __future__ import annotations\n"
+            "import sys as _phase192_sys\n"
+            "if __package__:\n"
+            "    from .fixture import *\n"
+            "else:\n"
+            "    from fixture import *\n"
+            "DEFAULT_CONFIG = 0\n"
+            "if __name__ == '__main__':\n"
+            "    raise SystemExit(main(DEFAULT_CONFIG))\n"
+        )
+        temporary, repository, base = self._create_repository(facade_source=facade_source)
+        try:
+            self._migrate_to_standard_entrypoint(repository)
+            (repository / "Scripts/smoke/fixture/entrypoint.py").write_text(
+                "def run_entrypoint():\n"
+                "    from .live import main\n"
+                "    return main(DEFAULT_CONFIG)\n\n"
+                "__all__ = ['run_entrypoint']\n",
+                encoding="utf-8",
+            )
+            head = self._commit(repository, "use unimported body binding")
+            self.assertEqual(
+                1,
+                compare_identity_surfaces.compare_revisions(repository, base, head, strict=False),
+            )
+        finally:
+            temporary.cleanup()
+
     def test_standard_migration_rejects_existing_section_change(self) -> None:
         """A standard migration cannot hide a changed existing section."""
         temporary, repository, base = self._create_repository()

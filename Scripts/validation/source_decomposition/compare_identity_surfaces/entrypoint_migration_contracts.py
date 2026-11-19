@@ -82,6 +82,18 @@ def _mechanical_entrypoint_imports(
                 continue
             if node.func.id not in allowed_names and node.func.id not in delegate_names:
                 delegate_names.append(node.func.id)
+    bound_names = set()
+    loaded_names = set()
+    for statement in expected_body:
+        for node in ast.walk(statement):
+            if isinstance(node, ast.Name):
+                (loaded_names if isinstance(node.ctx, ast.Load) else bound_names).add(node.id)
+            elif isinstance(node, ast.ExceptHandler) and node.name:
+                bound_names.add(node.name)
+            elif isinstance(node, ast.alias):
+                bound_names.add(node.asname or node.name.split(".", 1)[0])
+    if loaded_names - (allowed_names | set(delegate_names) | bound_names | {"sys"}):
+        return None
     package = facade.with_suffix("")
     sections = [
         path
