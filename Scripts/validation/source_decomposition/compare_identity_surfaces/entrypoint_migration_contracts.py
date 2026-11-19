@@ -516,6 +516,19 @@ def _approved_module_entrypoint_guard_contract(
         or base_guard.body[0].exc.func.id != "SystemExit"
     ):
         return False
+    facade_uses_private_sys = any(
+        isinstance(node, ast.Name) and node.id == "_phase192_sys"
+        for node in ast.walk(facade_guard)
+    )
+    if facade_uses_private_sys and not any(
+        isinstance(statement, ast.Import)
+        and any(
+            alias.name == "sys" and alias.asname in {None, "sys"}
+            for alias in statement.names
+        )
+        for statement in head_tree.body[:head_index]
+    ):
+        return False
 
     class FacadeSystemAliasNormalizer(ast.NodeTransformer):
         """Normalize the reviewed facade's private sys alias for comparison."""
