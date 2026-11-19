@@ -590,6 +590,45 @@ def _top_level_type_declarations(text: str) -> list[tuple[str, str]]:
     return declarations
 
 
+def _registry_validation_entry(root: Path, source_file: str) -> tuple[str, str] | None:
+    """Resolve a validation file to its registry flag through its stem or one declared visible type."""
+    registry = root / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "PhaseValidationRegistry.cs"
+    if not registry.is_file():
+        return None
+    text = registry.read_text(encoding="utf-8", errors="replace")
+    entry_start = re.compile(r"^\s*(?P<kind>Ci|Local|DefaultOnly)\(\"(?P<flag>--[A-Za-z0-9-]+)\"", re.MULTILINE)
+    matches = list(entry_start.finditer(text))
+    blocks = [
+        (match, text[match.start() : matches[index + 1].start() if index + 1 < len(matches) else len(text)])
+        for index, match in enumerate(matches)
+    ]
+
+    def registered(type_name: str) -> tuple[str, str] | None:
+        """Return the first registry entry that dispatches to a type's Validate method."""
+        for match, block in blocks:
+            entrypoint = re.search(rf"\b{re.escape(type_name)}\.(?P<entry>Validate\w*)\b", block)
+            if entrypoint:
+                default = "false" if re.search(r"\bincludeInDefault\s*:\s*false\b", block) else "true"
+                return match.group("flag"), f"{match.group('kind')}|{default}|{entrypoint.group('entry')}"
+        return None
+
+    result = registered(Path(source_file).stem)
+    source_path = root / source_file
+    if result is not None or "/Tests/Runtime/" not in f"/{source_file}" or not source_path.is_file():
+        return result
+    namespace = re.search(r"\bnamespace\s+([A-Za-z_][\w.]*)", _strip_csharp_comments_and_strings(text))
+    parts = namespace.group(1).split(".") if namespace else []
+    visible = {".".join(parts[:size]) for size in range(len(parts) + 1)}
+    declared = {
+        entry
+        for type_namespace, type_name in _top_level_type_declarations(
+            source_path.read_text(encoding="utf-8", errors="replace")
+        )
+        if type_namespace in visible and (entry := registered(type_name)) is not None
+    }
+    return declared.pop() if len(declared) == 1 else None
+
+
 def _csharp_comment_text(text: str) -> str:
     """Return C# line and block comment text while ignoring strings and chars."""
     cached = _COMMENT_CACHE.get(text)
