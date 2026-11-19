@@ -543,7 +543,7 @@ def _top_level_type_declarations(text: str) -> list[tuple[str, str]]:
     """Return namespace and name pairs for top-level types outside literal-false preprocessor branches."""
     kept: list[str] = []
     branches: list[tuple[bool, bool]] = []
-    for line in text.splitlines(keepends=True):
+    for line in _strip_csharp_comments_and_strings(text).splitlines(keepends=True):
         directive = line.strip()
         if directive.startswith("#if"):
             condition = directive[3:].strip()
@@ -560,7 +560,7 @@ def _top_level_type_declarations(text: str) -> list[tuple[str, str]]:
             kept.append(line)
             continue
         kept.append("\n")
-    masked = _strip_csharp_comments_and_strings("".join(kept))
+    masked = "".join(kept)
     token = re.compile(
         r"\bnamespace\s+(?P<namespace>[A-Za-z_][\w.]*)\s*(?P<terminator>[{;])"
         r"|\b(?:(?:record\s+)?(?:class|struct)|interface|record)\s+(?P<type>[A-Za-z_]\w*)"
@@ -591,7 +591,7 @@ def _top_level_type_declarations(text: str) -> list[tuple[str, str]]:
 
 
 def _registry_validation_entry(root: Path, source_file: str) -> tuple[str, str] | None:
-    """Resolve a validation file to its registry flag through its stem or one declared visible type."""
+    """Resolve a validation file to its registry flag through its stem or exactly one declared-type entry."""
     registry = root / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "PhaseValidationRegistry.cs"
     if not registry.is_file():
         return None
@@ -603,19 +603,20 @@ def _registry_validation_entry(root: Path, source_file: str) -> tuple[str, str] 
         for index, match in enumerate(matches)
     ]
 
-    def registered(type_name: str) -> tuple[str, str] | None:
-        """Return the first registry entry that dispatches to a type's Validate method."""
+    def registered(type_name: str) -> list[tuple[str, str]]:
+        """Return every registry entry that dispatches to one of a type's Validate methods."""
+        entries: list[tuple[str, str]] = []
         for match, block in blocks:
             entrypoint = re.search(rf"\b{re.escape(type_name)}\.(?P<entry>Validate\w*)\b", block)
             if entrypoint:
                 default = "false" if re.search(r"\bincludeInDefault\s*:\s*false\b", block) else "true"
-                return match.group("flag"), f"{match.group('kind')}|{default}|{entrypoint.group('entry')}"
-        return None
+                entries.append((match.group("flag"), f"{match.group('kind')}|{default}|{entrypoint.group('entry')}"))
+        return entries
 
-    result = registered(Path(source_file).stem)
+    stem_entries = registered(Path(source_file).stem)
     source_path = root / source_file
-    if result is not None or "/Tests/Runtime/" not in f"/{source_file}" or not source_path.is_file():
-        return result
+    if stem_entries or "/Tests/Runtime/" not in f"/{source_file}" or not source_path.is_file():
+        return stem_entries[0] if stem_entries else None
     namespace = re.search(r"\bnamespace\s+([A-Za-z_][\w.]*)", _strip_csharp_comments_and_strings(text))
     parts = namespace.group(1).split(".") if namespace else []
     visible = {".".join(parts[:size]) for size in range(len(parts) + 1)}
@@ -624,7 +625,8 @@ def _registry_validation_entry(root: Path, source_file: str) -> tuple[str, str] 
         for type_namespace, type_name in _top_level_type_declarations(
             source_path.read_text(encoding="utf-8", errors="replace")
         )
-        if type_namespace in visible and (entry := registered(type_name)) is not None
+        if type_namespace in visible
+        for entry in registered(type_name)
     }
     return declared.pop() if len(declared) == 1 else None
 
