@@ -7,6 +7,7 @@ from pathlib import Path
 
 from Scripts.validation.source_decomposition import compare_identity_surfaces
 from Scripts.validation.source_decomposition.compare_identity_surfaces import entrypoint_contracts
+from Scripts.validation.source_decomposition.compare_identity_surfaces import foundation
 from Scripts.validation.source_decomposition.compare_identity_surfaces import entrypoint_migration_contracts
 from Scripts.validation.source_decomposition.regression_checks.canonical_entrypoint_fixtures import (
     CanonicalEntrypointFixtureMixin,
@@ -15,6 +16,54 @@ from Scripts.validation.source_decomposition.regression_checks.canonical_entrypo
 
 class CanonicalEntrypointEdgeTests(CanonicalEntrypointFixtureMixin, unittest.TestCase):
     """Exercise hostile edge cases for canonical entrypoint compatibility."""
+
+    def test_namespace_change_rejects_symlinked_existing_section(self) -> None:
+        """A migrated package cannot replace an existing section with an external symlink."""
+        temporary, repository, base = self._create_repository()
+        try:
+            self._migrate_to_standard_entrypoint(repository)
+            package = repository / "Scripts/smoke/fixture"
+            section = package / "live.py"
+            outside = Path(temporary.name).parent / f"{Path(temporary.name).name}_live.py"
+            outside.write_bytes(section.read_bytes())
+            section.unlink()
+            try:
+                os.symlink(outside, section)
+            except OSError as error:
+                self.skipTest(f"symlink unavailable: {error}")
+            with compare_identity_surfaces._revision_checkout(repository, base) as base_root:
+                self.assertFalse(
+                    foundation._approved_namespace_change(
+                        "Scripts/smoke/fixture.py",
+                        base_root,
+                        repository,
+                    )
+                )
+        finally:
+            temporary.cleanup()
+
+    def test_namespace_change_rejects_symlinked_package_subdirectory(self) -> None:
+        """A migrated package cannot contain a symlinked child directory."""
+        temporary, repository, base = self._create_repository()
+        try:
+            self._migrate_to_standard_entrypoint(repository)
+            package = repository / "Scripts/smoke/fixture"
+            outside = Path(temporary.name).parent / f"{Path(temporary.name).name}_nested"
+            outside.mkdir()
+            try:
+                os.symlink(outside, package / "nested", target_is_directory=True)
+            except OSError as error:
+                self.skipTest(f"symlink unavailable: {error}")
+            with compare_identity_surfaces._revision_checkout(repository, base) as base_root:
+                self.assertFalse(
+                    foundation._approved_namespace_change(
+                        "Scripts/smoke/fixture.py",
+                        base_root,
+                        repository,
+                    )
+                )
+        finally:
+            temporary.cleanup()
 
 
 
