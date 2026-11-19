@@ -406,6 +406,55 @@ class CanonicalEntrypointEdgeTests(CanonicalEntrypointFixtureMixin, unittest.Tes
         finally:
             temporary.cleanup()
 
+    def test_module_entrypoint_full_guard_rejects_unbound_normalized_sys(self) -> None:
+        """A facade sys alias cannot normalize to an unbound package sys name."""
+        facade_source = (
+            "from __future__ import annotations\n"
+            "import sys as _phase192_sys\n"
+            "if __package__:\n"
+            "    from .fixture import *\n"
+            "else:\n"
+            "    from fixture import *\n"
+            "if __name__ == '__main__':\n"
+            "    try:\n"
+            "        raise SystemExit(main(_phase192_sys.argv[1:]))\n"
+            "    except KeyboardInterrupt:\n"
+            "        raise SystemExit(130)\n"
+            "    except Exception as exc:\n"
+            "        print(f'[fixture] FAIL: {exc}', file=_phase192_sys.stderr)\n"
+            "        raise SystemExit(1)\n"
+        )
+        base_main = (
+            "from __future__ import annotations\n"
+            "from . import main\n"
+            "if __name__ == '__main__':\n"
+            "    raise SystemExit(main())\n"
+        )
+        head_main = base_main.replace(
+            "    raise SystemExit(main())\n",
+            "    try:\n"
+            "        raise SystemExit(main(sys.argv[1:]))\n"
+            "    except KeyboardInterrupt:\n"
+            "        raise SystemExit(130)\n"
+            "    except Exception as exc:\n"
+            "        print(f'[fixture] FAIL: {exc}', file=sys.stderr)\n"
+            "        raise SystemExit(1)\n",
+        )
+        temporary, repository, base = self._create_repository(
+            facade_source=facade_source,
+            main_source=base_main,
+            live_source="def main(argv=None):\n    return 0\n\n__all__ = ['main']\n",
+        )
+        try:
+            (repository / "Scripts/smoke/fixture/__main__.py").write_text(head_main, encoding="utf-8")
+            head = self._commit(repository, "reject unbound normalized sys")
+            self.assertEqual(
+                1,
+                compare_identity_surfaces.compare_revisions(repository, base, head, strict=False),
+            )
+        finally:
+            temporary.cleanup()
+
     def test_module_entrypoint_full_guard_rejects_mismatch_and_symlink(self) -> None:
         """A mirrored module guard must match the trusted guard and regular package files."""
         facade_source = (
