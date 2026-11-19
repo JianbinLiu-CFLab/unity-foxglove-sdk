@@ -11,10 +11,19 @@ namespace ROS2
 {
     public class ROS2UnityComponent
     {
+        internal Func<ROS2Node, bool> TryRemoveNodeResult { get; set; } = _ => true;
+        internal int CreateNodeCalls { get; private set; }
+
         public bool Ok() => true;
-        public ROS2Node CreateNode(string name) => new ROS2Node();
+
+        public ROS2Node CreateNode(string name)
+        {
+            CreateNodeCalls++;
+            return new ROS2Node();
+        }
+
         public void RemoveNode(ROS2Node node) { }
-        public bool TryRemoveNode(ROS2Node node, bool dispose = true) => true;
+        public bool TryRemoveNode(ROS2Node node, bool dispose = true) => TryRemoveNodeResult(node);
     }
 
     public class ROS2Node : IDisposable
@@ -30,7 +39,9 @@ namespace ROS2
             where T : Message, new()
             => throw new NotSupportedException("Compile-only stub.");
 
-        public bool RemoveSubscription(ISubscriptionBase subscription) => false;
+        internal Func<ISubscriptionBase, bool> RemoveSubscriptionResult { get; set; } = _ => false;
+
+        public bool RemoveSubscription(ISubscriptionBase subscription) => RemoveSubscriptionResult(subscription);
 
         public Publisher<T> CreatePublisher<T>(string topicName)
             where T : Message, new()

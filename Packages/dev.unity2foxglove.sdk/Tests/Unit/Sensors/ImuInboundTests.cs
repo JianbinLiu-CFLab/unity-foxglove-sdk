@@ -3,6 +3,9 @@ using System.Numerics;
 using Unity.FoxgloveSDK.Schemas.Imu;
 using Xunit;
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using Unity2Foxglove.Ros2ForUnity.Native;
 #endif
@@ -202,6 +205,141 @@ namespace Unity.FoxgloveSDK.Tests.Unit.Sensors
                     999_999_999,
                     out var unixNs));
             Assert.Equal(1_999_999_999UL, unixNs);
+        }
+
+        [Fact]
+        public void BridgeRetainsSubscriptionUntilNativeRemovalSucceeds()
+        {
+            var removals = new Queue<Func<bool>>(new Func<bool>[]
+            {
+                () => false,
+                () => throw new InvalidOperationException("remove-subscription"),
+                () => false,
+                () => true,
+            });
+            var (bridge, unity, node, subscription) = CreateBridgeWithNativeHandles();
+            node.RemoveSubscriptionResult = _ => removals.Dequeue()();
+
+            InvokeBridge(bridge, "Update");
+            AssertCleanupPending(bridge, node, subscription);
+            InvokeBridge(bridge, "Update");
+            AssertCleanupPending(bridge, node, subscription);
+
+            InvokeBridge(bridge, "EnsureSubscription");
+            AssertCleanupPending(bridge, node, subscription);
+            Assert.Equal(0, unity.CreateNodeCalls);
+
+            InvokeBridge(bridge, "Update");
+            Assert.Null(BridgeField(bridge, "_subscription"));
+            Assert.Null(BridgeField(bridge, "_node"));
+            Assert.False((bool)BridgeField(bridge, "_cleanupPending"));
+            Assert.Empty(removals);
+        }
+
+        [Fact]
+        public void BridgeRetainsNodeUntilNodeRemovalSucceeds()
+        {
+            var removals = new Queue<Func<bool>>(new Func<bool>[]
+            {
+                () => false,
+                () => throw new InvalidOperationException("remove-node"),
+                () => true,
+            });
+            var (bridge, unity, node, _) = CreateBridgeWithNativeHandles();
+            node.RemoveSubscriptionResult = _ => true;
+            unity.TryRemoveNodeResult = _ => removals.Dequeue()();
+
+            InvokeBridge(bridge, "Update");
+            Assert.Null(BridgeField(bridge, "_subscription"));
+            Assert.Same(node, BridgeField(bridge, "_node"));
+            Assert.True((bool)BridgeField(bridge, "_cleanupPending"));
+            InvokeBridge(bridge, "Update");
+            Assert.Same(node, BridgeField(bridge, "_node"));
+            Assert.True((bool)BridgeField(bridge, "_cleanupPending"));
+
+            InvokeBridge(bridge, "EnsureSubscription");
+            Assert.Null(BridgeField(bridge, "_node"));
+            Assert.False((bool)BridgeField(bridge, "_cleanupPending"));
+            Assert.Empty(removals);
+        }
+
+        [Fact]
+        public void RetiredCallbackCannotPublishIntoSlotRecreatedByReenable()
+        {
+            var bridge = new Ros2ForUnityImuInboundBridge { gameObject = new UnityEngine.GameObject("imu") };
+            InvokeBridge(bridge, "OnEnable");
+            var lifecycle = (ImuInboundLifecycleState)BridgeField(bridge, "_lifecycle");
+            var retiredGeneration = lifecycle.CurrentGeneration;
+            var retiredSlot = (ImuNativeFrameSlot)BridgeField(bridge, "_slot");
+
+            InvokeBridge(bridge, "OnDisable");
+            InvokeBridge(bridge, "OnEnable");
+            var currentGeneration = lifecycle.CurrentGeneration;
+            var currentSlot = (ImuNativeFrameSlot)BridgeField(bridge, "_slot");
+            Assert.NotSame(retiredSlot, currentSlot);
+
+            InvokeBridge(bridge, "OnImu", null, retiredGeneration, retiredSlot);
+            InvokeBridge(bridge, "OnImu", null, retiredGeneration, currentSlot);
+            InvokeBridge(bridge, "OnImu", null, currentGeneration, retiredSlot);
+            Assert.Equal(0, currentSlot.Stats.Rejected);
+
+            InvokeBridge(bridge, "OnImu", null, currentGeneration, currentSlot);
+            Assert.Equal(1, currentSlot.Stats.Rejected);
+            Assert.Equal(0, currentSlot.Count);
+        }
+
+        private static (Ros2ForUnityImuInboundBridge Bridge, ROS2.ROS2UnityComponent Unity, ROS2.ROS2Node Node, ROS2.ISubscriptionBase Subscription)
+            CreateBridgeWithNativeHandles()
+        {
+            var bridge = new Ros2ForUnityImuInboundBridge { gameObject = new UnityEngine.GameObject("imu") };
+            var unity = new ROS2.ROS2UnityComponent();
+            var node = new ROS2.ROS2Node();
+            var subscription = new RetainedSubscription();
+            SetBridgeField(bridge, "_ros2Unity", unity);
+            SetBridgeField(bridge, "_node", node);
+            SetBridgeField(bridge, "_subscription", subscription);
+            SetBridgeField(bridge, "_cleanupPending", true);
+            return (bridge, unity, node, subscription);
+        }
+
+        private static void AssertCleanupPending(
+            Ros2ForUnityImuInboundBridge bridge,
+            ROS2.ROS2Node node,
+            ROS2.ISubscriptionBase subscription)
+        {
+            Assert.Same(subscription, BridgeField(bridge, "_subscription"));
+            Assert.Same(node, BridgeField(bridge, "_node"));
+            Assert.True((bool)BridgeField(bridge, "_cleanupPending"));
+        }
+
+        private static object BridgeField(Ros2ForUnityImuInboundBridge bridge, string name)
+            => BridgeMember<FieldInfo>(name).GetValue(bridge);
+
+        private static void SetBridgeField(Ros2ForUnityImuInboundBridge bridge, string name, object value)
+            => BridgeMember<FieldInfo>(name).SetValue(bridge, value);
+
+        private static void InvokeBridge(Ros2ForUnityImuInboundBridge bridge, string name, params object[] arguments)
+            => BridgeMember<MethodInfo>(name).Invoke(bridge, arguments);
+
+        private static T BridgeMember<T>(string name)
+            where T : MemberInfo
+        {
+            var member = typeof(Ros2ForUnityImuInboundBridge)
+                .GetMember(name, BindingFlags.Instance | BindingFlags.NonPublic)
+                .OfType<T>()
+                .SingleOrDefault();
+            Assert.NotNull(member);
+            return member;
+        }
+
+        private sealed class RetainedSubscription : ROS2.ISubscriptionBase
+        {
+            public string Topic => "/imu/data";
+            public ROS2.rcl_subscription_t Handle => default;
+            public object Mutex { get; } = new object();
+            public bool IsDisposed => false;
+            public void TakeMessage() { }
+            public void Dispose() { }
         }
 #endif
 
