@@ -407,6 +407,134 @@ def _approved_main_block_only_contract(
     return True
 
 
+def _approved_module_entrypoint_guard_contract(
+    base_root: Path,
+    head_root: Path,
+    base_relative: str,
+    head_relative: str,
+) -> bool:
+    """Return whether a package guard exactly mirrors its trusted facade guard."""
+    if base_relative != head_relative:
+        return False
+    base_facade = base_root / base_relative
+    head_facade = head_root / head_relative
+    base_package = base_facade.with_suffix("")
+    head_package = head_facade.with_suffix("")
+    if (
+        not base_facade.is_file()
+        or base_facade.is_symlink()
+        or not head_facade.is_file()
+        or head_facade.is_symlink()
+        or not base_package.is_dir()
+        or base_package.is_symlink()
+        or not head_package.is_dir()
+        or head_package.is_symlink()
+        or base_facade.read_bytes() != head_facade.read_bytes()
+    ):
+        return False
+
+    def package_files(package: Path) -> set[str] | None:
+        """Return regular package files, rejecting links anywhere below it."""
+        if any(path.is_symlink() for path in package.rglob("*")):
+            return None
+        return {
+            path.relative_to(package).as_posix()
+            for path in package.rglob("*")
+            if path.is_file()
+        }
+
+    base_files = package_files(base_package)
+    head_files = package_files(head_package)
+    if base_files is None or head_files is None or base_files != head_files:
+        return False
+    for relative in base_files - {"__main__.py"}:
+        if (base_package / relative).read_bytes() != (head_package / relative).read_bytes():
+            return False
+
+    base_main = base_package / "__main__.py"
+    head_main = head_package / "__main__.py"
+    if (
+        not base_main.is_file()
+        or base_main.is_symlink()
+        or not head_main.is_file()
+        or head_main.is_symlink()
+    ):
+        return False
+    try:
+        base_tree = _parse_source(base_main.read_text(encoding="utf-8"), base_main)
+        head_tree = _parse_source(head_main.read_text(encoding="utf-8"), head_main)
+        facade_tree = _parse_source(base_facade.read_text(encoding="utf-8"), base_facade)
+    except (OSError, SyntaxError, ValueError):
+        return False
+
+    def main_guard(tree: ast.Module) -> tuple[ast.If, int] | None:
+        """Return one final module guard and its body index."""
+        guards = [
+            (index, node)
+            for index, node in enumerate(tree.body)
+            if (
+                isinstance(node, ast.If)
+                and isinstance(node.test, ast.Compare)
+                and len(node.test.ops) == 1
+                and isinstance(node.test.ops[0], ast.Eq)
+                and isinstance(node.test.left, ast.Name)
+                and node.test.left.id == "__name__"
+                and len(node.test.comparators) == 1
+                and isinstance(node.test.comparators[0], ast.Constant)
+                and node.test.comparators[0].value == "__main__"
+                and not node.orelse
+            )
+        ]
+        if len(guards) != 1:
+            return None
+        index, guard = guards[0]
+        if index != len(tree.body) - 1:
+            return None
+        return guard, index
+
+    base_guard_data = main_guard(base_tree)
+    head_guard_data = main_guard(head_tree)
+    facade_guard_data = main_guard(facade_tree)
+    if base_guard_data is None or head_guard_data is None or facade_guard_data is None:
+        return False
+    base_guard, base_index = base_guard_data
+    head_guard, head_index = head_guard_data
+    facade_guard, _ = facade_guard_data
+    if ast.dump(
+        ast.Module(body=base_tree.body[:base_index], type_ignores=[]),
+        include_attributes=False,
+    ) != ast.dump(
+        ast.Module(body=head_tree.body[:head_index], type_ignores=[]),
+        include_attributes=False,
+    ):
+        return False
+    if (
+        len(base_guard.body) != 1
+        or not isinstance(base_guard.body[0], ast.Raise)
+        or not isinstance(base_guard.body[0].exc, ast.Call)
+        or not isinstance(base_guard.body[0].exc.func, ast.Name)
+        or base_guard.body[0].exc.func.id != "SystemExit"
+    ):
+        return False
+
+    class FacadeSystemAliasNormalizer(ast.NodeTransformer):
+        """Normalize the reviewed facade's private sys alias for comparison."""
+
+        def visit_Name(self, node: ast.Name) -> ast.AST:
+            """Use the public sys spelling used by package module entrypoints."""
+            if node.id == "_phase192_sys":
+                node.id = "sys"
+            return node
+
+    def normalized_facade_guard(node: ast.If) -> str:
+        """Return the trusted facade signature with its private sys alias normalized."""
+        normalized = copy.deepcopy(node)
+        normalized = FacadeSystemAliasNormalizer().visit(normalized)
+        return ast.dump(normalized, include_attributes=False)
+
+    return ast.dump(head_guard, include_attributes=False) == normalized_facade_guard(facade_guard)
+
+
 def _approved_entrypoint_contract_impl(
     root: Path,
     relative: str,

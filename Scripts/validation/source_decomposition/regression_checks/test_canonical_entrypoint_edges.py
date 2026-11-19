@@ -355,3 +355,132 @@ class CanonicalEntrypointEdgeTests(CanonicalEntrypointFixtureMixin, unittest.Tes
             )
         finally:
             temporary.cleanup()
+
+    def test_module_entrypoint_full_guard_matches_trusted_facade(self) -> None:
+        """A package module guard may mirror the unchanged trusted facade guard."""
+        facade_source = (
+            "from __future__ import annotations\n"
+            "import sys as _phase192_sys\n"
+            "if __package__:\n"
+            "    from .fixture import *\n"
+            "else:\n"
+            "    from fixture import *\n"
+            "if __name__ == '__main__':\n"
+            "    try:\n"
+            "        raise SystemExit(main(_phase192_sys.argv[1:]))\n"
+            "    except KeyboardInterrupt:\n"
+            "        raise SystemExit(130)\n"
+            "    except Exception as exc:\n"
+            "        print(f'[fixture] FAIL: {exc}', file=_phase192_sys.stderr)\n"
+            "        raise SystemExit(1)\n"
+        )
+        base_main = (
+            "from __future__ import annotations\n"
+            "import sys\n"
+            "from . import main\n"
+            "if __name__ == '__main__':\n"
+            "    raise SystemExit(main(sys.argv[1:]))\n"
+        )
+        head_main = base_main.replace(
+            "    raise SystemExit(main(sys.argv[1:]))\n",
+            "    try:\n"
+            "        raise SystemExit(main(sys.argv[1:]))\n"
+            "    except KeyboardInterrupt:\n"
+            "        raise SystemExit(130)\n"
+            "    except Exception as exc:\n"
+            "        print(f'[fixture] FAIL: {exc}', file=sys.stderr)\n"
+            "        raise SystemExit(1)\n",
+        )
+        temporary, repository, base = self._create_repository(
+            facade_source=facade_source,
+            main_source=base_main,
+            live_source="def main(argv):\n    return 0\n\n__all__ = ['main']\n",
+        )
+        try:
+            (repository / "Scripts/smoke/fixture/__main__.py").write_text(head_main, encoding="utf-8")
+            head = self._commit(repository, "mirror facade module guard")
+            self.assertEqual(
+                0,
+                compare_identity_surfaces.compare_revisions(repository, base, head, strict=False),
+            )
+        finally:
+            temporary.cleanup()
+
+    def test_module_entrypoint_full_guard_rejects_mismatch_and_symlink(self) -> None:
+        """A mirrored module guard must match the trusted guard and regular package files."""
+        facade_source = (
+            "from __future__ import annotations\n"
+            "import sys as _phase192_sys\n"
+            "if __package__:\n"
+            "    from .fixture import *\n"
+            "else:\n"
+            "    from fixture import *\n"
+            "if __name__ == '__main__':\n"
+            "    try:\n"
+            "        raise SystemExit(main(_phase192_sys.argv[1:]))\n"
+            "    except KeyboardInterrupt:\n"
+            "        raise SystemExit(130)\n"
+            "    except Exception as exc:\n"
+            "        print(f'[fixture] FAIL: {exc}', file=_phase192_sys.stderr)\n"
+            "        raise SystemExit(1)\n"
+        )
+        base_main = (
+            "from __future__ import annotations\n"
+            "import sys\n"
+            "from . import main\n"
+            "if __name__ == '__main__':\n"
+            "    raise SystemExit(main(sys.argv[1:]))\n"
+        )
+        head_main = base_main.replace(
+            "    raise SystemExit(main(sys.argv[1:]))\n",
+            "    try:\n"
+            "        raise SystemExit(main(sys.argv[2:]))\n"
+            "    except KeyboardInterrupt:\n"
+            "        raise SystemExit(130)\n"
+            "    except Exception as exc:\n"
+            "        print(f'[fixture] FAIL: {exc}', file=sys.stderr)\n"
+            "        raise SystemExit(1)\n",
+        )
+        temporary, repository, base = self._create_repository(
+            facade_source=facade_source,
+            main_source=base_main,
+            live_source="def main(argv):\n    return 0\n\n__all__ = ['main']\n",
+        )
+        try:
+            entrypoint = repository / "Scripts/smoke/fixture/__main__.py"
+            entrypoint.write_text(head_main, encoding="utf-8")
+            head = self._commit(repository, "mismatch facade module guard")
+            self.assertEqual(
+                1,
+                compare_identity_surfaces.compare_revisions(repository, base, head, strict=False),
+            )
+            entrypoint.write_text(
+                head_main.replace("sys.argv[2:]", "_phase192_sys.argv[1:]"),
+                encoding="utf-8",
+            )
+            alias_head = self._commit(repository, "use an unbound module sys alias")
+            self.assertEqual(
+                1,
+                compare_identity_surfaces.compare_revisions(repository, base, alias_head, strict=False),
+            )
+            entrypoint.write_text(head_main, encoding="utf-8")
+            package = repository / "Scripts/smoke/fixture"
+            section = package / "live.py"
+            outside = Path(temporary.name).parent / f"{Path(temporary.name).name}_live.py"
+            outside.write_bytes(section.read_bytes())
+            section.unlink()
+            try:
+                os.symlink(outside, section)
+            except OSError as error:
+                self.skipTest(f"symlink unavailable: {error}")
+            with compare_identity_surfaces._revision_checkout(repository, base) as base_root:
+                self.assertFalse(
+                    entrypoint_migration_contracts._approved_module_entrypoint_guard_contract(
+                        base_root,
+                        repository,
+                        "Scripts/smoke/fixture.py",
+                        "Scripts/smoke/fixture.py",
+                    )
+                )
+        finally:
+            temporary.cleanup()
