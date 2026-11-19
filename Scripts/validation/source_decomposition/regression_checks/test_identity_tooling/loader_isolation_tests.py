@@ -87,6 +87,49 @@ class LoaderIsolationTests(IdentityToolingBase):
                 for name in ("fixture", "helper.sub", "helper"):
                     sys.modules.pop(name, None)
 
+    def test_load_fresh_module_removes_orphaned_namespace_descendants(self) -> None:
+        """A fresh load must remove namespace descendants with cleared parents."""
+        import importlib
+        import sys
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            facade = root / "Scripts" / "facade.py"
+            module_path = root / "Scripts" / "fixture_ns" / "child" / "mod.py"
+            facade.parent.mkdir(parents=True)
+            module_path.parent.mkdir(parents=True)
+            facade.write_text("VALUE = 1\n", encoding="utf-8")
+            module_path.write_text("VALUE = 2\n", encoding="utf-8")
+            original_path = list(sys.path)
+            saved_modules = {
+                name: module
+                for name, module in sys.modules.items()
+                if name == "Scripts" or name.startswith("Scripts.")
+            }
+            for name in tuple(saved_modules):
+                sys.modules.pop(name, None)
+            sys.path.insert(0, str(root))
+            sys.path.insert(1, str(root / "."))
+            try:
+                importlib.invalidate_caches()
+                importlib.import_module("Scripts.fixture_ns.child")
+                source_layout.load_fresh_module("phase_namespace_fixture", facade)
+                orphaned = [
+                    name
+                    for name in sys.modules
+                    if name.startswith("Scripts.fixture_ns.")
+                    and "Scripts.fixture_ns" not in sys.modules
+                ]
+                self.assertEqual([], orphaned)
+                module = importlib.import_module("Scripts.fixture_ns.child.mod")
+                self.assertEqual(2, module.VALUE)
+            finally:
+                sys.path[:] = original_path
+                for name in tuple(sys.modules):
+                    if name == "Scripts" or name.startswith("Scripts."):
+                        sys.modules.pop(name, None)
+                sys.modules.update(saved_modules)
+
     def test_load_fresh_module_restores_path_for_import_setup_failures(self) -> None:
         """Import setup failures must restore the caller's sys.path exactly."""
         import sys
