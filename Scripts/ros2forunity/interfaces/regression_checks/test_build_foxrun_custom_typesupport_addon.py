@@ -95,12 +95,13 @@ class CustomTypesupportCandidateBuildTests(unittest.TestCase):
 
     def test_check_source_cli_does_not_invent_machine_specific_toolchain_sources(self) -> None:
         """Verify check source cli does not invent machine specific toolchain sources."""
-        request, check_source, repair_catalog, repair_license_eol, repair_package_metadata = parse_args(("--distro", "humble", "--check-source"))
+        request, check_source, repair_catalog, repair_license_eol, repair_package_metadata, repair_interface_identity = parse_args(("--distro", "humble", "--check-source"))
 
         self.assertTrue(check_source)
         self.assertFalse(repair_catalog)
         self.assertFalse(repair_license_eol)
         self.assertFalse(repair_package_metadata)
+        self.assertFalse(repair_interface_identity)
         self.assertIsNone(request.ros2cs_source)
         self.assertIsNone(request.ros2cs_install)
         self.assertIsNone(request.r2fu_source)
@@ -340,6 +341,7 @@ class CustomTypesupportCandidateBuildTests(unittest.TestCase):
                 "0.1.0-preview.1",
                 package["dependencies"][STATIC_INTERFACE_PACKAGE_ID],
             )
+            self.assertIn("Phase181 sample", package["description"])
 
     def test_generated_catalog_uses_resolved_runtime_rmw_capability(self) -> None:
         """Catalog capability must follow the validated runtime manifest, not distro defaults."""

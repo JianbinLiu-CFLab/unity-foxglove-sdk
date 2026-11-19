@@ -76,9 +76,9 @@ def _write_candidate_texts(package_root: Path, repo_root: Path, distro: str) -> 
     _write_utf8_lf(
         package_root / "README.md",
         "# Unity2Foxglove FoxRun Custom ROS2 Typesupport - " + distro.title() + " Win64\n\n"
-        "This generated add-on carries the validated custom-message closure for the locked "
+        "This generated Phase181 sample add-on carries the validated custom-message closure for the locked "
         "`dev.unity2foxglove.foxrun.ros2.interfaces` source package. It must be selected "
-        "with its exact matching ROS2 For Unity runtime; it is not a standalone ROS runtime.\n",
+        "with its exact matching ROS2 For Unity runtime; applications must generate their own interface and typesupport packages.\n",
     )
     _write_utf8_lf(
         package_root / "THIRD_PARTY_NOTICES.md",
@@ -107,6 +107,11 @@ def _package_metadata(request: CandidateBuildRequest, package_root: Path) -> Non
         dependencies = {}
         payload["dependencies"] = dependencies
     dependencies[STATIC_INTERFACE_PACKAGE_ID] = static_version
+    payload["description"] = (
+        "Generated Phase181 sample "
+        + request.distro.title()
+        + " Win64 custom ROS2 typesupport add-on for the locked Unity2Foxglove FoxRun interface package; applications must generate their own add-on."
+    )
     package_root.mkdir(parents=True, exist_ok=True)
     _write_utf8_lf(package_root / "package.json", json.dumps(payload, sort_keys=True, indent=2) + "\n")
 

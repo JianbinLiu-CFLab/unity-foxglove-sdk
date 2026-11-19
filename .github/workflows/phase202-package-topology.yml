@@ -78,6 +78,19 @@ jobs:
         shell: pwsh
         run: python -m pip install --disable-pip-version-check --no-input psutil==7.0.0
 
+      - name: Regenerate Phase181 sample package labels
+        if: github.event.inputs.mode == 'matrix' || github.event.inputs.mode == 'all'
+        shell: pwsh
+        run: |
+          & 'C:\Program Files\Unity\Hub\Editor\6000.3.14f1\Editor\Unity.exe' -batchmode -nographics -quit -projectPath Unity2Foxglove -executeMethod Unity.FoxgloveSDK.Editor.FoxRunRos2InterfacePackageCommand.ExecuteFromCommandLine --generate -logFile build/phase202/unity/generate-interface.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -B Scripts/ros2forunity/interfaces/build_foxrun_custom_typesupport_addon.py --distro humble --repair-tracked-interface-identity
+          python -B Scripts/ros2forunity/interfaces/build_foxrun_custom_typesupport_addon.py --distro jazzy --repair-tracked-interface-identity
+          python -B Scripts/ros2forunity/interfaces/build_foxrun_custom_typesupport_addon.py --distro lyrical --repair-tracked-interface-identity
+          python -B Scripts/ros2forunity/interfaces/build_foxrun_custom_typesupport_addon.py --distro humble --repair-tracked-package-metadata
+          python -B Scripts/ros2forunity/interfaces/build_foxrun_custom_typesupport_addon.py --distro jazzy --repair-tracked-package-metadata
+          python -B Scripts/ros2forunity/interfaces/build_foxrun_custom_typesupport_addon.py --distro lyrical --repair-tracked-package-metadata
+
       - name: Run Phase202 package-manager probes
         if: github.event.inputs.mode == 'resolution' || github.event.inputs.mode == 'all'
         shell: pwsh

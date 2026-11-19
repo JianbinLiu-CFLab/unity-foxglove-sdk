@@ -27,6 +27,14 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
             Assert.Contains(rendered.Files, file => file.RelativePath == "package.json");
             Assert.Contains(rendered.Files, file => file.RelativePath == "Ros2Package~/package.xml");
             Assert.Contains(rendered.Files, file => file.RelativePath == "Ros2Package~/CMakeLists.txt");
+            Assert.Contains(
+                "Phase181 sample",
+                rendered.GetText("package.json"),
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "generate their own interface package",
+                rendered.GetText("README.md"),
+                StringComparison.OrdinalIgnoreCase);
             var payload = Assert.Single(rendered.Files, file => file.Text.Contains("int32 count", StringComparison.Ordinal));
             var envelope = Assert.Single(rendered.Files, file => file.RelativePath.EndsWith("Envelope.msg", StringComparison.Ordinal));
             Assert.Contains("int32 count", payload.Text, StringComparison.Ordinal);

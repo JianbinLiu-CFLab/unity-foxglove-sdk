@@ -17,6 +17,7 @@ __file__ = str(_PHASE192_FACADE_FILE)
 del _Phase192Path, _PHASE192_FACADE_FILE
 
 import hashlib
+import json
 from pathlib import Path
 from typing import Mapping
 
@@ -31,9 +32,26 @@ def _repair_tracked_addon_package_metadata(request: CandidateBuildRequest) -> Pa
     package_root = repository_root / "Packages" / addon_package_id(request.distro)
     if not package_root.is_dir():
         raise CandidateBuildError("repair-tracked-typesupport-package")
+    _write_candidate_texts(package_root, repository_root, request.distro)
     _package_metadata(request, package_root)
     _write_inventory(package_root)
     return package_root / "package.json"
+
+
+def _repair_tracked_addon_interface_identity(request: CandidateBuildRequest) -> Path:
+    """Refresh generated add-on digest references after interface regeneration."""
+    interface_digest = verify_candidate_source_lock(request)
+    repository_root = _repo_root(request).resolve()
+    package_root = repository_root / "Packages" / addon_package_id(request.distro)
+    manifest_path = package_root / "RuntimeSupport" / "typesupport-manifest.json"
+    manifest = _load_json(manifest_path, "repair-typesupport-manifest")
+    source = manifest.get("source")
+    if not isinstance(source, dict):
+        raise CandidateBuildError("repair-typesupport-source-identity")
+    source["interfaceDigest"] = interface_digest
+    _write_utf8_lf(manifest_path, json.dumps(manifest, sort_keys=True, indent=2) + "\n")
+    _repair_tracked_addon_catalog(request)
+    return manifest_path
 
 def _repair_tracked_addon_catalog(request: CandidateBuildRequest) -> Path:
     """Regenerate tracked catalog and canonical legal metadata without payload rebuild.

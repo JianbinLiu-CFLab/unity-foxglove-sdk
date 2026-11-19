@@ -57,7 +57,7 @@ def _load_toolchain_provenance(request: CandidateBuildRequest) -> Path:
     return path
 
 
-def parse_args(argv: Sequence[str] | None = None) -> tuple[CandidateBuildRequest, bool, bool, bool, bool]:
+def parse_args(argv: Sequence[str] | None = None) -> tuple[CandidateBuildRequest, bool, bool, bool, bool, bool]:
     """Parse a candidate command without inventing external operator toolchain paths."""
     root = _default_repo_root()
     parser = argparse.ArgumentParser(description=__doc__)
@@ -75,8 +75,9 @@ def parse_args(argv: Sequence[str] | None = None) -> tuple[CandidateBuildRequest
     parser.add_argument("--repair-tracked-catalog", action="store_true")
     parser.add_argument("--repair-tracked-license-eol", action="store_true")
     parser.add_argument("--repair-tracked-package-metadata", action="store_true")
+    parser.add_argument("--repair-tracked-interface-identity", action="store_true")
     args = parser.parse_args(argv)
-    if sum((args.check_source, args.repair_tracked_catalog, args.repair_tracked_license_eol, args.repair_tracked_package_metadata)) > 1:
+    if sum((args.check_source, args.repair_tracked_catalog, args.repair_tracked_license_eol, args.repair_tracked_package_metadata, args.repair_tracked_interface_identity)) > 1:
         parser.error("repair and check modes are mutually exclusive")
     ros2_root = args.ros2_root or root / "ros2-windows" / ("ros2_" + args.distro)
     ros2cs_install = args.ros2cs_install
@@ -100,13 +101,18 @@ def parse_args(argv: Sequence[str] | None = None) -> tuple[CandidateBuildRequest
         args.repair_tracked_catalog,
         args.repair_tracked_license_eol,
         args.repair_tracked_package_metadata,
+        args.repair_tracked_interface_identity,
     )
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Run source-only validation, catalog repair, or a controlled candidate build."""
-    request, check_source_only, repair_tracked_catalog, repair_tracked_license_eol, repair_tracked_package_metadata = parse_args(argv)
+    request, check_source_only, repair_tracked_catalog, repair_tracked_license_eol, repair_tracked_package_metadata, repair_tracked_interface_identity = parse_args(argv)
     try:
+        if repair_tracked_interface_identity:
+            manifest = _repair_tracked_addon_interface_identity(request)
+            print("PASS:", request.distro, manifest)
+            return 0
         if repair_tracked_package_metadata:
             metadata = _repair_tracked_addon_package_metadata(request)
             print("PASS:", request.distro, metadata)
