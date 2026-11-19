@@ -151,12 +151,16 @@ namespace Unity2Foxglove.Tests.PlayMode
 
                 destroyedManager.StartServer();
                 Assert.That(destroyedManager.IsRunning, Is.True);
+                Assert.That(GetField(destroyedManager, "_runtime").GetValue(destroyedManager), Is.Not.Null);
+                SetField(destroyedManager, "_replayCursorEndpoint", new Unity.FoxgloveSDK.Core.UnityReplayCursorEndpoint());
                 var onDestroy = typeof(FoxgloveManager).GetMethod(
                     "OnDestroy",
                     PrivateInstance);
                 Assert.That(onDestroy, Is.Not.Null);
                 onDestroy.Invoke(destroyedManager, null);
                 Assert.That(destroyedManager.IsRunning, Is.False);
+                Assert.That(GetField(destroyedManager, "_runtime").GetValue(destroyedManager), Is.Null);
+                Assert.That(GetField(destroyedManager, "_replayCursorEndpoint").GetValue(destroyedManager), Is.Null);
             }
             finally
             {
