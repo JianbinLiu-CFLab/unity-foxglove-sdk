@@ -679,6 +679,55 @@ class CanonicalEntrypointContractTests(CanonicalEntrypointFixtureMixin, unittest
         finally:
             temporary.cleanup()
 
+    def test_standard_migration_rejects_symlinked_package_directory(self) -> None:
+        """A migrated package cannot redirect section reads through a symlink."""
+        temporary, repository, base = self._create_repository()
+        try:
+            self._migrate_to_standard_entrypoint(repository)
+            package = repository / "Scripts/smoke/fixture"
+            outside = repository / "external_fixture_package"
+            package.rename(outside)
+            try:
+                os.symlink(outside, package, target_is_directory=True)
+            except OSError as error:
+                self.skipTest(f"symlink unavailable: {error}")
+            with compare_identity_surfaces._revision_checkout(repository, base) as base_root:
+                self.assertFalse(
+                    entrypoint_contracts._approved_entrypoint_contract(
+                        repository,
+                        "Scripts/smoke/fixture.py",
+                        base_root=base_root,
+                        base_relative="Scripts/smoke/fixture.py",
+                    )
+                )
+        finally:
+            temporary.cleanup()
+
+    def test_standard_migration_rejects_symlinked_package_initializer(self) -> None:
+        """A migrated package initializer must be a regular file in the package."""
+        temporary, repository, base = self._create_repository()
+        try:
+            self._migrate_to_standard_entrypoint(repository)
+            initializer = repository / "Scripts/smoke/fixture/__init__.py"
+            outside = repository / "external_fixture_initializer.py"
+            outside.write_text(initializer.read_text(encoding="utf-8"), encoding="utf-8")
+            initializer.unlink()
+            try:
+                os.symlink(outside, initializer)
+            except OSError as error:
+                self.skipTest(f"symlink unavailable: {error}")
+            with compare_identity_surfaces._revision_checkout(repository, base) as base_root:
+                self.assertFalse(
+                    entrypoint_contracts._approved_initializer_contract(
+                        repository,
+                        "Scripts/smoke/fixture.py",
+                        base_root=base_root,
+                        base_relative="Scripts/smoke/fixture.py",
+                    )
+                )
+        finally:
+            temporary.cleanup()
+
     def test_main_block_only_rejects_package_file_change(self) -> None:
         """A main-block-only change cannot modify another package file."""
         temporary, repository, base = self._create_repository()

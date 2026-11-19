@@ -458,7 +458,12 @@ def _initializer_exact_identity_signature(
     """Return the exact initializer template with section names normalized."""
     path = root / relative.removesuffix(".py") / "__init__.py"
     package = path.parent
-    if not path.is_file():
+    if (
+        not package.is_dir()
+        or package.is_symlink()
+        or not path.is_file()
+        or path.is_symlink()
+    ):
         return None
     try:
         sections = _section_modules_for_root(root)(package)

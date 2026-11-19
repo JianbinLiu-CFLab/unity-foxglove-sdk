@@ -408,6 +408,8 @@ def _approved_entrypoint_contract_impl(
     if (
         not facade.is_file()
         or facade.is_symlink()
+        or not package.is_dir()
+        or package.is_symlink()
         or not module_entrypoint.is_file()
         or module_entrypoint.is_symlink()
     ):
@@ -457,6 +459,19 @@ def _approved_initializer_contract_impl(
     """Validate the exact trusted-base initializer transition."""
     if base_root is None:
         return False
+    for root_path, root_relative in (
+        (root, relative),
+        (base_root, base_relative or relative),
+    ):
+        package = root_path / root_relative.removesuffix(".py")
+        initializer = package / "__init__.py"
+        if (
+            not package.is_dir()
+            or package.is_symlink()
+            or not initializer.is_file()
+            or initializer.is_symlink()
+        ):
+            return False
     head_signature = _initializer_exact_identity_signature(root, relative)
     base_signature = _initializer_exact_identity_signature(
         base_root,
