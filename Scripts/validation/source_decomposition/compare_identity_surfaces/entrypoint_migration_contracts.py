@@ -376,6 +376,7 @@ def _approved_main_block_only_contract(
             and len(node.names) == 1
             and node.names[0].name == "*"
             and node.names[0].asname is None
+            and node.lineno < facade_guard.lineno
         )
     ]
     if not star_imports or any(
@@ -411,7 +412,12 @@ def _approved_entrypoint_contract_impl(
     facade = root / relative
     package = facade.with_suffix("")
     module_entrypoint = package / "__main__.py"
-    if not facade.is_file() or not module_entrypoint.is_file():
+    if (
+        not facade.is_file()
+        or facade.is_symlink()
+        or not module_entrypoint.is_file()
+        or module_entrypoint.is_symlink()
+    ):
         return False
     try:
         facade_tree = _parse_source(facade.read_text(encoding="utf-8"), facade)

@@ -598,6 +598,56 @@ class CanonicalEntrypointContractTests(CanonicalEntrypointFixtureMixin, unittest
         finally:
             temporary.cleanup()
 
+    def test_main_block_only_rejects_star_import_after_facade_guard(self) -> None:
+        """The trusted facade must bind the delegated name before its guard runs."""
+        facade_source = (
+            "if __name__ == '__main__':\n"
+            "    raise SystemExit(main())\n"
+            "from .fixture import *\n"
+        )
+        temporary, repository, base = self._create_repository(facade_source=facade_source)
+        try:
+            (repository / "Scripts/smoke/fixture/__main__.py").write_text(
+                "from . import *\n"
+                "if __name__ == '__main__':\n"
+                "    raise SystemExit(main())\n",
+                encoding="utf-8",
+            )
+            head = self._commit(repository, "move facade star import after guard")
+            self.assertEqual(
+                1,
+                compare_identity_surfaces.compare_revisions(repository, base, head, strict=False),
+            )
+        finally:
+            temporary.cleanup()
+
+    def test_standard_migration_rejects_symlinked_facade(self) -> None:
+        """A migrated facade must be a regular file inside the checkout."""
+        temporary, repository, base = self._create_repository()
+        try:
+            self._migrate_to_standard_entrypoint(repository)
+            facade = repository / "Scripts/smoke/fixture.py"
+            facade_source = facade.read_text(encoding="utf-8")
+            facade.unlink()
+            outside = repository / "external_facade.py"
+            outside.write_text(facade_source, encoding="utf-8")
+            try:
+                os.symlink(outside, facade)
+            except OSError as error:
+                self.skipTest(f"symlink unavailable: {error}")
+            self._commit(repository, "symlink migrated facade")
+            with compare_identity_surfaces._revision_checkout(repository, base) as base_root:
+                self.assertFalse(
+                    entrypoint_contracts._approved_entrypoint_contract(
+                        repository,
+                        "Scripts/smoke/fixture.py",
+                        base_root=base_root,
+                        base_relative="Scripts/smoke/fixture.py",
+                    )
+                )
+        finally:
+            temporary.cleanup()
+
     def test_main_block_only_rejects_package_file_change(self) -> None:
         """A main-block-only change cannot modify another package file."""
         temporary, repository, base = self._create_repository()
