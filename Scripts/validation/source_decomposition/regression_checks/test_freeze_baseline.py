@@ -410,6 +410,26 @@ class FreezeBaselineTests(unittest.TestCase):
             file_fingerprint = task0_entry.worktree_fingerprint(root)
             self.assertNotEqual(symlink_fingerprint, file_fingerprint)
 
+    def test_worktree_fingerprint_changes_when_symlink_target_content_changes(self) -> None:
+        """A symlink fingerprint must include the bytes served by its target."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "repository"
+            root.mkdir()
+            subprocess.run(["git", "init", "--quiet"], cwd=root, check=True)
+            target = Path(temp) / "external-target"
+            target.write_bytes(b"before")
+            link = root / "entry"
+            try:
+                os.symlink(target, link)
+            except OSError as error:
+                self.skipTest(f"symlink unavailable: {error}")
+            subprocess.run(["git", "add", "--all"], cwd=root, check=True)
+            before = task0_entry.worktree_fingerprint(root)
+            target.write_bytes(b"after")
+            after = task0_entry.worktree_fingerprint(root)
+
+        self.assertNotEqual(before, after)
+
     def test_worktree_fingerprint_distinguishes_permission_changes(self) -> None:
         """A supported permission-bit change changes the working-tree identity."""
         with tempfile.TemporaryDirectory() as temp:

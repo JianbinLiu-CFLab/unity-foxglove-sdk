@@ -72,6 +72,32 @@ def worktree_fingerprint(root: Path) -> str:
         if stat.S_ISLNK(metadata.st_mode):
             _update_length_prefixed(digest, b"LINK")
             _update_length_prefixed(digest, os.fsencode(os.readlink(absolute)))
+            target = absolute.resolve(strict=False)
+            _update_length_prefixed(digest, os.fsencode(str(target)))
+            try:
+                target_metadata = target.stat()
+            except OSError:
+                _update_length_prefixed(digest, b"MISSING_TARGET")
+                continue
+            _update_length_prefixed(
+                digest,
+                str(stat.S_IFMT(target_metadata.st_mode)).encode("ascii"),
+            )
+            _update_length_prefixed(
+                digest,
+                str(stat.S_IMODE(target_metadata.st_mode)).encode("ascii"),
+            )
+            if stat.S_ISREG(target_metadata.st_mode):
+                _update_length_prefixed(digest, b"TARGET_FILE")
+                _update_length_prefixed(
+                    digest,
+                    str(target_metadata.st_size).encode("ascii"),
+                )
+                with target.open("rb") as handle:
+                    for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                        digest.update(chunk)
+            else:
+                _update_length_prefixed(digest, b"TARGET_OTHER")
         elif stat.S_ISREG(metadata.st_mode):
             _update_length_prefixed(digest, b"FILE")
             _update_length_prefixed(digest, str(metadata.st_size).encode("ascii"))
