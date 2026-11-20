@@ -80,28 +80,21 @@ jobs:
         shell: pwsh
         run: python -m pip install --disable-pip-version-check --no-input psutil==7.0.0
 
-      - name: Regenerate Phase181 sample package labels
+      - name: Verify Phase181 sample package labels and identities
         if: github.event_name == 'push' || github.event.inputs.mode == 'matrix' || github.event.inputs.mode == 'all'
         shell: pwsh
         run: |
-          git checkout -- Packages/dev.unity2foxglove.foxrun.ros2.interfaces
-          python -B Scripts/release/run_unity_batch_compile.py --project-path Unity2Foxglove --log-file build/phase202/unity/pre-generate-compile.log --timeout-seconds 3600
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          & 'C:\Program Files\Unity\Hub\Editor\6000.3.14f1\Editor\Unity.exe' -batchmode -nographics -projectPath Unity2Foxglove -executeMethod Unity.FoxgloveSDK.Editor.FoxRunRos2InterfacePackageCommand.ExecuteFromCommandLine --generate -logFile build/phase202/unity/generate-interface.log
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $generatedPackage = 'Packages/dev.unity2foxglove.foxrun.ros2.interfaces'
           $generatedMetadata = Get-Content (Join-Path $generatedPackage 'package.json') -Raw
           $generatedReadme = Get-Content (Join-Path $generatedPackage 'README.md') -Raw
           if ($generatedMetadata -notmatch 'Phase181 sample' -or $generatedReadme -notmatch 'generate their own interface package') {
-            Write-Error 'Unity interface generator did not render the Phase181 sample labels.'
+            Write-Error 'The checked-in Phase181 sample package labels are stale.'
             exit 1
           }
-          python -B Scripts/ros2forunity/interfaces/build_foxrun_custom_typesupport_addon.py --distro humble --repair-tracked-interface-identity
-          python -B Scripts/ros2forunity/interfaces/build_foxrun_custom_typesupport_addon.py --distro jazzy --repair-tracked-interface-identity
-          python -B Scripts/ros2forunity/interfaces/build_foxrun_custom_typesupport_addon.py --distro lyrical --repair-tracked-interface-identity
-          python -B Scripts/ros2forunity/interfaces/build_foxrun_custom_typesupport_addon.py --distro humble --repair-tracked-package-metadata
-          python -B Scripts/ros2forunity/interfaces/build_foxrun_custom_typesupport_addon.py --distro jazzy --repair-tracked-package-metadata
-          python -B Scripts/ros2forunity/interfaces/build_foxrun_custom_typesupport_addon.py --distro lyrical --repair-tracked-package-metadata
+          python -B Scripts/ros2forunity/interfaces/interface_digest.py --package-root $generatedPackage
+          python -B Scripts/ros2forunity/interfaces/validate_foxrun_custom_typesupport_addon.py --distro humble --require-rmw rmw_fastrtps_cpp
+          python -B Scripts/ros2forunity/interfaces/validate_foxrun_custom_typesupport_addon.py --distro jazzy --require-rmw rmw_fastrtps_cpp
+          python -B Scripts/ros2forunity/interfaces/validate_foxrun_custom_typesupport_addon.py --distro lyrical --require-rmw rmw_fastrtps_cpp
 
       - name: Run Phase202 package-manager probes
         if: github.event_name == 'push' || github.event.inputs.mode == 'resolution' || github.event.inputs.mode == 'all'
@@ -174,6 +167,4 @@ jobs:
             build/phase202/unity/matrix/summary.json
             build/phase202/unity/matrix/logs
             build/phase202/unity/demo
-            build/phase202/unity/pre-generate-compile.log
-            build/phase202/unity/generate-interface.log
           if-no-files-found: warn
