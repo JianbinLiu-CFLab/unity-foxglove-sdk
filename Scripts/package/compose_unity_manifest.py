@@ -158,6 +158,8 @@ def _should_remove_existing_package(
         return package_id not in {name for name in selected if name.startswith(TYPESUPPORT_PREFIX)}
     if package_id == STATIC_INTERFACE_PACKAGE_ID:
         return package_id not in selected
+    if package_id == "dev.unity2foxglove.ros2forunity":
+        return package_id not in selected
     conflicts = package_data.get("unity2foxgloveConflicts", ())
     if isinstance(conflicts, list) and selected.intersection(conflicts):
         return True

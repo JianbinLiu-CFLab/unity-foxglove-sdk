@@ -111,6 +111,17 @@ class ComposeUnityManifestTests(unittest.TestCase):
             self.assertEqual(0, self._run(project, "core", None).returncode)
             dependencies = self._read_manifest(project)["dependencies"]
             self.assertNotIn("dev.unity2foxglove.ros2forunity.runtime.jazzy.win64", dependencies)
+            self.assertNotIn("dev.unity2foxglove.ros2forunity", dependencies)
+
+    def test_profile_switch_removes_native_facade_from_non_native_profiles(self) -> None:
+        """Switching from native to any non-native profile removes the native facade."""
+        for profile in ("core", "bridge", "gateway"):
+            with self.subTest(profile=profile):
+                with self._project() as project:
+                    self.assertEqual(0, self._run(project, "native", "jazzy").returncode)
+                    self.assertEqual(0, self._run(project, profile, None).returncode)
+                    dependencies = self._read_manifest(project)["dependencies"]
+                    self.assertNotIn("dev.unity2foxglove.ros2forunity", dependencies)
 
     def test_atomic_replace_preserves_manifest_mode(self) -> None:
         """Atomic composition retains the existing POSIX manifest mode."""
