@@ -125,7 +125,9 @@ jobs:
         shell: pwsh
         run: |
           python -B -m Scripts.package.compose_unity_manifest --project Unity2Foxglove --profile native-custom --distro jazzy
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -B Scripts/release/run_unity_batch_compile.py --project-path Unity2Foxglove --log-file build/phase202/unity/demo/unity.log --timeout-seconds 3600
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Restore demo manifest and lock
         if: always() && (github.event_name == 'push' || github.event.inputs.include_demo == 'true')
