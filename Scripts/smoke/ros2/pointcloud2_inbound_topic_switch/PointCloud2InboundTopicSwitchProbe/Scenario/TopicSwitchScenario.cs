@@ -107,8 +107,13 @@ internal sealed class TopicSwitchScenario : IDisposable
 
     private void OnMonitoredFrame(RosPointCloud2 message)
     {
-        if (Volatile.Read(ref _monitorWindowOpen) == 1)
+        var frameId = message?.Header?.Frame_id;
+        if (Volatile.Read(ref _monitorWindowOpen) == 1
+            && frameId != null
+            && frameId.StartsWith("a-late-", StringComparison.Ordinal))
+        {
             Interlocked.Increment(ref _monitoredLateFrames);
+        }
     }
 
     private static void Publish(ROS2.Publisher<RosPointCloud2> publisher, string frameId)
