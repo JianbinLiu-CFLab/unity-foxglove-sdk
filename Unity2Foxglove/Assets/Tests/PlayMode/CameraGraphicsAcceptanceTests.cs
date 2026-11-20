@@ -31,7 +31,10 @@ namespace Unity2Foxglove.Tests.PlayMode
                 yield return null;
                 var resources = GetField(publisher, "_captureResources").GetValue(publisher);
                 var retiredTexture = (RenderTexture)resources.GetType().GetProperty("CaptureRenderTexture").GetValue(resources);
-                yield return WaitForPendingReadback(publisher);
+                var pendingField = GetField(publisher, "_pendingRequests");
+                for (var tick = 0; tick < 180 && (int)pendingField.GetValue(publisher) == 0; tick++)
+                    yield return null;
+                Assert.That((int)pendingField.GetValue(publisher), Is.GreaterThan(0), "Camera publisher did not expose a pending GPU readback.");
                 SetField(publisher, "_width", 64);
                 SetField(publisher, "_height", 48);
                 publisher.GetType().GetMethod("EnsureCaptureResources", PrivateInstance).Invoke(publisher, null);
