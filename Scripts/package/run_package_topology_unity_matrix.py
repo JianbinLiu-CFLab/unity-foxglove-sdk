@@ -25,6 +25,10 @@ ERROR_PATTERN = re.compile(
     r"Failed to resolve packages|Package Manager Error|error CS\d+|Compilation failed|Unable to resolve",
     re.IGNORECASE,
 )
+PACKAGE_RESOLUTION_PATTERN = re.compile(
+    r"Failed to resolve packages|Package Manager Error|Unable to resolve",
+    re.IGNORECASE,
+)
 
 
 def _reference(project: Path, package_id: str, package_root: Path = PACKAGE_ROOT) -> str:
@@ -86,8 +90,20 @@ def _run_unity(unity: Path, project: Path, log_path: Path, timeout_seconds: int)
     text = log_path.read_text(encoding="utf-8", errors="replace") if log_path.is_file() else ""
     errors = [line for line in text.splitlines() if ERROR_PATTERN.search(line)]
     verdict = "PASS" if exit_code == 0 and not errors and not timed_out else "FAIL"
+    package_resolution_failure = bool(PACKAGE_RESOLUTION_PATTERN.search(text)) and not timed_out
+    if verdict == "PASS":
+        failure_kind = "PASS"
+    elif package_resolution_failure:
+        failure_kind = "EXPECTED_PACKAGE_RESOLUTION_FAILURE"
+    elif timed_out:
+        failure_kind = "INFRASTRUCTURE_FAILURE"
+    elif any(re.search(r"error CS\d+|Compilation failed", line, re.IGNORECASE) for line in errors):
+        failure_kind = "UNEXPECTED_COMPILE_FAILURE"
+    else:
+        failure_kind = "INFRASTRUCTURE_FAILURE"
     return {
         "verdict": verdict,
+        "failureKind": failure_kind,
         "exitCode": exit_code,
         "timedOut": timed_out,
         "errors": errors,
@@ -170,7 +186,11 @@ def run(
     for name, project, expected_failure in cases:
         result = _run_unity(unity, project, output / "logs" / f"{name}.log", timeout_seconds)
         result.update({"case": name, "project": str(project), "expectedFailure": expected_failure})
-        result["expectationMet"] = (result["verdict"] == "FAIL") if expected_failure else (result["verdict"] == "PASS")
+        result["expectationMet"] = (
+            result["failureKind"] == "EXPECTED_PACKAGE_RESOLUTION_FAILURE"
+            if expected_failure
+            else result["verdict"] == "PASS"
+        )
         results.append(result)
     summary = {"mode": mode, "unity": str(unity), "cases": results}
     (output / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

@@ -10,6 +10,9 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
+
+from Scripts.package import run_package_topology_unity_matrix as topology
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -92,6 +95,56 @@ class ComposeUnityManifestTests(unittest.TestCase):
             self.assertNotIn("dev.unity2foxglove.ros2forunity.runtime.humble.win64", dependencies)
             self.assertIn("dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.jazzy.win64", dependencies)
             self.assertEqual("1.0.0", dependencies["com.unity.modules.jsonserialize"])
+
+    def test_profile_switch_removes_custom_interface_closure(self) -> None:
+        """Switching away from native-custom removes its static interface closure."""
+        with self._project() as project:
+            self.assertEqual(0, self._run(project, "native-custom", "jazzy").returncode)
+            self.assertEqual(0, self._run(project, "native", "jazzy").returncode)
+            dependencies = self._read_manifest(project)["dependencies"]
+            self.assertNotIn("dev.unity2foxglove.foxrun.ros2.interfaces", dependencies)
+            self.assertNotIn(
+                "dev.unity2foxglove.foxrun.ros2.interfaces.typesupport.jazzy.win64",
+                dependencies,
+            )
+            self.assertIn("dev.unity2foxglove.ros2forunity.runtime.jazzy.win64", dependencies)
+            self.assertEqual(0, self._run(project, "core", None).returncode)
+            dependencies = self._read_manifest(project)["dependencies"]
+            self.assertNotIn("dev.unity2foxglove.ros2forunity.runtime.jazzy.win64", dependencies)
+
+    def test_atomic_replace_preserves_manifest_mode(self) -> None:
+        """Atomic composition retains the existing POSIX manifest mode."""
+        if os.name == "nt":
+            self.skipTest("Windows mode bits are not enforced")
+        with self._project() as project:
+            manifest_path = project / "Packages" / "manifest.json"
+            manifest_path.chmod(0o640)
+            self.assertEqual(0, self._run(project, "core", None).returncode)
+            self.assertEqual(0o640, stat.S_IMODE(manifest_path.stat().st_mode))
+
+    def test_resolution_failure_requires_package_manager_diagnostic(self) -> None:
+        """A generic Unity failure cannot satisfy an expected resolution failure."""
+        with tempfile.TemporaryDirectory() as temporary:
+            project = Path(temporary) / "project"
+            (project / "Packages").mkdir(parents=True)
+            log_path = project / "unity.log"
+            log_path.write_text("Unity failed before package initialization\n", encoding="utf-8")
+            with mock.patch.object(
+                topology.subprocess,
+                "run",
+                return_value=subprocess.CompletedProcess([], 1),
+            ):
+                result = topology._run_unity(Path("Unity.exe"), project, log_path, 1)
+            self.assertEqual("INFRASTRUCTURE_FAILURE", result["failureKind"])
+
+            log_path.write_text("Failed to resolve packages: missing file package\n", encoding="utf-8")
+            with mock.patch.object(
+                topology.subprocess,
+                "run",
+                return_value=subprocess.CompletedProcess([], 1),
+            ):
+                result = topology._run_unity(Path("Unity.exe"), project, log_path, 1)
+            self.assertEqual("EXPECTED_PACKAGE_RESOLUTION_FAILURE", result["failureKind"])
 
     def test_preserves_nonconflicting_first_party_package(self) -> None:
         """A non-conflicting bridge package remains available to demo assets."""

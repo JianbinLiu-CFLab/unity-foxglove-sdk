@@ -1,8 +1,6 @@
 name: Phase202 package topology Unity harness
 
 on:
-  push:
-    branches: [feature/phase202-package-topology]
   workflow_dispatch:
     inputs:
       mode:

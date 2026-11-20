@@ -18,6 +18,7 @@ PACKAGE_ROOT = REPO_ROOT / "Packages"
 LOCAL_PACKAGE_PREFIX = "dev.unity2foxglove."
 RUNTIME_PREFIX = "dev.unity2foxglove.ros2forunity.runtime."
 TYPESUPPORT_PREFIX = "dev.unity2foxglove.foxrun.ros2.interfaces.typesupport."
+STATIC_INTERFACE_PACKAGE_ID = "dev.unity2foxglove.foxrun.ros2.interfaces"
 DISTROS = ("humble", "jazzy", "lyrical")
 PROFILE_BASE_PACKAGES = {
     "core": ("dev.unity2foxglove.sdk",),
@@ -155,6 +156,8 @@ def _should_remove_existing_package(
         return package_id not in {name for name in selected if name.startswith(RUNTIME_PREFIX)}
     if package_id.startswith(TYPESUPPORT_PREFIX):
         return package_id not in {name for name in selected if name.startswith(TYPESUPPORT_PREFIX)}
+    if package_id == STATIC_INTERFACE_PACKAGE_ID:
+        return package_id not in selected
     conflicts = package_data.get("unity2foxgloveConflicts", ())
     if isinstance(conflicts, list) and selected.intersection(conflicts):
         return True
@@ -185,12 +188,15 @@ def _encode_manifest(document: Mapping[str, object], raw: bytes) -> bytes:
 def _atomic_replace(path: Path, content: bytes) -> None:
     """Publish manifest bytes through a same-directory atomic replacement."""
     path.parent.mkdir(parents=True, exist_ok=True)
+    original_mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else None
     descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.phase202-", dir=path.parent)
     try:
         with os.fdopen(descriptor, "wb") as handle:
             handle.write(content)
             handle.flush()
             os.fsync(handle.fileno())
+        if original_mode is not None:
+            os.chmod(temporary_name, original_mode)
         os.replace(temporary_name, path)
     finally:
         try:
