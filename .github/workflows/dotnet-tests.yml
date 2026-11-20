@@ -1079,6 +1079,10 @@ jobs:
         run: |
           set -eu
           failed=0
+          echo "windows-ros2-native self-hosted gate expected=$WINDOWS_ROS2_NATIVE_EXPECTED"
+          if [ "$WINDOWS_ROS2_NATIVE_EXPECTED" != "true" ] && [ "$WINDOWS_ROS2_NATIVE_RESULT" = "skipped" ]; then
+            WINDOWS_ROS2_NATIVE_RESULT=success
+          fi
           for result in \
             "linux-xunit=$LINUX_XUNIT_RESULT" \
             "linux-runtime=$LINUX_RUNTIME_RESULT" \
@@ -1088,6 +1092,7 @@ jobs:
             "linux-conformance-panels=$LINUX_CONFORMANCE_RESULT" \
             "optional-ros2-adapter=$ADAPTER_RESULT" \
             "optional-ros2-native=$NATIVE_RESULT" \
+            "windows-ros2-native=$WINDOWS_ROS2_NATIVE_RESULT" \
             "optional-ros2-runtime-validation=$RUNTIME_VALIDATION_RESULT" \
             "u2r2-native=$U2R2_RESULT" \
             "windows-parity=$WINDOWS_RESULT" \
@@ -1099,12 +1104,6 @@ jobs:
               failed=1
             fi
           done
-          echo "windows-ros2-native: $WINDOWS_ROS2_NATIVE_RESULT (expected=$WINDOWS_ROS2_NATIVE_EXPECTED)"
-          if [ "$WINDOWS_ROS2_NATIVE_EXPECTED" = "true" ]; then
-            [ "$WINDOWS_ROS2_NATIVE_RESULT" = "success" ] || failed=1
-          else
-            [ "$WINDOWS_ROS2_NATIVE_RESULT" = "skipped" ] || failed=1
-          fi
           if [ "$failed" -ne 0 ]; then
             echo "Validation aggregate failed." >&2
             exit 1
