@@ -800,7 +800,7 @@ jobs:
           where pwsh
           pwsh -NoLogo -NoProfile -Command "$PSVersionTable.PSVersion.ToString()"
 
-      - name: Enable Git long-path support
+      - name: Configure Git long paths for Windows ROS2 Native
         shell: pwsh
         run: |
           $globalConfig = Join-Path $env:RUNNER_TEMP ("git-global-{0}.config" -f $env:GITHUB_RUN_ID)
