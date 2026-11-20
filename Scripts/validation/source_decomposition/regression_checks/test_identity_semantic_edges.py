@@ -88,3 +88,12 @@ class IdentitySemanticEdgeTests(unittest.TestCase):
         """An empty zip source prevents a mapped callback from executing."""
         head = "import os\nlist(map(lambda _: os.environ.setdefault('X', '1'), zip([], [])))\n" + _BASE
         self.assertEqual([], self._errors(head))
+
+    def test_range_too_large_to_count_is_treated_as_non_empty(self) -> None:
+        """A range whose length overflows ssize_t keeps the mapped write instead of crashing."""
+        head = (
+            "import os\n"
+            "list(map(lambda _: os.environ.setdefault('X', '1'), "
+            "range(100000000000000000000000000000000000000000)))\n" + _BASE
+        )
+        self.assertEqual(_RISK, self._errors(head))

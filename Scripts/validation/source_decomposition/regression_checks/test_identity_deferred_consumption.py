@@ -23,17 +23,6 @@ class DeferredIdentityConsumptionTests(unittest.TestCase):
         )
         self.assertEqual([], self._compatibility_errors(base, head))
 
-    def test_compatibility_rejects_writes_over_range_too_large_to_count(self) -> None:
-        """A range whose length overflows ssize_t is treated as non-empty instead of crashing."""
-        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
-        head = (
-            "import os\n"
-            "list(map(lambda _: os.environ.setdefault('FLAG', '1'), "
-            "range(100000000000000000000000000000000000000000)))\n"
-            "def helper():\n    return 1\n__all__ = ['helper']\n"
-        )
-        self.assertNotEqual([], self._compatibility_errors(base, head))
-
     def test_compatibility_allows_deferred_lambda_passed_to_regular_call(self) -> None:
         """Passing a lambda to an ordinary call does not prove that its body executes."""
         base = "def helper():\n    return 1\n__all__ = ['helper']\n"
