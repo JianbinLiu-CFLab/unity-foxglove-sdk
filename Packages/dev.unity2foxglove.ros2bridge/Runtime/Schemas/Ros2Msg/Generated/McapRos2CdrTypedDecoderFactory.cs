@@ -117,8 +117,8 @@ namespace Unity2Foxglove.Ros2Bridge
             IMcapMessageDecoder,
             IMcapMessageDecoderFailureFallback
         {
-            private readonly McapSchema _schema;
             private readonly string _schemaName;
+            private readonly string _schemaEncoding;
             private readonly string _topic;
             private readonly Ros2CdrDeserializerEntry _entry;
             private readonly bool _schemaKnown;
@@ -129,8 +129,10 @@ namespace Unity2Foxglove.Ros2Bridge
                 Ros2CdrDeserializerEntry entry,
                 bool schemaKnown)
             {
-                _schema = schema ?? throw new ArgumentNullException(nameof(schema));
+                if (schema == null)
+                    throw new ArgumentNullException(nameof(schema));
                 _schemaName = schema.Name ?? string.Empty;
+                _schemaEncoding = schema.Encoding ?? string.Empty;
                 _topic = topic ?? string.Empty;
                 _entry = entry ?? throw new ArgumentNullException(nameof(entry));
                 _schemaKnown = schemaKnown;
@@ -168,7 +170,7 @@ namespace Unity2Foxglove.Ros2Bridge
             {
                 var decoder = new McapRos2CdrDiagnosticDecoderFactory()
                     .TryCreateKnownSchema(
-                        _schema,
+                        new McapSchema { Name = _schemaName, Encoding = _schemaEncoding },
                         new McapChannel
                         {
                             Topic = _topic,

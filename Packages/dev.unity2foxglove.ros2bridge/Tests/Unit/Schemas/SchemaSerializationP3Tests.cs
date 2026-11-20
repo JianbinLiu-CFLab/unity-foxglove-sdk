@@ -120,6 +120,39 @@ namespace Unity2Foxglove.Ros2Bridge.UnitTests
         }
 
         [Fact]
+        public void TypedFallbackUsesSchemaMetadataCapturedAtCreation()
+        {
+            Assert.True(
+                FoxgloveRos2MsgSchemaCatalog.TryGet(
+                    "foxglove_msgs/msg/Log",
+                    out var catalogEntry));
+            var schema = new McapSchema
+            {
+                Name = catalogEntry.SchemaName,
+                Encoding = FoxgloveRos2MsgSchemaCatalog.SchemaEncoding,
+                Data = Encoding.UTF8.GetBytes(catalogEntry.Content)
+            };
+            var channel = new McapChannel { Topic = "/log", MessageEncoding = "cdr" };
+            var decoder = new McapRos2CdrTypedDecoderFactory().TryCreate(schema, channel);
+            var fallback = Assert.IsAssignableFrom<IMcapMessageDecoderFailureFallback>(decoder);
+
+            schema.Name = "foxglove_msgs/msg/Changed";
+            schema.Encoding = "jsonschema";
+            var recovered = fallback.DecodeFallback(new McapDataLoaderMessage
+            {
+                SchemaId = schema.Id,
+                Topic = channel.Topic,
+                MessageEncoding = channel.MessageEncoding,
+                Data = new byte[] { 0x00, 0x01, 0x00, 0x00 }
+            });
+
+            Assert.NotNull(recovered);
+            var diagnostic = Assert.IsType<Ros2CdrDiagnosticPayload>(recovered.Value);
+            Assert.Equal(catalogEntry.SchemaName, diagnostic.SchemaName);
+            Assert.True(diagnostic.SchemaKnown);
+        }
+
+        [Fact]
         public void DiagnosticFactoryRejectsIncompatibleEncodingBeforeSchemaInspection()
         {
             var decoder = new McapRos2CdrDiagnosticDecoderFactory().TryCreate(
