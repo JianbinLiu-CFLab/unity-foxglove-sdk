@@ -113,7 +113,7 @@ namespace Unity.FoxgloveSDK.Editor
 
                 if (checkOnly)
                 {
-                    var result = FoxRunRos2InterfacePackagePreflight.Evaluate(packageRoot, model);
+                    var result = FoxRunRos2InterfacePackagePreflight.Evaluate(packageRoot, model, sampleMetadata: true);
                     if (!result.IsReady)
                     {
                         Debug.LogError("[FoxRun ROS2 interfaces] " + result.DiagnosticCode + ": " + result.Action);
@@ -133,8 +133,9 @@ namespace Unity.FoxgloveSDK.Editor
                     repoRoot,
                     packageRoot,
                     model,
-                    nextRevision ?? (hasCurrentLock ? null : selectedPackageName));
-                var preflight = FoxRunRos2InterfacePackagePreflight.Evaluate(packageRoot, model);
+                    nextRevision ?? (hasCurrentLock ? null : selectedPackageName),
+                    sampleMetadata: true);
+                var preflight = FoxRunRos2InterfacePackagePreflight.Evaluate(packageRoot, model, sampleMetadata: true);
                 if (!preflight.IsReady)
                 {
                     Debug.LogError("[FoxRun ROS2 interfaces] generation completed but preflight is "

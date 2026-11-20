@@ -81,7 +81,8 @@ namespace Unity.FoxgloveSDK.Editor
 
         public static FoxRunRos2InterfaceRenderedPackage Render(
             FoxRunGenerationModel model,
-            string rosPackageName = null)
+            string rosPackageName = null,
+            bool sampleMetadata = false)
         {
             if (model == null)
                 throw new ArgumentNullException(nameof(model));
@@ -120,8 +121,8 @@ namespace Unity.FoxgloveSDK.Editor
             var shapes = CollectShapes(contracts);
             var filesWithoutLock = new List<FoxRunRos2InterfaceRenderedFile>
             {
-                new FoxRunRos2InterfaceRenderedFile("package.json", RenderPackageJson()),
-                new FoxRunRos2InterfaceRenderedFile("README.md", RenderReadme(rosPackageName)),
+                new FoxRunRos2InterfaceRenderedFile("package.json", RenderPackageJson(sampleMetadata)),
+                new FoxRunRos2InterfaceRenderedFile("README.md", RenderReadme(rosPackageName, sampleMetadata)),
                 new FoxRunRos2InterfaceRenderedFile(
                     "RuntimeSupport/foxrun-ros2-interface-settings.json",
                     FoxRunRos2InterfaceJsonWriter.WriteSettings(rosPackageName, isLocked: true)),
@@ -262,19 +263,26 @@ namespace Unity.FoxgloveSDK.Editor
             }
         }
 
-        private static string RenderPackageJson()
+        private static string RenderPackageJson(bool sampleMetadata)
             => "{\n"
                + "  \"name\": \"" + FoxRunRos2InterfaceIdentity.UnityPackageId + "\",\n"
                + "  \"version\": \"" + UnityPackageVersion + "\",\n"
                + "  \"displayName\": \"Unity2Foxglove FoxRun ROS2 Interfaces\",\n"
                + "  \"license\": \"Apache-2.0\",\n"
-               + "  \"description\": \"Phase181 sample source-only ROS2 interface package generated from FoxRun custom DTO contracts; applications must generate their own interface package.\",\n"
+               + "  \"description\": \""
+               + (sampleMetadata
+                   ? "Phase181 sample source-only ROS2 interface package generated from FoxRun custom DTO contracts; applications must generate their own interface package."
+                   : "Deterministic source-only ROS2 interface package generated from FoxRun custom DTO contracts.")
+               + "\",\n"
                + "  \"unity\": \"6000.0\"\n"
                + "}\n";
 
-        private static string RenderReadme(string rosPackageName)
+        private static string RenderReadme(string rosPackageName, bool sampleMetadata)
             => "# Unity2Foxglove FoxRun ROS2 Interfaces\n\n"
-               + "This is the generated Phase181 sample source-only interface package for the checked-in sample and acceptance fixtures. Applications must generate their own interface package from their DTO contracts. It contains generated `.msg` files, no ros2cs assembly, native DLL, typesupport, CMake build output, or runtime endpoint.\n\n"
+               + (sampleMetadata
+                   ? "This is the generated Phase181 sample source-only interface package for the checked-in sample and acceptance fixtures. Applications must generate their own interface package from their DTO contracts."
+                   : "This is a source-only static interface package.")
+               + " It contains generated `.msg` files, no ros2cs assembly, native DLL, typesupport, CMake build output, or runtime endpoint.\n\n"
                + "## Linux ROS2 workspace\n\n"
                + "Copy or symlink `Ros2Package~` into a normal ROS2 workspace `src/` directory, then build the explicit locked revision:\n\n"
                + "```bash\n"
