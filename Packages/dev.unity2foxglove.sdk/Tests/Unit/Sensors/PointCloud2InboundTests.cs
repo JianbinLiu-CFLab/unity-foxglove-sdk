@@ -254,6 +254,31 @@ namespace Unity.FoxgloveSDK.Tests.Unit.Sensors
             Assert.Equal(2, bridge.Stats.Rejected);
         }
 
+        [Fact]
+        public void NativeBridgeDoesNotDeliverQueuedFramesFromRetiredTopic()
+        {
+            var bridge = new Unity2Foxglove.Ros2ForUnity.Native.Ros2ForUnityPointCloud2InboundBridge
+            {
+                gameObject = new UnityEngine.GameObject("points"),
+                Topic = "/points_a"
+            };
+            InvokeBridge(bridge, "OnEnable");
+            var delivered = new List<string>();
+            bridge.FrameReceived += frame => delivered.Add(frame.Topic);
+            var slot = (PackedPointCloudFrameSlot)typeof(Unity2Foxglove.Ros2ForUnity.Native.Ros2ForUnityPointCloud2InboundBridge)
+                .GetField("_slot", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                .GetValue(bridge);
+
+            Assert.True(slot.Publish(CreateFrame(1, "/points_a")));
+            bridge.Topic = "/points_b";
+            InvokeBridge(bridge, "DrainOne");
+            Assert.Empty(delivered);
+
+            Assert.True(slot.Publish(CreateFrame(2, "/points_b")));
+            InvokeBridge(bridge, "DrainOne");
+            Assert.Equal(new[] { "/points_b" }, delivered);
+        }
+
         private static void InvokeBridge(
             Unity2Foxglove.Ros2ForUnity.Native.Ros2ForUnityPointCloud2InboundBridge bridge,
             string name,
@@ -266,7 +291,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.Sensors
         }
 #endif
 
-        private static PackedPointCloudFrame CreateFrame(ulong timestamp)
+        private static PackedPointCloudFrame CreateFrame(ulong timestamp, string topic = null)
             => new PackedPointCloudFrame(
                 timestamp,
                 "laser",
@@ -275,6 +300,7 @@ namespace Unity.FoxgloveSDK.Tests.Unit.Sensors
                 new List<PointCloudPackedField>(),
                 1,
                 new byte[1],
-                true);
+                true,
+                topic);
     }
 }

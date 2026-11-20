@@ -369,6 +369,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             if (_slot == null || !_slot.TryTake(out var frame))
                 return;
 
+            if (!string.Equals(frame.Topic, Topic, StringComparison.Ordinal))
+            {
+                frame.Dispose();
+                return;
+            }
+
             var handler = FrameReceived;
             if (handler == null)
             {
