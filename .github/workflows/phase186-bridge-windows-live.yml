@@ -14,9 +14,9 @@ jobs:
     timeout-minutes: 720
     env:
       UNITY2FOXGLOVE_CI_RUN_ID: gha-${{ github.run_id }}-${{ github.run_attempt }}
-      PHASE186_ROS2_HUMBLE_ROOT: 'C:\ros2_humble\ros2-windows'
-      PHASE186_ROS2_JAZZY_ROOT: 'C:\ros2_jazzy\ros2-windows'
-      PHASE186_ROS2_LYRICAL_ROOT: 'C:\ros2_lyrical\ros2-windows'
+      PHASE186_ROS2_HUMBLE_ROOT: ${{ vars.PHASE186_ROS2_HUMBLE_ROOT || 'C:\ros2_humble\ros2-windows' }}
+      PHASE186_ROS2_JAZZY_ROOT: ${{ vars.PHASE186_ROS2_JAZZY_ROOT || 'C:\ros2_jazzy\ros2-windows' }}
+      PHASE186_ROS2_LYRICAL_ROOT: ${{ vars.PHASE186_ROS2_LYRICAL_ROOT || 'C:\ros2_lyrical\ros2-windows' }}
     steps:
       - name: Bootstrap PowerShell 7 on PATH
         shell: cmd
