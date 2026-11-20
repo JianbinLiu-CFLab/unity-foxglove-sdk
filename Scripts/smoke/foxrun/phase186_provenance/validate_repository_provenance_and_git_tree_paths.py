@@ -366,8 +366,11 @@ def validate_repository_provenance(
         _validate_canonical_ledger_schema(payload, introduced_sources)
     )
     errors.extend(__validate_decomposed_source_tree(repository))
-    discovered_for_parts = discovered_sources | __discover_decomposed_source_part_paths(
-        repository,
+    known_decomposed_sources = set(__KNOWN_DECOMPOSED_PROTOCOL_SOURCE_PATHS)
+    phase186b_discovered_sources = discovered_sources - known_decomposed_sources
+    discovered_for_parts = (
+        phase186b_discovered_sources
+        | __discover_decomposed_source_part_paths(repository)
     )
     part_paths, mapped_originals, source_map_errors = __validate_decomposed_source_files(
         repository,
@@ -377,7 +380,7 @@ def validate_repository_provenance(
     )
     errors.extend(source_map_errors)
     canonical_discovered_sources = (
-        discovered_sources - part_paths
+        phase186b_discovered_sources - part_paths
     ) | mapped_originals
     if canonical_discovered_sources != set(introduced_sources):
         missing = sorted(set(introduced_sources) - canonical_discovered_sources)
