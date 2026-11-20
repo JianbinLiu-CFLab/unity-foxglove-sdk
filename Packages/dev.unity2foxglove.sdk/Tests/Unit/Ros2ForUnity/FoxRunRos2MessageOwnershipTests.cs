@@ -216,15 +216,23 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
         }
     }
 
+    internal sealed class GeneratedImuFactAttribute : FactAttribute
+    {
+        public GeneratedImuFactAttribute()
+        {
+            if (!OperatingSystem.IsWindows() && !FoxRunRos2ImuMeasurementTests.IsGeneratedImuAvailable())
+                Skip = "Generated sensor_msgs/Imu type support is unavailable on this non-Windows lane.";
+        }
+    }
+
     [Trait("Phase", "200-W4")]
     [Trait("Domain", "Ros2ImuMeasurement")]
     public sealed class FoxRunRos2ImuMeasurementTests
     {
-        [Fact]
+        [GeneratedImuFact]
         public void GeneratedImuCopyMeasurementCoversDecisionRates()
         {
-            if (!TryCreateGeneratedImu(out var source))
-                return;
+            var source = CreateGeneratedImu();
 
             try
             {
@@ -270,11 +278,10 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             }
         }
 
-        [Fact]
+        [GeneratedImuFact]
         public void GeneratedImuCopyBurstMeasuresDeterministicMailboxReplacement()
         {
-            if (!TryCreateGeneratedImu(out var source))
-                return;
+            var source = CreateGeneratedImu();
 
             try
             {
@@ -443,16 +450,15 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
             return message;
         }
 
-        private static bool TryCreateGeneratedImu(out sensor_msgs.msg.Imu message)
+        internal static bool IsGeneratedImuAvailable()
         {
             try
             {
-                message = CreateGeneratedImu();
+                CreateGeneratedImu().Dispose();
                 return true;
             }
-            catch (TypeInitializationException) when (!OperatingSystem.IsWindows())
+            catch (TypeInitializationException)
             {
-                message = null;
                 return false;
             }
         }

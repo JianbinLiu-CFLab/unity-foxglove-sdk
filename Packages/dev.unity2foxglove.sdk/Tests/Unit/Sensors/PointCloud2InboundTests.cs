@@ -232,6 +232,40 @@ namespace Unity.FoxgloveSDK.Tests.Unit.Sensors
             Assert.Contains("padded row", error, StringComparison.OrdinalIgnoreCase);
         }
 
+#if UNITY2FOXGLOVE_ROS2_FOR_UNITY
+        [Fact]
+        public void NativeBridgeDropsCallbacksFromRetiredTopicSubscription()
+        {
+            var bridge = new Unity2Foxglove.Ros2ForUnity.Native.Ros2ForUnityPointCloud2InboundBridge
+            {
+                gameObject = new UnityEngine.GameObject("points"),
+                Topic = "/points_a"
+            };
+            InvokeBridge(bridge, "OnEnable");
+
+            InvokeBridge(bridge, "OnPointCloud2", null, "/points_a");
+            Assert.Equal(1, bridge.Stats.Rejected);
+
+            bridge.Topic = "/points_b";
+            InvokeBridge(bridge, "OnPointCloud2", null, "/points_a");
+            Assert.Equal(1, bridge.Stats.Rejected);
+
+            InvokeBridge(bridge, "OnPointCloud2", null, "/points_b");
+            Assert.Equal(2, bridge.Stats.Rejected);
+        }
+
+        private static void InvokeBridge(
+            Unity2Foxglove.Ros2ForUnity.Native.Ros2ForUnityPointCloud2InboundBridge bridge,
+            string name,
+            params object[] arguments)
+        {
+            var method = typeof(Unity2Foxglove.Ros2ForUnity.Native.Ros2ForUnityPointCloud2InboundBridge)
+                .GetMethod(name, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            Assert.NotNull(method);
+            method.Invoke(bridge, arguments);
+        }
+#endif
+
         private static PackedPointCloudFrame CreateFrame(ulong timestamp)
             => new PackedPointCloudFrame(
                 timestamp,
