@@ -212,10 +212,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var generator = PhaseValidationSourceHelpers.ReadFoxgloveLogSourceGeneratorSources();
             var validator = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/FoxRunGenerationModelValidator.cs");
-            validator = PhaseValidationSourceHelpers.ReadRegisteredCSharpSource(
-                "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/FoxRunGenerationModelValidator.cs",
-                "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/Decomposed/FoxRunGenerationModelValidator/ValidationRules.cs",
-                "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/Decomposed/FoxRunGenerationModelValidator/ValidationTopology.cs");
+            ComposeValidatorSource(ref validator);
             var shipped = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/AnalyzerReleases.Shipped.md");
 
             foreach (var id in new[] { "FOXRUN015", "FOXRUN016", "FOXRUN017" })
@@ -355,6 +352,17 @@ namespace Phase141A
     }
 }
 ";
+        }
+
+        private static void ComposeValidatorSource(ref string source)
+        {
+            source = ((Func<string, string[], string>)PhaseValidationSourceHelpers.ReadRegisteredCSharpSource)(
+                "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/FoxRunGenerationModelValidator.cs",
+                new[]
+                {
+                    "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/Decomposed/FoxRunGenerationModelValidator/ValidationRules.cs",
+                    "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/Decomposed/FoxRunGenerationModelValidator/ValidationTopology.cs",
+                });
         }
     }
 }

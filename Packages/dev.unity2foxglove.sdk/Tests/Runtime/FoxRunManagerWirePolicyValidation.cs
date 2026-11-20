@@ -198,10 +198,7 @@ namespace Unity.FoxgloveSDK.Tests
             var publish = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/PublishDispatchEmitter.cs");
             var hub = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxgloveLogHub.cs");
             var router = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunInputRouter.cs");
-            router = PhaseValidationSourceHelpers.ReadRegisteredCSharpSource(
-                "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunInputRouter.cs",
-                "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/Decomposed/FoxRunInputRouter/Dispatch.cs",
-                "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/Decomposed/FoxRunInputRouter/Lifetime.cs");
+            ComposeRouterSource(ref router);
 
             Check(input.Contains("(FoxRunEncoding)0", StringComparison.Ordinal)
                   && input.Contains("Unsupported FoxRun inbound wire encoding", StringComparison.Ordinal),
@@ -322,6 +319,17 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string ReadRepoText(string relativePath)
             => PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
+
+        private static void ComposeRouterSource(ref string source)
+        {
+            source = ((Func<string, string[], string>)PhaseValidationSourceHelpers.ReadRegisteredCSharpSource)(
+                "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunInputRouter.cs",
+                new[]
+                {
+                    "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/Decomposed/FoxRunInputRouter/Dispatch.cs",
+                    "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/Decomposed/FoxRunInputRouter/Lifetime.cs",
+                });
+        }
 
         private static void Check(bool condition, string label)
         {

@@ -55,10 +55,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var generator = PhaseValidationSourceHelpers.ReadFoxgloveLogSourceGeneratorSources();
             var validator = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/FoxRunGenerationModelValidator.cs");
-            validator = PhaseValidationSourceHelpers.ReadRegisteredCSharpSource(
-                "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/FoxRunGenerationModelValidator.cs",
-                "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/Decomposed/FoxRunGenerationModelValidator/ValidationRules.cs",
-                "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/Decomposed/FoxRunGenerationModelValidator/ValidationTopology.cs");
+            ComposeValidatorSource(ref validator);
             var invalidOnlyIf = FoxRunGenerationModelValidator.Validate(new FoxRunGenerationModel(new[]
             {
                 new FoxRunGenerationType(
@@ -160,6 +157,17 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string ReadRepoText(string relativePath)
             => PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
+
+        private static void ComposeValidatorSource(ref string source)
+        {
+            source = ((Func<string, string[], string>)PhaseValidationSourceHelpers.ReadRegisteredCSharpSource)(
+                "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/FoxRunGenerationModelValidator.cs",
+                new[]
+                {
+                    "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/Decomposed/FoxRunGenerationModelValidator/ValidationRules.cs",
+                    "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/Decomposed/FoxRunGenerationModelValidator/ValidationTopology.cs",
+                });
+        }
 
         private static string RepoPath(string relativePath)
         {

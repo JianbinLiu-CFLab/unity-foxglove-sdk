@@ -209,10 +209,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyNestedObjectClassification()
         {
             var validator = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/FoxRunGenerationModelValidator.cs");
-            validator = PhaseValidationSourceHelpers.ReadRegisteredCSharpSource(
-                "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/FoxRunGenerationModelValidator.cs",
-                "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/Decomposed/FoxRunGenerationModelValidator/ValidationRules.cs",
-                "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/Decomposed/FoxRunGenerationModelValidator/ValidationTopology.cs");
+            ComposeValidatorSource(ref validator);
             var diagnosticsSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/src/FoxgloveLogSourceGenerator.Diagnostics.cs");
             var sourceGenerator = PhaseValidationSourceHelpers.ReadFoxgloveLogSourceGeneratorSources();
             var codeGenerator = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunCodeGenerator.cs");
@@ -298,6 +295,17 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string ReadRepoText(string relativePath)
             => PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
+
+        private static void ComposeValidatorSource(ref string source)
+        {
+            source = ((Func<string, string[], string>)PhaseValidationSourceHelpers.ReadRegisteredCSharpSource)(
+                "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/FoxRunGenerationModelValidator.cs",
+                new[]
+                {
+                    "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/Decomposed/FoxRunGenerationModelValidator/ValidationRules.cs",
+                    "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/Decomposed/FoxRunGenerationModelValidator/ValidationTopology.cs",
+                });
+        }
 
         private static bool ContainsTopicWithTolerance(FoxRunGenerationModel model, string topic, float expected)
         {
