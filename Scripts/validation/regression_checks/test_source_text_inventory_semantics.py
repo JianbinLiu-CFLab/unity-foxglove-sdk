@@ -123,6 +123,23 @@ class SourceTextInventorySemanticTests(_FixtureSupport, unittest.TestCase):
             "type alias": ("", "SR.Read", "using SR = Fixture.Readers.SourceReaders;\n", namespaced),
             "imported namespace": ("", "SourceReaders.Read", "using Fixture.Readers;\n", namespaced),
             "fully qualified": ("", "Fixture.Readers.SourceReaders.Read", "", namespaced),
+            "generic reader": (
+                "    private static string LoadThing<T>(string path) => System.IO.File.ReadAllText(path);",
+                "LoadThing<object>",
+                "",
+                None,
+            ),
+            "constrained generic block": (
+                "    private static string LoadThing<TKey, TValue>(string path) where TKey : class\n"
+                "    {\n        return System.IO.File.ReadAllText(path);\n    }",
+                "LoadThing<string, int>",
+                "",
+                None,
+            ),
+            "qualified generic": ("", "SourceReaders.Read<int>", "", {
+                "SourceReaders.cs": "internal static class SourceReaders {\n"
+                "    internal static string Read<T>(string relativePath) => System.IO.File.ReadAllText(relativePath);\n}\n",
+            }),
         }
         for name, (helpers, call, prelude, extra_files) in variants.items():
             with self.subTest(name):
@@ -160,9 +177,15 @@ class SourceTextInventorySemanticTests(_FixtureSupport, unittest.TestCase):
             "    private sealed class Cursor { public string ReadText(string path) => \"Product\"; }\n"
             "    private static string LoadThing(string path) => new Cursor().ReadText(path);"
         )
+        transitive = dict(explicit)
+        transitive["Wrapper.cs"] = (
+            "namespace Other {\n    internal static class Wrapper {\n"
+            "        internal static string Load(string relativePath) => SourceReaders.Read(relativePath);\n    }\n}\n"
+        )
         for name, (helpers, call, extra_files, prelude) in {
             "explicit foreign namespace": ("", "Other.SourceReaders.Read", explicit, "using Good;\n"),
             "member seed call": (member_seed, "LoadThing", None, ""),
+            "transitive foreign namespace": ("", "Wrapper.Load", transitive, "using Other;\n"),
         }.items():
             with self.subTest(name):
                 code, output = self._reader_gate(
