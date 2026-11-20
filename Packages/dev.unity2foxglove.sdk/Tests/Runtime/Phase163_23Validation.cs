@@ -54,7 +54,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void ConditionDiagnosticsUseStableIds()
         {
             var generator = PhaseValidationSourceHelpers.ReadFoxgloveLogSourceGeneratorSources();
-            var validator = PhaseValidationSourceHelpers.ReadFoxRunGenerationModelValidatorSources();
+            var validator = PhaseValidationSourceHelpers.ReadRegisteredCSharpSource("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/FoxRunGenerationModelValidator.cs", "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/Decomposed/FoxRunGenerationModelValidator/ValidationRules.cs", "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/Decomposed/FoxRunGenerationModelValidator/ValidationTopology.cs");
             var invalidOnlyIf = FoxRunGenerationModelValidator.Validate(new FoxRunGenerationModel(new[]
             {
                 new FoxRunGenerationType(

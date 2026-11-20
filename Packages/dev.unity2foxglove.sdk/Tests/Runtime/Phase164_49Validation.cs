@@ -61,7 +61,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyGenerationValidatorMaterializesTopicGroups()
         {
-            var source = PhaseValidationSourceHelpers.ReadFoxRunGenerationModelValidatorSources();
+            var source = PhaseValidationSourceHelpers.ReadRegisteredCSharpSource("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/FoxRunGenerationModelValidator.cs", "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/Decomposed/FoxRunGenerationModelValidator/ValidationRules.cs", "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/Decomposed/FoxRunGenerationModelValidator/ValidationTopology.cs");
             // Select the syntax-aware method span rather than the entire file;
             // the validator contains several nearby LINQ-heavy helpers.
             var validate = SourceMethod(source, "ValidateTopicGroups");
