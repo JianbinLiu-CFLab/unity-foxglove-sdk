@@ -267,9 +267,27 @@ $env:FASTDDS_DEFAULT_PROFILES_FILE = 'C:\path\to\phase201-fastdds.xml'
 # Manual Cyclone DDS: replace the RMW and Fast DDS lines above with these two lines.
 # $env:RMW_IMPLEMENTATION = 'rmw_cyclonedds_cpp'
 # $env:CYCLONEDDS_URI = 'file:///C:/path/to/cyclonedds-phase201.xml'
-$negative = ros2 topic pub --once --wait-matching-subscriptions 0 --keep-alive 1 /imu/data sensor_msgs/msg/Imu "{header: {frame_id: unauthorized}}" --qos-reliability best_effort --qos-durability volatile --ros-args --enclave /unity2foxglove/untrusted 2>&1
-$negativeExitCode = $LASTEXITCODE
-$negative
+$negativeJob = Start-Job -ArgumentList $keystore -ScriptBlock {
+  param($jobKeystore)
+  $env:ROS_SECURITY_KEYSTORE = $jobKeystore
+  $env:ROS_SECURITY_ENABLE = 'true'
+  $env:ROS_SECURITY_STRATEGY = 'Enforce'
+  $env:ROS_SECURITY_ENCLAVE_OVERRIDE = '/unity2foxglove/untrusted'
+  $env:ROS_DOMAIN_ID = '0'
+  $env:RMW_IMPLEMENTATION = 'rmw_fastrtps_cpp'
+  $env:FASTDDS_DEFAULT_PROFILES_FILE = 'C:\path\to\phase201-fastdds.xml'
+  # Fast DDS 2.x: replace the 3.x variable above with FASTRTPS_DEFAULT_PROFILES_FILE.
+  # Manual Cyclone DDS: replace the RMW and Fast DDS lines above with the Cyclone values.
+  $jobOutput = @(ros2 topic pub --once --wait-matching-subscriptions 0 --keep-alive 30 /imu/data sensor_msgs/msg/Imu "{header: {frame_id: unauthorized}}" --qos-reliability best_effort --qos-durability volatile --ros-args --enclave /unity2foxglove/untrusted 2>&1)
+  [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = $jobOutput }
+}
+Start-Sleep -Seconds 2
+Write-Host 'Inspect the secured graph and Unity no-frame result now while the negative publisher remains alive.'
+# Run the secured graph inspection below in another process before receiving this job.
+$negativeResult = Receive-Job -Job $negativeJob -Wait
+$negativeExitCode = [int]$negativeResult.ExitCode
+$negativeResult.Output
+Remove-Job -Job $negativeJob
 if ($negativeExitCode -eq 0) { Write-Host 'The CLI started. Accept the negative case only after secured graph inspection and Unity no-frame evidence show that no publish was authorized.' }
 ```
 
@@ -289,7 +307,18 @@ export FASTDDS_DEFAULT_PROFILES_FILE="$HOME/path/to/phase201-fastdds.xml"
 # Manual Cyclone DDS: replace the RMW and Fast DDS lines above with these two lines.
 # export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 # export CYCLONEDDS_URI='file:///path/to/cyclonedds-phase201.xml'
-if ros2 topic pub --once --wait-matching-subscriptions 0 --keep-alive 1 /imu/data sensor_msgs/msg/Imu "{header: {frame_id: unauthorized}}" --qos-reliability best_effort --qos-durability volatile --ros-args --enclave /unity2foxglove/untrusted; then
+evidence_root="$(pwd)/build/phase201"
+negative_log="$evidence_root/sros2/negative-publisher.log"
+mkdir -p "$(dirname "$negative_log")"
+ros2 topic pub --once --wait-matching-subscriptions 0 --keep-alive 30 /imu/data sensor_msgs/msg/Imu "{header: {frame_id: unauthorized}}" --qos-reliability best_effort --qos-durability volatile --ros-args --enclave /unity2foxglove/untrusted >"$negative_log" 2>&1 &
+negative_pid=$!
+sleep 2
+echo 'Inspect the secured graph and Unity no-frame result now while the negative publisher remains alive.'
+# Run the secured graph inspection below in another process before waiting for this PID.
+wait "$negative_pid"
+negative_exit_code=$?
+cat "$negative_log"
+if [ "$negative_exit_code" -eq 0 ]; then
   echo 'The CLI started. Accept the negative case only after secured graph inspection and Unity no-frame evidence show that no publish was authorized.'
 else
   echo 'The CLI was rejected by the local security path. Continue with the Unity no-frame check.'
