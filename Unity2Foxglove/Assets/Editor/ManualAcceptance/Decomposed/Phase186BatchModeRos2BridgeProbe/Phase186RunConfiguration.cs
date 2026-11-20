@@ -13,6 +13,7 @@ using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Unity.FoxgloveSDK.Editor;
 using UnityEditor;
@@ -79,7 +80,7 @@ namespace Unity2Foxglove
             }
 
             var pointerBytes = File.ReadAllBytes(fullPath);
-            var pointerJson = JObject.Parse(
+            var pointerJson = ParseObject(
                 Encoding.UTF8.GetString(pointerBytes));
             var project = Normalize(RequireString(pointerJson, "projectPath"));
             var repository = Normalize(RequireString(pointerJson, "repository"));
@@ -122,7 +123,7 @@ namespace Unity2Foxglove
                 var file = new FileInfo(fullPath);
                 if (!file.Exists || file.Length <= 0 || file.Length > 64 * 1024)
                     return false;
-                var json = JObject.Parse(
+                var json = ParseObject(
                     File.ReadAllText(fullPath, Encoding.UTF8));
                 var candidateRunId = RequireString(json, "runId");
                 var candidateCaseId = RequireString(json, "caseId");
@@ -155,7 +156,7 @@ namespace Unity2Foxglove
         internal static Phase186RunConfiguration Load(string path)
         {
             var fullPath = Path.GetFullPath(path ?? string.Empty);
-            var json = JObject.Parse(File.ReadAllText(fullPath, Encoding.UTF8));
+            var json = ParseObject(File.ReadAllText(fullPath, Encoding.UTF8));
             var actualKeys = new HashSet<string>(
                 json.Properties().Select(property => property.Name),
                 StringComparer.Ordinal);
@@ -320,6 +321,23 @@ namespace Unity2Foxglove
             if (string.IsNullOrWhiteSpace(value) || value.Length > 1024)
                 throw new InvalidDataException(name + " is empty or unbounded.");
             return value;
+        }
+
+        private static JObject ParseObject(string text)
+        {
+            using var textReader = new StringReader(text);
+            using var reader = new JsonTextReader(textReader)
+            {
+                DateParseHandling = DateParseHandling.None,
+                SupportMultipleContent = true,
+            };
+            var json = JObject.Load(reader);
+            while (reader.Read())
+            {
+                if (reader.TokenType != JsonToken.Comment)
+                    throw new InvalidDataException("Phase186 JSON has trailing content.");
+            }
+            return json;
         }
 
         private static int RequireInt(JObject json, string name)
