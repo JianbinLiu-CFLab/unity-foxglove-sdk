@@ -185,13 +185,20 @@ def _visible_qualified_readers(
 
 
 def _visible_names(
-    readers: set[tuple[tuple[tuple[str, ...], str], str]], key: tuple[tuple[str, ...], str]
+    readers: set[tuple[tuple[tuple[str, ...], str], str]],
+    key: tuple[tuple[str, ...], str],
+    static_owners: frozenset[str] = frozenset(),
 ) -> set[str]:
-    """Return reader names callable unqualified from one type and its enclosing types."""
+    """Return reader names callable unqualified from one type, its enclosing types and `using static` types."""
     package, identity = key
     parts = identity.split(".")
     owners = {".".join(parts[:size]) for size in range(1, len(parts) + 1)}
-    return {name for (reader_package, owner), name in readers if reader_package == package and owner in owners}
+    return {
+        name
+        for (reader_package, owner), name in readers
+        if (reader_package == package and owner in owners)
+        or any(owner == imported or owner.endswith("." + imported) for imported in static_owners)
+    }
 
 
 def _discover_reader_patterns(root: Path, files: list[Path], units: dict[Path, dict[str, object]]) -> None:
@@ -199,6 +206,10 @@ def _discover_reader_patterns(root: Path, files: list[Path], units: dict[Path, d
     candidates: list[tuple[tuple[tuple[str, ...], str], str, str, Path]] = []
     declared: dict[Path, set[tuple[tuple[str, ...], str]]] = {}
     aliases = {path: _aliases(list(units[path].get("imports", ()))) for path in files}
+    statics = {
+        path: frozenset(name.removeprefix("global::") for static, _, name in units[path].get("imports", ()) if static)
+        for path in files
+    }
     for path in files:
         unit = units[path]
         text, masked, regions = str(unit["text"]), str(unit["masked"]), unit["regions"]
@@ -248,7 +259,7 @@ def _discover_reader_patterns(root: Path, files: list[Path], units: dict[Path, d
                         subset, key[0], declared[path], list(units[path].get("imports", ())), declarations
                     )
                     forms = _call_forms(subset, visible, type_aliases)
-                    bare = _bare_form(_visible_names(subset, key))
+                    bare = _bare_form(_visible_names(subset, key, statics[path]))
                     forms.extend([bare] if bare else [])
                     call_patterns[pattern_key] = (
                         re.compile(rf"(?:{'|'.join(forms)})\s*(?:{GENERIC_ARGUMENTS})?\s*\(") if forms else None
@@ -271,7 +282,7 @@ def _discover_reader_patterns(root: Path, files: list[Path], units: dict[Path, d
         present = {reader for reader in readers if reader[1] in masked}
         names = {
             name
-            for name in {name for key in keys for name in _visible_names(present, key)}
+            for name in {name for key in keys for name in _visible_names(present, key, statics[path])}
             if not _text_module.SEED_READER_NAME.fullmatch(name)
         }
         package = path.relative_to(root).parts[:2]

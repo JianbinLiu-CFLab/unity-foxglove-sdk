@@ -545,8 +545,8 @@ class SourceTextRatchetTests(unittest.TestCase):
             self.assertIn("SOURCE_TEXT_RATCHET_HELPER_CHANGED", output)
             self.assertIn("helper=Check", output)
 
-    def test_private_reader_body_change_is_non_blocking_but_reported(self):
-        """Report a reader returning an empty string without blocking the ratchet."""
+    def test_private_reader_body_change_fails_the_ratchet(self):
+        """Fail when a reader starts returning an empty string."""
         with tempfile.TemporaryDirectory() as directory:
             root = self._git_fixture(directory)
             validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
@@ -554,8 +554,8 @@ class SourceTextRatchetTests(unittest.TestCase):
             text += '\nprivate static string ReadRequiredRepoText(string path) { return ""; }\n'
             validation.write_text(text, encoding="utf-8")
             code, output = self._run_fixture_gate(root)
-            self.assertEqual(0, code, output)
-            self.assertIn("SOURCE_TEXT_RATCHET_HELPER_CHANGED", output)
+            self.assertEqual(1, code, output)
+            self.assertIn("SOURCE_TEXT_RATCHET_READER_CHANGED", output)
             self.assertIn("helper=ReadRequiredRepoText", output)
 
     def test_ordinary_test_method_body_change_does_not_report_helper(self):

@@ -123,6 +123,11 @@ class SourceTextInventorySemanticTests(_FixtureSupport, unittest.TestCase):
             "type alias": ("", "SR.Read", "using SR = Fixture.Readers.SourceReaders;\n", namespaced),
             "imported namespace": ("", "SourceReaders.Read", "using Fixture.Readers;\n", namespaced),
             "fully qualified": ("", "Fixture.Readers.SourceReaders.Read", "", namespaced),
+            "using static": ("", "Read", "using static Fixture.Readers.SourceReaders;\n", namespaced),
+            "using static wrapper": ("", "Wrapper.Load", "", {**namespaced, "Wrapper.cs": (
+                "using static Fixture.Readers.SourceReaders;\n"
+                "internal static class Wrapper {\n    internal static string Load(string path) => Read(path);\n}\n"
+            )}),
             "generic reader": (
                 "    private static string LoadThing<T>(string path) => System.IO.File.ReadAllText(path);",
                 "LoadThing<object>",
@@ -243,8 +248,8 @@ class SourceTextInventorySemanticTests(_FixtureSupport, unittest.TestCase):
         )
         self.assertEqual(0, code, output)
 
-    def test_discovered_reader_body_changes_are_reported(self):
-        """Report a discovered reader that keeps a dead read but stops returning the source."""
+    def test_discovered_reader_body_changes_fail_the_gate(self):
+        """Fail when a discovered reader keeps a dead read but stops returning the source."""
         dead = "using var stream = new System.IO.FileStream(path, System.IO.FileMode.Open);"
         real = "{ " + dead + " return ReadRequiredRepoText(path); }"
         fake = "{ " + dead + ' return "Constant"; }'
@@ -273,7 +278,75 @@ class SourceTextInventorySemanticTests(_FixtureSupport, unittest.TestCase):
                     (runtime / "FixtureValidation.cs").write_text(validation.replace("BODY", fake), encoding="utf-8")
                 code, output = self._run_fixture_gate(root)
                 self.assertIn("SOURCE_TEXT_INVENTORY_BASE_OK base_rows=1 head_rows=1", output)
-                self.assertRegex(output, r"SOURCE_TEXT_RATCHET_HELPER_CHANGED file=\S+ helper=Load\b")
+                self.assertNotEqual(0, code, output)
+                self.assertRegex(output, r"SOURCE_TEXT_RATCHET_READER_CHANGED file=\S+ helper=Load\b")
+
+    def test_reader_swaps_through_new_files_fail_the_gate(self):
+        """Fail when a reader moves to a new file or the call switches to a new reader with a dead read."""
+        dead = "using var stream = new System.IO.FileStream(path, System.IO.FileMode.Open);"
+        holder = "internal static class {owner} {{\n    internal static string Load(string path) {{ " + dead + " return {value}; }}\n}}\n"
+        real = holder.format(owner="Helpers", value="ReadRequiredRepoText(path)")
+        cases = {
+            "deleted reader file": ("Helpers", {"Helpers2.cs": holder.format(owner="Helpers", value='"Constant"')}, "READER_CHANGED"),
+            "switched reader": ("Fakes", {"Fakes.cs": holder.format(owner="Fakes", value='"Constant"')}, "ASSERTION_CHANGED"),
+        }
+        for name, (owner, added, failure) in cases.items():
+            with self.subTest(name), tempfile.TemporaryDirectory() as directory:
+                validation = (
+                    "public static class FixtureValidation {\n    public static void Validate() {\n"
+                    '        var source = OWNER.Load("Packages/fixture/Runtime/Product.cs");\n'
+                    '        Check(source.Contains("Product"));\n    }\n}\n'
+                )
+                root = self._git_fixture(directory, validation_text=validation.replace("OWNER", "Helpers"))
+                runtime = root / "Packages/fixture/Tests/Runtime"
+                (runtime / "Helpers.cs").write_text(real, encoding="utf-8")
+                subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+                subprocess.run(["git", "-C", str(root), "commit", "-q", "-m", "helpers"], check=True)
+                if name == "deleted reader file":
+                    (runtime / "Helpers.cs").unlink()
+                for relative, text in added.items():
+                    (runtime / relative).write_text(text, encoding="utf-8")
+                (runtime / "FixtureValidation.cs").write_text(validation.replace("OWNER", owner), encoding="utf-8")
+                code, output = self._run_fixture_gate(root)
+                self.assertIn("SOURCE_TEXT_INVENTORY_BASE_OK base_rows=1 head_rows=1", output)
+                self.assertNotEqual(0, code, output)
+                self.assertIn(f"SOURCE_TEXT_RATCHET_{failure} file=", output)
+
+    def test_trusted_base_approves_exact_reader_body_change(self):
+        """Accept a reader body change only when the trusted base lists its exact digests."""
+        from Scripts.validation.source_text_inventory_ratchet_helpers import _helper_signature_records
+
+        reader = "\n    private static string ReadRequiredRepoText(string path) {{ return {value}; }}\n"
+        validation = (
+            "public static class FixtureValidation {{" + reader + "    public static void Validate() {{\n"
+            '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+            '        Check(source.Contains("Product"));\n    }}\n}}\n'
+        )
+        base = validation.format(value="System.IO.File.ReadAllText(path)")
+        head = validation.format(value='""')
+        digests = [_helper_signature_records(text)["ReadRequiredRepoText"] for text in (base, head)]
+        for name, head_digest, expected in (
+            ("exact approval", digests[1], 0),
+            ("stale approval", "0" * 64, 1),
+        ):
+            with self.subTest(name), tempfile.TemporaryDirectory() as directory:
+                root = self._git_fixture(directory, validation_text=base)
+                (root / "Scripts/validation/source_text_ratchet_replacements.json").write_text(json.dumps({"replacements": [{
+                    "file": "Packages/fixture/Tests/Runtime/FixtureValidation.cs",
+                    "validation_flag": "ReadRequiredRepoText",
+                    "class": "READER",
+                    "base_signature": digests[0],
+                    "head_signature": head_digest,
+                    "reason": "Reviewed reader body replacement for the fixture.",
+                    "replacement": "fixture",
+                }]}), encoding="utf-8")
+                subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+                subprocess.run(["git", "-C", str(root), "commit", "-q", "-m", "approve"], check=True)
+                (root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs").write_text(head, encoding="utf-8")
+                code, output = self._run_fixture_gate(root)
+                self.assertEqual(expected, code, output)
+                verdict = "APPROVED" if expected == 0 else "CHANGED"
+                self.assertIn(f"SOURCE_TEXT_RATCHET_READER_{verdict} file=", output)
 
     def _declared_type_fixture(self, directory: str) -> Path:
         """Create registered validation types declared outside their stem-named files."""
