@@ -26,7 +26,7 @@ ERROR_PATTERN = re.compile(
     re.IGNORECASE,
 )
 PACKAGE_RESOLUTION_PATTERN = re.compile(
-    r"Failed to resolve packages|Package Manager Error|Unable to resolve",
+    r"Failed to resolve packages|Package Manager Error|Unable to resolve|Package\s+\[[^\]]+\]\s+cannot be found",
     re.IGNORECASE,
 )
 
