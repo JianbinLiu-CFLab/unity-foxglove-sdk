@@ -33,7 +33,7 @@ TRUSTED_AUDIT_MODULES = (
     "Scripts/unity_build/unity_il2cpp/parts/process.py",
 )
 def _trusted_source_check(base_sha: str) -> audit_lib.Check:
-    """Refuse to execute contributor-modified audit modules in a maintainer run."""
+    """Fail the audit when audit modules differ from the base revision; this is a drift check, not an execution sandbox."""
     mismatches: list[str] = []
     for relative in TRUSTED_AUDIT_MODULES:
         current = audit_lib.ROOT / relative

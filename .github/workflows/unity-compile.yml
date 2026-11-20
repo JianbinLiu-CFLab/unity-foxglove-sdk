@@ -310,16 +310,10 @@ jobs:
             $library = Join-Path $project 'Library'
             $jazzy = Join-Path $project 'Library-jazzy'
             $target = Join-Path $project ("Library-{0}" -f $env:DISTRO)
-            $manifest = Join-Path $project 'Packages/manifest.json'
-            $lock = Join-Path $project 'Packages/packages-lock.json'
-            $manifestBackup = Join-Path $workspace ("build/phase195-manifest-{0}.json" -f $env:DISTRO)
-            $lockBackup = Join-Path $workspace ("build/phase195-lock-{0}.json" -f $env:DISTRO)
             if (-not (Test-Path -LiteralPath $library)) {
               if (Test-Path -LiteralPath $jazzy) { Move-Item -LiteralPath $jazzy -Destination $library }
               elseif (Test-Path -LiteralPath $target) { Move-Item -LiteralPath $target -Destination $library }
             }
-            if (Test-Path -LiteralPath $manifestBackup) { Copy-Item -LiteralPath $manifestBackup -Destination $manifest -Force }
-            if (Test-Path -LiteralPath $lockBackup) { Copy-Item -LiteralPath $lockBackup -Destination $lock -Force }
             Remove-Item -LiteralPath $markerFile.FullName -Force
           }
 

@@ -218,7 +218,9 @@ class UnityTestRunnerTests(unittest.TestCase):
             results = Path(temp) / "results.xml"
             results.write_text(
                 '<test-run total="1" passed="1" failed="0" inconclusive="0" skipped="0">'
-                '<test-suite total="1" passed="1" failed="0" inconclusive="0" skipped="0" />'
+                '<test-suite total="1" passed="1" failed="0" inconclusive="0" skipped="0">'
+                '<test-case fullname="Smoke.Passes" result="Passed" />'
+                '</test-suite>'
                 '</test-run>',
                 encoding="utf-8",
             )
@@ -301,6 +303,26 @@ class UnityTestRunnerTests(unittest.TestCase):
                         self.assertEqual(value, counts[key])
                 else:
                     self.assertEqual({}, counts)
+
+    def test_parse_nunit_results_rejects_cases_that_contradict_a_passing_summary(self) -> None:
+        """Reject a passing summary whose test cases are missing, extra, skipped, or unknown."""
+        summary = '<test-run total="1" passed="1" failed="0" inconclusive="0" skipped="0">{}</test-run>'
+        cases = (
+            "",
+            '<test-case fullname="Fake.Test" result="Skipped" />',
+            '<test-case fullname="Fake.Test" result="Inconclusive" />',
+            '<test-case fullname="Fake.Test" result="Unknown" />',
+            '<test-case fullname="Fake.A" result="Passed" /><test-case fullname="Fake.B" result="Passed" />',
+        )
+        for children in cases:
+            with self.subTest(children=children):
+                with tempfile.TemporaryDirectory() as temp:
+                    results = Path(temp) / "results.xml"
+                    results.write_text(summary.format(children), encoding="utf-8")
+                    verdict, failed, counts = self.runner.parse_nunit_results(results)
+                self.assertEqual("FAIL", verdict)
+                self.assertTrue(failed)
+                self.assertEqual(1, counts["passed"])
 
     def test_parse_nunit_results_rejects_missing_summary(self) -> None:
         """Reject malformed NUnit XML without a summary element."""
