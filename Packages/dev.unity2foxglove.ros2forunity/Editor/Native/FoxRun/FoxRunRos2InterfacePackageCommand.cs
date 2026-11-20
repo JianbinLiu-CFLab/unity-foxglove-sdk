@@ -107,13 +107,25 @@ namespace Unity.FoxgloveSDK.Editor
 
                 var repoRoot = GetRepositoryRoot();
                 var packageRoot = GetSourcePackageRoot();
+                var sampleMetadata = File.Exists(Path.Combine(
+                    repoRoot,
+                    "Packages",
+                    "dev.unity2foxglove.sdk",
+                    "Tests",
+                    "Unit",
+                    "FoxRun",
+                    "Fixtures",
+                    "Phase181CustomInterfaceFixture.cs"));
                 var model =
                     FoxrunCodeGenerator
                         .CollectReflectionGenerationModelForTransportProviders();
 
                 if (checkOnly)
                 {
-                    var result = FoxRunRos2InterfacePackagePreflight.Evaluate(packageRoot, model, sampleMetadata: true);
+                    var result = FoxRunRos2InterfacePackagePreflight.Evaluate(
+                        packageRoot,
+                        model,
+                        sampleMetadata: sampleMetadata);
                     if (!result.IsReady)
                     {
                         Debug.LogError("[FoxRun ROS2 interfaces] " + result.DiagnosticCode + ": " + result.Action);
@@ -134,8 +146,11 @@ namespace Unity.FoxgloveSDK.Editor
                     packageRoot,
                     model,
                     nextRevision ?? (hasCurrentLock ? null : selectedPackageName),
-                    sampleMetadata: true);
-                var preflight = FoxRunRos2InterfacePackagePreflight.Evaluate(packageRoot, model, sampleMetadata: true);
+                    sampleMetadata: sampleMetadata);
+                var preflight = FoxRunRos2InterfacePackagePreflight.Evaluate(
+                    packageRoot,
+                    model,
+                    sampleMetadata: sampleMetadata);
                 if (!preflight.IsReady)
                 {
                     Debug.LogError("[FoxRun ROS2 interfaces] generation completed but preflight is "
