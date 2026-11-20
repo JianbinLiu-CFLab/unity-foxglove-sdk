@@ -14,6 +14,9 @@ jobs:
     timeout-minutes: 720
     env:
       UNITY2FOXGLOVE_CI_RUN_ID: gha-${{ github.run_id }}-${{ github.run_attempt }}
+      PHASE186_ROS2_HUMBLE_ROOT: 'C:\ros2_humble\ros2-windows'
+      PHASE186_ROS2_JAZZY_ROOT: 'C:\ros2_jazzy\ros2-windows'
+      PHASE186_ROS2_LYRICAL_ROOT: 'C:\ros2_lyrical\ros2-windows'
     steps:
       - name: Bootstrap PowerShell 7 on PATH
         shell: cmd
@@ -46,6 +49,14 @@ jobs:
         shell: pwsh
         run: git clean -ffdx -e Unity2Foxglove/Library/
 
+      - name: Checkout pinned official Foxglove schema reference
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: foxglove/foxglove-sdk
+          ref: b298c3d1649e6e5dfd77a53b12ab7c27f97c7aba
+          path: third-party/foxglove-sdk
+          persist-credentials: false
+
       - name: Run exact-head Phase186 Windows live certification
         shell: pwsh
         run: python Scripts/release/run_ci.py --only phase186-bridge-windows-live
@@ -55,5 +66,11 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: phase186-bridge-windows-live-${{ github.run_id }}-${{ github.run_attempt }}
-          path: build/phase186/windows-live
+          path: |
+            build/phase186/windows-live
+            build/phase186/bridge/**/build-summary.json
+            build/phase186/bridge/**/overlay-authority.json
+            build/phase186/bridge/**/*.log
+            !build/phase186/bridge/**/cpp-build/**
+            !build/phase186/bridge/**/peer-workspace/**
           if-no-files-found: error
