@@ -76,7 +76,6 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifySourceWiring()
         {
             var validator = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/FoxRunGenerationModelValidator.cs");
-            ComposeValidatorSource(ref validator);
             Check(validator.Contains("AddError(diagnostics, \"FOXRUN008\", member, \"FoxRun topic is required.\")", StringComparison.Ordinal)
                   && validator.Contains("AddError(diagnostics, \"FOXRUN008\", member, \"FoxRun topic must be absolute and start with '/'.\")", StringComparison.Ordinal)
                   && !validator.Contains("AddError(diagnostics, \"FOXRUN001\", member", StringComparison.Ordinal),
