@@ -68,9 +68,8 @@ jobs:
           name: phase186-bridge-windows-live-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             build/phase186/windows-live
-            build/phase186/bridge/**/build-summary.json
-            build/phase186/bridge/**/overlay-authority.json
-            build/phase186/bridge/**/*.log
-            !build/phase186/bridge/**/cpp-build/**
-            !build/phase186/bridge/**/peer-workspace/**
+            build/phase186/bridge/*/build-summary.json
+            build/phase186/bridge/*/overlay-authority.json
+            build/phase186/bridge/*/*.log
+            build/phase186/bridge/*/peer-workspace/colcon-build.log
           if-no-files-found: error
