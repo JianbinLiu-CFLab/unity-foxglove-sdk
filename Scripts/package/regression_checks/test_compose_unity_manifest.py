@@ -137,7 +137,7 @@ class ComposeUnityManifestTests(unittest.TestCase):
                 result = topology._run_unity(Path("Unity.exe"), project, log_path, 1)
             self.assertEqual("INFRASTRUCTURE_FAILURE", result["failureKind"])
 
-            log_path.write_text("Package [dev.unity2foxglove.phase202.missing] cannot be found\n", encoding="utf-8")
+            log_path.write_text("The file [C:/missing-package/package.json] cannot be found\n", encoding="utf-8")
             with mock.patch.object(
                 topology.subprocess,
                 "run",
