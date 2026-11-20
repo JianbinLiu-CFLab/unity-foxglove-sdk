@@ -1,6 +1,15 @@
 {
   "replacements": [
     {
+      "file": "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Decomposed/PhaseValidationSourceHelpers/RepositoryReaders.cs",
+      "validation_flag": "ReadGenericCSharpSource",
+      "class": "READER",
+      "base_signature": "7733cb54e5797900b47524c745198de819cb96536fafae27c3c39df88a76b228",
+      "head_signature": "3cd0c6406ab65361630deae14f2db3d85c106d4e36290be83fe7cf00c25b6dd0",
+      "reason": "PR #507 changes C# section-file matching to ordinal comparisons so case-distinct fragments cannot alias on case-sensitive hosts.",
+      "replacement": "Phase205 tooling case-distinct section reader regression"
+    },
+    {
       "file": "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase134_19Validation.cs",
       "validation_flag": "--phase134-19",
       "class": "C",
