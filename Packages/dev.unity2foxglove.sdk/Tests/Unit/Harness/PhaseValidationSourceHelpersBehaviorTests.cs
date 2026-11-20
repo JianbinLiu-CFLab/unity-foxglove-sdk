@@ -64,6 +64,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                     "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/Decomposed/FoxRunInputRouter/Dispatch.cs",
                     "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/Decomposed/FoxRunInputRouter/Lifetime.cs",
                 }));
+
+            Func<string> validatorReader = PhaseValidationSourceHelpers.ReadFoxRunGenerationModelValidatorSources;
+            Assert.NotEmpty(validatorReader());
         }
     }
 }
