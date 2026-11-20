@@ -55,8 +55,11 @@ The `publisher` and `untrusted` profiles also match the node created by `ros2 to
     <enclave path="/unity2foxglove/unity">
       <profiles>
         <profile ns="/" node="*">
-          <topics publish="ALLOW" subscribe="ALLOW">
+          <topics publish="ALLOW">
             <topic>rosout</topic>
+            <topic>/parameter_events</topic>
+          </topics>
+          <topics subscribe="ALLOW">
             <topic>/parameter_events</topic>
             <topic>/clock</topic>
             <topic>/points</topic>
