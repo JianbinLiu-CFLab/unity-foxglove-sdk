@@ -306,13 +306,35 @@ class RestoreThirdPartyTests(unittest.TestCase):
         """Run Git and return trimmed standard output."""
         return cls._run("git", *args, cwd=cwd).stdout.strip()
 
+    def test_fixture_git_commands_ignore_inherited_global_identity(self) -> None:
+        """Fixture Git commands must not read a host global user identity."""
+        malicious_config = self.root / "host.gitconfig"
+        malicious_config.write_text(
+            "[user]\n"
+            "    name = Host Identity\n"
+            "    email = host@example.invalid\n",
+            encoding="utf-8",
+        )
+        with mock.patch.dict(
+            os.environ,
+            {"GIT_CONFIG_GLOBAL": str(malicious_config)},
+            clear=False,
+        ):
+            with self.assertRaises(subprocess.CalledProcessError):
+                self._run("git", "config", "--get", "user.name", cwd=self.root)
+
     @staticmethod
     def _run(*args: str | Path, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
         """Run a fixture command with a deterministic test identity."""
         command = [str(arg) for arg in args]
         environment = os.environ.copy()
+        isolated_config = Path("build/tmp/idtmp/fixture-empty-gitconfig").resolve()
+        isolated_config.parent.mkdir(parents=True, exist_ok=True)
+        isolated_config.touch(exist_ok=True)
         environment.update(
             {
+                "GIT_CONFIG_NOSYSTEM": "1",
+                "GIT_CONFIG_GLOBAL": str(isolated_config),
                 "GIT_AUTHOR_NAME": "Regression Test",
                 "GIT_AUTHOR_EMAIL": "regression@example.invalid",
                 "GIT_COMMITTER_NAME": "Regression Test",
