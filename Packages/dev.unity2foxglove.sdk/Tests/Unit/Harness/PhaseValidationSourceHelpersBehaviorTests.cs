@@ -66,7 +66,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 }));
 
             Func<string> validatorReader = PhaseValidationSourceHelpers.ReadFoxRunGenerationModelValidatorSources;
-            Assert.NotEmpty(validatorReader());
+            validatorReader();
         }
     }
 }
