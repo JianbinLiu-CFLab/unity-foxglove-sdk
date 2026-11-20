@@ -65,5 +65,14 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                     "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/Decomposed/FoxRunInputRouter/Lifetime.cs",
                 }));
         }
+
+        [Fact]
+        public void ValidatorReaderIncludesTheFacadeAndRegisteredFragments()
+        {
+            var source = PhaseValidationSourceHelpers.ReadFoxRunGenerationModelValidatorSources();
+
+            Assert.Contains("AddError(diagnostics, \"FOXRUN008\"", source, StringComparison.Ordinal);
+            Assert.Contains("private static void ValidateTopicGroups", source, StringComparison.Ordinal);
+        }
     }
 }
