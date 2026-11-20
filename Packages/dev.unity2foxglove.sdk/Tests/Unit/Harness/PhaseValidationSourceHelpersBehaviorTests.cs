@@ -69,7 +69,10 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         [Fact]
         public void ValidatorReaderIncludesTheFacadeAndRegisteredFragments()
         {
-            var source = PhaseValidationSourceHelpers.ReadFoxRunGenerationModelValidatorSources();
+            var source = PhaseValidationSourceHelpers.ReadRegisteredCSharpSource(
+                "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/FoxRunGenerationModelValidator.cs",
+                "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/Decomposed/FoxRunGenerationModelValidator/ValidationRules.cs",
+                "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/Decomposed/FoxRunGenerationModelValidator/ValidationTopology.cs");
 
             Assert.Contains("AddError(diagnostics, \"FOXRUN008\"", source, StringComparison.Ordinal);
             Assert.Contains("private static void ValidateTopicGroups", source, StringComparison.Ordinal);

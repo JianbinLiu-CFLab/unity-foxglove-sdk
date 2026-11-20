@@ -49,15 +49,6 @@ namespace Unity.FoxgloveSDK.Tests
 
             return string.Join(Environment.NewLine, allPaths.Select(File.ReadAllText));
         }
-
-        public static string ReadFoxRunGenerationModelValidatorSources()
-        {
-            return ReadRegisteredCSharpSource(
-                "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/FoxRunGenerationModelValidator.cs",
-                "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/Decomposed/FoxRunGenerationModelValidator/ValidationRules.cs",
-                "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/Decomposed/FoxRunGenerationModelValidator/ValidationTopology.cs");
-        }
-
         public static string ReadFoxRunRos2SubscriptionBindingSources()
         {
             return ReadFoxRunRos2SubscriptionBindingSources(FindRequiredRepoRoot());
