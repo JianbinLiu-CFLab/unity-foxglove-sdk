@@ -163,10 +163,18 @@ Choose one active set rather than accumulating packages:
 | Direct native ROS2 using generated custom FoxRun DTOs | Core + facade + exactly one runtime + `dev.unity2foxglove.foxrun.ros2.interfaces` + the exact matching typesupport add-on | Every other runtime and every other typesupport add-on. |
 | Existing external ROS2 For Unity import | Core + facade + the external ROS2 For Unity runtime | All packaged `dev.unity2foxglove.ros2forunity.runtime.*` packages. |
 
-From a repository checkout, use Unity Package Manager's **Add package from
-disk...** command for each `Packages/<package-id>/package.json` in the one row
-you selected. The [`Unity2Foxglove/Packages/manifest.json`](Unity2Foxglove/Packages/manifest.json)
-file is a working combined-project example, not a list to copy wholesale.
+From a repository checkout, compose the selected row before opening Unity. The
+command writes the required `file:` references into the target project's
+`Packages/manifest.json` in one step:
+
+```powershell
+python -m Scripts.package.compose_unity_manifest --project <unity-project-dir> --profile <core|bridge|gateway|native|native-custom> [--distro <humble|jazzy|lyrical>]
+```
+
+Use `--dry-run` to inspect the result without writing. The [`Unity2Foxglove/Packages/manifest.json`](Unity2Foxglove/Packages/manifest.json)
+file is a working combined-project example, not a list to copy wholesale. As
+a fallback, use Unity Package Manager's **Add package from disk...** command
+for each `Packages/<package-id>/package.json` in the selected row.
 For Lyrical, choose `Zenoh (rmw_zenoh_cpp)` in the FoxgloveManager Inspector at
 **Data Transport > ROS 2 Native Runtime (R2FU) — Shared** before entering Play
 Mode. The [ROS2 For Unity package guide](Packages/dev.unity2foxglove.ros2forunity/README.md)

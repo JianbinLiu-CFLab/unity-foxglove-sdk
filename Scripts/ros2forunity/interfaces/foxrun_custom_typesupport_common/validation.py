@@ -57,6 +57,10 @@ def validate_addon(request: AddonValidationRequest) -> AddonValidationResult:
         static_root / "RuntimeSupport" / "foxrun-ros2-interface-lock.json",
         "repair-static-interface-lock",
     )
+    static_package = _load_json(
+        static_root / "package.json",
+        "repair-static-interface-package-json",
+    )
     runtime_manifest = _load_json(
         base_root / "RuntimeSupport" / "runtime-manifest.json",
         "repair-base-runtime-manifest",
@@ -66,7 +70,7 @@ def validate_addon(request: AddonValidationRequest) -> AddonValidationResult:
     _reject_absolute_values(manifest)
     _reject_absolute_values(inventory)
     _validate_static_source(static_root, static_lock)
-    _validate_package_metadata(package, distro, runtime_manifest)
+    _validate_package_metadata(package, distro, runtime_manifest, static_package)
     _validate_manifest(manifest, distro, static_lock, runtime_manifest)
     _validate_notices(addon_root)
     base_ros2_identity = _base_ros2_message_identity(
@@ -116,7 +120,12 @@ def validate_addon_set(requests: Sequence[AddonValidationRequest]) -> tuple[Addo
         raise AddonValidationError("remove-duplicate-custom-typesupport-addons")
     return results
 
-def _validate_package_metadata(package: Mapping[str, Any], distro: str, runtime_manifest: Mapping[str, Any]) -> None:
+def _validate_package_metadata(
+    package: Mapping[str, Any],
+    distro: str,
+    runtime_manifest: Mapping[str, Any],
+    static_package: Mapping[str, Any],
+) -> None:
     """Implement the internal validate package metadata step."""
     if _require_text(package, "name", "repair-addon-package-name") != addon_package_id(distro):
         raise AddonValidationError("repair-addon-package-name")
@@ -135,6 +144,9 @@ def _validate_package_metadata(package: Mapping[str, Any], distro: str, runtime_
     if not isinstance(dependencies, dict):
         raise AddonValidationError("repair-addon-dependencies")
     if not isinstance(dependencies.get(OPTIONAL_FACADE_PACKAGE_ID), str):
+        raise AddonValidationError("repair-addon-dependencies")
+    static_version = static_package.get("version")
+    if not isinstance(static_version, str) or dependencies.get(STATIC_INTERFACE_PACKAGE_ID) != static_version:
         raise AddonValidationError("repair-addon-dependencies")
     expected_runtime = base_runtime_package_id(distro)
     if runtime_manifest.get("packageName") != expected_runtime:

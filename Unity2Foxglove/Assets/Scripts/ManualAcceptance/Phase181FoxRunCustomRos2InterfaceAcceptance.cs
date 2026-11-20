@@ -101,7 +101,7 @@ namespace Unity2Foxglove.ManualAcceptance
 #if UNITY2FOXGLOVE_ROS2_FOR_UNITY && UNITY2FOXGLOVE_FOXRUN_CUSTOM_ROS2_INTERFACES && (UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN)
         [SerializeField] private string _runtime = string.Empty;
         [SerializeField] private string _rmwImplementation = string.Empty;
-        [SerializeField] private string _interfaceDigestPrefix = "120864853239";
+        [SerializeField] private string _interfaceDigestPrefix = "b218c59b845d";
         [SerializeField] private string _subscribeMessage = string.Empty;
         [SerializeField] private string _subscribeNestedLabel = string.Empty;
         [SerializeField] private int _subscribeCount;

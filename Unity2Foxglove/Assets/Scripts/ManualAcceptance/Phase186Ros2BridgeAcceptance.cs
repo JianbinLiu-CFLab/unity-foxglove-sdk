@@ -28,7 +28,7 @@ namespace Unity2Foxglove.ManualAcceptance
     public sealed partial class Phase186Ros2BridgeAcceptance : MonoBehaviour
     {
         public const string InterfaceDigest =
-            "120864853239fae290b5199cd02dbf02f107299bccd8972b06d8cf59fc7594fd";
+            "b218c59b845ddf1cc3f23cb0e45f1dceff336a7693cf5648b6851aca3386e7c5";
 
         private const int MaximumTextLength = 256;
         private const int MaximumSlowMainThreadDelayMs = 25;

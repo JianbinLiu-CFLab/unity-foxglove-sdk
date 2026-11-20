@@ -130,7 +130,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
                 staticInterfacePackageId: "dev.unity2foxglove.foxrun.ros2.interfaces",
                 rosPackageName: "unity2foxglove_foxrun_interfaces_v1",
                 interfaceRevision: 1,
-                interfaceDigest: "120864853239fae290b5199cd02dbf02f107299bccd8972b06d8cf59fc7594fd",
+                interfaceDigest: "b218c59b845ddf1cc3f23cb0e45f1dceff336a7693cf5648b6851aca3386e7c5",
                 baseRuntimePackageId: "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64",
                 canonicalPayloadType: "unity2foxglove_foxrun_interfaces_v1/msg/Phase181State48D288ED82F1");
         }

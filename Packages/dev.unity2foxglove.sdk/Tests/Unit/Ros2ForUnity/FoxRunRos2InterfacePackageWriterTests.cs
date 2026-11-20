@@ -20,13 +20,23 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
         [Fact]
         public void RendererProducesDeterministicPayloadEnvelopeAndPortableRosPackageFiles()
         {
-            var rendered = FoxRunRos2InterfacePackageRenderer.Render(BuildModel(typeof(Phase181State)));
+            var rendered = FoxRunRos2InterfacePackageRenderer.Render(
+                BuildModel(typeof(Phase181State)),
+                sampleMetadata: true);
 
             Assert.True(rendered.HasCustomContracts);
             Assert.Equal(FoxRunRos2InterfaceIdentity.DefaultRosPackageName, rendered.Lock.RosPackageName);
             Assert.Contains(rendered.Files, file => file.RelativePath == "package.json");
             Assert.Contains(rendered.Files, file => file.RelativePath == "Ros2Package~/package.xml");
             Assert.Contains(rendered.Files, file => file.RelativePath == "Ros2Package~/CMakeLists.txt");
+            Assert.Contains(
+                "Phase181 sample",
+                rendered.GetText("package.json"),
+                StringComparison.Ordinal);
+            Assert.Contains(
+                "generate their own interface package",
+                rendered.GetText("README.md"),
+                StringComparison.OrdinalIgnoreCase);
             var payload = Assert.Single(rendered.Files, file => file.Text.Contains("int32 count", StringComparison.Ordinal));
             var envelope = Assert.Single(rendered.Files, file => file.RelativePath.EndsWith("Envelope.msg", StringComparison.Ordinal));
             Assert.Contains("int32 count", payload.Text, StringComparison.Ordinal);
@@ -40,6 +50,43 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
                 FoxRunGenerationDescriptorJsonWriter.Write(
                     BuildModel(typeof(Phase181State))),
                 StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
+        public void GenericRendererPreservesTheV1DigestWhenOnlySampleMetadataDiffers()
+        {
+            var rendered = FoxRunRos2InterfacePackageRenderer.Render(BuildModel(typeof(Phase181State)));
+
+            Assert.Equal(
+                "120864853239fae290b5199cd02dbf02f107299bccd8972b06d8cf59fc7594fd",
+                rendered.InterfaceDigest);
+            Assert.Contains(
+                "Deterministic source-only ROS2 interface package",
+                rendered.GetText("package.json"),
+                StringComparison.Ordinal);
+            Assert.DoesNotContain("Phase181 sample", rendered.GetText("package.json"), StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void LegacyV1PackageRegeneratesWithoutRevisionWhenTheWireSchemaIsUnchanged()
+        {
+            WithTempPackage((repoRoot, packageRoot) =>
+            {
+                var model = BuildModel(typeof(Phase181State));
+                var first = FoxRunRos2InterfacePackageWriter.Generate(repoRoot, packageRoot, model);
+
+                Assert.Equal(
+                    "120864853239fae290b5199cd02dbf02f107299bccd8972b06d8cf59fc7594fd",
+                    first.Lock.InterfaceDigest);
+
+                var preflight = FoxRunRos2InterfacePackagePreflight.Evaluate(packageRoot, model);
+                Assert.Equal(FoxRunRos2InterfaceSourcePreflightState.ReadyForBuild, preflight.State);
+                Assert.True(preflight.IsReady);
+
+                var second = FoxRunRos2InterfacePackageWriter.Generate(repoRoot, packageRoot, model);
+                Assert.False(second.Changed);
+                Assert.Equal(first.Lock.InterfaceDigest, second.Lock.InterfaceDigest);
+            });
         }
 
         [Fact]
@@ -81,7 +128,9 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
         [Fact]
         public void RendererAndCheckedInStaticPackageMatchTheExactGoldenUtf8LfFiles()
         {
-            var rendered = FoxRunRos2InterfacePackageRenderer.Render(BuildModel(typeof(Phase181State)));
+            var rendered = FoxRunRos2InterfacePackageRenderer.Render(
+                BuildModel(typeof(Phase181State)),
+                sampleMetadata: true);
             var repoRoot = FindRepoRoot();
             AssertGoldenEquals(
                 Path.Combine(repoRoot, "Packages", "dev.unity2foxglove.sdk", "Tests", "Unit", "FoxRun", "Fixtures", "Phase181InterfaceGolden"),

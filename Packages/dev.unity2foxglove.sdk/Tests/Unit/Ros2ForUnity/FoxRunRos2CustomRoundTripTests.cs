@@ -16,7 +16,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Ros2ForUnity
     [Trait("Domain", "CustomNativeTransport")]
     public sealed class FoxRunRos2CustomRoundTripTests
     {
-        private const string Digest = "120864853239fae290b5199cd02dbf02f107299bccd8972b06d8cf59fc7594fd";
+        private const string Digest = "b218c59b845ddf1cc3f23cb0e45f1dceff336a7693cf5648b6851aca3386e7c5";
 
         [Fact]
         public void SameOriginIsDeepCopiedThenDroppedBeforeDtoConstructionAndDisposedExactlyOnce()

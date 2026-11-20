@@ -73,7 +73,10 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
             var repoRoot = FindRepoRoot();
             var packageRoot = Path.Combine(repoRoot, "Packages", FoxRunRos2InterfaceIdentity.UnityPackageId);
 
-            var result = FoxRunRos2InterfacePackagePreflight.Evaluate(packageRoot, BuildModel(typeof(Phase181State)));
+            var result = FoxRunRos2InterfacePackagePreflight.Evaluate(
+                packageRoot,
+                BuildModel(typeof(Phase181State)),
+                sampleMetadata: true);
 
             Assert.Equal(FoxRunRos2InterfaceSourcePreflightState.ReadyForBuild, result.State);
             Assert.Equal(FoxRunRos2InterfaceSourcePreflightDiagnosticCode.None, result.DiagnosticCode);
