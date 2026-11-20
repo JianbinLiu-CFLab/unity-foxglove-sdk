@@ -357,7 +357,7 @@ jobs:
             && [ "$trusted_revision" != "5c94676c8017158fd4bb72498dcbe3fd5f4bcccc" ] \
             && [ "$trusted_revision" != "5fea776c46ae1fe92f226573484775f1690ae1ef" ] \
             && [ "$trusted_revision" != "042f26d659b45b33935b6fdd1c5818623289e0ab" ] \
-            && [ "$trusted_revision" != "aba4c26a31da7804b0ed58540e1c2853d2f88867" ]; then
+            && [ "$trusted_revision" != "f334ccc855ce9728d59adf2b12e86a538ac421b6" ]; then
             if [ "$actual_migration_checker_sha" != "$trusted_checker_sha" ]; then
               echo "Current checker differs from immutable base checker without a reviewed migration approval" >&2
               exit 1
@@ -514,15 +514,15 @@ jobs:
               exit 1
             fi
             migration_args=(--parser-migration-approval "$migration_approval_file")
-          elif [ "$trusted_revision" = "aba4c26a31da7804b0ed58540e1c2853d2f88867" ]; then
+          elif [ "$trusted_revision" = "f334ccc855ce9728d59adf2b12e86a538ac421b6" ]; then
             migration_approval_file="$RUNNER_TEMP/source-text-parser-maintenance-approval.json"
             cat > "$migration_approval_file" <<'MIGRATION_APPROVAL'
           {
-            "base_revision": "aba4c26a31da7804b0ed58540e1c2853d2f88867",
-            "checker_sha256": "3ed21a9a9ded81eba56a274a145f9b0ffda8028c8f8b17a22d5409c5d2fc24b3",
+            "base_revision": "f334ccc855ce9728d59adf2b12e86a538ac421b6",
+            "checker_sha256": "159f8fbcc668bdcec4501055e307053886e315d09a7ba260f0ab28b84bab2d8f",
             "base_inventory_sha256": "d5af1f991617a46181553d9ed31246e55b166a01e4f861c3ff56cbb6565381dc",
-            "current_inventory_sha256": "e5c6a939884671e49e7df402689d5edf9420001a2469c97f09462a949c0c4ced",
-            "parser_changes_sha256": "5ed210287c5b641b4a373aa3127f3857cda4cdee3ed041b2afde708b6dd8aad8",
+            "current_inventory_sha256": "4d84043fe2343fea87814e6f521fa0ee112573f26f94670fbfc7ff1fef2904ae",
+            "parser_changes_sha256": "55a1568f1c36c5687f8e9e194bc7fbdb3e8dcc36483fa2fd361c5c2eea4d262b",
             "scope": "versioned-parser-maintenance",
             "reason": "User approved automatic source-reader discovery for the PR733/PR738 Read wrapper bypass on 2026-11-19; readers are found by what they read, not by name."
           }
