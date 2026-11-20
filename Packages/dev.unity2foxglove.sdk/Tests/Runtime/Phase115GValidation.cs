@@ -208,7 +208,7 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyNestedObjectClassification()
         {
-            var validator = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/FoxRunGenerationModelValidator.cs");
+            var validator = PhaseValidationSourceHelpers.ReadFoxRunGenerationModelValidatorSources();
             var diagnosticsSource = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/src/FoxgloveLogSourceGenerator.Diagnostics.cs");
             var sourceGenerator = PhaseValidationSourceHelpers.ReadFoxgloveLogSourceGeneratorSources();
             var codeGenerator = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/FoxRun/FoxrunCodeGenerator.cs");
