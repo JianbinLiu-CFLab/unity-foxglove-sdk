@@ -13,8 +13,10 @@ from pathlib import Path
 
 try:
     from . import source_text_inventory_flow as _flow_module
+    from . import source_text_inventory_readers as _readers_module
 except ImportError:
     import source_text_inventory_flow as _flow_module
+    import source_text_inventory_readers as _readers_module
 
 RATCHET_APPROVALS_PATH = Path("Scripts/validation/source_text_ratchet_approvals.json")
 RATCHET_CLASSES = frozenset({"A", "B", "C", "UNKNOWN", "UNRESOLVED"})
@@ -202,12 +204,12 @@ def _load_ratchet_replacements(
         if not isinstance(entry, dict) or set(entry) != RATCHET_REPLACEMENT_FIELDS:
             errors.append(f"replacement {index} has unexpected fields")
             continue
-        key = (_ratchet_path(entry["file"]), str(entry["validation_flag"]).strip())
+        key = (_ratchet_path(entry["file"]), str(entry["validation_flag"]).strip(), str(entry["class"]))
         entry_errors: list[str] = []
         if key in seen:
             entry_errors.append(f"replacement {index} is duplicated")
         seen.add(key)
-        if entry["class"] != "C":
+        if entry["class"] not in {"C", "READER"}:
             entry_errors.append(f"replacement {index} has invalid class")
         for field in ("base_signature", "head_signature"):
             value = entry[field]
@@ -235,6 +237,8 @@ def _apply_ratchet_replacements(
     """Clear Class C assertion changes whose exact signatures the trusted base approves."""
     replacements, errors = _load_ratchet_replacements(root, revision)
     for entry in replacements:
+        if entry["class"] != "C":
+            continue
         key = (_ratchet_path(entry["file"]), str(entry["validation_flag"]).strip(), "C")
         message = f"SOURCE_TEXT_RATCHET_ASSERTION_CHANGED file={key[0]} flag={key[1]} class=C"
         if message not in failures:
@@ -280,17 +284,18 @@ def _ratchet_assertion_semantics(
         semantics.setdefault(key, Counter())[signature] += 1
     return semantics
 
-def _helper_signature_records(text: str) -> dict[str, str]:
-    """Return hashes for recognized assertion/read/source helpers and bindings."""
-    if not re.search(
+def _helper_signature_records(text: str, readers: frozenset[str] = frozenset()) -> dict[str, str]:
+    """Return hashes for recognized assertion/read/source helpers, discovered readers and bindings."""
+    if not readers and not re.search(
         r"\b(?:Check|Assert\w*|Read\w*|Source\w*|Validate\w*|Action|Func|Predicate|delegate)\b|=>",
         text,
     ):
         return {}
     masked = _flow_module._strip_csharp_comments_and_strings(text)
     methods = _flow_module._method_infos(text, masked)
+    generic = [method for method in _readers_module._generic_method_infos(masked) if method.name in readers]
     records: dict[str, str] = {}
-    for method in methods:
+    for method in [*methods, *generic]:
         delegate_parameter = any(
             _flow_module._normalize_type(parameter).removeprefix("System.").startswith(
                 ("Action", "Func", "Predicate")
@@ -301,6 +306,7 @@ def _helper_signature_records(text: str) -> dict[str, str]:
             method.name == "Check"
             or method.name.startswith(("Assert", "Read", "Source", "Validate"))
             or delegate_parameter
+            or method.name in readers
         ):
             continue
         if method.name == "Validate":
@@ -343,34 +349,81 @@ def _archive_revision(root: Path, revision: str, destination: Path) -> None:
     if process.wait() != 0:
         raise RuntimeError(f"git archive failed for {revision}")
 
+def _discovered_readers(root: Path) -> tuple[dict[str, frozenset[str]], frozenset[str]]:
+    """Return the head discovery's reader declarations per file and every discovered reader name."""
+    discovered = _readers_module.DISCOVERED_READER_DECLARATIONS.get(str(root.resolve()), {})
+    return discovered, frozenset().union(*discovered.values())
+
 def _helper_signatures_at_revision(
     root: Path, revision: str, files: set[str]
 ) -> dict[tuple[str, str], str]:
-    """Hash recognized helper bodies from one committed revision."""
+    """Hash recognized helper bodies from one committed revision, including test files the head deletes."""
     signatures: dict[tuple[str, str], str] = {}
+    discovered, names = _discovered_readers(root)
     build_review = root / "build" / "review"
     build_review.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="source-text-helper-base-", dir=build_review) as directory:
         tree = Path(directory)
         _archive_revision(root, revision, tree)
-        for relative in sorted(files):
+        deleted = {
+            path.relative_to(tree).as_posix()
+            for pattern in ("Packages/*/Tests/Runtime/**/*.cs", "Packages/*/Tests/Unit/**/*.cs")
+            for path in tree.glob(pattern)
+            if not (root / path.relative_to(tree)).is_file()
+        }
+        for relative in sorted(files | set(discovered) | deleted):
             path = tree / relative
             if not path.is_file():
                 continue
-            for helper, digest in _helper_signature_records(path.read_text(encoding="utf-8", errors="replace")).items():
+            text = path.read_text(encoding="utf-8", errors="replace")
+            for helper, digest in _helper_signature_records(text, names).items():
                 signatures[(relative, helper)] = digest
     return signatures
 
 def _helper_signatures_at_head(root: Path, files: set[str]) -> dict[tuple[str, str], str]:
     """Hash recognized helper bodies from the reviewed working tree."""
     signatures: dict[tuple[str, str], str] = {}
-    for relative in sorted(files):
+    discovered, names = _discovered_readers(root)
+    for relative in sorted(files | set(discovered)):
         path = root / relative
         if not path.is_file():
             continue
-        for helper, digest in _helper_signature_records(path.read_text(encoding="utf-8", errors="replace")).items():
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for helper, digest in _helper_signature_records(text, names).items():
             signatures[(relative, helper)] = digest
     return signatures
+
+def _reader_helper_failures(
+    root: Path, revision: str, base_helpers: dict[tuple[str, str], str], head_helpers: dict[tuple[str, str], str]
+) -> list[str]:
+    """Fail seed or discovered reader changes in base files unless the trusted base approves the exact digests."""
+    _, names = _discovered_readers(root)
+    listed = subprocess.run(
+        ["git", "ls-tree", "-r", "--name-only", revision], cwd=root, check=False, capture_output=True, text=True
+    )
+    base_files = set(listed.stdout.splitlines())
+    empty = hashlib.sha256(b"").hexdigest()
+    approved = {
+        (_ratchet_path(entry["file"]), str(entry["validation_flag"]).strip(), entry["base_signature"], entry["head_signature"])
+        for entry in _load_ratchet_replacements(root, revision)[0]
+        if entry["class"] == "READER"
+    }
+    failures: list[str] = []
+    for relative, helper in sorted(set(base_helpers) | set(head_helpers)):
+        name = helper.split(":", 1)[0]
+        base_digest = base_helpers.get((relative, helper), empty)
+        head_digest = head_helpers.get((relative, helper), empty)
+        if base_digest == head_digest or relative not in base_files:
+            continue
+        if not (_readers_module._text_module.SEED_READER_NAME.fullmatch(name) or name in names):
+            continue
+        verdict = "APPROVED" if (_ratchet_path(relative), helper, base_digest, head_digest) in approved else "CHANGED"
+        message = f"SOURCE_TEXT_RATCHET_READER_{verdict} file={relative} helper={helper} base={base_digest} head={head_digest}"
+        if verdict == "APPROVED":
+            print(message)
+        else:
+            failures.append(message)
+    return failures
 
 def _file_has_source_assertion(path: Path) -> bool:
     """Return whether a live validation file still contains a scannable assertion."""

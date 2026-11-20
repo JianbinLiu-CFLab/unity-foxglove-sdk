@@ -33,6 +33,7 @@ try:
         _helper_signatures_at_revision,
         _apply_ratchet_replacements,
         _load_ratchet_approvals,
+        _reader_helper_failures,
         _ratchet_change_tokens,
         _ratchet_counts,
         _ratchet_key,
@@ -52,6 +53,7 @@ except ImportError:
         _helper_signatures_at_revision,
         _apply_ratchet_replacements,
         _load_ratchet_approvals,
+        _reader_helper_failures,
         _ratchet_change_tokens,
         _ratchet_counts,
         _ratchet_key,
@@ -829,6 +831,7 @@ def _verify_count_ratchet(
     }
     base_helpers = _helper_signatures_at_revision(root, revision, helper_files)
     head_helpers = _helper_signatures_at_head(root, helper_files)
+    failures.extend(_reader_helper_failures(root, revision, base_helpers, head_helpers))
     helper_changed = [
         f"SOURCE_TEXT_RATCHET_HELPER_CHANGED file={key[0]} helper={key[1]}"
         for key in sorted(set(base_helpers) | set(head_helpers))

@@ -600,7 +600,7 @@ def _scoped_source_symbols(
 ) -> list[tuple[int, tuple[int, ...], str, str]]:
     """Collect reader symbols with method and block scope boundaries."""
     text = "\n".join(lines)
-    cache_key = (text, tuple(sorted(shared_paths.items())))
+    cache_key = (text, tuple(sorted(shared_paths.items())), _reader_call_pattern().pattern)
     cached = _SCOPED_SYMBOL_CACHE.get(cache_key)
     if cached is not None:
         return cached
@@ -613,7 +613,7 @@ def _scoped_source_symbols(
     local_paths = dict(shared_paths)
     definitions: list[tuple[int, tuple[int, ...], str, str]] = []
     reader_assignment_starts: set[tuple[int, str, int]] = set()
-    for call in _call_spans(lines, READER_CALL_PATTERN, text, masked_text):
+    for call in _call_spans(lines, _reader_call_pattern(), text, masked_text):
         start = int(call["start"])
         line = int(call["start_line"])
         prefix = text[max(0, start - 256) : start]
@@ -683,7 +683,7 @@ def _scoped_source_symbols(
                     _reader_target(reader, local_paths)
                     for reader in _call_spans(
                         expression.splitlines(),
-                        READER_CALL_PATTERN,
+                        _reader_call_pattern(),
                         expression,
                         _strip_csharp_comments_and_strings(expression),
                     )
@@ -722,7 +722,7 @@ def _scoped_source_symbols(
         unresolved_reader = False
         for reader in _call_spans(
             expression.splitlines(),
-            READER_CALL_PATTERN,
+            _reader_call_pattern(),
             expression,
             _strip_csharp_comments_and_strings(expression),
         ):
@@ -793,7 +793,7 @@ def _resolve_assertion_target(
         return ";".join(dict.fromkeys(targets))
     reader_targets: list[str] = []
     reader_seen = False
-    for reader in _call_spans(call_text.splitlines(), READER_CALL_PATTERN):
+    for reader in _call_spans(call_text.splitlines(), _reader_call_pattern()):
         reader_seen = True
         target = _reader_target(reader, paths)
         if target:
@@ -845,7 +845,7 @@ def _resolve_derived_target(
             targets.extend(target.split(";"))
         else:
             unresolved = True
-    for reader in _call_spans(expression.splitlines(), READER_CALL_PATTERN):
+    for reader in _call_spans(expression.splitlines(), _reader_call_pattern()):
         target = _reader_target(reader, paths)
         if target:
             targets.extend(target.split(";"))
@@ -871,12 +871,10 @@ def _shared_scope_paths(files: list[Path]) -> dict[Path, dict[str, str]]:
         for path in group:
             lines.extend(path.read_text(encoding="utf-8", errors="replace").splitlines())
         shared = _source_targets(lines, include_variables=False)
-        local_symbols = {
-            path: _scoped_source_symbols(
-                path.read_text(encoding="utf-8", errors="replace").splitlines(), shared
-            )
-            for path in group
-        }
+        local_symbols = {}
+        for path in group:
+            _activate_reader_pattern(path)
+            local_symbols[path] = _scoped_source_symbols(path.read_text(encoding="utf-8", errors="replace").splitlines(), shared)
         caller_texts = {path: path.read_text(encoding="utf-8", errors="replace") for path in group}
         caller_lines = {path: text.splitlines() for path, text in caller_texts.items()}
         caller_scopes = {path: _brace_paths(lines) for path, lines in caller_lines.items()}
@@ -923,6 +921,7 @@ def _shared_scope_paths(files: list[Path]) -> dict[Path, dict[str, str]]:
                     call_index.setdefault(call.group("name"), []).append((caller_path, call))
         for callee_name, parameters in relevant:
             for caller_path, call in call_index.get(callee_name, ()):
+                _activate_reader_pattern(caller_path)
                 caller_text = caller_texts[caller_path]
                 arguments = [item.strip() for item in call.group("arguments").split(",")]
                 line = caller_text.count("\n", 0, call.start())
@@ -933,7 +932,7 @@ def _shared_scope_paths(files: list[Path]) -> dict[Path, dict[str, str]]:
                         if re.fullmatch(r"[A-Za-z_]\w*", argument)
                         else None
                     )
-                    reader = READER_CALL_PATTERN.search(argument) if target is None else None
+                    reader = _reader_call_pattern().search(argument) if target is None else None
                     if reader:
                         reader_argument = argument[argument.find("(", reader.start()) + 1 :]
                         first = _split_first_argument(reader_argument)
@@ -947,6 +946,7 @@ def _shared_scope_paths(files: list[Path]) -> dict[Path, dict[str, str]]:
                 shared[name] = next(iter(targets)) if len(targets) == 1 else "<unresolved>"
         for path in group:
             result[path] = shared
+    _activate_reader_pattern()
     return result
 
 
