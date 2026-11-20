@@ -19,6 +19,7 @@ GENERIC_DECLARATION_PATTERN = re.compile(
     rf"(?<![\w.])(?P<name>[A-Za-z_]\w*)\s*{GENERIC_ARGUMENTS}\s*\([^;{{}}]*\)\s*(?:where\s+[^{{;=]*)?(?P<open>\{{|=>)"
 )
 _PRIMITIVE_CACHE: dict[tuple[str, ...], re.Pattern[str]] = {}
+DISCOVERED_READER_DECLARATIONS: dict[str, dict[str, frozenset[str]]] = {}
 TEXT_RETURN_TYPES = frozenset(
     {
         "string",
@@ -257,6 +258,13 @@ def _discover_reader_patterns(root: Path, files: list[Path], units: dict[Path, d
             if hit:
                 readers.add((key, name))
                 changed = True
+    reader_files: dict[str, set[str]] = {}
+    for key, name, _, path in candidates:
+        if (key, name) in readers:
+            reader_files.setdefault(path.relative_to(root).as_posix(), set()).add(name)
+    DISCOVERED_READER_DECLARATIONS[str(root.resolve())] = {
+        relative: frozenset(names) for relative, names in reader_files.items()
+    }
     compiled: dict[tuple[object, ...], re.Pattern[str]] = {}
     for path, keys in declared.items():
         masked = str(units[path]["masked"])

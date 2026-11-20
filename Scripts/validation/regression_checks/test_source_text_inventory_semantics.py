@@ -243,6 +243,38 @@ class SourceTextInventorySemanticTests(_FixtureSupport, unittest.TestCase):
         )
         self.assertEqual(0, code, output)
 
+    def test_discovered_reader_body_changes_are_reported(self):
+        """Report a discovered reader that keeps a dead read but stops returning the source."""
+        dead = "using var stream = new System.IO.FileStream(path, System.IO.FileMode.Open);"
+        real = "{ " + dead + " return ReadRequiredRepoText(path); }"
+        fake = "{ " + dead + ' return "Constant"; }'
+        loaders = "internal static class SourceLoaders {\n    internal static string Load(string path) BODY\n}\n"
+        cases = {
+            "local reader": ("    private static string Load(string path) BODY", "Load", None),
+            "generic reader": ("    private static string Load<T>(string path) BODY", "Load<object>", None),
+            "external reader": ("", "SourceLoaders.Load", "SourceLoaders.cs"),
+        }
+        for name, (helper, call, extra) in cases.items():
+            with self.subTest(name), tempfile.TemporaryDirectory() as directory:
+                validation = (
+                    "public static class FixtureValidation {\n" + helper + "\n"
+                    "    public static void Validate() {\n"
+                    f'        var source = {call}("Packages/fixture/Runtime/Product.cs");\n'
+                    '        Check(source.Contains("Product"));\n    }\n}\n'
+                )
+                root = self._git_fixture(directory, validation_text=validation.replace("BODY", real))
+                runtime = root / "Packages/fixture/Tests/Runtime"
+                if extra:
+                    (runtime / extra).write_text(loaders.replace("BODY", real), encoding="utf-8")
+                    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+                    subprocess.run(["git", "-C", str(root), "commit", "-q", "-m", "loaders"], check=True)
+                    (runtime / extra).write_text(loaders.replace("BODY", fake), encoding="utf-8")
+                else:
+                    (runtime / "FixtureValidation.cs").write_text(validation.replace("BODY", fake), encoding="utf-8")
+                code, output = self._run_fixture_gate(root)
+                self.assertIn("SOURCE_TEXT_INVENTORY_BASE_OK base_rows=1 head_rows=1", output)
+                self.assertRegex(output, r"SOURCE_TEXT_RATCHET_HELPER_CHANGED file=\S+ helper=Load\b")
+
     def _declared_type_fixture(self, directory: str) -> Path:
         """Create registered validation types declared outside their stem-named files."""
         root = self._git_fixture(directory)

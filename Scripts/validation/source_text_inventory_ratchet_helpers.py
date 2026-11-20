@@ -13,8 +13,10 @@ from pathlib import Path
 
 try:
     from . import source_text_inventory_flow as _flow_module
+    from . import source_text_inventory_readers as _readers_module
 except ImportError:
     import source_text_inventory_flow as _flow_module
+    import source_text_inventory_readers as _readers_module
 
 RATCHET_APPROVALS_PATH = Path("Scripts/validation/source_text_ratchet_approvals.json")
 RATCHET_CLASSES = frozenset({"A", "B", "C", "UNKNOWN", "UNRESOLVED"})
@@ -280,17 +282,18 @@ def _ratchet_assertion_semantics(
         semantics.setdefault(key, Counter())[signature] += 1
     return semantics
 
-def _helper_signature_records(text: str) -> dict[str, str]:
-    """Return hashes for recognized assertion/read/source helpers and bindings."""
-    if not re.search(
+def _helper_signature_records(text: str, readers: frozenset[str] = frozenset()) -> dict[str, str]:
+    """Return hashes for recognized assertion/read/source helpers, discovered readers and bindings."""
+    if not readers and not re.search(
         r"\b(?:Check|Assert\w*|Read\w*|Source\w*|Validate\w*|Action|Func|Predicate|delegate)\b|=>",
         text,
     ):
         return {}
     masked = _flow_module._strip_csharp_comments_and_strings(text)
     methods = _flow_module._method_infos(text, masked)
+    generic = [method for method in _readers_module._generic_method_infos(masked) if method.name in readers]
     records: dict[str, str] = {}
-    for method in methods:
+    for method in [*methods, *generic]:
         delegate_parameter = any(
             _flow_module._normalize_type(parameter).removeprefix("System.").startswith(
                 ("Action", "Func", "Predicate")
@@ -301,6 +304,7 @@ def _helper_signature_records(text: str) -> dict[str, str]:
             method.name == "Check"
             or method.name.startswith(("Assert", "Read", "Source", "Validate"))
             or delegate_parameter
+            or method.name in readers
         ):
             continue
         if method.name == "Validate":
@@ -348,27 +352,31 @@ def _helper_signatures_at_revision(
 ) -> dict[tuple[str, str], str]:
     """Hash recognized helper bodies from one committed revision."""
     signatures: dict[tuple[str, str], str] = {}
+    discovered = _readers_module.DISCOVERED_READER_DECLARATIONS.get(str(root.resolve()), {})
     build_review = root / "build" / "review"
     build_review.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="source-text-helper-base-", dir=build_review) as directory:
         tree = Path(directory)
         _archive_revision(root, revision, tree)
-        for relative in sorted(files):
+        for relative in sorted(files | set(discovered)):
             path = tree / relative
             if not path.is_file():
                 continue
-            for helper, digest in _helper_signature_records(path.read_text(encoding="utf-8", errors="replace")).items():
+            text = path.read_text(encoding="utf-8", errors="replace")
+            for helper, digest in _helper_signature_records(text, discovered.get(relative, frozenset())).items():
                 signatures[(relative, helper)] = digest
     return signatures
 
 def _helper_signatures_at_head(root: Path, files: set[str]) -> dict[tuple[str, str], str]:
     """Hash recognized helper bodies from the reviewed working tree."""
     signatures: dict[tuple[str, str], str] = {}
-    for relative in sorted(files):
+    discovered = _readers_module.DISCOVERED_READER_DECLARATIONS.get(str(root.resolve()), {})
+    for relative in sorted(files | set(discovered)):
         path = root / relative
         if not path.is_file():
             continue
-        for helper, digest in _helper_signature_records(path.read_text(encoding="utf-8", errors="replace")).items():
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for helper, digest in _helper_signature_records(text, discovered.get(relative, frozenset())).items():
             signatures[(relative, helper)] = digest
     return signatures
 
