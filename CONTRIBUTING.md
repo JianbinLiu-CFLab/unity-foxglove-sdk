@@ -26,6 +26,10 @@ dotnet build Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/FoxgloveLog
    
 5. Open a PR against `main` with a clear description of the change
 
+## Environment preparation
+
+After cloning, run `python Scripts/setup/restore_third_party.py --restore` to restore the pinned third-party repositories used by repository scripts.
+
 ## Testing
 
 - New pure behavior/unit checks should use xUnit in `Packages/dev.unity2foxglove.sdk/Tests/Unit/`

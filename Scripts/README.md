@@ -214,6 +214,8 @@ Entry script:
 Scripts/schema/generate_ros2_msg_schema_catalog.py
 ```
 
+After cloning, run `python Scripts/setup/restore_third_party.py --restore`.
+
 Purpose:
 
 - Read the local official Foxglove ROS 2 `.msg` snapshot from `third-party/foxglove-sdk/schemas/ros2`.
