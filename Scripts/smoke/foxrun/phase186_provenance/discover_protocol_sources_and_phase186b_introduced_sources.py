@@ -83,8 +83,6 @@ def _discover_protocol_sources(
                         )
                     continue
                 if stat.S_ISDIR(entry_stat.st_mode):
-                    if entry.name.casefold() == "decomposed":
-                        continue
                     pending.append(candidate)
                     continue
                 if not fnmatch.fnmatchcase(
