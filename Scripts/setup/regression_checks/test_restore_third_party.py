@@ -224,6 +224,35 @@ class RestoreThirdPartyTests(unittest.TestCase):
         self.assertNotEqual(result, 0)
         self.assertFalse((target / "third-party/foxglove-sdk").exists())
 
+    def test_source_url_matching_accepts_only_official_optional_git_suffix(self) -> None:
+        """Official HTTPS origins may omit .git while other spellings remain rejected."""
+        module = self._module()
+
+        self.assertTrue(
+            module.source_url_matches(
+                "https://github.com/foxglove/foxglove-sdk.git",
+                "https://github.com/foxglove/foxglove-sdk",
+            )
+        )
+        self.assertTrue(
+            module.source_url_matches(
+                "https://github.com/foxglove/foxglove-sdk",
+                "https://github.com/foxglove/foxglove-sdk.git",
+            )
+        )
+        self.assertFalse(
+            module.source_url_matches(
+                "https://github.com/foxglove/foxglove-sdk.git",
+                "https://evil.example/foxglove/foxglove-sdk.git",
+            )
+        )
+        self.assertFalse(
+            module.source_url_matches(
+                "https://github.com/foxglove/foxglove-sdk.git",
+                "git@github.com:foxglove/foxglove-sdk.git",
+            )
+        )
+
     def test_status_mode_does_not_create_missing_checkouts(self) -> None:
         """Status mode reports missing vendors without creating directories."""
         module = self._module()

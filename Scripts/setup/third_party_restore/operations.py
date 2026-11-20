@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from pathlib import Path
 import sys
 
-from .configuration import SOURCE_URLS, VENDOR_ROOTS, vendor_pins
+from .configuration import SOURCE_URLS, VENDOR_ROOTS, source_url_matches, vendor_pins
 from .git import git_output, has_link_component, restore_missing
 
 
@@ -47,7 +47,7 @@ def inspect_or_restore(
 
     git_output(path, "rev-parse", "--git-dir")
     origin = git_output(path, "remote", "get-url", "origin")
-    if origin != source_url:
+    if not source_url_matches(source_url, origin):
         raise RuntimeError(f"origin differs from expected source URL: {origin}")
     status = git_output(path, "status", "--porcelain", "--untracked-files=all")
     if status:

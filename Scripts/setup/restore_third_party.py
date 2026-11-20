@@ -12,7 +12,7 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 
-from Scripts.setup.third_party_restore.configuration import VENDOR_ROOTS
+from Scripts.setup.third_party_restore.configuration import VENDOR_ROOTS, source_url_matches
 from Scripts.setup.third_party_restore.operations import restore_third_party as _restore_third_party
 
 
