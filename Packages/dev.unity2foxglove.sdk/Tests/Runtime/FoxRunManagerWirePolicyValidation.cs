@@ -197,10 +197,7 @@ namespace Unity.FoxgloveSDK.Tests
             var input = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/InputDispatchEmitter.cs");
             var publish = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxgloveSourceEmitter/PublishDispatchEmitter.cs");
             var hub = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxgloveLogHub.cs");
-            var router = PhaseValidationSourceHelpers.ReadRegisteredCSharpSource(
-                "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunInputRouter.cs",
-                "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/Decomposed/FoxRunInputRouter/Dispatch.cs",
-                "Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/Decomposed/FoxRunInputRouter/Lifetime.cs");
+            var router = ReadRepoText("Packages/dev.unity2foxglove.sdk/Runtime/Components/FoxRun/FoxRunInputRouter.cs");
 
             Check(input.Contains("(FoxRunEncoding)0", StringComparison.Ordinal)
                   && input.Contains("Unsupported FoxRun inbound wire encoding", StringComparison.Ordinal),

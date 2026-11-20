@@ -211,10 +211,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyDiagnosticsInventory()
         {
             var generator = PhaseValidationSourceHelpers.ReadFoxgloveLogSourceGeneratorSources();
-            var validator = PhaseValidationSourceHelpers.ReadRegisteredCSharpSource(
-                "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/FoxRunGenerationModelValidator.cs",
-                "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/Decomposed/FoxRunGenerationModelValidator/ValidationRules.cs",
-                "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/Decomposed/FoxRunGenerationModelValidator/ValidationTopology.cs");
+            var validator = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/FoxRunGenerationModelValidator.cs");
             var shipped = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/SourceGenerators/AnalyzerReleases.Shipped.md");
 
             foreach (var id in new[] { "FOXRUN015", "FOXRUN016", "FOXRUN017" })

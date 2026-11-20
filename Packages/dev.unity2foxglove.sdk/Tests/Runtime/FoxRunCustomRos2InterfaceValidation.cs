@@ -155,10 +155,7 @@ namespace Unity.FoxgloveSDK.Tests
             var customNaming = PhaseValidationSourceHelpers.ReadRequiredRepoText(CustomNamingPath);
             var reflectionBuilder = PhaseValidationSourceHelpers.ReadRequiredRepoText(ReflectionBuilderPath);
             var roslynBuilder = PhaseValidationSourceHelpers.ReadRequiredRepoText(RoslynBuilderPath);
-            var validator = PhaseValidationSourceHelpers.ReadRegisteredCSharpSource(
-                ValidatorPath,
-                "Packages/dev.unity2foxglove.ros2forunity/Editor/SourceGenerators/src/Shared/Decomposed/FoxRunGenerationModelValidator/ValidationRules.cs",
-                "Packages/dev.unity2foxglove.ros2forunity/Editor/SourceGenerators/src/Shared/Decomposed/FoxRunGenerationModelValidator/ValidationTopology.cs");
+            var validator = PhaseValidationSourceHelpers.ReadRequiredRepoText(ValidatorPath);
             var emitter = PhaseValidationSourceHelpers.ReadRequiredRepoText(EmitterPath);
             var r2fuAnalyzerPipeline =
                 PhaseValidationSourceHelpers.ReadRequiredRepoText(R2fuAnalyzerPipelinePath);
