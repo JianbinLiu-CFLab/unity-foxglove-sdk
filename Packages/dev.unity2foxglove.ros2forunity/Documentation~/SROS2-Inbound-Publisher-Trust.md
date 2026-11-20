@@ -8,7 +8,7 @@ SROS2 authenticates and authorizes publishers. It does not replace the RMW sampl
 
 ## 1. Create a keystore and enclaves
 
-Run the commands from a ROS2 installation that contains the `sros2` CLI. The PowerShell and Bash blocks are equivalent. Keep the `ROS_DOMAIN_ID` value identical for permission generation, Unity, and every external publisher.
+Run the commands from a ROS2 installation that contains the `sros2` CLI. The advertised Fast DDS PowerShell and Bash blocks are equivalent. The manual Cyclone path is shown separately below. Keep the `ROS_DOMAIN_ID` value identical for permission generation, Unity, and every external publisher.
 
 ### PowerShell
 
@@ -46,7 +46,7 @@ Keep the keystore `private` directory and CA private keys on the operator-contro
 
 Save the following as `$policyFile`. The `ns="/" node="*"` profiles deliberately match the dynamic root-namespace bridge names such as `u2f_imu_inbound_<instanceId>`, `u2f_pointcloud2_inbound_<instanceId>`, and `u2f_compressed_image_inbound_<instanceId>`. The wildcard is limited to the root namespace and to the listed topics. If a Unity scene uses a different namespace, replace `/` with that namespace and regenerate permissions.
 
-The `publisher` and `untrusted` profiles also match the node created by `ros2 topic pub`. The untrusted profile has no publish rule for the inbound topics. Add every exact FoxRun topic used by the scene before generating permissions.
+The `publisher` and `untrusted` profiles also match the node created by `ros2 topic pub`. They only reply to their own parameter-service requests and cannot request parameter changes from other nodes. The untrusted profile has no publish rule for the inbound topics. Add every exact FoxRun topic used by the scene before generating permissions. If the same Unity scene publishes any other outbound topics, add those exact topics to the Unity `publish="ALLOW"` list as well. Otherwise treat this template as an inbound-only policy, not a complete policy for that scene.
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -91,7 +91,7 @@ The `publisher` and `untrusted` profiles also match the node created by `ros2 to
             <topic>/imu/data</topic>
             <!-- Add only the exact generated FoxRun topics this publisher may send. -->
           </topics>
-          <services request="ALLOW" reply="ALLOW">
+          <services reply="ALLOW">
             <service>~/describe_parameters</service>
             <service>~/get_parameter_types</service>
             <service>~/get_parameters</service>
@@ -111,7 +111,7 @@ The `publisher` and `untrusted` profiles also match the node created by `ros2 to
             <topic>rosout</topic>
             <topic>/parameter_events</topic>
           </topics>
-          <services request="ALLOW" reply="ALLOW">
+          <services reply="ALLOW">
             <service>~/describe_parameters</service>
             <service>~/get_parameter_types</service>
             <service>~/get_parameters</service>
@@ -154,6 +154,7 @@ Set the environment before the first ROS2 For Unity native context is created. T
 ### Fast DDS product path
 
 ```powershell
+$keystore = (Resolve-Path 'build/phase201/sros2/keystore').Path
 $env:ROS_SECURITY_KEYSTORE = $keystore
 $env:ROS_SECURITY_ENABLE = 'true'
 $env:ROS_SECURITY_STRATEGY = 'Enforce'
@@ -161,15 +162,18 @@ $env:ROS_SECURITY_ENCLAVE_OVERRIDE = '/unity2foxglove/unity'
 $env:ROS_DOMAIN_ID = '0'
 $env:RMW_IMPLEMENTATION = 'rmw_fastrtps_cpp'
 $env:FASTDDS_DEFAULT_PROFILES_FILE = 'C:\path\to\phase201-fastdds.xml'
+# Fast DDS 2.x: use this variable instead of the 3.x variable above.
+# $env:FASTRTPS_DEFAULT_PROFILES_FILE = 'C:\path\to\phase201-fastdds.xml'
 ```
 
-Fast DDS 3.x uses `FASTDDS_DEFAULT_PROFILES_FILE`. Fast DDS 2.x uses `FASTRTPS_DEFAULT_PROFILES_FILE`. Select the variable that matches the runtime actually launched. The profile file changes Fast DDS transport/entity configuration. It does not create a per-reader sample-size admission limit.
+Fast DDS 3.x uses `FASTDDS_DEFAULT_PROFILES_FILE`. Fast DDS 2.x uses `FASTRTPS_DEFAULT_PROFILES_FILE`. Select exactly one variable that matches the runtime actually launched. The profile file changes Fast DDS transport/entity configuration. It does not create a per-reader sample-size admission limit.
 
 ### Manual Cyclone DDS path
 
 `rmw_cyclonedds_cpp` is present in some archives but is not an advertised product selection. Use this branch only after independently verifying the selected ROS installation and runtime.
 
 ```powershell
+$keystore = (Resolve-Path 'build/phase201/sros2/keystore').Path
 $env:ROS_SECURITY_KEYSTORE = $keystore
 $env:ROS_SECURITY_ENABLE = 'true'
 $env:ROS_SECURITY_STRATEGY = 'Enforce'
@@ -184,6 +188,7 @@ For Cyclone DDS, `Internal/MaxSampleSize` applies to the whole process, includin
 ### Bash equivalent
 
 ```bash
+keystore="$(cd build/phase201/sros2/keystore && pwd)"
 export ROS_SECURITY_KEYSTORE="$keystore"
 export ROS_SECURITY_ENABLE=true
 export ROS_SECURITY_STRATEGY=Enforce
@@ -191,9 +196,12 @@ export ROS_SECURITY_ENCLAVE_OVERRIDE=/unity2foxglove/unity
 export ROS_DOMAIN_ID=0
 export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
 export FASTDDS_DEFAULT_PROFILES_FILE="$HOME/path/to/phase201-fastdds.xml"
+# Fast DDS 2.x: use this variable instead of the 3.x variable above.
+# export FASTRTPS_DEFAULT_PROFILES_FILE="$HOME/path/to/phase201-fastdds.xml"
 ```
 
 Start Unity from this process after selecting the RMW and enclave. The secured Unity participant must use the same `ROS_DOMAIN_ID` and RMW as the publisher.
+Run each separate process block from the directory containing `build/phase201`, or replace the `keystore` assignment with the absolute path of the copied keystore on that machine. For the manual Cyclone path, every process must instead set the same `RMW_IMPLEMENTATION=rmw_cyclonedds_cpp` and `CYCLONEDDS_URI`.
 
 ## 4. Start a trusted publisher in a separate process
 
@@ -202,6 +210,7 @@ Use a new PowerShell or Bash process. Set the publisher enclave override before 
 ### PowerShell
 
 ```powershell
+$keystore = (Resolve-Path 'build/phase201/sros2/keystore').Path
 $env:ROS_SECURITY_KEYSTORE = $keystore
 $env:ROS_SECURITY_ENABLE = 'true'
 $env:ROS_SECURITY_STRATEGY = 'Enforce'
@@ -209,12 +218,18 @@ $env:ROS_SECURITY_ENCLAVE_OVERRIDE = '/unity2foxglove/publisher'
 $env:ROS_DOMAIN_ID = '0'
 $env:RMW_IMPLEMENTATION = 'rmw_fastrtps_cpp'
 $env:FASTDDS_DEFAULT_PROFILES_FILE = 'C:\path\to\phase201-fastdds.xml'
+# Fast DDS 2.x: use this variable instead of the 3.x variable above.
+# $env:FASTRTPS_DEFAULT_PROFILES_FILE = 'C:\path\to\phase201-fastdds.xml'
+# Manual Cyclone DDS: replace the RMW and Fast DDS lines above with these two lines.
+# $env:RMW_IMPLEMENTATION = 'rmw_cyclonedds_cpp'
+# $env:CYCLONEDDS_URI = 'file:///C:/path/to/cyclonedds-phase201.xml'
 ros2 topic pub /imu/data sensor_msgs/msg/Imu "{header: {frame_id: imu_link}}" --qos-reliability best_effort --qos-durability volatile --ros-args --enclave /unity2foxglove/publisher
 ```
 
 ### Bash
 
 ```bash
+keystore="$(cd build/phase201/sros2/keystore && pwd)"
 export ROS_SECURITY_KEYSTORE="$keystore"
 export ROS_SECURITY_ENABLE=true
 export ROS_SECURITY_STRATEGY=Enforce
@@ -222,6 +237,11 @@ export ROS_SECURITY_ENCLAVE_OVERRIDE=/unity2foxglove/publisher
 export ROS_DOMAIN_ID=0
 export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
 export FASTDDS_DEFAULT_PROFILES_FILE="$HOME/path/to/phase201-fastdds.xml"
+# Fast DDS 2.x: use this variable instead of the 3.x variable above.
+# export FASTRTPS_DEFAULT_PROFILES_FILE="$HOME/path/to/phase201-fastdds.xml"
+# Manual Cyclone DDS: replace the RMW and Fast DDS lines above with these two lines.
+# export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+# export CYCLONEDDS_URI='file:///path/to/cyclonedds-phase201.xml'
 ros2 topic pub /imu/data sensor_msgs/msg/Imu "{header: {frame_id: imu_link}}" --qos-reliability best_effort --qos-durability volatile --ros-args --enclave /unity2foxglove/publisher
 ```
 
@@ -234,13 +254,20 @@ Use a separate process and switch the override before starting the negative publ
 ### PowerShell
 
 ```powershell
+$keystore = (Resolve-Path 'build/phase201/sros2/keystore').Path
 $env:ROS_SECURITY_KEYSTORE = $keystore
 $env:ROS_SECURITY_ENABLE = 'true'
 $env:ROS_SECURITY_STRATEGY = 'Enforce'
 $env:ROS_SECURITY_ENCLAVE_OVERRIDE = '/unity2foxglove/untrusted'
 $env:ROS_DOMAIN_ID = '0'
 $env:RMW_IMPLEMENTATION = 'rmw_fastrtps_cpp'
-$negative = ros2 topic pub --once /imu/data sensor_msgs/msg/Imu "{header: {frame_id: unauthorized}}" --qos-reliability best_effort --qos-durability volatile --ros-args --enclave /unity2foxglove/untrusted 2>&1
+$env:FASTDDS_DEFAULT_PROFILES_FILE = 'C:\path\to\phase201-fastdds.xml'
+# Fast DDS 2.x: use this variable instead of the 3.x variable above.
+# $env:FASTRTPS_DEFAULT_PROFILES_FILE = 'C:\path\to\phase201-fastdds.xml'
+# Manual Cyclone DDS: replace the RMW and Fast DDS lines above with these two lines.
+# $env:RMW_IMPLEMENTATION = 'rmw_cyclonedds_cpp'
+# $env:CYCLONEDDS_URI = 'file:///C:/path/to/cyclonedds-phase201.xml'
+$negative = ros2 topic pub --once --wait-matching-subscriptions 0 --keep-alive 1 /imu/data sensor_msgs/msg/Imu "{header: {frame_id: unauthorized}}" --qos-reliability best_effort --qos-durability volatile --ros-args --enclave /unity2foxglove/untrusted 2>&1
 $negativeExitCode = $LASTEXITCODE
 $negative
 if ($negativeExitCode -eq 0) { Write-Host 'The CLI started. Accept the negative case only after secured graph inspection and Unity no-frame evidence show that no publish was authorized.' }
@@ -249,13 +276,20 @@ if ($negativeExitCode -eq 0) { Write-Host 'The CLI started. Accept the negative 
 ### Bash
 
 ```bash
+keystore="$(cd build/phase201/sros2/keystore && pwd)"
 export ROS_SECURITY_KEYSTORE="$keystore"
 export ROS_SECURITY_ENABLE=true
 export ROS_SECURITY_STRATEGY=Enforce
 export ROS_SECURITY_ENCLAVE_OVERRIDE=/unity2foxglove/untrusted
 export ROS_DOMAIN_ID=0
 export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
-if ros2 topic pub --once /imu/data sensor_msgs/msg/Imu "{header: {frame_id: unauthorized}}" --qos-reliability best_effort --qos-durability volatile --ros-args --enclave /unity2foxglove/untrusted; then
+export FASTDDS_DEFAULT_PROFILES_FILE="$HOME/path/to/phase201-fastdds.xml"
+# Fast DDS 2.x: use this variable instead of the 3.x variable above.
+# export FASTRTPS_DEFAULT_PROFILES_FILE="$HOME/path/to/phase201-fastdds.xml"
+# Manual Cyclone DDS: replace the RMW and Fast DDS lines above with these two lines.
+# export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+# export CYCLONEDDS_URI='file:///path/to/cyclonedds-phase201.xml'
+if ros2 topic pub --once --wait-matching-subscriptions 0 --keep-alive 1 /imu/data sensor_msgs/msg/Imu "{header: {frame_id: unauthorized}}" --qos-reliability best_effort --qos-durability volatile --ros-args --enclave /unity2foxglove/untrusted; then
   echo 'The CLI started. Accept the negative case only after secured graph inspection and Unity no-frame evidence show that no publish was authorized.'
 else
   echo 'The CLI was rejected by the local security path. Continue with the Unity no-frame check.'
@@ -264,12 +298,50 @@ fi
 
 The negative result must show no new inbound frame in Unity and no authorized publisher endpoint in secured graph inspection. A permissive launch, a missing enclave, or a CLI process without `--enclave` is not evidence of authorization. The CLI exit code alone is not the pass criterion because a process can start and fail to match an authorized endpoint.
 
+Use the same untrusted process environment for a parameter-service negative check. Choose a real node, parameter, and current value from the secured graph inspection, then verify that the untrusted enclave cannot write it:
+
+```powershell
+$targetNode = '/replace-with-known-node'
+$targetParameter = 'replace-with-known-parameter'
+$targetValue = 'replace-with-current-value'
+$parameterNegative = ros2 param set $targetNode $targetParameter $targetValue --ros-args --enclave /unity2foxglove/untrusted 2>&1
+$parameterExitCode = $LASTEXITCODE
+$parameterNegative
+if ($parameterExitCode -eq 0) { Write-Host 'Unexpected parameter write. Reject the policy.' }
+```
+
+```bash
+target_node='/replace-with-known-node'
+target_parameter='replace-with-known-parameter'
+target_value='replace-with-current-value'
+parameter_negative=$(ros2 param set "$target_node" "$target_parameter" "$target_value" --ros-args --enclave /unity2foxglove/untrusted 2>&1)
+parameter_exit_code=$?
+printf '%s\n' "$parameter_negative"
+if [ "$parameter_exit_code" -eq 0 ]; then echo 'Unexpected parameter write. Reject the policy.'; fi
+```
+
+Require a non-zero result and confirm that the target parameter did not change.
+
 For secured CLI inspection, use the matching enclave override in a separate process and disable the ROS daemon:
 
 ```powershell
+$keystore = (Resolve-Path 'build/phase201/sros2/keystore').Path
+$env:ROS_SECURITY_KEYSTORE = $keystore
+$env:ROS_SECURITY_ENABLE = 'true'
+$env:ROS_SECURITY_STRATEGY = 'Enforce'
 $env:ROS_SECURITY_ENCLAVE_OVERRIDE = '/unity2foxglove/publisher'
+$env:ROS_DOMAIN_ID = '0'
+$env:RMW_IMPLEMENTATION = 'rmw_fastrtps_cpp'
+$env:FASTDDS_DEFAULT_PROFILES_FILE = 'C:\path\to\phase201-fastdds.xml'
+# Fast DDS 2.x: use this variable instead of the 3.x variable above.
+# $env:FASTRTPS_DEFAULT_PROFILES_FILE = 'C:\path\to\phase201-fastdds.xml'
+# Manual Cyclone DDS: replace the RMW and Fast DDS lines above with these two lines.
+# $env:RMW_IMPLEMENTATION = 'rmw_cyclonedds_cpp'
+# $env:CYCLONEDDS_URI = 'file:///C:/path/to/cyclonedds-phase201.xml'
 ros2 topic list --no-daemon --spin-time 4
 ```
+
+For Bash, set the same `ROS_SECURITY_KEYSTORE`, `ROS_SECURITY_ENABLE`, `ROS_SECURITY_STRATEGY`, `ROS_SECURITY_ENCLAVE_OVERRIDE`, `ROS_DOMAIN_ID`, RMW, and Fast DDS profile variables in a separate process before running the same `ros2 topic list --no-daemon --spin-time 4` command. On the manual Cyclone path, set the same `RMW_IMPLEMENTATION` and `CYCLONEDDS_URI` used by the Unity and publisher processes.
 
 ## 6. Failure modes and boundaries
 
