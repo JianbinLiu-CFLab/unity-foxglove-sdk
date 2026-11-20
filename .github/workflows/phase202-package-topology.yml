@@ -87,7 +87,7 @@ jobs:
           git checkout -- Packages/dev.unity2foxglove.foxrun.ros2.interfaces
           python -B Scripts/release/run_unity_batch_compile.py --project-path Unity2Foxglove --log-file build/phase202/unity/pre-generate-compile.log --timeout-seconds 3600
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          & 'C:\Program Files\Unity\Hub\Editor\6000.3.14f1\Editor\Unity.exe' -batchmode -nographics -quit -projectPath Unity2Foxglove -executeMethod Unity.FoxgloveSDK.Editor.FoxRunRos2InterfacePackageCommand.ExecuteFromCommandLine --generate -logFile build/phase202/unity/generate-interface.log
+          & 'C:\Program Files\Unity\Hub\Editor\6000.3.14f1\Editor\Unity.exe' -batchmode -nographics -projectPath Unity2Foxglove -executeMethod Unity.FoxgloveSDK.Editor.FoxRunRos2InterfacePackageCommand.ExecuteFromCommandLine --generate -logFile build/phase202/unity/generate-interface.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $generatedPackage = 'Packages/dev.unity2foxglove.foxrun.ros2.interfaces'
           $generatedMetadata = Get-Content (Join-Path $generatedPackage 'package.json') -Raw
