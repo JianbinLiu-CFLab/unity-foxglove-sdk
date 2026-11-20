@@ -201,6 +201,10 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Run third-party restore regression
+        if: always()
+        run: python3 -m unittest Scripts.setup.regression_checks.test_restore_third_party
+
       - name: Run structural source guards
         env:
           STRUCTURE_GUARD_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
