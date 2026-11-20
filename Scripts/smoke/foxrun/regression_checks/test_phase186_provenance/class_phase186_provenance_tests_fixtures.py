@@ -126,6 +126,30 @@ class _Phase186ProvenanceTests_fixtures:
             ),
             errors,
         )
+
+    def test_fixed_source_roots_discover_protocol_sources_below_decomposed(self) -> None:
+        """Protocol sources under a Decomposed directory remain discoverable."""
+        module = load_module()
+        with tempfile.TemporaryDirectory() as temporary:
+            repository = pathlib.Path(temporary) / "repository"
+            repository.mkdir()
+            for root_relative, _ in module._PROTOCOL_SOURCE_ROOTS:
+                (repository / pathlib.PurePosixPath(root_relative)).mkdir(
+                    parents=True,
+                    exist_ok=True,
+                )
+            nested = (
+                repository
+                / "Packages/dev.unity2foxglove.ros2bridge/Runtime/Protocol/Decomposed"
+                / "Nested.cs"
+            )
+            nested.parent.mkdir(parents=True)
+            nested.write_text("class Nested {}\n", encoding="utf-8")
+
+            discovered, errors = module._discover_protocol_sources(repository)
+
+        self.assertIn(nested.relative_to(repository).as_posix(), discovered)
+        self.assertEqual([], errors)
     def test_fixed_source_roots_reject_symlink_directory_escape(self) -> None:
         """A fixed source root cannot hide sources behind a linked directory."""
 
