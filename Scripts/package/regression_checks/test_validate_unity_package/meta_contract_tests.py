@@ -8,6 +8,24 @@ from .foundation import *
 class PackageMetaContractTests:
     """Exercise package .meta presence, importer, orphan, and GUID uniqueness contracts."""
 
+    def test_tracked_metadata_rejects_literal_backslash_n_suffixes(self) -> None:
+        """Tracked Unity metadata must end with real newlines, not escaped text."""
+        roots = (
+            self.validator.PACKAGE,
+            self.validator.ROS2_FOR_UNITY_PACKAGE,
+            self.validator.ROS2_BRIDGE_PACKAGE,
+            self.validator.REMOTE_GATEWAY_PACKAGE,
+        )
+        offenders = [
+            path
+            for root in roots
+            if root.is_dir()
+            for path in root.rglob("*.meta")
+            if path.read_bytes().endswith(b"\\n")
+        ]
+
+        self.assertEqual([], offenders)
+
     def test_bridge_asset_inventory_excludes_documentation(self) -> None:
         """Exclude documentation files from the Bridge Unity asset inventory."""
         with tempfile.TemporaryDirectory() as temp:
