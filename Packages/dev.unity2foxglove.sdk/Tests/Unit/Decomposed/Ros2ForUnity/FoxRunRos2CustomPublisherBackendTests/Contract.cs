@@ -32,7 +32,7 @@ public sealed partial class FoxRunRos2CustomPublisherBackendTests
                 "dev.unity2foxglove.foxrun.ros2.interfaces",
                 "unity2foxglove_foxrun_interfaces_v1",
                 1,
-                "120864853239fae290b5199cd02dbf02f107299bccd8972b06d8cf59fc7594fd",
+                "b218c59b845ddf1cc3f23cb0e45f1dceff336a7693cf5648b6851aca3386e7c5",
                 "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64",
                 FoxRunFlow.Publish,
                 FoxRunQosProfile.Default,
