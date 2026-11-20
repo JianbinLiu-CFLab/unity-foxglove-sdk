@@ -59,11 +59,16 @@ def parse_nunit_results(results_path: Path) -> tuple[str, list[str], dict[str, i
         ], counts
     no_passing_tests = counts["passed"] <= 0 or counts["total"] <= 0
     has_non_passing_tests = any(counts[key] > 0 for key in ("failed", "inconclusive", "skipped"))
-    return (
-        "FAIL" if failed or no_passing_tests or has_non_passing_tests else "PASS",
-        failed,
-        counts,
-    )
+    if failed or no_passing_tests or has_non_passing_tests:
+        return "FAIL", failed, counts
+    case_results = [testcase.attrib.get("result", "").lower() for testcase in root.iter("test-case")]
+    if len(case_results) != counts["total"] or any(result != "passed" for result in case_results):
+        return "FAIL", [
+            "Unity result test cases do not match the passing summary: "
+            f"total={counts['total']} cases={len(case_results)} "
+            f"non_passed={sorted(set(result for result in case_results if result != 'passed'))}"
+        ], counts
+    return "PASS", failed, counts
 
 
 def _active_unity_project(project_path: Path) -> bool:
