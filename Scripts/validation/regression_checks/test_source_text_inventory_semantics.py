@@ -38,6 +38,316 @@ class SourceTextInventorySemanticTests(_FixtureSupport, unittest.TestCase):
             runtime_helper.write_text(base + "public sealed class UnrelatedHelper { public bool TryMap(string source) => false; }\n", encoding="utf-8")
             self.assertEqual(before[0]["harness_signature"], _gate_module.inventory(root)[0]["harness_signature"])
 
+    def _reader_gate(
+        self,
+        helpers: str,
+        statements: str,
+        extra_files: dict[str, str] | None = None,
+        base_statements: str = "",
+        prelude: str = "",
+    ) -> tuple[int, str]:
+        """Add statements to a registered entrypoint behind helper declarations and run the real gate."""
+        template = (
+            prelude + "public static partial class FixtureValidation {{\n{helpers}\n"
+            "    public static void Validate() {{\n{body}\n    }}\n}}\n"
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(directory, validation_text=template.format(helpers=helpers, body=base_statements))
+            for relative, text in (extra_files or {}).items():
+                path = root / relative if relative.startswith("Packages/") else root / "Packages/fixture/Tests/Runtime" / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(text, encoding="utf-8")
+            subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+            subprocess.run(["git", "-C", str(root), "commit", "-q", "--allow-empty", "-m", "readers"], check=True)
+            (root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs").write_text(
+                template.format(helpers=helpers, body=statements), encoding="utf-8"
+            )
+            return self._run_fixture_gate(root)
+
+    def test_discovered_readers_put_new_assertions_under_the_ratchet(self):
+        """Fail the gate when a new assertion reads source through any discovered reader helper."""
+        product = '"Packages/fixture/Runtime/Product.cs"'
+        check = 'Check(source.Contains("Product"));'
+        local = "    private static string Read(string relativePath) => ReadRequiredRepoText(relativePath);"
+        cases = {
+            "local Read": (local, f"var source = Read({product});\n{check}", None),
+            "root and path Read": (
+                "    private static string Read(string root, string relativePath)"
+                " => System.IO.File.ReadAllText(System.IO.Path.Combine(root, relativePath));",
+                f'var source = Read(".", {product});\n{check}',
+                None,
+            ),
+            "arbitrary name": (
+                "    private static string LoadThing(string path) => System.IO.File.ReadAllText(path);",
+                f"var source = LoadThing({product});\n{check}",
+                None,
+            ),
+            "nested wrappers": (
+                "    private static string Inner(string path) => ReadRequiredRepoText(path);\n"
+                "    private static string Outer(string path) { return Inner(path); }",
+                f"var source = Outer({product});\n{check}",
+                None,
+            ),
+            "partial sibling": ("", f"var source = Read({product});\n{check}", {
+                "FixtureValidation.Readers.cs": "public static partial class FixtureValidation {\n" + local + "\n}\n",
+            }),
+            "qualified type": ("", f"var source = SourceReaders.Read({product});\n{check}", {
+                "SourceReaders.cs": "internal static class SourceReaders {\n"
+                "    internal static string Read(string relativePath) => System.IO.File.ReadAllText(relativePath);\n}\n",
+            }),
+            "local propagation": (local, f"var first = Read({product});\nvar source = first;\n{check}", None),
+            "direct receiver": (local, f'Check(Read({product}).Contains("Product"));', None),
+            "dynamic path": (
+                local,
+                'var path = System.Environment.GetEnvironmentVariable("X");\n'
+                f"var source = Read(path);\n{check}",
+                None,
+            ),
+        }
+        for name, (helpers, statements, extra_files) in cases.items():
+            with self.subTest(name):
+                code, output = self._reader_gate(helpers, statements, extra_files)
+                self.assertNotEqual(0, code, output)
+                self.assertRegex(output, r"SOURCE_TEXT_RATCHET_(?:CLASS_C_INCREASE|UNRESOLVED_INCREASE)")
+        namespaced = {"SourceReaders.cs": "namespace Fixture.Readers {\n    internal static class SourceReaders {\n"
+                      "        internal static string Read(string relativePath) => System.IO.File.ReadAllText(relativePath);\n    }\n}\n"}
+        variants = {
+            "System.String": ("    private static System.String LoadThing(string path) => System.IO.File.ReadAllText(path);", "LoadThing", "", None),
+            "global String": ("    private static global::System.String LoadThing(string path) => System.IO.File.ReadAllText(path);", "LoadThing", "", None),
+            "nullable string": ("    private static string? LoadThing(string path) => System.IO.File.ReadAllText(path);", "LoadThing", "", None),
+            "nullable array": ("    private static string[]? LoadThing(string path) => System.IO.File.ReadAllLines(path);", "LoadThing", "", None),
+            "File alias": ("    private static string LoadThing(string path) => F.ReadAllText(path);", "LoadThing", "using F = System.IO.File;\n", None),
+            "async read": ("    private static string LoadThing(string path) => System.IO.File.ReadAllTextAsync(path).GetAwaiter().GetResult();", "LoadThing", "", None),
+            "FileInfo text": ("    private static string LoadThing(string path) => new System.IO.FileInfo(path).OpenText().ReadToEnd();", "LoadThing", "", None),
+            "this call": (local, "this.Read", "", None),
+            "type alias": ("", "SR.Read", "using SR = Fixture.Readers.SourceReaders;\n", namespaced),
+            "imported namespace": ("", "SourceReaders.Read", "using Fixture.Readers;\n", namespaced),
+            "fully qualified": ("", "Fixture.Readers.SourceReaders.Read", "", namespaced),
+            "using static": ("", "Read", "using static Fixture.Readers.SourceReaders;\n", namespaced),
+            "using static wrapper": ("", "Wrapper.Load", "", {**namespaced, "Wrapper.cs": (
+                "using static Fixture.Readers.SourceReaders;\n"
+                "internal static class Wrapper {\n    internal static string Load(string path) => Read(path);\n}\n"
+            )}),
+            "generic reader": (
+                "    private static string LoadThing<T>(string path) => System.IO.File.ReadAllText(path);",
+                "LoadThing<object>",
+                "",
+                None,
+            ),
+            "constrained generic block": (
+                "    private static string LoadThing<TKey, TValue>(string path) where TKey : class\n"
+                "    {\n        return System.IO.File.ReadAllText(path);\n    }",
+                "LoadThing<string, int>",
+                "",
+                None,
+            ),
+            "qualified generic": ("", "SourceReaders.Read<int>", "", {
+                "SourceReaders.cs": "internal static class SourceReaders {\n"
+                "    internal static string Read<T>(string relativePath) => System.IO.File.ReadAllText(relativePath);\n}\n",
+            }),
+        }
+        for name, (helpers, call, prelude, extra_files) in variants.items():
+            with self.subTest(name):
+                code, output = self._reader_gate(
+                    helpers, f"var source = {call}({product});\n{check}", extra_files, prelude=prelude
+                )
+                self.assertNotEqual(0, code, output)
+                self.assertRegex(output, r"SOURCE_TEXT_RATCHET_(?:CLASS_C_INCREASE|UNRESOLVED_INCREASE)")
+
+    def test_qualified_readers_stay_scoped_to_visible_declarations(self):
+        """Ignore Type.Read calls that bind to a same-named non-reader type in another namespace or package."""
+        product = '"Packages/fixture/Runtime/Product.cs"'
+        statements = f'var source = SourceReaders.Read({product});\nCheck(source.Contains("Product"));'
+        reader = "        internal static string Read(string relativePath) => System.IO.File.ReadAllText(relativePath);\n"
+        plain = "        internal static string Read(string relativePath) => relativePath;\n"
+        cases = {
+            "foreign namespace": ({
+                "Readers.cs": "namespace Fixture.Readers {\n    internal static class SourceReaders {\n" + reader + "    }\n}\n",
+                "Plain.cs": "namespace Fixture.Other {\n    internal static class SourceReaders {\n" + plain + "    }\n}\n",
+            }, "using Fixture.Other;\n"),
+            "foreign package": ({
+                "Packages/other/Tests/Runtime/SourceReaders.cs": "internal static class SourceReaders {\n" + reader + "}\n",
+                "Plain.cs": "internal static class SourceReaders {\n" + plain + "}\n",
+            }, ""),
+        }
+        for name, (extra_files, prelude) in cases.items():
+            with self.subTest(name):
+                code, output = self._reader_gate("", statements, extra_files, prelude=prelude)
+                self.assertEqual(0, code, output)
+        explicit = {
+            "Readers.cs": "namespace Good {\n    internal static class SourceReaders {\n" + reader + "    }\n}\n",
+            "Plain.cs": "namespace Other {\n    internal static class SourceReaders {\n" + plain + "    }\n}\n",
+        }
+        member_seed = (
+            "    private sealed class Cursor { public string ReadText(string path) => \"Product\"; }\n"
+            "    private static string LoadThing(string path) => new Cursor().ReadText(path);"
+        )
+        transitive = dict(explicit)
+        transitive["Wrapper.cs"] = (
+            "namespace Other {\n    internal static class Wrapper {\n"
+            "        internal static string Load(string relativePath) => SourceReaders.Read(relativePath);\n    }\n}\n"
+        )
+        for name, (helpers, call, extra_files, prelude) in {
+            "explicit foreign namespace": ("", "Other.SourceReaders.Read", explicit, "using Good;\n"),
+            "member seed call": (member_seed, "LoadThing", None, ""),
+            "transitive foreign namespace": ("", "Wrapper.Load", transitive, "using Other;\n"),
+        }.items():
+            with self.subTest(name):
+                code, output = self._reader_gate(
+                    helpers, f'var source = {call}({product});\nCheck(source.Contains("Product"));', extra_files, prelude=prelude
+                )
+                self.assertEqual(0, code, output)
+
+    def test_non_reader_calls_stay_outside_the_ratchet(self):
+        """Keep member calls, non-text helpers, masked or inactive definitions, foreign namesakes and temp reads out."""
+        product = '"Packages/fixture/Runtime/Product.cs"'
+        check = 'Check(source.Contains("Product"));'
+        local = "    private static string Read(string relativePath) => ReadRequiredRepoText(relativePath);"
+        plain = "    private static string Read(string relativePath) => relativePath;"
+        readers = {
+            "SourceReaders.cs": "internal static class SourceReaders {\n"
+            "    internal static string Read(string relativePath) => System.IO.File.ReadAllText(relativePath);\n}\n",
+        }
+        cases = {
+            "member call": (
+                local + '\n    private sealed class Cursor { public string Read() => "Product"; }',
+                f"var cursor = new Cursor();\nvar source = cursor.Read();\n{check}",
+                None,
+            ),
+            "non-text helper": (
+                "    private static int ReadLength(string path) => System.IO.File.ReadAllText(path).Length;",
+                f'var length = ReadLength({product});\nCheck(length.ToString().Contains("1"));',
+                None,
+            ),
+            "masked definition": (
+                "    // private static string Read(string relativePath) => ReadRequiredRepoText(relativePath);\n"
+                '    private const string Fake = "static string Read(string p) => ReadRequiredRepoText(p);";\n' + plain,
+                f"var source = Read({product});\n{check}",
+                None,
+            ),
+            "inactive definition": (
+                "#if false\n" + local + "\n#else\n" + plain + "\n#endif",
+                f"var source = Read({product});\n{check}",
+                None,
+            ),
+            "foreign namesake": (plain, f"var source = Read({product});\n{check}", readers),
+            "temporary file": (
+                "",
+                f"var source = System.IO.File.ReadAllText(System.IO.Path.GetTempFileName());\n{check}",
+                None,
+            ),
+        }
+        for name, (helpers, statements, extra_files) in cases.items():
+            with self.subTest(name):
+                code, output = self._reader_gate(helpers, statements, extra_files)
+                self.assertEqual(0, code, output)
+        code, output = self._reader_gate(
+            local,
+            f"var source = Read({product});\n{check}\nvar unrelated = 1;",
+            base_statements=f"var source = Read({product});\n{check}",
+        )
+        self.assertEqual(0, code, output)
+
+    def test_discovered_reader_body_changes_fail_the_gate(self):
+        """Fail when a discovered reader keeps a dead read but stops returning the source."""
+        dead = "using var stream = new System.IO.FileStream(path, System.IO.FileMode.Open);"
+        real = "{ " + dead + " return ReadRequiredRepoText(path); }"
+        fake = "{ " + dead + ' return "Constant"; }'
+        loaders = "internal static class SourceLoaders {\n    internal static string Load(string path) BODY\n}\n"
+        cases = {
+            "local reader": ("    private static string Load(string path) BODY", "Load", None),
+            "generic reader": ("    private static string Load<T>(string path) BODY", "Load<object>", None),
+            "external reader": ("", "SourceLoaders.Load", "SourceLoaders.cs"),
+        }
+        for name, (helper, call, extra) in cases.items():
+            with self.subTest(name), tempfile.TemporaryDirectory() as directory:
+                validation = (
+                    "public static class FixtureValidation {\n" + helper + "\n"
+                    "    public static void Validate() {\n"
+                    f'        var source = {call}("Packages/fixture/Runtime/Product.cs");\n'
+                    '        Check(source.Contains("Product"));\n    }\n}\n'
+                )
+                root = self._git_fixture(directory, validation_text=validation.replace("BODY", real))
+                runtime = root / "Packages/fixture/Tests/Runtime"
+                if extra:
+                    (runtime / extra).write_text(loaders.replace("BODY", real), encoding="utf-8")
+                    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+                    subprocess.run(["git", "-C", str(root), "commit", "-q", "-m", "loaders"], check=True)
+                    (runtime / extra).write_text(loaders.replace("BODY", fake), encoding="utf-8")
+                else:
+                    (runtime / "FixtureValidation.cs").write_text(validation.replace("BODY", fake), encoding="utf-8")
+                code, output = self._run_fixture_gate(root)
+                self.assertIn("SOURCE_TEXT_INVENTORY_BASE_OK base_rows=1 head_rows=1", output)
+                self.assertNotEqual(0, code, output)
+                self.assertRegex(output, r"SOURCE_TEXT_RATCHET_READER_CHANGED file=\S+ helper=Load\b")
+
+    def test_reader_swaps_through_new_files_fail_the_gate(self):
+        """Fail when a reader moves to a new file or the call switches to a new reader with a dead read."""
+        dead = "using var stream = new System.IO.FileStream(path, System.IO.FileMode.Open);"
+        holder = "internal static class {owner} {{\n    internal static string Load(string path) {{ " + dead + " return {value}; }}\n}}\n"
+        real = holder.format(owner="Helpers", value="ReadRequiredRepoText(path)")
+        cases = {
+            "deleted reader file": ("Helpers", {"Helpers2.cs": holder.format(owner="Helpers", value='"Constant"')}, "READER_CHANGED"),
+            "switched reader": ("Fakes", {"Fakes.cs": holder.format(owner="Fakes", value='"Constant"')}, "ASSERTION_CHANGED"),
+        }
+        for name, (owner, added, failure) in cases.items():
+            with self.subTest(name), tempfile.TemporaryDirectory() as directory:
+                validation = (
+                    "public static class FixtureValidation {\n    public static void Validate() {\n"
+                    '        var source = OWNER.Load("Packages/fixture/Runtime/Product.cs");\n'
+                    '        Check(source.Contains("Product"));\n    }\n}\n'
+                )
+                root = self._git_fixture(directory, validation_text=validation.replace("OWNER", "Helpers"))
+                runtime = root / "Packages/fixture/Tests/Runtime"
+                (runtime / "Helpers.cs").write_text(real, encoding="utf-8")
+                subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+                subprocess.run(["git", "-C", str(root), "commit", "-q", "-m", "helpers"], check=True)
+                if name == "deleted reader file":
+                    (runtime / "Helpers.cs").unlink()
+                for relative, text in added.items():
+                    (runtime / relative).write_text(text, encoding="utf-8")
+                (runtime / "FixtureValidation.cs").write_text(validation.replace("OWNER", owner), encoding="utf-8")
+                code, output = self._run_fixture_gate(root)
+                self.assertIn("SOURCE_TEXT_INVENTORY_BASE_OK base_rows=1 head_rows=1", output)
+                self.assertNotEqual(0, code, output)
+                self.assertIn(f"SOURCE_TEXT_RATCHET_{failure} file=", output)
+
+    def test_trusted_base_approves_exact_reader_body_change(self):
+        """Accept a reader body change only when the trusted base lists its exact digests."""
+        from Scripts.validation.source_text_inventory_ratchet_helpers import _helper_signature_records
+
+        reader = "\n    private static string ReadRequiredRepoText(string path) {{ return {value}; }}\n"
+        validation = (
+            "public static class FixtureValidation {{" + reader + "    public static void Validate() {{\n"
+            '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+            '        Check(source.Contains("Product"));\n    }}\n}}\n'
+        )
+        base = validation.format(value="System.IO.File.ReadAllText(path)")
+        head = validation.format(value='""')
+        digests = [_helper_signature_records(text)["ReadRequiredRepoText"] for text in (base, head)]
+        for name, head_digest, expected in (
+            ("exact approval", digests[1], 0),
+            ("stale approval", "0" * 64, 1),
+        ):
+            with self.subTest(name), tempfile.TemporaryDirectory() as directory:
+                root = self._git_fixture(directory, validation_text=base)
+                (root / "Scripts/validation/source_text_ratchet_replacements.json").write_text(json.dumps({"replacements": [{
+                    "file": "Packages/fixture/Tests/Runtime/FixtureValidation.cs",
+                    "validation_flag": "ReadRequiredRepoText",
+                    "class": "READER",
+                    "base_signature": digests[0],
+                    "head_signature": head_digest,
+                    "reason": "Reviewed reader body replacement for the fixture.",
+                    "replacement": "fixture",
+                }]}), encoding="utf-8")
+                subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+                subprocess.run(["git", "-C", str(root), "commit", "-q", "-m", "approve"], check=True)
+                (root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs").write_text(head, encoding="utf-8")
+                code, output = self._run_fixture_gate(root)
+                self.assertEqual(expected, code, output)
+                verdict = "APPROVED" if expected == 0 else "CHANGED"
+                self.assertIn(f"SOURCE_TEXT_RATCHET_READER_{verdict} file=", output)
+
     def _declared_type_fixture(self, directory: str) -> Path:
         """Create registered validation types declared outside their stem-named files."""
         root = self._git_fixture(directory)

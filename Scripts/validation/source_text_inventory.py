@@ -27,6 +27,7 @@ try:
     from . import source_text_inventory_text as _text_module
     from . import source_text_inventory_flow as _flow_module
     from . import source_text_inventory_symbols as _symbols_module
+    from . import source_text_inventory_readers as _readers_module
     from .source_text_inventory_text import *
     from .source_text_inventory_symbols import *
     from .source_text_inventory_flow import *
@@ -38,6 +39,7 @@ except ImportError:
     import source_text_inventory_text as _text_module
     import source_text_inventory_flow as _flow_module
     import source_text_inventory_symbols as _symbols_module
+    import source_text_inventory_readers as _readers_module
     from source_text_inventory_text import *
     from source_text_inventory_symbols import *
     from source_text_inventory_flow import *
@@ -416,7 +418,7 @@ def _unresolved_reason(
         prefix = masked[:start]
         if re.search(rf"\b{re.escape(receiver.split('.', 1)[0])}\s*=", prefix):
             return "reassigned"
-    if READER_CALL_PATTERN.search(call_text):
+    if _reader_call_pattern().search(call_text):
         return "dynamic_path"
     return "unsupported_reader"
 
@@ -749,8 +751,9 @@ def inventory(root: Path) -> list[dict[str, object]]:
             for path in root.glob(pattern)
         }
     )
-    scopes = _shared_scope_paths(files)
     external_helpers = _ExternalHelperIndex(root)
+    _readers_module._discover_reader_patterns(root, files, external_helpers.units)
+    scopes = _shared_scope_paths(files)
     partial_signatures: dict[Path, str] = {}
     partial_termination_barriers: dict[Path, dict[str, str]] = {}
     partial_groups: dict[tuple[tuple[str, ...], str], list[Path]] = {}
@@ -785,6 +788,7 @@ def inventory(root: Path) -> list[dict[str, object]]:
             partial_termination_barriers[path] = barriers
     comment_cache: dict[str, tuple[str, str]] = {}
     for path in files:
+        _activate_reader_pattern(path)
         rows.extend(
             scan_file(
                 path,
@@ -797,6 +801,7 @@ def inventory(root: Path) -> list[dict[str, object]]:
                 partial_termination_barriers.get(path),
             )
         )
+    _activate_reader_pattern()
     return rows
 
 
