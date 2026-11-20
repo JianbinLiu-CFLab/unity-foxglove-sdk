@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 import stat
+import shutil
 import subprocess
 
 
@@ -55,7 +56,12 @@ def restore_missing(path: Path, revision: str, source_url: str) -> None:
     """Initialize and detach a missing vendor checkout at one revision."""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.mkdir()
-    git_output(path, "init")
-    git_output(path, "remote", "add", "origin", source_url)
-    git_output(path, "fetch", "--depth", "1", "origin", revision)
-    git_output(path, "checkout", "--detach", "FETCH_HEAD")
+    try:
+        git_output(path, "init")
+        git_output(path, "remote", "add", "origin", source_url)
+        git_output(path, "fetch", "--depth", "1", "origin", revision)
+        git_output(path, "checkout", "--detach", "FETCH_HEAD")
+    except BaseException:
+        if not is_link_or_junction(path):
+            shutil.rmtree(path)
+        raise

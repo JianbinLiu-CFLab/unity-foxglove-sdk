@@ -205,6 +205,25 @@ class RestoreThirdPartyTests(unittest.TestCase):
         self.assertTrue(parent.is_symlink())
         self.assertFalse((outside / "foxglove-sdk").exists())
 
+    def test_restore_removes_a_new_checkout_after_fetch_failure(self) -> None:
+        """A failed new fetch removes only the directory created by that attempt."""
+        module = self._module()
+        target = self.root / "target"
+        broken_urls = dict(self.source_urls)
+        broken_urls["third-party/foxglove-sdk"] = (
+            (self.root / "missing-source.git").resolve().as_uri()
+        )
+
+        with mock.patch.object(module, "VENDOR_ROOTS", self.pins):
+            result = module.restore_third_party(
+                target,
+                restore=True,
+                source_urls=broken_urls,
+            )
+
+        self.assertNotEqual(result, 0)
+        self.assertFalse((target / "third-party/foxglove-sdk").exists())
+
     def test_status_mode_does_not_create_missing_checkouts(self) -> None:
         """Status mode reports missing vendors without creating directories."""
         module = self._module()
