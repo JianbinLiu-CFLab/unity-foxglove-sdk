@@ -41,6 +41,16 @@ def is_link_or_junction(path: Path) -> bool:
     return False
 
 
+def has_link_component(root: Path, path: Path) -> bool:
+    """Detect a symlink or junction in a vendor path without following it."""
+    current = path
+    while current != root:
+        if is_link_or_junction(current):
+            return True
+        current = current.parent
+    return False
+
+
 def restore_missing(path: Path, revision: str, source_url: str) -> None:
     """Initialize and detach a missing vendor checkout at one revision."""
     path.parent.mkdir(parents=True, exist_ok=True)

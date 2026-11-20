@@ -181,6 +181,30 @@ class RestoreThirdPartyTests(unittest.TestCase):
         self.assertTrue(link.is_symlink())
         self.assertFalse((outside / ".git").exists())
 
+    def test_restore_rejects_a_symlinked_vendor_parent(self) -> None:
+        """A symlinked third-party parent is rejected before any checkout."""
+        module = self._module()
+        target = self.root / "target"
+        outside = self.root / "outside"
+        outside.mkdir()
+        parent = target / "third-party"
+        parent.parent.mkdir(parents=True)
+        try:
+            os.symlink(outside, parent, target_is_directory=True)
+        except (OSError, NotImplementedError) as exc:
+            self.skipTest(f"symlink creation unavailable: {exc}")
+
+        with mock.patch.object(module, "VENDOR_ROOTS", self.pins):
+            result = module.restore_third_party(
+                target,
+                restore=False,
+                source_urls=self.source_urls,
+            )
+
+        self.assertNotEqual(result, 0)
+        self.assertTrue(parent.is_symlink())
+        self.assertFalse((outside / "foxglove-sdk").exists())
+
     def test_status_mode_does_not_create_missing_checkouts(self) -> None:
         """Status mode reports missing vendors without creating directories."""
         module = self._module()

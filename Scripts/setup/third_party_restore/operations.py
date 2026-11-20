@@ -7,7 +7,7 @@ from pathlib import Path
 import sys
 
 from .configuration import SOURCE_URLS, VENDOR_ROOTS, vendor_pins
-from .git import git_output, is_link_or_junction, restore_missing
+from .git import git_output, has_link_component, restore_missing
 
 
 def effective_source_urls(
@@ -33,7 +33,7 @@ def inspect_or_restore(
 ) -> None:
     """Inspect one vendor checkout and restore it only when it is missing."""
     path = repository_root / relative
-    if is_link_or_junction(path):
+    if has_link_component(repository_root, path):
         raise RuntimeError("path is a symlink or junction")
     if not path.exists():
         if not restore:
