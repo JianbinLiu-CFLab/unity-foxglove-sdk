@@ -35,7 +35,7 @@ def _static_cardinality(node: ast.AST) -> int | None:
         try:
             values = tuple(ast.literal_eval(argument) for argument in node.args)
             return len(range(*values)) if all(isinstance(value, int) for value in values) else None
-        except (TypeError, ValueError, SyntaxError):
+        except (TypeError, ValueError, SyntaxError, OverflowError):
             return None
     return None
 

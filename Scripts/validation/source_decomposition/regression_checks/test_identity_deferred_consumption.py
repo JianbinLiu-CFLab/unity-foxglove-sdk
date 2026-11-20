@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import unittest
 
-from .test_identity_gate_hardening import IdentityGateHardeningTests
+from . import test_identity_gate_hardening as _hardening
 
 
 class DeferredIdentityConsumptionTests(unittest.TestCase):
     """Regression coverage for deferred identity execution and consumption."""
 
-    _compatibility_errors = IdentityGateHardeningTests._compatibility_errors
+    _compatibility_errors = _hardening.IdentityGateHardeningTests._compatibility_errors
 
 
     def test_compatibility_allows_unexecuted_lambda_and_generator_bodies(self) -> None:
@@ -22,6 +22,17 @@ class DeferredIdentityConsumptionTests(unittest.TestCase):
             "__all__ = ['Settings']\n"
         )
         self.assertEqual([], self._compatibility_errors(base, head))
+
+    def test_compatibility_rejects_writes_over_range_too_large_to_count(self) -> None:
+        """A range whose length overflows ssize_t is treated as non-empty instead of crashing."""
+        base = "def helper():\n    return 1\n__all__ = ['helper']\n"
+        head = (
+            "import os\n"
+            "list(map(lambda _: os.environ.setdefault('FLAG', '1'), "
+            "range(100000000000000000000000000000000000000000)))\n"
+            "def helper():\n    return 1\n__all__ = ['helper']\n"
+        )
+        self.assertNotEqual([], self._compatibility_errors(base, head))
 
     def test_compatibility_allows_deferred_lambda_passed_to_regular_call(self) -> None:
         """Passing a lambda to an ordinary call does not prove that its body executes."""
