@@ -190,17 +190,18 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     throw new InvalidOperationException("R2FU sensor-data QoS profile could not be created.");
                 }
 
+                var subscriptionTopic = Topic;
                 using (qosProfile)
                 {
                     _subscription = _node.CreateSubscription<sensor_msgs.msg.PointCloud2>(
-                        Topic,
-                        OnPointCloud2,
+                        subscriptionTopic,
+                        message => OnPointCloud2(message, subscriptionTopic),
                         qosProfile.NativeProfile);
                 }
 
                 if (_subscription == null)
                     throw new InvalidOperationException("R2FU returned no PointCloud2 subscription.");
-                _subscribedTopic = Topic;
+                _subscribedTopic = subscriptionTopic;
                 _cleanupPending = false;
                 _failureCount = 0;
             }
@@ -211,8 +212,11 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             }
         }
 
-        private void OnPointCloud2(sensor_msgs.msg.PointCloud2 message)
+        private void OnPointCloud2(sensor_msgs.msg.PointCloud2 message, string subscriptionTopic)
         {
+            if (!string.Equals(subscriptionTopic, Topic, StringComparison.Ordinal))
+                return;
+
             var data = message?.Data;
             if (message == null || data == null)
             {
@@ -337,7 +341,7 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 if (!PointCloud2InboundMapper.TryMapOwned(
                         neutral,
                         _maxFrameBytes,
-                        Topic,
+                        subscriptionTopic,
                         out var frame,
                         out var error))
                 {
@@ -364,6 +368,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         {
             if (_slot == null || !_slot.TryTake(out var frame))
                 return;
+
+            if (!string.Equals(frame.Topic, Topic, StringComparison.Ordinal))
+            {
+                frame.Dispose();
+                return;
+            }
 
             var handler = FrameReceived;
             if (handler == null)
