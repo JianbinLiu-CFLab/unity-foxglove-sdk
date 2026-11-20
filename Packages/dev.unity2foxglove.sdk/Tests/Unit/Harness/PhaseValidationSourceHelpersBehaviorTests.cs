@@ -69,7 +69,6 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/FoxRunGenerationModelValidator.cs",
                 "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/Decomposed/FoxRunGenerationModelValidator/ValidationRules.cs",
                 "Packages/dev.unity2foxglove.sdk/Editor/Shared/FoxRunDescriptor/Decomposed/FoxRunGenerationModelValidator/ValidationTopology.cs");
-
         }
     }
 }
