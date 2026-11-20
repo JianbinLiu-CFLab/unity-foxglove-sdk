@@ -1,6 +1,6 @@
 # Unity2Foxglove FoxRun ROS2 Interfaces
 
-This is a source-only static interface package. It contains generated `.msg` files, no ros2cs assembly, native DLL, typesupport, CMake build output, or runtime endpoint.
+This is the generated Phase181 sample source-only interface package for the checked-in sample and acceptance fixtures. Applications must generate their own interface package from their DTO contracts. It contains generated `.msg` files, no ros2cs assembly, native DLL, typesupport, CMake build output, or runtime endpoint.
 
 ## Linux ROS2 workspace
 

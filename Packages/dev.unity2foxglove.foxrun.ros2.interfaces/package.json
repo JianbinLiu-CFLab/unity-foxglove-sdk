@@ -3,6 +3,6 @@
   "version": "0.1.0-preview.1",
   "displayName": "Unity2Foxglove FoxRun ROS2 Interfaces",
   "license": "Apache-2.0",
-  "description": "Deterministic source-only ROS2 interface package generated from FoxRun custom DTO contracts.",
+  "description": "Phase181 sample source-only ROS2 interface package generated from FoxRun custom DTO contracts; applications must generate their own interface package.",
   "unity": "6000.0"
 }

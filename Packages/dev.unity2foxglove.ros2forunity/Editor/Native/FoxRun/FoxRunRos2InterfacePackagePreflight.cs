@@ -105,7 +105,8 @@ namespace Unity.FoxgloveSDK.Editor
 
         public static FoxRunRos2InterfaceSourcePreflightResult Evaluate(
             string packageRoot,
-            FoxRunGenerationModel model)
+            FoxRunGenerationModel model,
+            bool sampleMetadata = false)
         {
             if (string.IsNullOrWhiteSpace(packageRoot))
                 throw new ArgumentException("The static interface package root is required.", nameof(packageRoot));
@@ -115,7 +116,7 @@ namespace Unity.FoxgloveSDK.Editor
             FoxRunRos2InterfaceRenderedPackage requested;
             try
             {
-                requested = FoxRunRos2InterfacePackageRenderer.Render(model);
+                requested = FoxRunRos2InterfacePackageRenderer.Render(model, sampleMetadata: sampleMetadata);
             }
             catch (FoxRunRos2InterfaceRenderException)
             {
@@ -182,7 +183,10 @@ namespace Unity.FoxgloveSDK.Editor
             FoxRunRos2InterfaceRenderedPackage current;
             try
             {
-                current = FoxRunRos2InterfacePackageRenderer.Render(model, currentLock.RosPackageName);
+                current = FoxRunRos2InterfacePackageRenderer.Render(
+                    model,
+                    currentLock.RosPackageName,
+                    sampleMetadata);
             }
             catch (FoxRunRos2InterfaceRenderException)
             {

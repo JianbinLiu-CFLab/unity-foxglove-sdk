@@ -117,6 +117,7 @@ _WORKFLOW_RUNNER_MODULES: dict[str, tuple[str, ...]] = {
         "Scripts.native.regression_checks.test_native_sources",
         "Scripts.package.regression_checks.test_validate_local_entrypoints",
         "Scripts.package.regression_checks.test_validate_phase186_package_matrix",
+        "Scripts.package.regression_checks.test_compose_unity_manifest",
         "Scripts.package.regression_checks.test_validate_unity_package",
         "Scripts.schema.regression_checks.test_schema_tooling",
         "Scripts.smoke.test_core_smoke_scripts",

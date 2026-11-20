@@ -56,7 +56,8 @@ namespace Unity.FoxgloveSDK.Editor
             FoxRunGenerationModel model,
             string nextRevision = null,
             Func<bool> isCancellationRequested = null,
-            Action beforeCommit = null)
+            Action beforeCommit = null,
+            bool sampleMetadata = false)
         {
             if (string.IsNullOrWhiteSpace(repoRoot))
                 throw new ArgumentException("Repository root is required.", nameof(repoRoot));
@@ -70,7 +71,7 @@ namespace Unity.FoxgloveSDK.Editor
             var requestedRevision = NormalizeRequestedRevision(nextRevision, currentLock);
             var currentPackageName = currentLock?.RosPackageName
                                      ?? FoxRunRos2InterfaceIdentity.DefaultRosPackageName;
-            var currentRender = FoxRunRos2InterfacePackageRenderer.Render(model, currentPackageName);
+            var currentRender = FoxRunRos2InterfacePackageRenderer.Render(model, currentPackageName, sampleMetadata);
             if (!currentRender.HasCustomContracts)
                 throw new FoxRunRos2InterfaceRenderException("No custom FoxRun ROS2 DTO contracts require a static interface package.");
 
@@ -79,7 +80,7 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 render = requestedRevision == null
                     ? currentRender
-                    : FoxRunRos2InterfacePackageRenderer.Render(model, requestedRevision);
+                    : FoxRunRos2InterfacePackageRenderer.Render(model, requestedRevision, sampleMetadata);
             }
             else if (requestedRevision == null)
             {
@@ -97,7 +98,7 @@ namespace Unity.FoxgloveSDK.Editor
                     throw new FoxRunRos2InterfaceRevisionRequiredException(
                         "An explicit next interface revision is allowed only for a wire-changing custom DTO schema.");
                 }
-                render = FoxRunRos2InterfacePackageRenderer.Render(model, requestedRevision);
+                render = FoxRunRos2InterfacePackageRenderer.Render(model, requestedRevision, sampleMetadata);
             }
 
             ValidateRender(render);

@@ -8,25 +8,25 @@
       "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"
     },
     {
-      "byteLength": 813,
+      "byteLength": 942,
       "classification": "metadata",
       "path": "package.json",
       "role": "metadata",
-      "sha256": "6101be51a8c9dabfc98241c0c49558bab719bffbc045f352d36604120409d86c"
+      "sha256": "9f0ed8c706eb8b8e043cbbe0eb89df4da81b98fac32199b44fbbe988842a8952"
     },
     {
-      "byteLength": 310,
+      "byteLength": 363,
       "classification": "metadata",
       "path": "README.md",
       "role": "notice",
-      "sha256": "7d0d01c69e77e13346ff9becddb7f9cb1bcff268e792da22687cbce7e21d8e33"
+      "sha256": "98e33a4c7690e24c673051d8b363fb4e3b7584ee924b2fc41be4a9279ecdb71c"
     },
     {
-      "byteLength": 3088,
+      "byteLength": 3134,
       "classification": "metadata",
       "path": "Runtime/FoxRun/Generated/FoxRunCustomTypesupportCatalog.g.cs",
       "role": "catalog",
-      "sha256": "934a2a8f06ab156fe136a9d0160f370f3a6d5cd8f2d19fce24c7bc1ce28de4a9"
+      "sha256": "ab3d48d38e172d1687b6578014cc33b5652d381288472ff624d70dc5fabd3354"
     },
     {
       "byteLength": 622,
@@ -278,14 +278,14 @@
       "classification": "metadata",
       "path": "RuntimeSupport/typesupport-manifest.json",
       "role": "metadata",
-      "sha256": "afcdac0ede8aadb9bb6dce729c95a3a5ebd9980551ff6a6c57e11664acf39091"
+      "sha256": "22f22b0e926145dc3318c5107ea017b5cc4e01ce69e3bcadf1ad930fbaf03031"
     },
     {
-      "byteLength": 17909,
+      "byteLength": 18642,
       "classification": "metadata",
       "path": "THIRD_PARTY_NOTICES.md",
       "role": "notice",
-      "sha256": "0ec557f2ea6bbacf841b9b13c6ad8f05993a3e42c2661afb85fbfe24cf7a9e59"
+      "sha256": "b0ecf1589570340581a2d1080a1aad0cb9c24f143ec02f8506d1fbfaa4046c6b"
     }
   ],
   "schemaVersion": 1
