@@ -777,15 +777,17 @@ jobs:
           if-no-files-found: error
 
   windows-ros2-native:
-    name: "Windows: ROS2 Native xUnit with Humble runtime"
+    name: "Windows: ROS2 Native xUnit with Jazzy runtime"
+    # Pull request code reaches the persistent runner only when the repository owner triggered the event.
     if: >-
       vars.UNITY_SELF_HOSTED_RUNNER == 'enabled'
       && (github.event_name != 'pull_request'
-          || github.event.pull_request.head.repo.full_name == github.repository)
+          || (github.event.pull_request.head.repo.full_name == github.repository
+              && github.actor == github.repository_owner))
     runs-on: [self-hosted, Windows, X64, unity2foxglove-phase186-live]
     timeout-minutes: 30
     env:
-      PHASE186_ROS2_HUMBLE_ROOT: ${{ vars.PHASE186_ROS2_HUMBLE_ROOT || 'C:\ros2_humble\ros2-windows' }}
+      PHASE186_ROS2_JAZZY_ROOT: ${{ vars.PHASE186_ROS2_JAZZY_ROOT || 'C:\ros2_jazzy\ros2-windows' }}
     steps:
       - name: Bootstrap PowerShell 7 on PATH
         shell: cmd
@@ -835,11 +837,11 @@ jobs:
             throw '.NET 10 SDK is required on the self-hosted runner.'
           }
 
-      - name: Put Humble and R2FU native libraries on PATH
+      - name: Put Jazzy and R2FU native libraries on PATH
         shell: pwsh
         run: |
-          $rosRoot = $env:PHASE186_ROS2_HUMBLE_ROOT
-          $plugins = Join-Path $env:GITHUB_WORKSPACE 'Packages/dev.unity2foxglove.ros2forunity.runtime.humble.win64/Runtime/Ros2ForUnity/Plugins/Windows/x86_64'
+          $rosRoot = $env:PHASE186_ROS2_JAZZY_ROOT
+          $plugins = Join-Path $env:GITHUB_WORKSPACE 'Packages/dev.unity2foxglove.ros2forunity.runtime.jazzy.win64/Runtime/Ros2ForUnity/Plugins/Windows/x86_64'
           foreach ($required in @(
               (Join-Path $rosRoot 'bin/sensor_msgs__rosidl_typesupport_c.dll'),
               (Join-Path $plugins 'sensor_msgs_imu__rosidl_typesupport_c_native.dll'))) {
@@ -1071,7 +1073,7 @@ jobs:
           ADAPTER_RESULT: ${{ needs['optional-ros2-adapter'].result }}
           NATIVE_RESULT: ${{ needs['optional-ros2-native'].result }}
           WINDOWS_ROS2_NATIVE_RESULT: ${{ needs['windows-ros2-native'].result }}
-          WINDOWS_ROS2_NATIVE_EXPECTED: ${{ vars.UNITY_SELF_HOSTED_RUNNER == 'enabled' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+          WINDOWS_ROS2_NATIVE_EXPECTED: ${{ vars.UNITY_SELF_HOSTED_RUNNER == 'enabled' && (github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor == github.repository_owner)) }}
           RUNTIME_VALIDATION_RESULT: ${{ needs['optional-ros2-runtime-validation'].result }}
           U2R2_RESULT: ${{ needs['u2r2-native'].result }}
           WINDOWS_RESULT: ${{ needs['windows-parity'].result }}
