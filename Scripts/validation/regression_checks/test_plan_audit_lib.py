@@ -176,7 +176,7 @@ class PlanAuditLibraryTests(unittest.TestCase):
                 self.assertEqual("FAIL", structure_guard_audit._plan_check("base").status)
                 path.write_text("Entry base: base\nStatus: Unimplemented\n", encoding="utf-8")
                 self.assertEqual("FAIL", structure_guard_audit._plan_check("base").status)
-                for value in ("Not yet implemented", "Not fully implemented", "Partially implemented", "Partially completed", "Incompletely implemented", "Incompletely completed"):
+                for value in ("Not yet implemented", "Not fully implemented", "Partially implemented", "Partially completed", "Incompletely implemented", "Incompletely completed", "Not-yet-implemented", "Partially-implemented"):
                     path.write_text(f"Entry base: base\nStatus: {value}\n", encoding="utf-8")
                     self.assertEqual("FAIL", structure_guard_audit._plan_check("base").status)
                 path.write_text("Entry base: base\nStatus: implemented\n", encoding="utf-8")

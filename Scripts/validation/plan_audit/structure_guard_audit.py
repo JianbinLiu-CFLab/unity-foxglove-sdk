@@ -121,7 +121,7 @@ def _plan_check(base_sha: str) -> audit_lib.Check:
     status_value = status_line.split(":", 1)[1].strip().lower() if ":" in status_line else ""
     negative_status = re.search(
         r"\b(?:unimplemented|unfinished|incomplete(?:ly)?)\b|"
-        r"\b(?:not(?:\s+\w+){0,2}|partial(?:ly)?)\s+(?:implemented|completed|complete)\b",
+        r"\b(?:not(?:[\s-]+\w+){0,2}|partial(?:ly)?)[\s-]+(?:implemented|completed|complete)\b",
         status_value,
     )
     status_ok = negative_status is None and bool(
