@@ -86,6 +86,25 @@ namespace Unity.FoxgloveSDK.Editor
             return true;
         }
 
+        /// <summary>Opens a child directory and retains a handle that blocks replacement.</summary>
+        internal bool TryOpenLockedDirectory(
+            string name,
+            out OpenH264WindowsSafeDirectory directory,
+            out string reason)
+        {
+            directory = null;
+            if (!OpenH264WindowsNativeApi.TryOpenRelativeLockedDirectory(
+                    _handle,
+                    name,
+                    out var handle,
+                    out var identity,
+                    out reason))
+                return false;
+
+            directory = new OpenH264WindowsSafeDirectory(handle, identity);
+            return true;
+        }
+
         /// <summary>Opens a child directory for a handle-relative rename.</summary>
         internal bool TryOpenRenameDirectory(
             string name,

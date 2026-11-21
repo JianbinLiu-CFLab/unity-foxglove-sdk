@@ -51,10 +51,10 @@ namespace Unity.FoxgloveSDK.Editor
             if (!TryOpen(
                     ToNtPath(fullPath),
                     IntPtr.Zero,
-                    GenericRead | Synchronize | FileListDirectory,
+                    GenericRead | Delete | Synchronize | FileListDirectory | FileAddFile | FileAddSubdirectory,
                     FileDirectoryFile | FileOpenReparsePoint | FileOpenForBackupIntent | FileSynchronousIoNonAlert,
                     FileOpen,
-                    ShareAll,
+                    ShareRead,
                     out handle,
                     out reason))
                 return false;
@@ -105,10 +105,38 @@ namespace Unity.FoxgloveSDK.Editor
             if (!TryOpen(
                     name,
                     parent.DangerousGetHandle(),
-                    GenericRead | Synchronize | FileListDirectory,
+                    GenericRead | Delete | Synchronize | FileListDirectory | FileAddFile | FileAddSubdirectory,
                     FileDirectoryFile | FileOpenReparsePoint | FileOpenForBackupIntent | FileSynchronousIoNonAlert,
                     disposition,
                     ShareAll,
+                    out handle,
+                    out reason))
+                return false;
+
+            return VerifyOpenedObject(handle, "directory", out identity, out reason);
+        }
+
+        /// <summary>Opens a child directory while retaining a replacement-blocking handle.</summary>
+        internal static bool TryOpenRelativeLockedDirectory(
+            SafeFileHandle parent,
+            string name,
+            out SafeFileHandle handle,
+            out OpenH264WindowsFileIdentity identity,
+            out string reason)
+        {
+            handle = null;
+            identity = default;
+            reason = "";
+            if (!IsSimpleName(name, out reason))
+                return false;
+
+            if (!TryOpen(
+                    name,
+                    parent.DangerousGetHandle(),
+                    GenericRead | Delete | Synchronize | FileListDirectory | FileAddFile | FileAddSubdirectory,
+                    FileDirectoryFile | FileOpenReparsePoint | FileOpenForBackupIntent | FileSynchronousIoNonAlert,
+                    FileOpen,
+                    ShareRead,
                     out handle,
                     out reason))
                 return false;

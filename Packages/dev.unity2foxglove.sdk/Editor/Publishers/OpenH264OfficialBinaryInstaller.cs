@@ -68,17 +68,11 @@ namespace Unity.FoxgloveSDK.Editor
                 OpenH264InstallLocation.IsAllowedInstallRoot(installRoot, out _);
             bool TryDelete(string path, bool warnOnFailure = false)
                 => OpenH264OfficialBinaryInstaller.TryDelete(path, warnOnFailure, validateDestination);
-            IDisposable installRootLock = null;
             OpenH264WindowsSafeDirectory safeRoot = null;
             OpenH264WindowsSafeDirectory safeVersion = null;
             try
             {
                 EnsureInstallRootStillAllowed(installRoot, InstallPhase.Prepare);
-                if (!OpenH264InstallLocation.TryAcquireInstallRootLock(
-                        installRoot,
-                        out installRootLock,
-                        out var rootLockError))
-                    return Fail(rootLockError);
                 Directory.CreateDirectory(versionDir);
                 EnsureInstallRootStillAllowed(installRoot, InstallPhase.Prepare);
                 if (!OpenH264WindowsSafeDirectory.TryOpenExisting(
@@ -86,7 +80,7 @@ namespace Unity.FoxgloveSDK.Editor
                         out safeRoot,
                         out var safeRootError))
                     return Fail(safeRootError);
-                if (!safeRoot.TryOpenDirectory(versionName, out safeVersion, out var safeVersionError))
+                if (!safeRoot.TryOpenLockedDirectory(versionName, out safeVersion, out var safeVersionError))
                     return Fail(safeVersionError);
                 if (!safeVersion.TryDeleteFile(compressedDownloadName, out var cleanupError))
                     return Fail(cleanupError);
@@ -198,7 +192,6 @@ namespace Unity.FoxgloveSDK.Editor
                     safeVersion.TryDeleteFile(compressedDownloadName, out _);
                 safeVersion?.Dispose();
                 safeRoot?.Dispose();
-                installRootLock?.Dispose();
             }
         }
 

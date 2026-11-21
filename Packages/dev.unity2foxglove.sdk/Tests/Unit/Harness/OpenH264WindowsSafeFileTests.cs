@@ -291,6 +291,74 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [WindowsSafeFileFact]
+        /// <summary>Blocks root and version-directory replacement while safe handles are held.</summary>
+        public void SafeDirectoryHandlesBlockReplacement()
+        {
+            var fixture = CreateFixture("safe-directory-lock");
+            var versionPath = Path.Combine(fixture.Root, "version");
+            var movedVersionPath = versionPath + ".moved";
+            var movedRootPath = fixture.Root + ".moved";
+            Directory.CreateDirectory(versionPath);
+            try
+            {
+                Assert.True(
+                    OpenH264WindowsSafeDirectory.TryOpenExisting(
+                        fixture.Root,
+                        out var root,
+                        out var rootReason),
+                    rootReason);
+                using (root)
+                {
+                    Assert.True(
+                        root.TryOpenLockedDirectory("version", out var version, out var versionReason),
+                        versionReason);
+                    using (version)
+                    {
+                        var versionBlocked = false;
+                        try
+                        {
+                            Directory.Move(versionPath, movedVersionPath);
+                        }
+                        catch (IOException)
+                        {
+                            versionBlocked = true;
+                        }
+                        catch (UnauthorizedAccessException)
+                        {
+                            versionBlocked = true;
+                        }
+
+                        Assert.True(versionBlocked);
+
+                        var rootBlocked = false;
+                        try
+                        {
+                            Directory.Move(fixture.Root, movedRootPath);
+                        }
+                        catch (IOException)
+                        {
+                            rootBlocked = true;
+                        }
+                        catch (UnauthorizedAccessException)
+                        {
+                            rootBlocked = true;
+                        }
+
+                        Assert.True(rootBlocked);
+                    }
+                }
+            }
+            finally
+            {
+                if (Directory.Exists(movedVersionPath))
+                    Directory.Delete(movedVersionPath, recursive: true);
+                if (Directory.Exists(movedRootPath))
+                    Directory.Delete(movedRootPath, recursive: true);
+                fixture.Dispose();
+            }
+        }
+
+        [WindowsSafeFileFact]
         /// <summary>Stops safe stream transfer when its cancellation token is already cancelled.</summary>
         public void SafeFileStreamTransferHonorsCancellation()
         {
