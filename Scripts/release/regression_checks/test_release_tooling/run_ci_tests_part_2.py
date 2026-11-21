@@ -203,6 +203,38 @@ class _RunCiTestsPart2:
             aggregate.index('if [ "$UNITY_REQUIRED" != "true" ]'),
         )
 
+    def test_self_hosted_windows_jobs_reuse_one_precheckout_runner_gate(self) -> None:
+        """Every discovered self-hosted job must reuse the anchored Node 24 runner gate."""
+        discovered_jobs = 0
+        workflow_paths = sorted((ROOT / ".github" / "workflows").glob("*.y*ml"))
+        for path in workflow_paths:
+            workflow = path.read_text(encoding="utf-8")
+            jobs = re.findall(
+                r"(?ms)^  [A-Za-z0-9_-]+:\n.*?(?=^  [A-Za-z0-9_-]+:\n|\Z)",
+                workflow,
+            )
+            self_hosted_jobs = [
+                job
+                for job in jobs
+                if re.search(
+                    r"(?m)^\s+runs-on:\s*(?:\[\s*|)self-hosted(?:\s*,|\s*\]|\s*$)",
+                    job,
+                )
+            ]
+            if not self_hosted_jobs:
+                continue
+            self.assertEqual(1, workflow.count("&require_node24_runner"), path.name)
+            discovered_jobs += len(self_hosted_jobs)
+            for job in self_hosted_jobs:
+                steps = job.split("    steps:\n", 1)[1]
+                first_step = steps.lstrip().splitlines()[0]
+                self.assertIn(
+                    first_step,
+                    ("- &require_node24_runner", "- *require_node24_runner"),
+                    path.name,
+                )
+        self.assertGreater(discovered_jobs, 0)
+
     def test_unity_scope_matches_import_sensitive_paths(self) -> None:
         """Unity import and project configuration changes must require the gate."""
         workflow = UNITY_COMPILE_WORKFLOW_PATH.read_text(encoding="utf-8")
