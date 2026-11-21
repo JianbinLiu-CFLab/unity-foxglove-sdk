@@ -27,7 +27,8 @@ namespace Unity.FoxgloveSDK.Editor
             string editorRoot,
             IReadOnlyList<string> protectedRoots,
             StringComparison pathComparison,
-            out string reason)
+            out string reason,
+            IReadOnlyList<string> projectChildren = null)
         {
             reason = "";
             if (string.IsNullOrWhiteSpace(root))
@@ -84,7 +85,7 @@ namespace Unity.FoxgloveSDK.Editor
                 return false;
             }
 
-            foreach (var projectChild in ProjectChildren)
+            foreach (var projectChild in projectChildren ?? ProjectChildren)
             {
                 if (IsSameOrChild(fullRoot, Path.Combine(projectRoot, projectChild), pathComparison))
                 {
