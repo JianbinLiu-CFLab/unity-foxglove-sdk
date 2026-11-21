@@ -328,6 +328,36 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             }
         }
 
+        [WindowsSafeFileFact]
+        /// <summary>Opens the verified root while the installer root lock is held.</summary>
+        public void SafeRootOpensWhileInstallRootLockIsHeld()
+        {
+            var fixture = CreateFixture("root-lock-compatibility");
+            try
+            {
+                Assert.True(
+                    OpenH264InstallLocation.TryAcquireInstallRootLock(
+                        fixture.Root,
+                        out var installLock,
+                        out var lockReason),
+                    lockReason);
+                using (installLock)
+                {
+                    Assert.True(
+                        OpenH264WindowsSafeDirectory.TryOpenExisting(
+                            fixture.Root,
+                            out var root,
+                            out var rootReason),
+                        rootReason);
+                    root.Dispose();
+                }
+            }
+            finally
+            {
+                fixture.Dispose();
+            }
+        }
+
         [WindowsSymlinkFact]
         /// <summary>Rejects a reparse-point root before opening it.</summary>
         public void RejectsAReparsePointRootBeforeOpeningIt()

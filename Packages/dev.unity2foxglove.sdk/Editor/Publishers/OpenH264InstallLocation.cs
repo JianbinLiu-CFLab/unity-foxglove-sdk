@@ -236,7 +236,7 @@ namespace Unity.FoxgloveSDK.Editor
             return CreateFileW(
                 path,
                 GenericRead | DeleteAccess,
-                FileShare.Read,
+                FileShare.ReadWrite,
                 IntPtr.Zero,
                 FileMode.Open,
                 FileFlagBackupSemantics | FileFlagOpenReparsePoint,

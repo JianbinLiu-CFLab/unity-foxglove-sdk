@@ -51,10 +51,10 @@ namespace Unity.FoxgloveSDK.Editor
             if (!TryOpen(
                     ToNtPath(fullPath),
                     IntPtr.Zero,
-                    GenericRead | Delete | Synchronize | FileListDirectory | FileAddFile | FileAddSubdirectory,
+                    GenericRead | Synchronize | FileListDirectory | FileAddFile | FileAddSubdirectory,
                     FileDirectoryFile | FileOpenReparsePoint | FileOpenForBackupIntent | FileSynchronousIoNonAlert,
                     FileOpen,
-                    ShareRead,
+                    ShareAll,
                     out handle,
                     out reason))
                 return false;
