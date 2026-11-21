@@ -20,6 +20,7 @@ namespace Unity.FoxgloveSDK.Editor
         private const uint Delete = 0x00010000;
         private const uint Synchronize = 0x00100000;
         private const uint FileListDirectory = 0x00000001;
+        private const uint FileAddFile = 0x00000002;
         private const uint FileAddSubdirectory = 0x00000004;
         private const uint FileTraverse = 0x00000020;
         private const uint FileReadAttributes = 0x00000080;
@@ -33,6 +34,7 @@ namespace Unity.FoxgloveSDK.Editor
         private const uint ShareReadWrite = 0x00000003;
         private const uint ShareAll = 0x00000007;
         private const uint FileAttributeReparsePoint = 0x0400;
+        private const uint FileBegin = 0;
 
         [StructLayout(LayoutKind.Sequential)]
         private struct UnicodeString
@@ -163,5 +165,17 @@ namespace Unity.FoxgloveSDK.Editor
         [DllImport("kernel32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
         private static extern bool FlushFileBuffers(SafeFileHandle file);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool SetFilePointerEx(
+            SafeFileHandle file,
+            long distanceToMove,
+            out long newFilePointer,
+            uint moveMethod);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool SetEndOfFile(SafeFileHandle file);
     }
 }

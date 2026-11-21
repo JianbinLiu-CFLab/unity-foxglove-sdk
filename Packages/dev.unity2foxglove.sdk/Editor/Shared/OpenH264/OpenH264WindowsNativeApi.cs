@@ -51,7 +51,7 @@ namespace Unity.FoxgloveSDK.Editor
             if (!TryOpen(
                     ToNtPath(fullPath),
                     IntPtr.Zero,
-                    GenericRead | Delete | Synchronize | FileListDirectory | FileAddSubdirectory,
+                    GenericRead | Delete | Synchronize | FileListDirectory | FileAddFile | FileAddSubdirectory,
                     FileDirectoryFile | FileOpenReparsePoint | FileOpenForBackupIntent | FileSynchronousIoNonAlert,
                     FileOpen,
                     ShareReadWrite,
@@ -105,7 +105,7 @@ namespace Unity.FoxgloveSDK.Editor
             if (!TryOpen(
                     name,
                     parent.DangerousGetHandle(),
-                    GenericRead | Delete | Synchronize | FileListDirectory | FileAddSubdirectory,
+                    GenericRead | Delete | Synchronize | FileListDirectory | FileAddFile | FileAddSubdirectory,
                     FileDirectoryFile | FileOpenReparsePoint | FileOpenForBackupIntent | FileSynchronousIoNonAlert,
                     disposition,
                     ShareAll,
@@ -133,7 +133,7 @@ namespace Unity.FoxgloveSDK.Editor
             if (!TryOpen(
                     name,
                     parent.DangerousGetHandle(),
-                    FileTraverse | FileReadAttributes | Synchronize,
+                    FileTraverse | FileReadAttributes | FileAddFile | Synchronize,
                     FileDirectoryFile | FileOpenReparsePoint | FileOpenForBackupIntent | FileSynchronousIoNonAlert,
                     FileOpen,
                     ShareAll,

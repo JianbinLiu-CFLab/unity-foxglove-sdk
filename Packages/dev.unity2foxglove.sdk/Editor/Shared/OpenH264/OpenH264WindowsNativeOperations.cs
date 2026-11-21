@@ -81,6 +81,12 @@ namespace Unity.FoxgloveSDK.Editor
             out string reason)
         {
             reason = "";
+            if (!SetFilePointerEx(file, 0, out _, FileBegin) || !SetEndOfFile(file))
+            {
+                reason = "Handle truncate failed with Win32 error " + Marshal.GetLastWin32Error() + ".";
+                return false;
+            }
+
             if (!WriteFile(file, bytes, (uint)bytes.Length, out var written, IntPtr.Zero)
                 || written != bytes.Length)
             {

@@ -128,6 +128,47 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             }
         }
 
+        [WindowsSafeFileFact]
+        /// <summary>Truncates an existing file before writing a shorter payload.</summary>
+        public void WriteAllBytesReplacesExistingFileContents()
+        {
+            var fixture = CreateFixture("truncate");
+            var filePath = Path.Combine(fixture.Root, "child", "probe.txt");
+            try
+            {
+                Assert.True(
+                    OpenH264WindowsSafeDirectory.TryOpenExisting(
+                        fixture.Root,
+                        out var root,
+                        out var rootReason),
+                    rootReason);
+                using (root)
+                {
+                    Assert.True(root.TryCreateDirectory("child", out var child, out var childReason), childReason);
+                    using (child)
+                    {
+                        Assert.True(child.TryCreateFile("probe.txt", out var created, out var createReason), createReason);
+                        using (created)
+                        {
+                            Assert.True(created.WriteAllBytes(new byte[] { 1, 2, 3, 4 }, out var writeReason), writeReason);
+                        }
+                    }
+
+                    Assert.True(root.TryOpenFile("child", "probe.txt", out var existing, out var openReason), openReason);
+                    using (existing)
+                    {
+                        Assert.True(existing.WriteAllBytes(new byte[] { 9 }, out var rewriteReason), rewriteReason);
+                    }
+                }
+
+                Assert.Equal(new byte[] { 9 }, File.ReadAllBytes(filePath));
+            }
+            finally
+            {
+                fixture.Dispose();
+            }
+        }
+
         [WindowsSymlinkFact]
         /// <summary>Rejects a reparse-point root before opening it.</summary>
         public void RejectsAReparsePointRootBeforeOpeningIt()
