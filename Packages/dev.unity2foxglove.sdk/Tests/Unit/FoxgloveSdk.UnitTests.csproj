@@ -11,6 +11,9 @@
     <IncludeRos2ForUnityAdapter Condition="'$(IncludeRos2ForUnityAdapter)' == ''">false</IncludeRos2ForUnityAdapter>
     <IncludeRos2Bridge Condition="'$(IncludeRos2Bridge)' == ''">false</IncludeRos2Bridge>
     <IncludeManagerProductionBoundary Condition="'$(IncludeManagerProductionBoundary)' == ''">false</IncludeManagerProductionBoundary>
+    <IncludeOpenH264EditorSurface
+      Condition="'$(IncludeOpenH264EditorSurface)' == '' and '$(IncludeRos2ForUnityAdapter)' != 'true' and '$(IncludeRos2ForUnityNative)' != 'true' and '$(IncludeRos2Bridge)' != 'true'">true</IncludeOpenH264EditorSurface>
+    <IncludeOpenH264EditorSurface Condition="'$(IncludeOpenH264EditorSurface)' == ''">false</IncludeOpenH264EditorSurface>
     <!-- Compile the reflection discovery boundary in the default focused lane;
          optional analyzer lanes use a different Unity compile-stub surface. -->
     <IncludeFoxRunEditorDiscoverySurface
@@ -52,6 +55,8 @@
              Condition="'$(IncludeFoxRunEditorDiscoverySurface)' != 'true'" />
     <Compile Remove="Fixtures/FoxgloveManagerClientEventsCompileStubs.cs;Manager/ClientEventAdmissionStateTests.cs"
              Condition="'$(IncludeClientEventManagerSurface)' != 'true'" />
+    <Compile Remove="Harness/OpenH264InstallLocationTests.cs"
+             Condition="'$(IncludeOpenH264EditorSurface)' != 'true'" />
     <Compile Include="$(MSBuildThisFileDirectory)../../Runtime/Components/Publishing/FoxglovePublisherBase.cs" Condition="'$(IncludeManagerProductionBoundary)' == 'true'" />
     <Compile Include="$(MSBuildThisFileDirectory)../../Runtime/Components/Manager/FoxgloveManager.ComponentPublishContracts.cs" Condition="'$(IncludeManagerProductionBoundary)' == 'true'" />
     <Compile Include="$(MSBuildThisFileDirectory)../../Runtime/Components/Manager/FoxgloveManager.FoxRunPublishing.cs" Condition="'$(IncludeManagerProductionBoundary)' == 'true'" />
