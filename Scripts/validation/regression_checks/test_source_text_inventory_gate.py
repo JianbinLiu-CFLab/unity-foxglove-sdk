@@ -532,8 +532,8 @@ class SourceTextRatchetTests(unittest.TestCase):
             self.assertEqual(1, code, output.getvalue())
             self.assertIn("SOURCE_TEXT_RATCHET_BASE_ERROR", output.getvalue())
 
-    def test_private_check_body_change_is_non_blocking_but_reported(self):
-        """Report an emptied private Check helper without blocking the ratchet."""
+    def test_private_check_body_change_fails_closed(self):
+        """Reject a private Check helper change that can disable source assertions."""
         with tempfile.TemporaryDirectory() as directory:
             root = self._git_fixture(directory)
             validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
@@ -541,8 +541,8 @@ class SourceTextRatchetTests(unittest.TestCase):
             text += "\nprivate static void Check(bool condition) { }\n"
             validation.write_text(text, encoding="utf-8")
             code, output = self._run_fixture_gate(root)
-            self.assertEqual(0, code, output)
-            self.assertIn("SOURCE_TEXT_RATCHET_HELPER_CHANGED", output)
+            self.assertEqual(1, code, output)
+            self.assertIn("SOURCE_TEXT_RATCHET_HARNESS_CHANGED", output)
             self.assertIn("helper=Check", output)
 
     def test_private_reader_body_change_fails_the_ratchet(self):
@@ -571,36 +571,123 @@ class SourceTextRatchetTests(unittest.TestCase):
             self.assertEqual(0, code, output)
             self.assertNotIn("SOURCE_TEXT_RATCHET_HELPER_CHANGED", output)
 
-    def test_delegate_rebinding_is_non_blocking_but_reported(self):
-        """Report a delegate rebinding to a no-op without blocking the ratchet."""
+    def test_delegate_rebinding_to_noop_fails_closed(self):
+        """Reject a delegate rebinding that removes the source assertion from execution."""
         with tempfile.TemporaryDirectory() as directory:
             root = self._git_fixture(
                 directory,
                 validation_text=(
                     "using System;\n"
                     "public static class FixtureValidation {\n"
-                    "    private static void Real() { }\n"
-                    "    private static void Noop() { }\n"
-                    "    private static void Run(Action action) { action(); }\n"
-                    "    public static void Validate() {\n"
+                    "    private static void Used() {\n"
                     '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
-                    "        Action callback = Real;\n"
-                    "        Run(callback);\n"
                     '        Check(source.Contains("Product"));\n'
+                    "    }\n"
+                    "    private static void Noop() { }\n"
+                    "    public static void Validate() {\n"
+                    "        Action run = Used;\n"
+                    "        run();\n"
                     "    }\n}\n"
                 ),
             )
             validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
             validation.write_text(
                 validation.read_text(encoding="utf-8").replace(
-                    "Action callback = Real;", "Action callback = Noop;"
+                    "Action run = Used;", "Action run = Noop;"
                 ),
                 encoding="utf-8",
             )
             code, output = self._run_fixture_gate(root)
-            self.assertEqual(0, code, output)
-            self.assertIn("SOURCE_TEXT_RATCHET_HELPER_CHANGED", output)
-            self.assertIn("helper=binding:callback", output)
+            self.assertEqual(1, code, output)
+            self.assertIn("SOURCE_TEXT_RATCHET_HARNESS_CHANGED", output)
+            self.assertIn("helper=binding:run", output)
+
+    def test_inline_delegate_forwarding_to_noop_fails_closed(self):
+        """Reject a forwarding helper that stops invoking an assertion lambda."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(
+                directory,
+                validation_text=(
+                    "using System;\n"
+                    "public static class FixtureValidation {\n"
+                    "    private static void Run(Action action) { action(); }\n"
+                    "    public static void Validate() {\n"
+                    "        Run(() => {\n"
+                    '            var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                    '            Check(source.Contains("Product"));\n'
+                    "        });\n"
+                    "    }\n}\n"
+                ),
+            )
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace(
+                    "private static void Run(Action action) { action(); }",
+                    "private static void Run(Action action) { }",
+                ),
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code, output)
+            self.assertIn("SOURCE_TEXT_RATCHET_HARNESS_CHANGED", output)
+
+    def test_delegate_factory_rebinding_to_noop_fails_closed(self):
+        """Reject a delegate factory change that removes its source assertion."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(
+                directory,
+                validation_text=(
+                    "using System;\n"
+                    "public static class FixtureValidation {\n"
+                    "    private static Action Make() => () => {\n"
+                    '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                    '        Check(source.Contains("Product"));\n'
+                    "    };\n"
+                    "    private static Action Noop() => () => { };\n"
+                    "    public static void Validate() {\n"
+                    "        Action run = Make();\n"
+                    "        run();\n"
+                    "    }\n}\n"
+                ),
+            )
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace(
+                    "Action run = Make();", "Action run = Noop();"
+                ),
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code, output)
+            self.assertIn("SOURCE_TEXT_RATCHET_HARNESS_CHANGED", output)
+
+    def test_external_helper_body_change_fails_closed(self):
+        """Reject a production helper change that weakens a source assertion operand."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(
+                directory,
+                validation_text=(
+                    "public static class FixtureValidation {\n"
+                    "    public static void Validate() {\n"
+                    '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                    '        Check(ExternalChecks.IsProduct(source) && source.Contains("Product"));\n'
+                    "    }\n}\n"
+                ),
+            )
+            helper = root / "Packages/fixture/Runtime/ExternalChecks.cs"
+            helper.write_text(
+                'public static class ExternalChecks { public static bool IsProduct(string source) => source.Contains("Product"); }\n',
+                encoding="utf-8",
+            )
+            subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+            subprocess.run(["git", "-C", str(root), "commit", "-q", "-m", "external-helper"], check=True)
+            helper.write_text(
+                "public static class ExternalChecks { public static bool IsProduct(string source) => true; }\n",
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code, output)
+            self.assertIn("SOURCE_TEXT_RATCHET_HARNESS_CHANGED", output)
 
     def test_forged_class_and_path_rows_fail_closed(self):
         """Reject forged class labels and path aliases before comparing counts."""

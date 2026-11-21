@@ -38,6 +38,32 @@ class SourceTextInventorySemanticTests(_FixtureSupport, unittest.TestCase):
             runtime_helper.write_text(base + "public sealed class UnrelatedHelper { public bool TryMap(string source) => false; }\n", encoding="utf-8")
             self.assertEqual(before[0]["harness_signature"], _gate_module.inventory(root)[0]["harness_signature"])
 
+    def test_task_run_without_wait_fails_closed(self):
+        """Reject dropping task completion when a background lambda owns an assertion."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(
+                directory,
+                validation_text=(
+                    "public static class FixtureValidation {\n"
+                    "    public static void Validate() {\n"
+                    "        System.Threading.Tasks.Task.Run(() => {\n"
+                    '            var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                    '            Check(source.Contains("Product"));\n'
+                    "        }).Wait();\n"
+                    "    }\n}\n"
+                ),
+            )
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace(
+                    "        }).Wait();\n", "        });\n"
+                ),
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code, output)
+            self.assertIn("SOURCE_TEXT_RATCHET_HARNESS_CHANGED", output)
+
     def _reader_gate(
         self,
         helpers: str,

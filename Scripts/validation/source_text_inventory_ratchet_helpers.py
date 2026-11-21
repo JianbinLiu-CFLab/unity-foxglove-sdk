@@ -425,6 +425,74 @@ def _reader_helper_failures(
             failures.append(message)
     return failures
 
+def _approved_reader_replacement_helpers(
+    root: Path,
+    revision: str,
+    base_helpers: dict[tuple[str, str], str],
+    head_helpers: dict[tuple[str, str], str],
+) -> set[tuple[str, str]]:
+    """Return helper identities with an exact trusted reader replacement approval."""
+    replacements, _ = _load_ratchet_replacements(root, revision)
+    approved: set[tuple[str, str]] = set()
+    for entry in replacements:
+        if entry["class"] != "READER":
+            continue
+        path = _ratchet_path(entry["file"])
+        helper = str(entry["validation_flag"]).strip()
+        base_digest = next(
+            (digest for (candidate_path, candidate_helper), digest in base_helpers.items()
+             if _ratchet_path(candidate_path) == path and candidate_helper == helper),
+            None,
+        )
+        head_digest = next(
+            (digest for (candidate_path, candidate_helper), digest in head_helpers.items()
+             if _ratchet_path(candidate_path) == path and candidate_helper == helper),
+            None,
+        )
+        if (
+            base_digest == entry["base_signature"]
+            and head_digest == entry["head_signature"]
+        ):
+            approved.add((path, helper))
+    return approved
+
+def _harness_change_failures(
+    base_rows: list[dict[str, object]],
+    head_rows: list[dict[str, object]],
+    base_helpers: dict[tuple[str, str], str],
+    head_helpers: dict[tuple[str, str], str],
+    approved_reader_helpers: set[tuple[str, str]],
+) -> list[str]:
+    """Fail closed when a source assertion's harness signature changes unexpectedly."""
+    base_harness: dict[tuple[str, str, str], Counter[str]] = {}
+    head_harness: dict[tuple[str, str, str], Counter[str]] = {}
+    for row in base_rows:
+        base_harness.setdefault(_ratchet_key(row), Counter())[str(row.get("harness_signature", ""))] += 1
+    for row in head_rows:
+        head_harness.setdefault(_ratchet_key(row), Counter())[str(row.get("harness_signature", ""))] += 1
+    changed_helpers = {
+        key for key in set(base_helpers) | set(head_helpers)
+        if base_helpers.get(key) != head_helpers.get(key)
+    }
+    changed_by_path: dict[str, set[tuple[str, str]]] = {}
+    for helper_path, helper_name in changed_helpers:
+        changed_by_path.setdefault(_ratchet_path(helper_path), set()).add(
+            (_ratchet_path(helper_path), helper_name)
+        )
+    failures: list[str] = []
+    for key in sorted(set(base_harness) | set(head_harness)):
+        if key not in base_harness or key not in head_harness:
+            continue
+        if base_harness.get(key, Counter()) == head_harness.get(key, Counter()):
+            continue
+        path_helpers = changed_by_path.get(key[0], set())
+        if not path_helpers or not path_helpers <= approved_reader_helpers:
+            failures.append(
+                f"SOURCE_TEXT_RATCHET_HARNESS_CHANGED file={key[0]} "
+                f"flag={key[1]} class={key[2]}"
+            )
+    return failures
+
 def _file_has_source_assertion(path: Path) -> bool:
     """Return whether a live validation file still contains a scannable assertion."""
     if not path.is_file():
