@@ -527,20 +527,6 @@ class SourceTextInventorySemanticTests(_FixtureSupport, unittest.TestCase):
             self.assertEqual(0, code, output)
             self.assertIn("SOURCE_TEXT_RATCHET_READER_APPROVED", output)
 
-    def test_reader_isolation_rejects_case_colliding_helper_paths(self):
-        """Reject reader isolation when raw helper paths collide after case folding."""
-        from Scripts.validation.source_text_inventory_reader_ratchet import _canonical_path_collisions
-
-        self.assertEqual(
-            {"packages/fixture/tests/runtime/fixturevalidation.cs"},
-            _canonical_path_collisions(
-                [
-                    "Packages/fixture/Tests/Runtime/FixtureValidation.cs",
-                    "packages/fixture/tests/runtime/fixturevalidation.cs",
-                ]
-            ),
-        )
-
     def test_trusted_generic_reader_approval_is_isolated(self):
         """Accept an exact approval for a generic reader body replacement."""
         from Scripts.validation.source_text_inventory_ratchet_helpers import _helper_signature_records
@@ -587,6 +573,35 @@ class SourceTextInventorySemanticTests(_FixtureSupport, unittest.TestCase):
             code, output = self._run_fixture_gate(root)
             self.assertEqual(0, code, output)
             self.assertIn("SOURCE_TEXT_RATCHET_READER_APPROVED", output)
+
+    def test_reader_approval_rejects_case_colliding_helper_paths(self):
+        """Reject reader isolation when canonical helper paths are ambiguous."""
+        from Scripts.validation.source_text_inventory_reader_ratchet import (
+            _approved_reader_change_isolated,
+            _ratchet_path,
+        )
+
+        approved_path = "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+        colliding_path = "packages/fixture/tests/runtime/fixturevalidation.cs"
+        normalized_path = _ratchet_path(approved_path)
+        base_helpers = {
+            (approved_path, "ReadRequiredRepoText"): "base-reader",
+            (colliding_path, "Run"): "base-run",
+        }
+        head_helpers = {
+            (approved_path, "ReadRequiredRepoText"): "head-reader",
+            (colliding_path, "Run"): "head-run",
+        }
+        self.assertFalse(
+            _approved_reader_change_isolated(
+                Path("."),
+                "HEAD",
+                {(normalized_path, "ReadRequiredRepoText")},
+                base_helpers,
+                head_helpers,
+                {normalized_path},
+            )
+        )
 
     def _declared_type_fixture(self, directory: str) -> Path:
         """Create registered validation types declared outside their stem-named files."""
