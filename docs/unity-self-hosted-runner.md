@@ -20,6 +20,7 @@ project on a self-hosted Windows runner. Branch protection requires its `unity-r
 | Requirement | Check |
 |---|---|
 | Windows x64 | |
+| GitHub Actions Runner `2.327.1` or newer at `%SystemDrive%\actions-runner` | `.\bin\Runner.Listener.exe --version` must report `2.327.1` or newer |
 | Unity `6000.3.14f1` at `%ProgramFiles%\Unity\Hub\Editor\6000.3.14f1\Editor\Unity.exe`, activated for the runner user | open the project once in that Editor |
 | PowerShell 7 **MSI** installation at `%ProgramFiles%\PowerShell\7\pwsh.exe` (the runner does not find the Microsoft Store/MSIX package) | `Test-Path "$env:ProgramFiles\PowerShell\7\pwsh.exe"` |
 | Git for Windows | `git --version` |
@@ -33,6 +34,17 @@ winget install --id Microsoft.PowerShell --source winget --installer-type wix --
 
 The workflow enables `core.longpaths` for its own checkout through a run-scoped `GIT_CONFIG_GLOBAL`; no global Git
 setting is needed.
+
+The pinned GitHub Actions use Node 24. Verify the runner version before registering or reusing a machine:
+
+```powershell
+cd "$env:SystemDrive\actions-runner"
+.\bin\Runner.Listener.exe --version
+```
+
+Upgrade the runner from the repository's **Settings → Actions → Runners** download instructions when the reported
+version is older than `2.327.1`. Each self-hosted workflow checks this requirement before checkout and stops with an
+explicit error when the runner is missing or too old.
 
 ## Register the runner
 
