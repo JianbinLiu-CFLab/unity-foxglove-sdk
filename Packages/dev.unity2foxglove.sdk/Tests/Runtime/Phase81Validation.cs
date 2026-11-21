@@ -126,18 +126,15 @@ namespace Unity.FoxgloveSDK.Tests
                 "81D-4: installer manifest defines helper output, vendored header, and helper source paths");
 
             var installer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.cs");
-            installer += ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.Download.cs");
-            installer += ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.Helper.cs");
-            var notices = ReadRepoText("THIRD_PARTY_NOTICES.md");
             Check(installer.Contains("DownloadFile") || installer.Contains("DownloadFileTaskAsync") || installer.Contains("HttpClient"),
                 "81D-5: installer has explicit download implementation");
             Check(!installer.Contains("SetEnvironmentVariable"),
                 "81D-6: installer does not mutate PATH");
             Check(!installer.Contains("Program Files"),
                 "81D-7: installer does not target Program Files");
-            Check(manifest.Contains(".bz2") && (installer.Contains("BZip2") || installer.Contains("SharpZipLib")),
+            Check(installer.Contains(".bz2") && (installer.Contains("BZip2") || installer.Contains("SharpZipLib")),
                 "81D-8: installer handles the official bz2-compressed DLL asset");
-            Check(notices.Contains("OpenH264 headers") || installer.Contains("SharpZipLib") || installer.Contains("MIT"),
+            Check(installer.Contains("THIRD_PARTY_NOTICES") || installer.Contains("SharpZipLib") || installer.Contains("MIT"),
                 "81D-9: installer documents BZip2 decompressor licensing when third-party decompression is used");
             Check(installer.Contains("BuildHelperExecutable") && installer.Contains("cl /nologo") && installer.Contains("vcvars64.bat"),
                 "81D-10: installer builds the OpenH264 helper executable locally");
@@ -164,6 +161,7 @@ namespace Unity.FoxgloveSDK.Tests
             Check(location.Contains("GetFinalHelperPath") && location.Contains("GetVersionedDirectory"),
                 "81D-17: install location exposes helper and DLL targets in the same versioned directory");
 
+            var notices = ReadRepoText("THIRD_PARTY_NOTICES.md");
             Check(notices.Contains("OpenH264 headers") && notices.Contains("BSD-2-Clause"),
                 "81D-18: third-party notices document vendored OpenH264 headers");
         }

@@ -121,6 +121,11 @@ namespace Unity.FoxgloveSDK.Tests
                 return ReadCameraPublisherEditorSources();
             if (string.Equals(
                     normalized,
+                    "Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.cs",
+                    StringComparison.Ordinal))
+                return ReadOpenH264InstallerSources(root);
+            if (string.Equals(
+                    normalized,
                     "Tools/foxglove-extensions/unity-cursor-bridge/src/index.ts",
                     StringComparison.Ordinal))
                 return ReadCursorBridgeSources();
