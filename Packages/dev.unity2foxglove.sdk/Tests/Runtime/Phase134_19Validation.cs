@@ -184,7 +184,12 @@ namespace Unity.FoxgloveSDK.Tests
         }
 
         private static string ReadRepoText(string relativePath)
-            => PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
+        {
+            if (relativePath == "Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.cs")
+                return PhaseValidationSourceHelpers.ReadOpenH264InstallerSource(RepoRoot);
+
+            return PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
+        }
 
         private static string RepoPath(string relativePath)
             => Path.Combine(RepoRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));

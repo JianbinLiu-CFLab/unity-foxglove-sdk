@@ -249,7 +249,11 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string ReadRepoText(string relativePath)
         {
-            var path = Path.Combine(Phase16Validation.FindRepoRoot(), relativePath.Replace('/', Path.DirectorySeparatorChar));
+            var root = Phase16Validation.FindRepoRoot()
+                ?? throw new DirectoryNotFoundException("Could not locate repository root");
+            if (relativePath == "Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.cs")
+                return PhaseValidationSourceHelpers.ReadOpenH264InstallerSource(root);
+
             return PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
         }
 

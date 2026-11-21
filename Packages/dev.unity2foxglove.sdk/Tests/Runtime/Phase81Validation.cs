@@ -349,6 +349,9 @@ namespace Unity.FoxgloveSDK.Tests
             if (!File.Exists(full))
                 throw new FileNotFoundException("Required validation fixture is missing: " + relativePath, full);
 
+            if (relativePath == "Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.cs")
+                return PhaseValidationSourceHelpers.ReadOpenH264InstallerSource(root);
+
             return PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
         }
 
