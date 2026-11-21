@@ -429,6 +429,54 @@ class SourceTextInventorySemanticTests(_FixtureSupport, unittest.TestCase):
             self.assertEqual(1, code, output)
             self.assertIn("SOURCE_TEXT_RATCHET_HARNESS_CHANGED", output)
 
+    def test_trusted_reader_approval_cannot_mask_same_file_harness_change(self):
+        """Reject a scheduling change combined with an approved reader edit in one file."""
+        from Scripts.validation.source_text_inventory_ratchet_helpers import _helper_signature_records
+
+        base_validation = (
+            "public static class FixtureValidation {\n"
+            "    private static string ReadRequiredRepoText(string path) { return System.IO.File.ReadAllText(path); }\n"
+            "    public static void Validate() {\n"
+            "        System.Threading.Tasks.Task.Run(() => {\n"
+            '            var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+            '            Check(source.Contains("Product"));\n'
+            "        }).Wait();\n"
+            "    }\n}\n"
+        )
+        head_validation = base_validation.replace(
+            "return System.IO.File.ReadAllText(path);", 'return "";'
+        ).replace("        }).Wait();\n", "        });\n")
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(directory, validation_text=base_validation)
+            replacements = root / "Scripts/validation/source_text_ratchet_replacements.json"
+            replacements.write_text(
+                json.dumps(
+                    {
+                        "replacements": [
+                            {
+                                "file": "Packages/fixture/Tests/Runtime/FixtureValidation.cs",
+                                "validation_flag": "ReadRequiredRepoText",
+                                "class": "READER",
+                                "base_signature": _helper_signature_records(base_validation)["ReadRequiredRepoText"],
+                                "head_signature": _helper_signature_records(head_validation)["ReadRequiredRepoText"],
+                                "reason": "Reviewed reader body replacement for the fixture.",
+                                "replacement": "fixture",
+                            }
+                        ]
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+            subprocess.run(["git", "-C", str(root), "commit", "-qm", "approve-reader"], check=True)
+            (root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs").write_text(
+                head_validation, encoding="utf-8"
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code, output)
+            self.assertIn("SOURCE_TEXT_RATCHET_HARNESS_CHANGED", output)
+
     def test_trusted_reader_approval_covers_partial_sibling_file(self):
         """Accept an exact reader replacement when the helper lives in a partial sibling file."""
         from Scripts.validation.source_text_inventory_ratchet_helpers import _helper_signature_records

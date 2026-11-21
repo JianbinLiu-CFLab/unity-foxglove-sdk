@@ -486,13 +486,62 @@ def _changed_source_paths(root: Path, revision: str) -> set[str]:
     )
     return {_ratchet_path(path) for path in completed.stdout.splitlines() if path.strip()}
 
+def _approved_reader_change_isolated(
+    root: Path,
+    revision: str,
+    approved_reader_helpers: set[tuple[str, str]],
+    base_helpers: dict[tuple[str, str], str],
+    head_helpers: dict[tuple[str, str], str],
+    changed_source_paths: set[str],
+) -> bool:
+    """Return whether approved reader edits leave every other source byte unchanged."""
+    path_lookup = {
+        _ratchet_path(path): path
+        for path, _ in set(base_helpers) | set(head_helpers)
+    }
+    helpers_by_path: dict[str, set[str]] = {}
+    for path, helper in approved_reader_helpers:
+        helpers_by_path.setdefault(path, set()).add(helper.split(":", 1)[0])
+    for normalized_path in changed_source_paths:
+        original_path = path_lookup.get(normalized_path)
+        names = helpers_by_path.get(normalized_path)
+        if original_path is None or not names:
+            return False
+        base_file = subprocess.run(
+            ["git", "show", f"{revision}:{original_path}"],
+            cwd=root,
+            check=False,
+            capture_output=True,
+        )
+        head_path = root / original_path
+        if base_file.returncode != 0 or not head_path.is_file():
+            return False
+        base_text = base_file.stdout.decode("utf-8", errors="replace")
+        head_text = head_path.read_text(encoding="utf-8", errors="replace")
+        normalized = []
+        for text in (base_text, head_text):
+            masked = _flow_module._strip_csharp_comments_and_strings(text)
+            spans = [
+                (method.body_start, method.body_end)
+                for method in _flow_module._method_infos(text, masked)
+                if method.name in names
+            ]
+            if len(spans) != len(names):
+                return False
+            for start, end in sorted(spans, reverse=True):
+                text = text[:start] + "<approved-reader-body>" + text[end + 1 :]
+            normalized.append(text)
+        if normalized[0] != normalized[1]:
+            return False
+    return True
+
 def _harness_change_failures(
     base_rows: list[dict[str, object]],
     head_rows: list[dict[str, object]],
     base_helpers: dict[tuple[str, str], str],
     head_helpers: dict[tuple[str, str], str],
     approved_reader_helpers: set[tuple[str, str]],
-    changed_source_paths: set[str],
+    reader_changes_isolated: bool,
 ) -> list[str]:
     """Fail closed when a source assertion's harness signature changes unexpectedly."""
     base_harness: dict[tuple[str, str, str], Counter[str]] = {}
@@ -506,11 +555,10 @@ def _harness_change_failures(
         for path, helper in set(base_helpers) | set(head_helpers)
         if base_helpers.get((path, helper)) != head_helpers.get((path, helper))
     }
-    approved_reader_paths = {path for path, _ in approved_reader_helpers}
     only_approved_reader_changes = (
         bool(changed_helpers)
         and changed_helpers <= approved_reader_helpers
-        and changed_source_paths <= approved_reader_paths
+        and reader_changes_isolated
     )
     failures: list[str] = []
     for key in sorted(set(base_harness) | set(head_harness)):

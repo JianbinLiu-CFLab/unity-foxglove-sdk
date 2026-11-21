@@ -28,12 +28,12 @@ try:
         RATCHET_CLASSES,
         _archive_revision,
         _file_has_source_assertion,
-        _helper_signature_records,
         _helper_signatures_at_head,
         _helper_signatures_at_revision,
         _apply_ratchet_replacements,
         _load_ratchet_approvals,
         _approved_reader_replacement_helpers,
+        _approved_reader_change_isolated,
         _changed_source_paths,
         _harness_change_failures,
         _reader_helper_failures,
@@ -52,12 +52,12 @@ except ImportError:
         RATCHET_CLASSES,
         _archive_revision,
         _file_has_source_assertion,
-        _helper_signature_records,
         _helper_signatures_at_head,
         _helper_signatures_at_revision,
         _apply_ratchet_replacements,
         _load_ratchet_approvals,
         _approved_reader_replacement_helpers,
+        _approved_reader_change_isolated,
         _changed_source_paths,
         _harness_change_failures,
         _reader_helper_failures,
@@ -823,6 +823,14 @@ def _verify_count_ratchet(
         root, revision, base_helpers, head_helpers
     )
     changed_source_paths = _changed_source_paths(root, revision)
+    reader_changes_isolated = _approved_reader_change_isolated(
+        root,
+        revision,
+        approved_reader_helpers,
+        base_helpers,
+        head_helpers,
+        changed_source_paths,
+    )
     failures.extend(
         _reader_helper_failures(root, revision, base_helpers, head_helpers, reader_names)
     )
@@ -833,7 +841,7 @@ def _verify_count_ratchet(
             base_helpers,
             head_helpers,
             approved_reader_helpers,
-            changed_source_paths,
+            reader_changes_isolated,
         )
     )
     helper_changed = [
