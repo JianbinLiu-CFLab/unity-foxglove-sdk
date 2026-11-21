@@ -1,1 +1,22 @@
-{"approvals": []}
+{
+  "approvals": [
+    {
+      "file": "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase81Validation.cs",
+      "validation_flag": "--phase81",
+      "class": "C",
+      "base_count": 73,
+      "head_count": 71,
+      "reason": "User requested the PR #754 P3 fix on 2026-11-21; Phase 81D-16 replaces source-string evidence with executable OpenH264 install-path policy coverage.",
+      "replacement": "Phase81Validation 81D-16 executable install-path policy checks"
+    },
+    {
+      "file": "Packages/dev.unity2foxglove.sdk/Tests/Unit/Harness/Phase173093ReviewTests.cs",
+      "validation_flag": "",
+      "class": "C",
+      "base_count": 37,
+      "head_count": 32,
+      "reason": "User requested the PR #754 P3 fix on 2026-11-21; the protected-root review guard now executes the shared OpenH264 install-path policy.",
+      "replacement": "Phase173093ReviewTests OpenH264InstallPathPolicyRejectsProjectAndProtectedRoots"
+    }
+  ]
+}
