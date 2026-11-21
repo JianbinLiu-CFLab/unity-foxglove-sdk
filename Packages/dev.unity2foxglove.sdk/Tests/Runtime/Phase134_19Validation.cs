@@ -95,9 +95,9 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyInstallerChecksHashesBeforeMovingDll()
         {
-            var installer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.cs")
-                + ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.Download.cs")
-                + ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.Helper.cs");
+            var installer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.cs");
+            installer += ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.Download.cs");
+            installer += ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.Helper.cs");
             var downloadIndex = installer.IndexOf("OpenH264OfficialBinaryManifest.DownloadUrl", StringComparison.Ordinal);
             var compressedVerifyIndex = installer.IndexOf("OpenH264OfficialBinaryManifest.CompressedAssetSha256", StringComparison.Ordinal);
             var decompressIndex = installer.IndexOf("TryDecompressBZip2(", StringComparison.Ordinal);
@@ -127,9 +127,9 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyOpenH264ProcessOutputIsDrainedBeforeWait()
         {
-            var installer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.cs")
-                + ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.Download.cs")
-                + ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.Helper.cs");
+            var installer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.cs");
+            installer += ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.Download.cs");
+            installer += ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.Helper.cs");
             Check(installer.Contains("FoxgloveEditorProcessRunner.Run", StringComparison.Ordinal)
                   && !installer.Contains("process.StandardOutput.ReadToEnd();", StringComparison.Ordinal),
                 "134-19-E1: OpenH264 installer uses shared redirected process runner instead of post-wait pipe reads");
@@ -175,9 +175,9 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void VerifyEditorCleanupFindings()
         {
-            var installer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.cs")
-                + ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.Download.cs")
-                + ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.Helper.cs");
+            var installer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.cs");
+            installer += ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.Download.cs");
+            installer += ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.Helper.cs");
             Check(!installer.Contains("\"2026\", \"2022\", \"2019\"", StringComparison.Ordinal)
                   && installer.Contains("TryDeleteFile(compressedDownloadName", StringComparison.Ordinal)
                   && installer.Contains("Could not delete temporary OpenH264 installer file", StringComparison.Ordinal),

@@ -54,9 +54,9 @@ namespace Unity.FoxgloveSDK.Tests
         private static void OpenH264InstallerVerifiesPinnedArtifacts()
         {
             var manifest = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryManifest.cs");
-            var installer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.cs")
-                + ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.Download.cs")
-                + ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.Helper.cs");
+            var installer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.cs");
+            installer += ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.Download.cs");
+            installer += ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.Helper.cs");
             var verifier = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/OpenH264/OpenH264ArtifactHashVerifier.cs");
 
             Check(manifest.Contains("DownloadUrl = \"https://ciscobinary.openh264.org/", StringComparison.Ordinal)
@@ -85,9 +85,9 @@ namespace Unity.FoxgloveSDK.Tests
         private static void OpenH264PathsHaveSingleInstallAuthority()
         {
             var location = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264InstallLocation.cs");
-            var installer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.cs")
-                + ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.Download.cs")
-                + ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.Helper.cs");
+            var installer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.cs");
+            installer += ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.Download.cs");
+            installer += ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.Helper.cs");
 
             Check(location.Contains("GetFinalDllPath", StringComparison.Ordinal)
                   && location.Contains("GetFinalHelperPath", StringComparison.Ordinal)

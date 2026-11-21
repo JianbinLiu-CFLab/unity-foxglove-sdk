@@ -93,9 +93,9 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void OpenH264InstallerUsesTemporaryDownloadsBeforeFinalPaths()
         {
-            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.cs")
-                + ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.Download.cs")
-                + ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.Helper.cs");
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.cs");
+            source += ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.Download.cs");
+            source += ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.Helper.cs");
             var install = ExtractMethod(source, "internal static OpenH264InstallResult Install");
 
             Check(install.Contains("compressedDownloadName = Path.GetFileName(compressedDownloadPath)", StringComparison.Ordinal)
