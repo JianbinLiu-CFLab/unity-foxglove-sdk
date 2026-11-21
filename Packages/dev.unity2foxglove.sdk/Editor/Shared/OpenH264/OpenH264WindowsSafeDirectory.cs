@@ -125,6 +125,45 @@ namespace Unity.FoxgloveSDK.Editor
             return true;
         }
 
+        /// <summary>Opens an existing direct child file without resolving a path string.</summary>
+        internal bool TryOpenFile(
+            string name,
+            out OpenH264WindowsSafeFile file,
+            out string reason)
+        {
+            file = null;
+            if (!OpenH264WindowsNativeApi.TryOpenRelativeFile(
+                    _handle,
+                    name,
+                    createNew: false,
+                    out var handle,
+                    out var identity,
+                    out reason))
+                return false;
+
+            file = new OpenH264WindowsSafeFile(handle, identity);
+            return true;
+        }
+
+        /// <summary>Deletes an existing direct child file and reports missing files as success.</summary>
+        internal bool TryDeleteFile(string name, out string reason)
+        {
+            reason = "";
+            if (!TryOpenFile(name, out var file, out reason))
+            {
+                if (reason.IndexOf("0xC0000034", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    reason = "";
+                    return true;
+                }
+
+                return false;
+            }
+
+            using (file)
+                return file.Delete(out reason);
+        }
+
         /// <summary>Opens a file below a verified child directory.</summary>
         internal bool TryOpenFile(
             string directoryName,

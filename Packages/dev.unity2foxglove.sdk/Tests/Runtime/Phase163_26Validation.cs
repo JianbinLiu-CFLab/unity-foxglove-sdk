@@ -54,7 +54,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void OpenH264InstallerVerifiesPinnedArtifacts()
         {
             var manifest = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryManifest.cs");
-            var installer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.cs");
+            var installer = ReadInstallerSources();
             var verifier = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/OpenH264/OpenH264ArtifactHashVerifier.cs");
 
             Check(manifest.Contains("DownloadUrl = \"https://ciscobinary.openh264.org/", StringComparison.Ordinal)
@@ -62,13 +62,14 @@ namespace Unity.FoxgloveSDK.Tests
                   && manifest.Contains("DllSha256", StringComparison.Ordinal),
                 "163-26B-1: OpenH264 manifest pins HTTPS source and SHA256 digests");
             Check(installer.Contains("TryVerifySha256", StringComparison.Ordinal)
-                  && CheckOrdered(installer, "DownloadFile(OpenH264OfficialBinaryManifest.DownloadUrl, compressedDownloadPath);", "OpenH264OfficialBinaryManifest.CompressedAssetSha256")
-                  && CheckOrdered(installer, "TryDecompressBZip2(compressedPath, tempDll", "OpenH264OfficialBinaryManifest.DllSha256"),
+                  && CheckOrdered(installer, "OpenH264OfficialBinaryManifest.DownloadUrl", "OpenH264OfficialBinaryManifest.CompressedAssetSha256")
+                  && CheckOrdered(installer, "TryDecompressBZip2(", "OpenH264OfficialBinaryManifest.DllSha256"),
                 "163-26B-2: installer verifies archive before final move and DLL after decompression");
             Check(installer.Contains("DownloadBodyTimeoutMs", StringComparison.Ordinal)
                   && installer.Contains("CancellationTokenSource(DownloadBodyTimeoutMs)", StringComparison.Ordinal)
-                  && installer.Contains("CopyToAsync(destinationStream, 81920, cts.Token)", StringComparison.Ordinal),
-                "163-26B-4: installer bounds response-body copy after receiving OpenH264 headers");
+                  && installer.Contains("WriteFromStream", StringComparison.Ordinal)
+                  && installer.Contains("MaxCompressedAssetBytes", StringComparison.Ordinal),
+                "163-26B-4: installer bounds response-body copy through a parent-owned safe handle");
             Check(installer.Contains("CombineDecompressErrors", StringComparison.Ordinal)
                   && installer.Contains("bzip2 failed: ", StringComparison.Ordinal)
                   && installer.Contains("Python bz2 failed: ", StringComparison.Ordinal),
@@ -82,7 +83,7 @@ namespace Unity.FoxgloveSDK.Tests
         private static void OpenH264PathsHaveSingleInstallAuthority()
         {
             var location = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264InstallLocation.cs");
-            var installer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.cs");
+            var installer = ReadInstallerSources();
 
             Check(location.Contains("GetFinalDllPath", StringComparison.Ordinal)
                   && location.Contains("GetFinalHelperPath", StringComparison.Ordinal)
@@ -240,6 +241,12 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string ReadRepoText(string relativePath)
             => PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
+
+        /// <summary>Reads the OpenH264 installer facade and its owned partial modules.</summary>
+        private static string ReadInstallerSources()
+            => ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.cs")
+               + ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.Download.cs")
+               + ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.Helper.cs");
 
         private static string RepoPath(string relativePath)
         {

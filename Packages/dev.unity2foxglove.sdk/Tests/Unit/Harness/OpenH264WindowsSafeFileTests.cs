@@ -7,6 +7,7 @@
 using System;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Threading;
 using Unity.FoxgloveSDK.Editor;
 using Xunit;
 
@@ -250,6 +251,76 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 }
 
                 Assert.Equal(new byte[] { 7 }, File.ReadAllBytes(targetPath));
+            }
+            finally
+            {
+                fixture.Dispose();
+            }
+        }
+
+        [WindowsSafeFileFact]
+        /// <summary>Copies a bounded stream into and back out of a safe file handle.</summary>
+        public void SafeFileStreamTransferUsesOwnedHandle()
+        {
+            var fixture = CreateFixture("stream-transfer");
+            try
+            {
+                Assert.True(
+                    OpenH264WindowsSafeDirectory.TryOpenExisting(
+                        fixture.Root,
+                        out var root,
+                        out var rootReason),
+                    rootReason);
+                using (root)
+                {
+                    Assert.True(root.TryCreateFile("stream.bin", out var file, out var fileReason), fileReason);
+                    using (file)
+                    using (var source = new MemoryStream(new byte[] { 4, 5, 6 }))
+                    {
+                        Assert.True(file.WriteFromStream(source, 16, out var written, out var writeReason), writeReason);
+                        Assert.Equal(3, written);
+                        Assert.True(file.ReadAllBytes(16, out var bytes, out var readReason), readReason);
+                        Assert.Equal(new byte[] { 4, 5, 6 }, bytes);
+                    }
+                }
+            }
+            finally
+            {
+                fixture.Dispose();
+            }
+        }
+
+        [WindowsSafeFileFact]
+        /// <summary>Stops safe stream transfer when its cancellation token is already cancelled.</summary>
+        public void SafeFileStreamTransferHonorsCancellation()
+        {
+            var fixture = CreateFixture("stream-cancel");
+            try
+            {
+                Assert.True(
+                    OpenH264WindowsSafeDirectory.TryOpenExisting(
+                        fixture.Root,
+                        out var root,
+                        out var rootReason),
+                    rootReason);
+                using (root)
+                {
+                    Assert.True(root.TryCreateFile("cancel.bin", out var file, out var fileReason), fileReason);
+                    using (file)
+                    using (var source = new MemoryStream(new byte[] { 1, 2, 3 }))
+                    using (var cancellation = new CancellationTokenSource())
+                    {
+                        cancellation.Cancel();
+                        Assert.False(
+                            file.WriteFromStream(
+                                source,
+                                16,
+                                cancellation.Token,
+                                out _,
+                                out var reason));
+                        Assert.Contains("cancel", reason, StringComparison.OrdinalIgnoreCase);
+                    }
+                }
             }
             finally
             {

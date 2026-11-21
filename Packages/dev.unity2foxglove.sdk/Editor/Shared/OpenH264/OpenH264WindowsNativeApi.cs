@@ -54,7 +54,7 @@ namespace Unity.FoxgloveSDK.Editor
                     GenericRead | Delete | Synchronize | FileListDirectory | FileAddFile | FileAddSubdirectory,
                     FileDirectoryFile | FileOpenReparsePoint | FileOpenForBackupIntent | FileSynchronousIoNonAlert,
                     FileOpen,
-                    ShareReadWrite,
+                    ShareRead,
                     out handle,
                     out reason))
                 return false;

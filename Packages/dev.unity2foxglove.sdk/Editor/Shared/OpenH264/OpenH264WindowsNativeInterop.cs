@@ -32,6 +32,7 @@ namespace Unity.FoxgloveSDK.Editor
         private const uint FileOpen = 0x00000001;
         private const uint FileCreate = 0x00000002;
         private const uint ShareReadWrite = 0x00000003;
+        private const uint ShareRead = 0x00000001;
         private const uint ShareAll = 0x00000007;
         private const uint FileAttributeReparsePoint = 0x0400;
         private const uint FileBegin = 0;
@@ -160,6 +161,15 @@ namespace Unity.FoxgloveSDK.Editor
             byte[] buffer,
             uint numberOfBytesToWrite,
             out uint numberOfBytesWritten,
+            IntPtr overlapped);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool ReadFile(
+            SafeFileHandle file,
+            byte[] buffer,
+            uint numberOfBytesToRead,
+            out uint numberOfBytesRead,
             IntPtr overlapped);
 
         [DllImport("kernel32.dll", SetLastError = true)]

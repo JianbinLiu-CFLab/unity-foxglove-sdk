@@ -12,6 +12,47 @@ namespace Unity.FoxgloveSDK.Editor
 {
     public static class OpenH264ArtifactHashVerifier
     {
+        private const int SafeFileReadLimit = 64 * 1024 * 1024;
+
+        /// <summary>Verifies SHA256 from an already opened safe file handle.</summary>
+        internal static bool TryVerifySha256(
+            OpenH264WindowsSafeFile file,
+            string expectedSha256,
+            string artifactLabel,
+            out string actualSha256,
+            out string error)
+        {
+            actualSha256 = "";
+            error = "";
+            if (file == null)
+            {
+                error = $"{artifactLabel ?? "OpenH264 artifact"} was not opened for SHA256 verification.";
+                return false;
+            }
+
+            if (!IsSha256Hex(expectedSha256))
+            {
+                error = $"{artifactLabel ?? "OpenH264 artifact"} expected SHA256 is not a valid 64-character hex value.";
+                return false;
+            }
+
+            if (!file.ReadAllBytes(SafeFileReadLimit, out var bytes, out var readError))
+            {
+                error = $"{artifactLabel ?? "OpenH264 artifact"} SHA256 verification failed: {readError}";
+                return false;
+            }
+
+            using (var sha256 = SHA256.Create())
+                actualSha256 = ToUpperHex(sha256.ComputeHash(bytes));
+
+            if (string.Equals(actualSha256, expectedSha256, StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            error = $"{artifactLabel ?? "OpenH264 artifact"} SHA256 mismatch. "
+                    + $"Expected {expectedSha256.ToUpperInvariant()}, actual {actualSha256}.";
+            return false;
+        }
+
         public static bool TryVerifySha256(
             string path,
             string expectedSha256,

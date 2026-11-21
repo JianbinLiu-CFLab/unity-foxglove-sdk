@@ -186,7 +186,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         public void OpenH264BatchPathsEscapePercentExpansion()
         {
             var source = TestSources.Text(
-                "Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.cs");
+                "Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.cs")
+                + TestSources.Text(
+                    "Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.Helper.cs");
 
             Assert.Contains("Replace(\"%\", \"%%\")", source, StringComparison.Ordinal);
         }
