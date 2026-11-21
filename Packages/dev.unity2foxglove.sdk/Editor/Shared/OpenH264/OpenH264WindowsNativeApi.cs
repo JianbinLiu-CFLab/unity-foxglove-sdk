@@ -25,7 +25,7 @@ namespace Unity.FoxgloveSDK.Editor
             handle = null;
             identity = default;
             reason = "";
-            if (!OperatingSystem.IsWindows())
+            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
                 reason = "Windows safe-file operations are unsupported on this platform.";
                 return false;
