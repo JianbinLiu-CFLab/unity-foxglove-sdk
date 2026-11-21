@@ -18,6 +18,7 @@ namespace Unity.FoxgloveSDK.Editor
             SafeFileHandle source,
             SafeFileHandle destinationDirectory,
             string name,
+            bool replaceExisting,
             out string reason)
         {
             reason = "";
@@ -32,7 +33,7 @@ namespace Unity.FoxgloveSDK.Editor
             var buffer = Marshal.AllocHGlobal(bufferSize);
             try
             {
-                Marshal.WriteByte(buffer, 0, 0);
+                Marshal.WriteByte(buffer, 0, (byte)(replaceExisting ? 1 : 0));
                 Marshal.WriteIntPtr(buffer, rootOffset, destinationDirectory.DangerousGetHandle());
                 Marshal.WriteInt32(buffer, lengthOffset, nameBytes.Length);
                 Marshal.Copy(nameBytes, 0, IntPtr.Add(buffer, nameOffset), nameBytes.Length);

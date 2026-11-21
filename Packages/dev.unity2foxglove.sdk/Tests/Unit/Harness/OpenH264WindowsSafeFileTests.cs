@@ -169,6 +169,58 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             }
         }
 
+        [WindowsSafeFileFact]
+        /// <summary>Replaces an existing destination during a relative publish rename.</summary>
+        public void RenameToReplacesExistingDestination()
+        {
+            var fixture = CreateFixture("rename-replace");
+            var targetPath = Path.Combine(fixture.Root, "child", "target.txt");
+            try
+            {
+                Assert.True(
+                    OpenH264WindowsSafeDirectory.TryOpenExisting(
+                        fixture.Root,
+                        out var root,
+                        out var rootReason),
+                    rootReason);
+                using (root)
+                {
+                    Assert.True(root.TryCreateDirectory("child", out var child, out var childReason), childReason);
+                    using (child)
+                    {
+                        Assert.True(child.TryCreateFile("source.txt", out var sourceFile, out var sourceReason), sourceReason);
+                        using (sourceFile)
+                        {
+                            Assert.True(sourceFile.WriteAllBytes(new byte[] { 7 }, out var sourceWriteReason), sourceWriteReason);
+                        }
+
+                        Assert.True(child.TryCreateFile("target.txt", out var targetFile, out var targetReason), targetReason);
+                        using (targetFile)
+                        {
+                            Assert.True(targetFile.WriteAllBytes(new byte[] { 2 }, out var targetWriteReason), targetWriteReason);
+                        }
+
+                        child.Dispose();
+                        Assert.True(root.TryOpenRenameDirectory("child", out var renameDirectory, out var renameReason), renameReason);
+                        using (renameDirectory)
+                        {
+                            Assert.True(root.TryOpenFile("child", "source.txt", out var source, out var openReason), openReason);
+                            using (source)
+                            {
+                                Assert.True(source.RenameTo(renameDirectory, "target.txt", out var renameError), renameError);
+                            }
+                        }
+                    }
+                }
+
+                Assert.Equal(new byte[] { 7 }, File.ReadAllBytes(targetPath));
+            }
+            finally
+            {
+                fixture.Dispose();
+            }
+        }
+
         [WindowsSymlinkFact]
         /// <summary>Rejects a reparse-point root before opening it.</summary>
         public void RejectsAReparsePointRootBeforeOpeningIt()

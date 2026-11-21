@@ -34,10 +34,19 @@ namespace Unity.FoxgloveSDK.Editor
             OpenH264WindowsSafeDirectory destination,
             string name,
             out string reason)
+            => RenameTo(destination, name, replaceExisting: true, out reason);
+
+        /// <summary>Renames this file with an explicit destination replacement policy.</summary>
+        internal bool RenameTo(
+            OpenH264WindowsSafeDirectory destination,
+            string name,
+            bool replaceExisting,
+            out string reason)
             => OpenH264WindowsNativeApi.TryRenameRelative(
                 _handle,
                 destination.HandleForRename,
                 name,
+                replaceExisting,
                 out reason);
 
         /// <summary>Deletes this file through its verified handle.</summary>
