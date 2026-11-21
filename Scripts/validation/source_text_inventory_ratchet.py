@@ -39,6 +39,14 @@ try:
         _ratchet_assertion_semantics,
         _validate_ratchet_rows,
     )
+    from .source_text_inventory_reader_ratchet import (
+        _approved_reader_replacement_helpers,
+        _approved_reader_change_isolated,
+        _changed_source_paths,
+        _harness_change_failures,
+        _reader_helper_failures,
+        _reader_replacement_context,
+    )
 except ImportError:
     from source_text_inventory_ratchet_helpers import (
         RATCHET_APPROVAL_FIELDS,
@@ -57,17 +65,6 @@ except ImportError:
         _ratchet_assertion_semantics,
         _validate_ratchet_rows,
     )
-
-try:
-    from .source_text_inventory_reader_ratchet import (
-        _approved_reader_replacement_helpers,
-        _approved_reader_change_isolated,
-        _changed_source_paths,
-        _harness_change_failures,
-        _reader_helper_failures,
-        _reader_replacement_context,
-    )
-except ImportError:
     from source_text_inventory_reader_ratchet import (
         _approved_reader_replacement_helpers,
         _approved_reader_change_isolated,
@@ -137,7 +134,6 @@ REQUIRED_ROW_FIELDS = frozenset(
     }
 )
 
-
 def _token_signatures(token: str) -> set[tuple[str, str]]:
     """Return method/literal anchors that survive line and parser changes."""
     signatures: set[tuple[str, str]] = set()
@@ -146,7 +142,6 @@ def _token_signatures(token: str) -> set[tuple[str, str]]:
         signatures.add((match.group(1), literal.group(1) if literal else ""))
     nonempty = {item for item in signatures if item[1]}
     return nonempty or signatures or {("", re.sub(r"\s+", " ", token).strip())}
-
 
 def _checked_expression_signature(token: str, harness: str | None = None) -> str:
     """Return the normalized expression whose value is checked by an assertion."""
@@ -173,13 +168,11 @@ def _checked_expression_signature(token: str, harness: str | None = None) -> str
                 return _normalize_csharp_expression(second)
     return _normalize_csharp_expression(token)
 
-
 def _assertion_context(token: str, harness: str | None = None) -> str:
     """Classify whether a source expression is wrapped in an executable check."""
     if harness or re.match(r"\s*Assert\.(?:Contains|DoesNotContain)\s*\(", token):
         return "checked"
     return "bare"
-
 
 def _assertion_literal(token: str) -> str:
     """Return the expected literal or expression from a source assertion."""
