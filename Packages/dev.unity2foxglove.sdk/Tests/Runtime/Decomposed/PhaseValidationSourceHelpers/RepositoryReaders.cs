@@ -2,7 +2,6 @@
 //
 // Module: Tests/Runtime
 // Purpose: Shared source inspection helpers for runtime validation phases.
-
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -15,12 +14,13 @@ namespace Unity.FoxgloveSDK.Tests
     internal static partial class PhaseValidationSourceHelpers
     {
 
-
         public static string FindRequiredRepoRoot()
-            => RepositoryPathHelpers.FindRequiredRepoRoot();
-
+            => RepositoryPathHelpers.FindRequiredRepoRoot()
+               ?? throw new DirectoryNotFoundException(
+                   "Could not find repository root for source validation from " + AppContext.BaseDirectory);
         public static string RepoPath(string relativePath)
-            => RepositoryPathHelpers.RepoPath(relativePath);
+            => RepositoryPathHelpers.RepoPath(relativePath)
+               ?? throw new FileNotFoundException("Missing repository file: " + relativePath);
         private static bool IsPythonFacadePath(string normalized)
             => RepositoryPathHelpers.IsPythonFacadePath(normalized);
 
