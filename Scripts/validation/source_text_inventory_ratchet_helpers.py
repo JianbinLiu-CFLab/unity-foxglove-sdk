@@ -495,10 +495,12 @@ def _approved_reader_change_isolated(
     changed_source_paths: set[str],
 ) -> bool:
     """Return whether approved reader edits leave every other source byte unchanged."""
-    path_lookup = {
-        _ratchet_path(path): path
-        for path, _ in set(base_helpers) | set(head_helpers)
-    }
+    path_candidates: dict[str, set[str]] = {}
+    for path, _ in set(base_helpers) | set(head_helpers):
+        path_candidates.setdefault(_ratchet_path(path), set()).add(path)
+    if any(len(paths) > 1 for paths in path_candidates.values()):
+        return False
+    path_lookup = {normalized: next(iter(paths)) for normalized, paths in path_candidates.items()}
     helpers_by_path: dict[str, set[str]] = {}
     for path, helper in approved_reader_helpers:
         helpers_by_path.setdefault(path, set()).add(helper.split(":", 1)[0])
