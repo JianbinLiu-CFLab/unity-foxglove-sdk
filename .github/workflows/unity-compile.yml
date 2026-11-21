@@ -89,6 +89,26 @@ jobs:
           || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: [self-hosted, Windows, X64, unity2foxglove-phase186-live]
     steps:
+      - name: Require Node 24-capable Actions runner
+        shell: powershell
+        run: |
+          $requiredVersion = [version]'2.327.1'
+          $listenerPath = Join-Path $env:SystemDrive 'actions-runner\bin\Runner.Listener.exe'
+          if (-not (Test-Path -LiteralPath $listenerPath)) {
+            throw "Actions Runner $requiredVersion or newer is required at $listenerPath."
+          }
+          $versionOutput = & $listenerPath --version 2>&1
+          $runnerExitCode = $LASTEXITCODE
+          $versionText = ($versionOutput | Select-Object -First 1).ToString().Trim()
+          if ($runnerExitCode -ne 0 -or $versionText -notmatch '^\d+\.\d+\.\d+$') {
+            throw "Unable to read the Actions Runner version from $listenerPath."
+          }
+          $actualVersion = [version]$versionText
+          if ($actualVersion -lt $requiredVersion) {
+            throw "Actions Runner $actualVersion is too old for Node 24 actions. Upgrade to $requiredVersion or newer."
+          }
+          Write-Host "Actions Runner $actualVersion supports Node 24 actions."
+
       - name: Bootstrap PowerShell 7 on PATH
         shell: cmd
         run: |
@@ -151,6 +171,26 @@ jobs:
           || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: [self-hosted, Windows, X64, unity2foxglove-phase186-live]
     steps:
+      - name: Require Node 24-capable Actions runner
+        shell: powershell
+        run: |
+          $requiredVersion = [version]'2.327.1'
+          $listenerPath = Join-Path $env:SystemDrive 'actions-runner\bin\Runner.Listener.exe'
+          if (-not (Test-Path -LiteralPath $listenerPath)) {
+            throw "Actions Runner $requiredVersion or newer is required at $listenerPath."
+          }
+          $versionOutput = & $listenerPath --version 2>&1
+          $runnerExitCode = $LASTEXITCODE
+          $versionText = ($versionOutput | Select-Object -First 1).ToString().Trim()
+          if ($runnerExitCode -ne 0 -or $versionText -notmatch '^\d+\.\d+\.\d+$') {
+            throw "Unable to read the Actions Runner version from $listenerPath."
+          }
+          $actualVersion = [version]$versionText
+          if ($actualVersion -lt $requiredVersion) {
+            throw "Actions Runner $actualVersion is too old for Node 24 actions. Upgrade to $requiredVersion or newer."
+          }
+          Write-Host "Actions Runner $actualVersion supports Node 24 actions."
+
       - name: Bootstrap PowerShell 7 on PATH
         shell: cmd
         run: |
@@ -260,6 +300,26 @@ jobs:
     env:
       DISTRO: ${{ matrix.distro }}
     steps:
+      - name: Require Node 24-capable Actions runner
+        shell: powershell
+        run: |
+          $requiredVersion = [version]'2.327.1'
+          $listenerPath = Join-Path $env:SystemDrive 'actions-runner\bin\Runner.Listener.exe'
+          if (-not (Test-Path -LiteralPath $listenerPath)) {
+            throw "Actions Runner $requiredVersion or newer is required at $listenerPath."
+          }
+          $versionOutput = & $listenerPath --version 2>&1
+          $runnerExitCode = $LASTEXITCODE
+          $versionText = ($versionOutput | Select-Object -First 1).ToString().Trim()
+          if ($runnerExitCode -ne 0 -or $versionText -notmatch '^\d+\.\d+\.\d+$') {
+            throw "Unable to read the Actions Runner version from $listenerPath."
+          }
+          $actualVersion = [version]$versionText
+          if ($actualVersion -lt $requiredVersion) {
+            throw "Actions Runner $actualVersion is too old for Node 24 actions. Upgrade to $requiredVersion or newer."
+          }
+          Write-Host "Actions Runner $actualVersion supports Node 24 actions."
+
       - name: Bootstrap PowerShell 7 on PATH
         shell: cmd
         run: |
