@@ -31,7 +31,8 @@ jobs:
     runs-on: [self-hosted, Windows, X64, unity2foxglove-phase186-live]
     timeout-minutes: 720
     steps:
-      - name: Require Node 24-capable Actions runner
+      - &require_node24_runner
+        name: Require Node 24-capable Actions runner
         shell: powershell
         run: |
           $requiredVersion = [version]'2.327.1'

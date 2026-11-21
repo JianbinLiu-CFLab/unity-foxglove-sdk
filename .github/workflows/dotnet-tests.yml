@@ -678,7 +678,8 @@ jobs:
     env:
       PHASE186_ROS2_JAZZY_ROOT: ${{ vars.PHASE186_ROS2_JAZZY_ROOT || 'C:\ros2_jazzy\ros2-windows' }}
     steps:
-      - name: Require Node 24-capable Actions runner
+      - &require_node24_runner
+        name: Require Node 24-capable Actions runner
         shell: powershell
         run: |
           $requiredVersion = [version]'2.327.1'
