@@ -527,6 +527,20 @@ class SourceTextInventorySemanticTests(_FixtureSupport, unittest.TestCase):
             self.assertEqual(0, code, output)
             self.assertIn("SOURCE_TEXT_RATCHET_READER_APPROVED", output)
 
+    def test_reader_isolation_rejects_case_colliding_helper_paths(self):
+        """Reject reader isolation when raw helper paths collide after case folding."""
+        from Scripts.validation.source_text_inventory_reader_ratchet import _canonical_path_collisions
+
+        self.assertEqual(
+            {"packages/fixture/tests/runtime/fixturevalidation.cs"},
+            _canonical_path_collisions(
+                [
+                    "Packages/fixture/Tests/Runtime/FixtureValidation.cs",
+                    "packages/fixture/tests/runtime/fixturevalidation.cs",
+                ]
+            ),
+        )
+
     def test_trusted_generic_reader_approval_is_isolated(self):
         """Accept an exact approval for a generic reader body replacement."""
         from Scripts.validation.source_text_inventory_ratchet_helpers import _helper_signature_records

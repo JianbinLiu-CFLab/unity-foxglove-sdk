@@ -32,12 +32,6 @@ try:
         _helper_signatures_at_revision,
         _apply_ratchet_replacements,
         _load_ratchet_approvals,
-        _approved_reader_replacement_helpers,
-        _approved_reader_change_isolated,
-        _changed_source_paths,
-        _harness_change_failures,
-        _reader_helper_failures,
-        _reader_replacement_context,
         _ratchet_change_tokens,
         _ratchet_counts,
         _ratchet_key,
@@ -56,18 +50,31 @@ except ImportError:
         _helper_signatures_at_revision,
         _apply_ratchet_replacements,
         _load_ratchet_approvals,
-        _approved_reader_replacement_helpers,
-        _approved_reader_change_isolated,
-        _changed_source_paths,
-        _harness_change_failures,
-        _reader_helper_failures,
-        _reader_replacement_context,
         _ratchet_change_tokens,
         _ratchet_counts,
         _ratchet_key,
         _ratchet_path,
         _ratchet_assertion_semantics,
         _validate_ratchet_rows,
+    )
+
+try:
+    from .source_text_inventory_reader_ratchet import (
+        _approved_reader_replacement_helpers,
+        _approved_reader_change_isolated,
+        _changed_source_paths,
+        _harness_change_failures,
+        _reader_helper_failures,
+        _reader_replacement_context,
+    )
+except ImportError:
+    from source_text_inventory_reader_ratchet import (
+        _approved_reader_replacement_helpers,
+        _approved_reader_change_isolated,
+        _changed_source_paths,
+        _harness_change_failures,
+        _reader_helper_failures,
+        _reader_replacement_context,
     )
 
 
