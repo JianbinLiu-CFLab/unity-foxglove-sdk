@@ -47,6 +47,7 @@ namespace Unity.FoxgloveSDK.UnitTests
             var recorder = new McapRecorder(stream, leaveOpen: false);
 
             recorder.Dispose();
+            recorder.Dispose();
 
             Assert.Equal(1, stream.DisposeAttempts);
         }

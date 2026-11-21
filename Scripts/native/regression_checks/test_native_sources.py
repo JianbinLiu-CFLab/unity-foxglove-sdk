@@ -7,7 +7,11 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import re
+import shutil
+import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -58,6 +62,57 @@ class NativeSourceTests(unittest.TestCase):
         self.assertIn("OpenH264 returned an invalid frame.", source)
         self.assertIn("std::signal(SIGPIPE, SIG_IGN)", source)
         self.assertIn("OpenH264 stdout write failed.", source)
+        self.assertIn('#include "openh264_utf8_path.h"', source)
+        self.assertIn("unity2foxglove_openh264::Utf8ToWide", source)
+
+    def test_openh264_utf8_path_conversion_handles_unicode_and_spaces_on_windows(self) -> None:
+        """Exercise the Windows UTF-8 to UTF-16 OpenH264 path conversion."""
+        script_header = ROOT / "Scripts/native/openh264_probe/openh264_utf8_path.h"
+        package_header = ROOT / "Packages/dev.unity2foxglove.sdk/Editor/Native/OpenH264/openh264_utf8_path.h"
+
+        self.assertTrue(script_header.is_file(), "the OpenH264 path conversion header must exist")
+        self.assertEqual(script_header.read_bytes(), package_header.read_bytes())
+
+        if os.name != "nt":
+            self.skipTest("the OpenH264 UTF-16 conversion is Windows-only")
+
+        compiler = shutil.which("cl")
+        if compiler is None:
+            self.skipTest("MSVC cl.exe is unavailable on this runner")
+
+        temp_root = ROOT / "build" / "tmp"
+        temp_root.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=temp_root) as directory:
+            directory_path = Path(directory)
+            source = directory_path / "openh264_utf8_path_test.cpp"
+            executable = directory_path / "openh264_utf8_path_test.exe"
+            source.write_text(
+                '#include "openh264_utf8_path.h"\n'
+                "#include <string>\n"
+                "int wmain() {\n"
+                '    const std::string value = u8"C:\\\\OpenH264 Runtime\\\\中文\\\\openh264.dll";\n'
+                "    const std::wstring wide = unity2foxglove_openh264::Utf8ToWide(value);\n"
+                '    return wide == L"C:\\\\OpenH264 Runtime\\\\中文\\\\openh264.dll" ? 0 : 1;\n'
+                "}\n",
+                encoding="utf-8",
+            )
+            subprocess.run(
+                [
+                    compiler,
+                    "/nologo",
+                    "/EHsc",
+                    "/std:c++17",
+                    "/utf-8",
+                    f"/I{script_header.parent}",
+                    f"/Fe:{executable}",
+                    str(source),
+                ],
+                cwd=ROOT,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            subprocess.run([str(executable)], cwd=ROOT, check=True)
 
     def test_draco_probe_zero_point_success_is_not_reported_as_a_warning(self) -> None:
         """The documented empty response is successful and should leave stderr clean."""

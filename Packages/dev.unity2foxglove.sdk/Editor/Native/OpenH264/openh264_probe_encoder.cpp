@@ -6,6 +6,7 @@
 
 #include "codec_api.h"
 #include "codec_ver.h"
+#include "openh264_utf8_path.h"
 
 #include <cerrno>
 #ifndef _WIN32
@@ -163,27 +164,10 @@ namespace
             << std::endl;
     }
 
-#ifdef _WIN32
-    std::wstring Utf8ToWide(const std::string& value)
-    {
-        if (value.empty())
-            return std::wstring();
-
-        const int count = MultiByteToWideChar(CP_UTF8, 0, value.c_str(), -1, nullptr, 0);
-        if (count <= 0)
-            return std::wstring();
-
-        std::wstring wide(static_cast<size_t>(count), L'\0');
-        MultiByteToWideChar(CP_UTF8, 0, value.c_str(), -1, &wide[0], count);
-        wide.resize(static_cast<size_t>(count - 1));
-        return wide;
-    }
-#endif
-
     bool LoadOpenH264(const Options& options, OpenH264Api& api)
     {
 #ifdef _WIN32
-        const auto dllPath = Utf8ToWide(options.openh264Dll);
+        const auto dllPath = unity2foxglove_openh264::Utf8ToWide(options.openh264Dll);
         if (dllPath.empty())
         {
             std::cerr << "OpenH264 DLL path is empty or invalid UTF-8." << std::endl;
