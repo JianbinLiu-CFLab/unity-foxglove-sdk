@@ -82,6 +82,35 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                     out _,
                     out var reason));
             Assert.Contains("unsupported", reason, StringComparison.OrdinalIgnoreCase);
+
+            Assert.False(
+                OpenH264WindowsSafeDirectory.TryOpenExisting(
+                    @"\\?\UNC\server\share\OpenH264",
+                    out _,
+                    out var extendedUncReason));
+            Assert.Contains("unsupported", extendedUncReason, StringComparison.OrdinalIgnoreCase);
+        }
+
+        [WindowsSafeFileFact]
+        /// <summary>Accepts a local extended-length root while keeping UNC roots rejected.</summary>
+        public void AcceptsLocalExtendedLengthRoot()
+        {
+            var fixture = CreateFixture("extended-root");
+            try
+            {
+                var extendedRoot = @"\\?\" + fixture.Root;
+                Assert.True(
+                    OpenH264WindowsSafeDirectory.TryOpenExisting(
+                        extendedRoot,
+                        out var root,
+                        out var reason),
+                    reason);
+                root.Dispose();
+            }
+            finally
+            {
+                fixture.Dispose();
+            }
         }
 
         [WindowsSafeFileFact]

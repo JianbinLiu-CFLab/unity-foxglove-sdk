@@ -42,7 +42,7 @@ namespace Unity.FoxgloveSDK.Editor
                 return false;
             }
 
-            if (fullPath.StartsWith(@"\\", StringComparison.Ordinal))
+            if (IsNetworkOrDevicePath(fullPath))
             {
                 reason = "Secure OpenH264 transactions are unsupported for network roots.";
                 return false;
@@ -216,8 +216,19 @@ namespace Unity.FoxgloveSDK.Editor
         }
 
         /// <summary>Converts a local Win32 path to an NT object-manager path.</summary>
+        /// <summary>Rejects network/device namespaces while allowing local extended paths.</summary>
+        private static bool IsNetworkOrDevicePath(string path)
+            => path.StartsWith(@"\\?\UNC\", StringComparison.OrdinalIgnoreCase)
+                || path.StartsWith(@"\\.\", StringComparison.OrdinalIgnoreCase)
+                || (path.StartsWith(@"\\", StringComparison.Ordinal)
+                    && !path.StartsWith(@"\\?\", StringComparison.Ordinal)
+                    && !path.StartsWith(@"\\.\", StringComparison.Ordinal));
+
+        /// <summary>Converts ordinary and local extended paths to NT object-manager paths.</summary>
         private static string ToNtPath(string path)
-            => @"\??\" + path;
+            => path.StartsWith(@"\\?\", StringComparison.Ordinal)
+                ? @"\??\" + path.Substring(4)
+                : @"\??\" + path;
 
         /// <summary>Opens an object with NtCreateFile using an optional parent handle.</summary>
         private static bool TryOpen(
