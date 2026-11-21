@@ -54,7 +54,9 @@ namespace Unity.FoxgloveSDK.Tests
         private static void OpenH264InstallerVerifiesPinnedArtifacts()
         {
             var manifest = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryManifest.cs");
-            var installer = ReadInstallerSources();
+            var installer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.cs")
+                + ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.Download.cs")
+                + ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.Helper.cs");
             var verifier = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Shared/OpenH264/OpenH264ArtifactHashVerifier.cs");
 
             Check(manifest.Contains("DownloadUrl = \"https://ciscobinary.openh264.org/", StringComparison.Ordinal)
@@ -83,7 +85,9 @@ namespace Unity.FoxgloveSDK.Tests
         private static void OpenH264PathsHaveSingleInstallAuthority()
         {
             var location = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264InstallLocation.cs");
-            var installer = ReadInstallerSources();
+            var installer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.cs")
+                + ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.Download.cs")
+                + ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.Helper.cs");
 
             Check(location.Contains("GetFinalDllPath", StringComparison.Ordinal)
                   && location.Contains("GetFinalHelperPath", StringComparison.Ordinal)
@@ -241,12 +245,6 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string ReadRepoText(string relativePath)
             => PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
-
-        /// <summary>Reads the OpenH264 installer facade and its owned partial modules.</summary>
-        private static string ReadInstallerSources()
-            => ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.cs")
-               + ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.Download.cs")
-               + ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.Helper.cs");
 
         private static string RepoPath(string relativePath)
         {

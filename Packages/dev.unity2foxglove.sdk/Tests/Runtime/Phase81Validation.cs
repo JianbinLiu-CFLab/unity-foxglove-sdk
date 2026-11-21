@@ -125,7 +125,9 @@ namespace Unity.FoxgloveSDK.Tests
             Check(manifest.Contains("HelperFileName") && manifest.Contains("HeaderIncludeRelativePath") && manifest.Contains("HelperSourceRelativePath"),
                 "81D-4: installer manifest defines helper output, vendored header, and helper source paths");
 
-            var installer = ReadInstallerSources();
+            var installer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.cs")
+                + ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.Download.cs")
+                + ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.Helper.cs");
             var notices = ReadRepoText("THIRD_PARTY_NOTICES.md");
             Check(installer.Contains("DownloadFile") || installer.Contains("DownloadFileTaskAsync") || installer.Contains("HttpClient"),
                 "81D-5: installer has explicit download implementation");
@@ -351,12 +353,6 @@ namespace Unity.FoxgloveSDK.Tests
 
             return PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
         }
-
-        /// <summary>Reads the OpenH264 installer facade and its owned partial modules.</summary>
-        private static string ReadInstallerSources()
-            => ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.cs")
-               + ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.Download.cs")
-               + ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.Helper.cs");
 
         private static string ReadCameraPublisherSources()
             => PhaseValidationSourceHelpers.ReadCameraPublisherSources();

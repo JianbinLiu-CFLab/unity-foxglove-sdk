@@ -93,7 +93,9 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static void OpenH264InstallerUsesTemporaryDownloadsBeforeFinalPaths()
         {
-            var source = ReadInstallerSources();
+            var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.cs")
+                + ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.Download.cs")
+                + ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.Helper.cs");
             var install = ExtractMethod(source, "internal static OpenH264InstallResult Install");
 
             Check(install.Contains("compressedDownloadName = Path.GetFileName(compressedDownloadPath)", StringComparison.Ordinal)
@@ -252,12 +254,6 @@ namespace Unity.FoxgloveSDK.Tests
             var path = Path.Combine(Phase16Validation.FindRepoRoot(), relativePath.Replace('/', Path.DirectorySeparatorChar));
             return PhaseValidationSourceHelpers.ReadRequiredRepoText(relativePath);
         }
-
-        /// <summary>Reads the OpenH264 installer facade and its owned partial modules.</summary>
-        private static string ReadInstallerSources()
-            => ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.cs")
-               + ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.Download.cs")
-               + ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.Helper.cs");
 
         private static void Check(bool condition, string name)
         {
