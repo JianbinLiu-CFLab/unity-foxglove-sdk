@@ -34,8 +34,10 @@ try:
         _apply_ratchet_replacements,
         _load_ratchet_approvals,
         _approved_reader_replacement_helpers,
+        _changed_source_paths,
         _harness_change_failures,
         _reader_helper_failures,
+        _reader_replacement_context,
         _ratchet_change_tokens,
         _ratchet_counts,
         _ratchet_key,
@@ -56,8 +58,10 @@ except ImportError:
         _apply_ratchet_replacements,
         _load_ratchet_approvals,
         _approved_reader_replacement_helpers,
+        _changed_source_paths,
         _harness_change_failures,
         _reader_helper_failures,
+        _reader_replacement_context,
         _ratchet_change_tokens,
         _ratchet_counts,
         _ratchet_key,
@@ -377,28 +381,6 @@ def _load_inventory_report(path: Path) -> list[dict[str, object]]:
         if not row.get("parser_version"):
             row.pop("parser_version", None)
     return rows
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 def _inventory_at_revision(
@@ -833,15 +815,25 @@ def _verify_count_ratchet(
         for row in (*base_rows, *rows)
         if str(row.get("file", "")).endswith(".cs")
     }
-    base_helpers = _helper_signatures_at_revision(root, revision, helper_files)
-    head_helpers = _helper_signatures_at_head(root, helper_files)
-    failures.extend(_reader_helper_failures(root, revision, base_helpers, head_helpers))
+    reader_files, reader_names = _reader_replacement_context(root, revision)
+    helper_files.update(reader_files)
+    base_helpers = _helper_signatures_at_revision(root, revision, helper_files, reader_names)
+    head_helpers = _helper_signatures_at_head(root, helper_files, reader_names)
     approved_reader_helpers = _approved_reader_replacement_helpers(
         root, revision, base_helpers, head_helpers
     )
+    changed_source_paths = _changed_source_paths(root, revision)
+    failures.extend(
+        _reader_helper_failures(root, revision, base_helpers, head_helpers, reader_names)
+    )
     failures.extend(
         _harness_change_failures(
-            base_rows, rows, base_helpers, head_helpers, approved_reader_helpers
+            base_rows,
+            rows,
+            base_helpers,
+            head_helpers,
+            approved_reader_helpers,
+            changed_source_paths,
         )
     )
     helper_changed = [

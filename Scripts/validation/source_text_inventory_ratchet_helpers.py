@@ -355,11 +355,12 @@ def _discovered_readers(root: Path) -> tuple[dict[str, frozenset[str]], frozense
     return discovered, frozenset().union(*discovered.values())
 
 def _helper_signatures_at_revision(
-    root: Path, revision: str, files: set[str]
+    root: Path, revision: str, files: set[str], reader_names: frozenset[str] = frozenset()
 ) -> dict[tuple[str, str], str]:
     """Hash recognized helper bodies from one committed revision, including test files the head deletes."""
     signatures: dict[tuple[str, str], str] = {}
     discovered, names = _discovered_readers(root)
+    names = names | reader_names
     build_review = root / "build" / "review"
     build_review.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="source-text-helper-base-", dir=build_review) as directory:
@@ -380,10 +381,13 @@ def _helper_signatures_at_revision(
                 signatures[(relative, helper)] = digest
     return signatures
 
-def _helper_signatures_at_head(root: Path, files: set[str]) -> dict[tuple[str, str], str]:
+def _helper_signatures_at_head(
+    root: Path, files: set[str], reader_names: frozenset[str] = frozenset()
+) -> dict[tuple[str, str], str]:
     """Hash recognized helper bodies from the reviewed working tree."""
     signatures: dict[tuple[str, str], str] = {}
     discovered, names = _discovered_readers(root)
+    names = names | reader_names
     for relative in sorted(files | set(discovered)):
         path = root / relative
         if not path.is_file():
@@ -394,10 +398,15 @@ def _helper_signatures_at_head(root: Path, files: set[str]) -> dict[tuple[str, s
     return signatures
 
 def _reader_helper_failures(
-    root: Path, revision: str, base_helpers: dict[tuple[str, str], str], head_helpers: dict[tuple[str, str], str]
+    root: Path,
+    revision: str,
+    base_helpers: dict[tuple[str, str], str],
+    head_helpers: dict[tuple[str, str], str],
+    reader_names: frozenset[str] = frozenset(),
 ) -> list[str]:
     """Fail seed or discovered reader changes in base files unless the trusted base approves the exact digests."""
     _, names = _discovered_readers(root)
+    names = names | reader_names
     listed = subprocess.run(
         ["git", "ls-tree", "-r", "--name-only", revision], cwd=root, check=False, capture_output=True, text=True
     )
@@ -449,12 +458,33 @@ def _approved_reader_replacement_helpers(
              if _ratchet_path(candidate_path) == path and candidate_helper == helper),
             None,
         )
-        if (
-            base_digest == entry["base_signature"]
-            and head_digest == entry["head_signature"]
-        ):
+        if base_digest == entry["base_signature"] and head_digest == entry["head_signature"]:
             approved.add((path, helper))
     return approved
+
+def _reader_replacement_context(
+    root: Path, revision: str
+) -> tuple[set[str], frozenset[str]]:
+    """Return trusted reader replacement paths and helper names."""
+    replacements, _ = _load_ratchet_replacements(root, revision)
+    readers = [entry for entry in replacements if entry["class"] == "READER"]
+    paths = {
+        str(entry["file"]).strip().replace("\\", "/")
+        for entry in readers
+    }
+    names = frozenset(str(entry["validation_flag"]).strip() for entry in readers)
+    return paths, names
+
+def _changed_source_paths(root: Path, revision: str) -> set[str]:
+    """Return tracked C# paths changed since one trusted revision."""
+    completed = subprocess.run(
+        ["git", "diff", "--name-only", revision, "--", "*.cs"],
+        cwd=root,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return {_ratchet_path(path) for path in completed.stdout.splitlines() if path.strip()}
 
 def _harness_change_failures(
     base_rows: list[dict[str, object]],
@@ -462,6 +492,7 @@ def _harness_change_failures(
     base_helpers: dict[tuple[str, str], str],
     head_helpers: dict[tuple[str, str], str],
     approved_reader_helpers: set[tuple[str, str]],
+    changed_source_paths: set[str],
 ) -> list[str]:
     """Fail closed when a source assertion's harness signature changes unexpectedly."""
     base_harness: dict[tuple[str, str, str], Counter[str]] = {}
@@ -471,22 +502,23 @@ def _harness_change_failures(
     for row in head_rows:
         head_harness.setdefault(_ratchet_key(row), Counter())[str(row.get("harness_signature", ""))] += 1
     changed_helpers = {
-        key for key in set(base_helpers) | set(head_helpers)
-        if base_helpers.get(key) != head_helpers.get(key)
+        (_ratchet_path(path), helper)
+        for path, helper in set(base_helpers) | set(head_helpers)
+        if base_helpers.get((path, helper)) != head_helpers.get((path, helper))
     }
-    changed_by_path: dict[str, set[tuple[str, str]]] = {}
-    for helper_path, helper_name in changed_helpers:
-        changed_by_path.setdefault(_ratchet_path(helper_path), set()).add(
-            (_ratchet_path(helper_path), helper_name)
-        )
+    approved_reader_paths = {path for path, _ in approved_reader_helpers}
+    only_approved_reader_changes = (
+        bool(changed_helpers)
+        and changed_helpers <= approved_reader_helpers
+        and changed_source_paths <= approved_reader_paths
+    )
     failures: list[str] = []
     for key in sorted(set(base_harness) | set(head_harness)):
         if key not in base_harness or key not in head_harness:
             continue
         if base_harness.get(key, Counter()) == head_harness.get(key, Counter()):
             continue
-        path_helpers = changed_by_path.get(key[0], set())
-        if not path_helpers or not path_helpers <= approved_reader_helpers:
+        if not only_approved_reader_changes:
             failures.append(
                 f"SOURCE_TEXT_RATCHET_HARNESS_CHANGED file={key[0]} "
                 f"flag={key[1]} class={key[2]}"
