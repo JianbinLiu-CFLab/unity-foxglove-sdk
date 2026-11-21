@@ -96,7 +96,8 @@ class PlanAuditLibraryTests(unittest.TestCase):
             with mock.patch.object(bridge_history.audit_lib, "run", side_effect=fake_run):
                 check = bridge_history._history(output)
             self.assertEqual("NOT_RUN", check.status)
-        self.assertIn("123", check.detail)
+            self.assertIn("123", check.detail)
+
     def test_plan_check_reports_missing_plan_file(self) -> None:
         """A missing plan artifact produces a controlled audit result."""
         with mock.patch.object(unity_acceptance, "PLAN", Path("build/plan-audit/missing-plan.md")):
@@ -170,17 +171,14 @@ class PlanAuditLibraryTests(unittest.TestCase):
         """Only the finite Phase196 status values can pass the plan check."""
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "Plan196.md"
-            path.write_text("Entry base: base\nStatus: Not implemented\n", encoding="utf-8")
             with mock.patch.object(structure_guard_audit, "PLAN", path):
-                self.assertEqual("FAIL", structure_guard_audit._plan_check("base").status)
-                path.write_text("Entry base: base\nStatus: Unimplemented\n", encoding="utf-8")
-                self.assertEqual("FAIL", structure_guard_audit._plan_check("base").status)
-                for value in ("Not yet implemented", "Not fully implemented", "Partially implemented", "Partially completed", "Incompletely implemented", "Incompletely completed", "Not-yet-implemented", "Partially-implemented", "Not at all fully implemented", "Not/implemented", "completed with details"):
+                for value in ("Not implemented", "Unimplemented", "Not yet implemented", "Not fully implemented", "Partially implemented", "Partially completed", "Incompletely implemented", "Incompletely completed", "Not-yet-implemented", "Partially-implemented", "Not at all fully implemented", "Not/implemented", "completed with details"):
                     path.write_text(f"Entry base: base\nStatus: {value}\n", encoding="utf-8")
                     self.assertEqual("FAIL", structure_guard_audit._plan_check("base").status)
                 for value in ("audit pending", "implemented", "completed"):
                     path.write_text(f"Entry base: base\nStatus: {value}\n", encoding="utf-8")
                     self.assertEqual("PASS", structure_guard_audit._plan_check("base").status)
+
     def test_structure_guard_required_status_names_are_exact(self) -> None:
         """Required-check parsing does not accept unrelated substrings."""
         names, valid = structure_guard_audit._required_status_names(
