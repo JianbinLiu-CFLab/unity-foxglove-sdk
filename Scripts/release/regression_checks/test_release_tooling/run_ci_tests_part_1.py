@@ -332,6 +332,40 @@ class _RunCiTestsPart1:
         self.assertIn("build/review/source-text-inventory/", workflow)
         self.assertIn("build/review/source-text-inventory-trusted/", workflow)
 
+    def test_source_inventory_runs_in_its_dedicated_job(self) -> None:
+        """Keep source inventory ownership separate from Python package regressions."""
+        lines = DOTNET_WORKFLOW_PATH.read_text(encoding="utf-8").splitlines()
+        inventory_start = next(
+            index
+            for index, line in enumerate(lines)
+            if line.strip() == "linux-source-text-inventory:"
+        )
+        inventory_end = next(
+            index
+            for index in range(inventory_start + 1, len(lines))
+            if re.fullmatch(r"  [A-Za-z0-9_-]+:", lines[index])
+        )
+        inventory_job = "\n".join(lines[inventory_start:inventory_end])
+        python_start = next(
+            index
+            for index, line in enumerate(lines)
+            if line.strip() == "linux-python-regressions:"
+        )
+        python_end = next(
+            index
+            for index in range(python_start + 1, len(lines))
+            if re.fullmatch(r"  [A-Za-z0-9_-]+:", lines[index])
+        )
+        python_job = "\n".join(lines[python_start:python_end])
+
+        self.assertIn("- name: Run live source-text inventory", inventory_job)
+        self.assertIn("- name: Upload live source-text inventory", inventory_job)
+        self.assertIn("fetch-depth: 0", inventory_job)
+        self.assertIn("persist-credentials: false", inventory_job)
+        self.assertIn("actions/setup-python", inventory_job)
+        self.assertNotIn("Run live source-text inventory", python_job)
+        self.assertNotIn("Upload live source-text inventory", python_job)
+
     def test_dotnet_workflow_provisions_phase186_websocket_runtime_dependency(self) -> None:
         """The module-execution regression must run with its websocket dependency installed."""
         workflow = DOTNET_WORKFLOW_PATH.read_text(encoding="utf-8")
