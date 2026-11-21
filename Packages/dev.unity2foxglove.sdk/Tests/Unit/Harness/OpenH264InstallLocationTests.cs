@@ -78,18 +78,24 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             var fixture = CreateFixture("directory-lock");
             var versionDirectory = OpenH264InstallLocation.GetVersionedDirectory(fixture.Root);
             var replacement = versionDirectory + ".moved";
-            Directory.CreateDirectory(versionDirectory);
+            Directory.Delete(fixture.Root, recursive: true);
             try
             {
                 Assert.True(
-                    OpenH264InstallLocation.TryAcquireInstallDirectoryLock(
+                    OpenH264InstallLocation.TryAcquireInstallRootLock(
                         fixture.Root,
-                        versionDirectory,
-                        out var directoryLock,
+                        out var rootLock,
                         out var reason),
                     reason);
-                using (directoryLock)
+                using (rootLock)
                 {
+                    Directory.CreateDirectory(versionDirectory);
+                    var probe = Path.Combine(versionDirectory, "write-probe.txt");
+                    var movedProbe = probe + ".moved";
+                    File.WriteAllText(probe, "probe");
+                    Assert.Equal("probe", File.ReadAllText(probe));
+                    File.Move(probe, movedProbe);
+                    File.Delete(movedProbe);
                     var blocked = false;
                     try
                     {

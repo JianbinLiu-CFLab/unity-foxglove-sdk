@@ -46,9 +46,8 @@ namespace Unity.FoxgloveSDK.Editor
         public static string GetVersionedDirectory(string root)
             => Path.Combine(string.IsNullOrWhiteSpace(root) ? GetPreferredInstallRoot() : root, OpenH264OfficialBinaryManifest.Version);
 
-        internal static bool TryAcquireInstallDirectoryLock(
+        internal static bool TryAcquireInstallRootLock(
             string root,
-            string versionDirectory,
             out IDisposable directoryLock,
             out string reason)
         {
@@ -61,33 +60,30 @@ namespace Unity.FoxgloveSDK.Editor
             }
 
             SafeFileHandle rootHandle = null;
-            SafeFileHandle versionHandle = null;
             try
             {
                 var fullRoot = Path.GetFullPath(root);
-                var fullVersionDirectory = Path.GetFullPath(versionDirectory);
+                if (ContainsReparsePoint(fullRoot))
+                {
+                    reason = "OpenH264 install directories changed or contain a symlink or junction.";
+                    return false;
+                }
+                Directory.CreateDirectory(fullRoot);
                 rootHandle = OpenDirectoryHandle(fullRoot);
-                versionHandle = OpenDirectoryHandle(fullVersionDirectory);
-                if (rootHandle == null || rootHandle.IsInvalid
-                    || versionHandle == null || versionHandle.IsInvalid)
+                if (rootHandle == null || rootHandle.IsInvalid)
                 {
                     reason = "Could not lock the OpenH264 install directories.";
                     return false;
                 }
 
-                if (HasReparsePoint(rootHandle)
-                    || HasReparsePoint(versionHandle)
-                    || !FinalPathEquals(rootHandle, fullRoot)
-                    || !FinalPathEquals(versionHandle, fullVersionDirectory)
-                    || !IsSameOrChild(fullVersionDirectory, fullRoot))
+                if (HasReparsePoint(rootHandle) || !FinalPathEquals(rootHandle, fullRoot))
                 {
                     reason = "OpenH264 install directories changed or contain a symlink or junction.";
                     return false;
                 }
 
-                directoryLock = new InstallDirectoryLock(rootHandle, versionHandle);
+                directoryLock = new InstallDirectoryLock(rootHandle);
                 rootHandle = null;
-                versionHandle = null;
                 return true;
             }
             catch (Exception ex)
@@ -98,7 +94,6 @@ namespace Unity.FoxgloveSDK.Editor
             finally
             {
                 rootHandle?.Dispose();
-                versionHandle?.Dispose();
             }
         }
 
@@ -310,19 +305,15 @@ namespace Unity.FoxgloveSDK.Editor
         private sealed class InstallDirectoryLock : IDisposable
         {
             private SafeFileHandle _rootHandle;
-            private SafeFileHandle _versionHandle;
 
-            internal InstallDirectoryLock(SafeFileHandle rootHandle, SafeFileHandle versionHandle)
+            internal InstallDirectoryLock(SafeFileHandle rootHandle)
             {
                 _rootHandle = rootHandle;
-                _versionHandle = versionHandle;
             }
 
             public void Dispose()
             {
-                _versionHandle?.Dispose();
                 _rootHandle?.Dispose();
-                _versionHandle = null;
                 _rootHandle = null;
             }
         }
