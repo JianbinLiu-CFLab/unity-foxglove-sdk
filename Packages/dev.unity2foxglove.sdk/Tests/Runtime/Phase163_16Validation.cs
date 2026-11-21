@@ -95,18 +95,16 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var source = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.cs");
             var install = ExtractMethod(source, "internal static OpenH264InstallResult Install");
-            var download = ExtractMethod(source, "private static void DownloadFile");
 
-            Check(install.Contains("compressedDownloadPath = compressedPath + \".download\"", StringComparison.Ordinal)
-                  && CheckOrdered(install, "DownloadFile(OpenH264OfficialBinaryManifest.DownloadUrl, compressedDownloadPath);", "TryVerifySha256(")
-                  && CheckOrdered(install, "TryVerifySha256(", "File.Move(compressedDownloadPath, compressedPath);"),
+            Check(install.Contains("compressedDownloadName = Path.GetFileName(compressedDownloadPath)", StringComparison.Ordinal)
+                  && CheckOrdered(install, "DownloadFile(", "TryVerifySha256(")
+                  && CheckOrdered(install, "TryVerifySha256(", "TryOpenFile(compressedDownloadName"),
                 "163-16C-1: OpenH264 installer verifies downloaded archive before moving it to the final path");
-            Check(download.Contains("tempDestination = destination + \".partial\"", StringComparison.Ordinal)
-                  && download.Contains("File.Create(tempDestination)", StringComparison.Ordinal)
-                  && download.Contains("CopyToAsync(destinationStream, 81920, cts.Token)", StringComparison.Ordinal)
-                  && download.Contains("File.Move(tempDestination, destination)", StringComparison.Ordinal)
-                  && download.Contains("TryDelete(tempDestination)", StringComparison.Ordinal),
-                "163-16C-2: OpenH264 downloader bounds body copy and avoids leaving partial bytes at the requested destination");
+            Check(source.Contains("WriteFromStream", StringComparison.Ordinal)
+                  && source.Contains("MaxCompressedAssetBytes", StringComparison.Ordinal)
+                  && !source.Contains("tempDestination = destination + \".partial\"", StringComparison.Ordinal)
+                  && !source.Contains("CopyToAsync(destinationStream, 81920, cts.Token)", StringComparison.Ordinal),
+                "163-16C-2: OpenH264 downloader bounds body copy through a parent-owned safe handle");
             Check(source.Contains("CombineDecompressErrors(bzip2Error, pythonError)", StringComparison.Ordinal)
                   && source.Contains("bzip2 failed: ", StringComparison.Ordinal)
                   && source.Contains("Python bz2 failed: ", StringComparison.Ordinal),

@@ -1,18 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Tests/Runtime
-// Purpose: Read the OpenH264 installer facade and registered partial sources.
+// Purpose: Compose the OpenH264 installer source surface.
 
 using System;
 using System.IO;
-using System.Linq;
 using System.Text;
 
 namespace Unity.FoxgloveSDK.Tests
 {
-    internal static partial class PhaseValidationSourceHelpers
+    /// <summary>Composes the registered OpenH264 installer partial sources.</summary>
+    internal static class OpenH264InstallerSourceReader
     {
-        public static string ReadOpenH264InstallerSources(string root)
+        /// <summary>Reads the OpenH264 installer facade and registered partial sources.</summary>
+        public static string Read(string root)
         {
             var relativePaths = new[]
             {
@@ -20,18 +21,12 @@ namespace Unity.FoxgloveSDK.Tests
                 "Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.Download.cs",
                 "Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.Helper.cs",
             };
-            var paths = relativePaths
-                .Select(relativePath => Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar)))
-                .ToArray();
-            foreach (var path in paths)
+            var source = new StringBuilder();
+            foreach (var relativePath in relativePaths)
             {
+                var path = Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
                 if (!File.Exists(path))
                     throw new FileNotFoundException("Missing OpenH264 installer source: " + path, path);
-            }
-
-            var source = new StringBuilder();
-            foreach (var path in paths)
-            {
                 if (source.Length > 0)
                     source.Append(Environment.NewLine);
                 source.Append(File.ReadAllText(path));
