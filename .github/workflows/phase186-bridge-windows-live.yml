@@ -39,7 +39,7 @@ jobs:
           $env:GIT_CONFIG_GLOBAL = $globalConfig
           git config --global core.longpaths true
 
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -50,7 +50,7 @@ jobs:
         run: git clean -ffdx -e Unity2Foxglove/Library/
 
       - name: Checkout pinned official Foxglove schema reference
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: foxglove/foxglove-sdk
           ref: b298c3d1649e6e5dfd77a53b12ab7c27f97c7aba
@@ -63,7 +63,7 @@ jobs:
 
       - name: Upload terminal, actor, graph, QoS, process, and cleanup evidence
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: phase186-bridge-windows-live-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
