@@ -287,12 +287,11 @@ namespace Unity.FoxgloveSDK.Editor
                     return false;
                 if (length < buffer.Capacity)
                 {
-                    var actual = buffer.ToString();
-                    if (actual.StartsWith(@"\\?\", StringComparison.Ordinal))
-                        actual = actual.Substring(4);
+                    var actual = NormalizeFinalPath(buffer.ToString());
+                    var normalizedExpected = NormalizeFinalPath(expected);
                     return string.Equals(
                         actual.TrimEnd('\\'),
-                        expected.TrimEnd('\\'),
+                        normalizedExpected.TrimEnd('\\'),
                         StringComparison.OrdinalIgnoreCase);
                 }
 
@@ -300,6 +299,15 @@ namespace Unity.FoxgloveSDK.Editor
             }
 
             return false;
+        }
+
+        private static string NormalizeFinalPath(string path)
+        {
+            if (path.StartsWith(@"\\?\UNC\", StringComparison.OrdinalIgnoreCase))
+                return @"\\" + path.Substring(8);
+            if (path.StartsWith(@"\\?\", StringComparison.Ordinal))
+                return path.Substring(4);
+            return path;
         }
 
         private sealed class InstallDirectoryLock : IDisposable

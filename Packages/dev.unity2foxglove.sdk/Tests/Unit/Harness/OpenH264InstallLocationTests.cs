@@ -121,6 +121,29 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             }
         }
 
+        [WindowsSymlinkFact]
+        public void AcceptsExtendedWindowsPathWhenFinalPathUsesDevicePrefix()
+        {
+            var fixture = CreateFixture("extended-path");
+            var extendedRoot = @"\\?\" + fixture.Root;
+            try
+            {
+                Assert.True(
+                    OpenH264InstallLocation.TryAcquireInstallRootLock(
+                        extendedRoot,
+                        out var rootLock,
+                        out var reason),
+                    reason);
+                using (rootLock)
+                {
+                }
+            }
+            finally
+            {
+                fixture.Dispose();
+            }
+        }
+
         private static Fixture CreateFixture(string name)
         {
             var root = Path.Combine(
