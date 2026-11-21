@@ -52,6 +52,7 @@ namespace UnityEngine
 
     public class Object
     {
+        private static readonly List<Object> RegisteredObjects = new List<Object>();
         private static int s_nextId;
         private readonly int _instanceId = ++s_nextId;
         public string name { get; set; }
@@ -59,7 +60,19 @@ namespace UnityEngine
         public int GetInstanceID() => _instanceId;
         public static T FindFirstObjectByType<T>() where T : class => null;
         public static T[] FindObjectsByType<T>(FindObjectsInactive inactive, FindObjectsSortMode sortMode)
-            => Array.Empty<T>();
+        {
+            var result = new List<T>();
+            for (var index = 0; index < RegisteredObjects.Count; index++)
+                if (RegisteredObjects[index] is T value)
+                    result.Add(value);
+            return result.ToArray();
+        }
+        public static void RegisterForTests(Object value)
+        {
+            if (value != null && !RegisteredObjects.Contains(value))
+                RegisteredObjects.Add(value);
+        }
+        public static void ResetForTests() => RegisteredObjects.Clear();
         public static void DestroyImmediate(Object value) { }
         public static void Destroy(Object value) { }
         public static void DontDestroyOnLoad(Object value) { }
