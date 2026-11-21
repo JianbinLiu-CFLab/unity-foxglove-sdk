@@ -12,6 +12,7 @@ namespace UnityEngine
     public static class Application
     {
         public static string dataPath => "Project/Assets";
+        public static string temporaryCachePath => "build/tmp/unity-cache";
         public static RuntimePlatform platform => RuntimePlatform.WindowsEditor;
     }
 
@@ -46,4 +47,18 @@ namespace UnityEngine
     public class Object { }
     public class Component : Object { }
     public class MonoBehaviour : Component { }
+}
+
+namespace UnityEditor
+{
+    public static class EditorApplication
+    {
+        public static string applicationPath => "C:/Unity/Editor/Unity.exe";
+    }
+
+    public static class EditorPrefs
+    {
+        public static string GetString(string key, string defaultValue) => defaultValue;
+        public static void SetString(string key, string value) { }
+    }
 }

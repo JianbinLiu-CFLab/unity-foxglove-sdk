@@ -83,6 +83,44 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
+        public void OpenH264PairPublisherStopsWhenDestinationValidationFails()
+        {
+            var directory = Path.Combine(
+                TestSources.RepoRoot,
+                "build",
+                "tmp",
+                "openh264-pair-validation-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(directory);
+            var finalDll = Path.Combine(directory, "openh264.dll");
+            var finalHelper = Path.Combine(directory, "openh264-helper.exe");
+            var stagedDll = finalDll + ".tmp";
+            var stagedHelper = finalHelper + ".tmp";
+            File.WriteAllText(stagedDll, "new-dll");
+            File.WriteAllText(stagedHelper, "new-helper");
+
+            try
+            {
+                Assert.Throws<IOException>(() =>
+                    OpenH264ArtifactPairPublisher.Publish(
+                        stagedDll,
+                        stagedHelper,
+                        finalDll,
+                        finalHelper,
+                        validateDestination: () => false));
+
+                Assert.True(File.Exists(stagedDll));
+                Assert.True(File.Exists(stagedHelper));
+                Assert.False(File.Exists(finalDll));
+                Assert.False(File.Exists(finalHelper));
+            }
+            finally
+            {
+                if (Directory.Exists(directory))
+                    Directory.Delete(directory, recursive: true);
+            }
+        }
+
+        [Fact]
         public void OpenH264BatchPathsEscapePercentExpansion()
         {
             var source = TestSources.Text(
