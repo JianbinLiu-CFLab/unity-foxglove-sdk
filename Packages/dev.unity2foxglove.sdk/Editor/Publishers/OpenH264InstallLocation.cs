@@ -17,6 +17,7 @@ namespace Unity.FoxgloveSDK.Editor
     public static class OpenH264InstallLocation
     {
         private const string EditorPrefsKey = "Unity2Foxglove.OpenH264.InstallRoot";
+        private static readonly string[] ProjectChildren = { "Assets", "Packages", "ProjectSettings", ".git" };
 
         public static string GetPreferredInstallRoot()
         {
@@ -117,18 +118,7 @@ namespace Unity.FoxgloveSDK.Editor
                 return false;
             }
 
-            if (ContainsReparsePoint(fullRoot))
-            {
-                reason = "Choose an install location that does not traverse a symlink or junction.";
-                return false;
-            }
-
-            if (ContainsReparsePointTree(GetVersionedDirectory(fullRoot)))
-            {
-                reason = "Choose an install location whose versioned directory has no symlink or junction.";
-                return false;
-            }
-
+            var protectedRoots = new List<string>();
             foreach (var protectedFolder in new[]
             {
                 Environment.SpecialFolder.ProgramFiles,
@@ -139,37 +129,23 @@ namespace Unity.FoxgloveSDK.Editor
                 Environment.SpecialFolder.CommonApplicationData
             })
             {
-                if (IsUnderSpecialFolder(fullRoot, protectedFolder))
-                {
-                    reason = "Choose a per-user folder instead of protected system or application folders.";
-                    return false;
-                }
+                protectedRoots.Add(Environment.GetFolderPath(protectedFolder));
             }
 
             var editorRoot = Path.GetDirectoryName(EditorApplication.applicationPath);
-            if (IsSameOrChild(fullRoot, editorRoot))
-            {
-                reason = "Choose a per-user folder outside the Unity Editor installation.";
-                return false;
-            }
-
             var projectRoot = GetProjectRoot();
-            if (IsSameOrChild(fullRoot, projectRoot))
-            {
-                reason = "Choose a cache folder outside the Unity project.";
-                return false;
-            }
-
-            foreach (var projectChild in new[] { "Assets", "Packages", "ProjectSettings", ".git" })
-            {
-                if (IsSameOrChild(fullRoot, Path.Combine(projectRoot, projectChild)))
-                {
-                    reason = "Choose a cache folder outside the Unity project, not " + projectChild + ".";
-                    return false;
-                }
-            }
-
-            return true;
+            var pathComparison = Application.platform == RuntimePlatform.WindowsEditor
+                ? StringComparison.OrdinalIgnoreCase
+                : StringComparison.Ordinal;
+            return OpenH264InstallPathPolicy.IsAllowedInstallRoot(
+                fullRoot,
+                OpenH264OfficialBinaryManifest.Version,
+                projectRoot,
+                editorRoot,
+                protectedRoots,
+                pathComparison,
+                out reason,
+                ProjectChildren);
         }
 
         private static string GetProjectRoot()
@@ -177,7 +153,6 @@ namespace Unity.FoxgloveSDK.Editor
             var assets = Application.dataPath;
             return string.IsNullOrEmpty(assets) ? "" : Directory.GetParent(assets)?.FullName ?? "";
         }
-
         private static bool IsUnderSpecialFolder(string path, Environment.SpecialFolder folder)
         {
             var special = Environment.GetFolderPath(folder);
