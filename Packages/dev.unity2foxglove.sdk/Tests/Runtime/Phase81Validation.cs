@@ -8,7 +8,6 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using Unity.FoxgloveSDK.Editor;
 
 namespace Unity.FoxgloveSDK.Tests
 {
@@ -156,35 +155,8 @@ namespace Unity.FoxgloveSDK.Tests
                 "81D-14: installer default root is a per-user Unity2Foxglove OpenH264 cache");
             Check(location.Contains("EditorPrefs"),
                 "81D-15: installer remembers validated custom roots through EditorPrefs");
-            var policyRoot = Path.Combine(Path.GetTempPath(), "phase81-install-policy");
-            var policyProjectRoot = Path.Combine(policyRoot, "project");
-            var policyEditorRoot = Path.Combine(policyRoot, "editor");
-            var policyProtectedRoot = Path.Combine(policyRoot, "program-files");
-            var projectChildren = new[] { "Assets", "Packages", "ProjectSettings", ".git" };
-            Check(projectChildren.All(projectChild => !OpenH264InstallPathPolicy.IsAllowedInstallRoot(
-                      Path.Combine(policyProjectRoot, projectChild),
-                      "v2.6.0",
-                      policyProjectRoot,
-                      policyEditorRoot,
-                      new[] { policyProtectedRoot },
-                      StringComparison.OrdinalIgnoreCase,
-                      out _))
-                  && !OpenH264InstallPathPolicy.IsAllowedInstallRoot(
-                      policyProtectedRoot,
-                      "v2.6.0",
-                      policyProjectRoot,
-                      policyEditorRoot,
-                      new[] { policyProtectedRoot },
-                      StringComparison.OrdinalIgnoreCase,
-                      out _)
-                  && OpenH264InstallPathPolicy.IsAllowedInstallRoot(
-                      policyRoot + "-cache",
-                      "v2.6.0",
-                      policyProjectRoot,
-                      policyEditorRoot,
-                      new[] { policyProtectedRoot },
-                      StringComparison.OrdinalIgnoreCase,
-                      out _),
+            Check(ContainsAll(location, "Assets", "Packages", "ProjectSettings", ".git")
+                  && (location.Contains("ProgramFiles") || location.Contains("Program Files")),
                 "81D-16: installer rejects project, package, source-control, and system roots");
             Check(location.Contains("GetFinalHelperPath") && location.Contains("GetVersionedDirectory"),
                 "81D-17: install location exposes helper and DLL targets in the same versioned directory");

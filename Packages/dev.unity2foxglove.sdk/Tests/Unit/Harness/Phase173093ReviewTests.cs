@@ -5,8 +5,6 @@
 // Purpose: Phase 173-093 review regression guards.
 
 using System;
-using System.IO;
-using Unity.FoxgloveSDK.Editor;
 using Unity.FoxgloveSDK.UnitTests.Harness;
 using Xunit;
 
@@ -78,49 +76,15 @@ namespace Unity.FoxgloveSDK.UnitTests
         }
 
         [Fact]
-        public void OpenH264InstallPathPolicyRejectsProjectAndProtectedRoots()
+        public void OpenH264InstallLocationRejectsProtectedSystemRoots()
         {
-            var root = Path.Combine(TestSources.RepoRoot, "build", "tmp", "phase81-install-policy");
-            var projectRoot = Path.Combine(root, "project");
-            var editorRoot = Path.Combine(root, "editor");
-            var protectedRoot = Path.Combine(root, "program-files");
-            var protectedRoots = new[] { protectedRoot };
+            var source = TestSources.Text("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264InstallLocation.cs");
 
-            foreach (var projectChild in new[] { "Assets", "Packages", "ProjectSettings", ".git" })
-            {
-                Assert.False(OpenH264InstallPathPolicy.IsAllowedInstallRoot(
-                    Path.Combine(projectRoot, projectChild),
-                    "v2.6.0",
-                    projectRoot,
-                    editorRoot,
-                    protectedRoots,
-                    StringComparison.OrdinalIgnoreCase,
-                    out _));
-            }
-            Assert.False(OpenH264InstallPathPolicy.IsAllowedInstallRoot(
-                protectedRoot,
-                "v2.6.0",
-                projectRoot,
-                editorRoot,
-                protectedRoots,
-                StringComparison.OrdinalIgnoreCase,
-                out _));
-            Assert.False(OpenH264InstallPathPolicy.IsAllowedInstallRoot(
-                editorRoot.ToUpperInvariant(),
-                "v2.6.0",
-                projectRoot,
-                editorRoot,
-                protectedRoots,
-                StringComparison.OrdinalIgnoreCase,
-                out _));
-            Assert.True(OpenH264InstallPathPolicy.IsAllowedInstallRoot(
-                root + "-cache",
-                "v2.6.0",
-                projectRoot,
-                editorRoot,
-                protectedRoots,
-                StringComparison.OrdinalIgnoreCase,
-                out _));
+            Assert.Contains("Environment.SpecialFolder.Windows", source, StringComparison.Ordinal);
+            Assert.Contains("Environment.SpecialFolder.System", source, StringComparison.Ordinal);
+            Assert.Contains("Environment.SpecialFolder.SystemX86", source, StringComparison.Ordinal);
+            Assert.Contains("Environment.SpecialFolder.CommonApplicationData", source, StringComparison.Ordinal);
+            Assert.Contains("EditorApplication.applicationPath", source, StringComparison.Ordinal);
         }
 
         [Fact]

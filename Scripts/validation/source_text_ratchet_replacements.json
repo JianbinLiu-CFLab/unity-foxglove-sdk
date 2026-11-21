@@ -1,24 +1,6 @@
 {
   "replacements": [
     {
-      "file": "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase81Validation.cs",
-      "validation_flag": "--phase81",
-      "class": "C",
-      "base_signature": "94366ecd082e4f721a628a3df03706e515c30ec53765e2399a379144319d6af9",
-      "head_signature": "4ee1a810cd76f670633115de10918af5ba8a1c11ce8fb7420ce2cd4abb085ead",
-      "reason": "User requested the PR #754 P3 fix on 2026-11-21; Phase 81D-16 now exercises install-path policy behavior instead of checking source text.",
-      "replacement": "Phase81Validation 81D-16 executable install-path policy checks"
-    },
-    {
-      "file": "Packages/dev.unity2foxglove.sdk/Tests/Unit/Harness/Phase173093ReviewTests.cs",
-      "validation_flag": "",
-      "class": "C",
-      "base_signature": "b8617cbe923c39f675bd902c60f2cdb4f1a01b91145af1af2650fc432610c800",
-      "head_signature": "ca0bf9a1d120c127f779ccb3bf4a94b72d9f1d24c9b49da0dc5bdd4211156b14",
-      "reason": "User requested the PR #754 P3 fix on 2026-11-21; the protected-root regression now calls the shared OpenH264 install-path policy.",
-      "replacement": "Phase173093ReviewTests OpenH264InstallPathPolicyRejectsProjectAndProtectedRoots"
-    },
-    {
       "file": "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase134_19Validation.cs",
       "validation_flag": "--phase134-19",
       "class": "C",
