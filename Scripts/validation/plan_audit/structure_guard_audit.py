@@ -92,12 +92,12 @@ def _required_status_names(payload: object) -> tuple[set[str], bool]:
                 name = value
             elif isinstance(value, dict):
                 candidate = value.get("context", value.get("name", ""))
-                if not isinstance(candidate, str) or not candidate:
+                if not isinstance(candidate, str) or not candidate or not candidate.strip():
                     return set(), False
                 name = candidate
             else:
                 return set(), False
-            if not name:
+            if not name or not name.strip():
                 return set(), False
             names.add(name)
     return names, True
@@ -119,7 +119,11 @@ def _plan_check(base_sha: str) -> audit_lib.Check:
     status_line = next((line for line in text.splitlines() if line.startswith("Status:")), "")
     entry_line = next((line for line in text.splitlines() if line.startswith("Entry base:")), "")
     status_value = status_line.split(":", 1)[1].strip().lower() if ":" in status_line else ""
-    negative_status = re.search(r"\b(?:not\s+(?:implemented|completed)|unimplemented)\b", status_value)
+    negative_status = re.search(
+        r"\b(?:unimplemented|unfinished|incomplete)\b|"
+        r"\b(?:not(?:\s+\w+){0,2}|partial(?:ly)?)\s+(?:implemented|completed|complete)\b",
+        status_value,
+    )
     status_ok = negative_status is None and bool(
         re.search(r"\b(?:audit pending|implemented|completed)\b", status_value)
     )
