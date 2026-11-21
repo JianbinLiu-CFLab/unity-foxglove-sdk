@@ -28,18 +28,24 @@ try:
         RATCHET_CLASSES,
         _archive_revision,
         _file_has_source_assertion,
-        _helper_signature_records,
         _helper_signatures_at_head,
         _helper_signatures_at_revision,
         _apply_ratchet_replacements,
         _load_ratchet_approvals,
-        _reader_helper_failures,
         _ratchet_change_tokens,
         _ratchet_counts,
         _ratchet_key,
         _ratchet_path,
         _ratchet_assertion_semantics,
         _validate_ratchet_rows,
+    )
+    from .source_text_inventory_reader_ratchet import (
+        _approved_reader_replacement_helpers,
+        _approved_reader_change_isolated,
+        _changed_source_paths,
+        _harness_change_failures,
+        _reader_helper_failures,
+        _reader_replacement_context,
     )
 except ImportError:
     from source_text_inventory_ratchet_helpers import (
@@ -48,18 +54,24 @@ except ImportError:
         RATCHET_CLASSES,
         _archive_revision,
         _file_has_source_assertion,
-        _helper_signature_records,
         _helper_signatures_at_head,
         _helper_signatures_at_revision,
         _apply_ratchet_replacements,
         _load_ratchet_approvals,
-        _reader_helper_failures,
         _ratchet_change_tokens,
         _ratchet_counts,
         _ratchet_key,
         _ratchet_path,
         _ratchet_assertion_semantics,
         _validate_ratchet_rows,
+    )
+    from source_text_inventory_reader_ratchet import (
+        _approved_reader_replacement_helpers,
+        _approved_reader_change_isolated,
+        _changed_source_paths,
+        _harness_change_failures,
+        _reader_helper_failures,
+        _reader_replacement_context,
     )
 
 
@@ -122,7 +134,6 @@ REQUIRED_ROW_FIELDS = frozenset(
     }
 )
 
-
 def _token_signatures(token: str) -> set[tuple[str, str]]:
     """Return method/literal anchors that survive line and parser changes."""
     signatures: set[tuple[str, str]] = set()
@@ -131,7 +142,6 @@ def _token_signatures(token: str) -> set[tuple[str, str]]:
         signatures.add((match.group(1), literal.group(1) if literal else ""))
     nonempty = {item for item in signatures if item[1]}
     return nonempty or signatures or {("", re.sub(r"\s+", " ", token).strip())}
-
 
 def _checked_expression_signature(token: str, harness: str | None = None) -> str:
     """Return the normalized expression whose value is checked by an assertion."""
@@ -158,13 +168,11 @@ def _checked_expression_signature(token: str, harness: str | None = None) -> str
                 return _normalize_csharp_expression(second)
     return _normalize_csharp_expression(token)
 
-
 def _assertion_context(token: str, harness: str | None = None) -> str:
     """Classify whether a source expression is wrapped in an executable check."""
     if harness or re.match(r"\s*Assert\.(?:Contains|DoesNotContain)\s*\(", token):
         return "checked"
     return "bare"
-
 
 def _assertion_literal(token: str) -> str:
     """Return the expected literal or expression from a source assertion."""
@@ -373,28 +381,6 @@ def _load_inventory_report(path: Path) -> list[dict[str, object]]:
         if not row.get("parser_version"):
             row.pop("parser_version", None)
     return rows
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 def _inventory_at_revision(
@@ -829,9 +815,35 @@ def _verify_count_ratchet(
         for row in (*base_rows, *rows)
         if str(row.get("file", "")).endswith(".cs")
     }
-    base_helpers = _helper_signatures_at_revision(root, revision, helper_files)
-    head_helpers = _helper_signatures_at_head(root, helper_files)
-    failures.extend(_reader_helper_failures(root, revision, base_helpers, head_helpers))
+    reader_files, reader_names = _reader_replacement_context(root, revision)
+    helper_files.update(reader_files)
+    base_helpers = _helper_signatures_at_revision(root, revision, helper_files, reader_names)
+    head_helpers = _helper_signatures_at_head(root, helper_files, reader_names)
+    approved_reader_helpers = _approved_reader_replacement_helpers(
+        root, revision, base_helpers, head_helpers
+    )
+    changed_source_paths = _changed_source_paths(root, revision)
+    reader_changes_isolated = _approved_reader_change_isolated(
+        root,
+        revision,
+        approved_reader_helpers,
+        base_helpers,
+        head_helpers,
+        changed_source_paths,
+    )
+    failures.extend(
+        _reader_helper_failures(root, revision, base_helpers, head_helpers, reader_names)
+    )
+    failures.extend(
+        _harness_change_failures(
+            base_rows,
+            rows,
+            base_helpers,
+            head_helpers,
+            approved_reader_helpers,
+            reader_changes_isolated,
+        )
+    )
     helper_changed = [
         f"SOURCE_TEXT_RATCHET_HELPER_CHANGED file={key[0]} helper={key[1]}"
         for key in sorted(set(base_helpers) | set(head_helpers))

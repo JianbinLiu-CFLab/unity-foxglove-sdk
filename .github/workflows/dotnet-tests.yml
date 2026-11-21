@@ -361,7 +361,8 @@ jobs:
             && [ "$trusted_revision" != "5c94676c8017158fd4bb72498dcbe3fd5f4bcccc" ] \
             && [ "$trusted_revision" != "5fea776c46ae1fe92f226573484775f1690ae1ef" ] \
             && [ "$trusted_revision" != "042f26d659b45b33935b6fdd1c5818623289e0ab" ] \
-            && [ "$trusted_revision" != "c217f990e61d43c4f7989a92bebae49798fc7be8" ]; then
+            && [ "$trusted_revision" != "c217f990e61d43c4f7989a92bebae49798fc7be8" ] \
+            && [ "$trusted_revision" != "8bca2eb23ed73d28a1efe5c14a2eb5bba85a21d0" ]; then
             if [ "$actual_migration_checker_sha" != "$trusted_checker_sha" ]; then
               echo "Current checker differs from immutable base checker without a reviewed migration approval" >&2
               exit 1
@@ -529,6 +530,25 @@ jobs:
             "parser_changes_sha256": "55a1568f1c36c5687f8e9e194bc7fbdb3e8dcc36483fa2fd361c5c2eea4d262b",
             "scope": "versioned-parser-maintenance",
             "reason": "User approved automatic source-reader discovery for the PR733/PR738 Read wrapper bypass on 2026-11-19; readers are found by what they read, not by name."
+          }
+          MIGRATION_APPROVAL
+            expected_migration_checker_sha=$(python3 -I -B -c 'import json,sys; print(json.load(open(sys.argv[1]))["checker_sha256"])' "$migration_approval_file")
+            if [ "$actual_migration_checker_sha" != "$expected_migration_checker_sha" ]; then
+              echo "Reviewed parser maintenance checker SHA-256 does not match: actual=$actual_migration_checker_sha expected=$expected_migration_checker_sha" >&2
+              exit 1
+            fi
+            migration_args=(--parser-migration-approval "$migration_approval_file")
+          elif [ "$trusted_revision" = "8bca2eb23ed73d28a1efe5c14a2eb5bba85a21d0" ]; then
+            migration_approval_file="$RUNNER_TEMP/source-text-parser-maintenance-approval.json"
+            cat > "$migration_approval_file" <<'MIGRATION_APPROVAL'
+          {
+            "base_revision": "8bca2eb23ed73d28a1efe5c14a2eb5bba85a21d0",
+            "checker_sha256": "72cb00ef15411d65865cf4436917fd8e2119eec9b0f422654d7f376525a32eec",
+            "base_inventory_sha256": "a37a42cd84641afb50dc1d496e53e5eb6166cb06995d0cd5616f8ef8e409b991",
+            "current_inventory_sha256": "a37a42cd84641afb50dc1d496e53e5eb6166cb06995d0cd5616f8ef8e409b991",
+            "parser_changes_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "scope": "versioned-parser-maintenance",
+            "reason": "Reviewed exact source-harness fail-closed ratchet follow-up for PR #759 on 2026-11-21."
           }
           MIGRATION_APPROVAL
             expected_migration_checker_sha=$(python3 -I -B -c 'import json,sys; print(json.load(open(sys.argv[1]))["checker_sha256"])' "$migration_approval_file")
