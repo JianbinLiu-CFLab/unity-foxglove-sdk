@@ -101,6 +101,8 @@
     <Compile Include="../Runtime/ValidationEvidence.cs" Link="TestHarness/ValidationEvidence.cs" />
     <Compile Include="../Runtime/PhaseValidationCase.cs" Link="TestHarness/PhaseValidationCase.cs" />
     <Compile Include="../Runtime/PhaseValidationSourceHelpers.cs" Link="TestHelpers/PhaseValidationSourceHelpers.cs" />
+    <Compile Include="../Runtime/OpenH264InstallerSourceReader.cs" Link="TestHelpers/OpenH264InstallerSourceReader.cs" />
+    <Compile Include="../Runtime/RepositoryReaders.Cpp.cs" Link="TestHelpers/RepositoryReaders.Cpp.cs" />
     <Compile Include="../Runtime/Decomposed/PhaseValidationSourceHelpers/*.cs" LinkBase="TestHelpers/Decomposed/PhaseValidationSourceHelpers" />
     <Compile Include="../Runtime/FoxRunGenerationDescriptorJsonReader.cs" Link="TestHelpers/FoxRunGenerationDescriptorJsonReader.cs" />
     <Compile Include="../Runtime/Decomposed/FoxRunGenerationDescriptorJsonReader/*.cs" Link="TestHelpers/%(Filename)%(Extension)" />
