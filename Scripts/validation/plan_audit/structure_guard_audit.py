@@ -120,7 +120,7 @@ def _plan_check(base_sha: str) -> audit_lib.Check:
     entry_line = next((line for line in text.splitlines() if line.startswith("Entry base:")), "")
     status_value = status_line.split(":", 1)[1].strip().lower() if ":" in status_line else ""
     negative_status = re.search(
-        r"\b(?:unimplemented|unfinished|incomplete)\b|"
+        r"\b(?:unimplemented|unfinished|incomplete(?:ly)?)\b|"
         r"\b(?:not(?:\s+\w+){0,2}|partial(?:ly)?)\s+(?:implemented|completed|complete)\b",
         status_value,
     )
