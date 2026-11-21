@@ -129,6 +129,7 @@ _WORKFLOW_RUNNER_MODULES: dict[str, tuple[str, ...]] = {
         "Scripts.validation.conformance.regression_checks.test_phase190_script_documentation",
         "Scripts.validation.conformance.regression_checks.test_run_conformance",
         "Scripts.validation.source_decomposition.regression_checks.test_identity_tooling",
+        "Scripts.validation.source_decomposition.regression_checks.test_source_layout",
         "Scripts.release.regression_checks.test_source_decomposition_identity_contracts",
         "Scripts.validation.source_decomposition.regression_checks.test_freeze_baseline",
         "Scripts.validation.source_decomposition.regression_checks.test_u2r2_protocol_limits",
