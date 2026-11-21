@@ -65,13 +65,16 @@ namespace Unity.FoxgloveSDK.Editor
             var finalHelperPath = OpenH264InstallLocation.GetFinalHelperPath(installRoot);
             var tempDll = finalDllPath + ".tmp";
             var tempHelper = finalHelperPath + ".tmp";
+            Func<bool> validateDestination = () =>
+                OpenH264InstallLocation.IsAllowedInstallRoot(installRoot, out _);
             try
             {
+                EnsureInstallRootStillAllowed(installRoot, InstallPhase.Prepare);
                 Directory.CreateDirectory(versionDir);
                 EnsureInstallRootStillAllowed(installRoot, InstallPhase.Prepare);
-                TryDelete(compressedDownloadPath);
-                TryDelete(tempDll);
-                TryDelete(tempHelper);
+                TryDelete(compressedDownloadPath, validateDestination: validateDestination);
+                TryDelete(tempDll, validateDestination: validateDestination);
+                TryDelete(tempHelper, validateDestination: validateDestination);
                 EnsureInstallRootStillAllowed(installRoot, InstallPhase.Download);
                 DownloadFile(OpenH264OfficialBinaryManifest.DownloadUrl, compressedDownloadPath);
                 if (!OpenH264ArtifactHashVerifier.TryVerifySha256(
@@ -81,7 +84,7 @@ namespace Unity.FoxgloveSDK.Editor
                         out _,
                         out var compressedHashError))
                 {
-                    TryDelete(compressedDownloadPath);
+                    TryDelete(compressedDownloadPath, validateDestination: validateDestination);
                     return Fail(
                         compressedHashError
                         + "\nManual fallback: open "
@@ -93,11 +96,15 @@ namespace Unity.FoxgloveSDK.Editor
 
                 EnsureInstallRootStillAllowed(installRoot, InstallPhase.Decompress);
                 if (File.Exists(compressedPath))
+                {
+                    EnsureInstallRootStillAllowed(installRoot, InstallPhase.Decompress);
                     File.Delete(compressedPath);
+                }
 
+                EnsureInstallRootStillAllowed(installRoot, InstallPhase.Decompress);
                 File.Move(compressedDownloadPath, compressedPath);
 
-                if (!TryDecompressBZip2(compressedPath, tempDll, out var decompressError))
+                if (!TryDecompressBZip2(compressedPath, tempDll, validateDestination, out var decompressError))
                 {
                     return Fail(
                         decompressError
@@ -113,6 +120,7 @@ namespace Unity.FoxgloveSDK.Editor
                         out _,
                         out var dllHashError))
                 {
+                    EnsureDestinationAllowed(validateDestination);
                     TryDelete(tempDll);
                     return Fail(
                         dllHashError
@@ -122,9 +130,16 @@ namespace Unity.FoxgloveSDK.Editor
                 }
 
                 EnsureInstallRootStillAllowed(installRoot, InstallPhase.BuildHelper);
-                if (!BuildHelperExecutable(versionDir, tempHelper, packageRoot, out var buildError))
+                if (!BuildHelperExecutable(
+                        versionDir,
+                        tempHelper,
+                        packageRoot,
+                        validateDestination,
+                        out var buildError))
                 {
+                    EnsureDestinationAllowed(validateDestination);
                     TryDelete(tempDll);
+                    EnsureDestinationAllowed(validateDestination);
                     TryDelete(tempHelper);
                     return Fail(buildError);
                 }
@@ -135,18 +150,17 @@ namespace Unity.FoxgloveSDK.Editor
                     tempHelper,
                     finalDllPath,
                     finalHelperPath,
-                    validateDestination: () =>
-                        OpenH264InstallLocation.IsAllowedInstallRoot(installRoot, out _));
+                    validateDestination: validateDestination);
 
-                EnsureInstallRootStillAllowed(installRoot, InstallPhase.Publish);
-                TryDelete(compressedPath, warnOnFailure: true);
+                if (validateDestination == null || validateDestination())
+                    TryDelete(compressedPath, warnOnFailure: true);
                 return new OpenH264InstallResult(true, finalHelperPath, finalDllPath, "");
             }
             catch (Exception ex)
             {
-                TryDelete(compressedDownloadPath);
-                TryDelete(tempDll);
-                TryDelete(tempHelper);
+                TryDelete(compressedDownloadPath, validateDestination: validateDestination);
+                TryDelete(tempDll, validateDestination: validateDestination);
+                TryDelete(tempHelper, validateDestination: validateDestination);
                 return Fail(
                     ex.Message
                     + "\nManual fallback: open "
@@ -169,6 +183,11 @@ namespace Unity.FoxgloveSDK.Editor
         private static void DownloadFile(string url, string destination)
         {
             var tempDestination = destination + ".partial";
+            var versionDirectory = Path.GetDirectoryName(destination) ?? "";
+            var installRoot = Directory.GetParent(versionDirectory)?.FullName ?? "";
+            Func<bool> validateDestination = () =>
+                OpenH264InstallLocation.IsAllowedInstallRoot(installRoot, out _);
+            EnsureDestinationAllowed(validateDestination);
             TryDelete(tempDestination);
             using (var client = new HttpClient())
             {
@@ -180,35 +199,56 @@ namespace Unity.FoxgloveSDK.Editor
                     {
                         response.EnsureSuccessStatusCode();
                         using (var source = response.Content.ReadAsStreamAsync().GetAwaiter().GetResult())
-                        using (var destinationStream = File.Create(tempDestination))
                         {
-                            source.CopyToAsync(destinationStream, 81920, cts.Token).GetAwaiter().GetResult();
+                            EnsureDestinationAllowed(validateDestination);
+                            using (var destinationStream = File.Create(tempDestination))
+                            {
+                                source.CopyToAsync(destinationStream, 81920, cts.Token).GetAwaiter().GetResult();
+                            }
                         }
                     }
 
+                    EnsureDestinationAllowed(validateDestination);
                     if (File.Exists(destination))
+                    {
+                        EnsureDestinationAllowed(validateDestination);
                         File.Delete(destination);
+                    }
 
+                    EnsureDestinationAllowed(validateDestination);
                     File.Move(tempDestination, destination);
                 }
                 catch
                 {
-                    TryDelete(tempDestination);
+                    TryDelete(tempDestination, validateDestination: validateDestination);
                     throw;
                 }
             }
         }
 
-        private static bool TryDecompressBZip2(string compressedPath, string outputPath, out string error)
+        private static bool TryDecompressBZip2(
+            string compressedPath,
+            string outputPath,
+            Func<bool> validateDestination,
+            out string error)
         {
             error = "";
+            EnsureDestinationAllowed(validateDestination);
             // The official Cisco asset is .bz2. We intentionally do not bundle
             // SharpZipLib or another MIT BZip2 decompressor here; if that changes,
             // update THIRD_PARTY_NOTICES before shipping.
-            if (TryDecompressWithBZip2Tool(compressedPath, outputPath, out var bzip2Error))
+            if (TryDecompressWithBZip2Tool(
+                    compressedPath,
+                    outputPath,
+                    validateDestination,
+                    out var bzip2Error))
                 return true;
 
-            if (TryDecompressWithPythonBZip2(compressedPath, outputPath, out var pythonError))
+            if (TryDecompressWithPythonBZip2(
+                    compressedPath,
+                    outputPath,
+                    validateDestination,
+                    out var pythonError))
                 return true;
 
             error = CombineDecompressErrors(bzip2Error, pythonError);
@@ -217,7 +257,11 @@ namespace Unity.FoxgloveSDK.Editor
             return false;
         }
 
-        private static bool TryDecompressWithBZip2Tool(string compressedPath, string outputPath, out string error)
+        private static bool TryDecompressWithBZip2Tool(
+            string compressedPath,
+            string outputPath,
+            Func<bool> validateDestination,
+            out string error)
         {
             error = "";
             var bzip2 = FindExecutable("bzip2");
@@ -232,9 +276,14 @@ namespace Unity.FoxgloveSDK.Editor
             var tempDecompressed = outputPath;
             try
             {
+                EnsureDestinationAllowed(validateDestination);
                 File.Copy(compressedPath, tempCompressed, true);
+                EnsureDestinationAllowed(validateDestination);
                 if (File.Exists(tempDecompressed))
+                {
+                    EnsureDestinationAllowed(validateDestination);
                     File.Delete(tempDecompressed);
+                }
 
                 var result = RunProcess(
                     bzip2,
@@ -242,6 +291,7 @@ namespace Unity.FoxgloveSDK.Editor
                     workDir,
                     15000,
                     out var stderr);
+                EnsureDestinationAllowed(validateDestination);
                 if (!result || !File.Exists(tempDecompressed))
                 {
                     error = string.IsNullOrWhiteSpace(stderr)
@@ -259,11 +309,16 @@ namespace Unity.FoxgloveSDK.Editor
             }
             finally
             {
-                TryDelete(tempCompressed);
+                TryDelete(tempCompressed, validateDestination: validateDestination);
             }
         }
 
-        private static bool BuildHelperExecutable(string workingDirectory, string outputPath, string packageRoot, out string error)
+        private static bool BuildHelperExecutable(
+            string workingDirectory,
+            string outputPath,
+            string packageRoot,
+            Func<bool> validateDestination,
+            out string error)
         {
             error = "";
             if (!IsWindowsEditor)
@@ -305,10 +360,15 @@ namespace Unity.FoxgloveSDK.Editor
 
             try
             {
+                EnsureDestinationAllowed(validateDestination);
                 if (File.Exists(outputPath))
+                {
+                    EnsureDestinationAllowed(validateDestination);
                     File.Delete(outputPath);
+                }
 
                 var buildScript = Path.Combine(workingDirectory, "build_openh264_helper.cmd");
+                EnsureDestinationAllowed(validateDestination);
                 File.WriteAllLines(
                     buildScript,
                     new[]
@@ -325,6 +385,7 @@ namespace Unity.FoxgloveSDK.Editor
                         "exit /b %errorlevel%"
                     });
 
+                EnsureDestinationAllowed(validateDestination);
                 var result = RunProcess(
                     "cmd.exe",
                     "/c " + QuoteArgument(buildScript),
@@ -332,6 +393,7 @@ namespace Unity.FoxgloveSDK.Editor
                     120000,
                     out var stdout,
                     out var stderr);
+                EnsureDestinationAllowed(validateDestination);
                 if (!result || !File.Exists(outputPath))
                 {
                     error = "OpenH264 helper build failed."
@@ -448,7 +510,11 @@ namespace Unity.FoxgloveSDK.Editor
             };
         }
 
-        private static bool TryDecompressWithPythonBZip2(string compressedPath, string outputPath, out string error)
+        private static bool TryDecompressWithPythonBZip2(
+            string compressedPath,
+            string outputPath,
+            Func<bool> validateDestination,
+            out string error)
         {
             error = "";
             var python = FindExecutable("python");
@@ -461,12 +527,14 @@ namespace Unity.FoxgloveSDK.Editor
             var script = "import bz2,sys;open(sys.argv[2],'wb').write(bz2.open(sys.argv[1],'rb').read())";
             try
             {
+                EnsureDestinationAllowed(validateDestination);
                 var result = RunProcess(
                     python,
                     "-c " + QuoteArgument(script) + " " + QuoteArgument(compressedPath) + " " + QuoteArgument(outputPath),
                     "",
                     15000,
                     out var stderr);
+                EnsureDestinationAllowed(validateDestination);
                 if (!result || !File.Exists(outputPath))
                 {
                     error = string.IsNullOrWhiteSpace(stderr)
@@ -581,12 +649,21 @@ namespace Unity.FoxgloveSDK.Editor
             return details;
         }
 
-        private static bool TryDelete(string path, bool warnOnFailure = false)
+        private static bool TryDelete(
+            string path,
+            bool warnOnFailure = false,
+            Func<bool> validateDestination = null)
         {
             try
             {
+                if (validateDestination != null && !validateDestination())
+                    return false;
                 if (File.Exists(path))
+                {
+                    if (validateDestination != null && !validateDestination())
+                        return false;
                     File.Delete(path);
+                }
                 return true;
             }
             catch (Exception ex)
@@ -595,6 +672,12 @@ namespace Unity.FoxgloveSDK.Editor
                     UnityEngine.Debug.LogWarning("[Foxglove] Could not delete temporary OpenH264 installer file '" + path + "': " + ex.Message);
                 return false;
             }
+        }
+
+        private static void EnsureDestinationAllowed(Func<bool> validateDestination)
+        {
+            if (validateDestination != null && !validateDestination())
+                throw new IOException("OpenH264 install destination changed during an install operation.");
         }
 
         private static OpenH264InstallResult Fail(string message)
