@@ -355,11 +355,12 @@ def _discovered_readers(root: Path) -> tuple[dict[str, frozenset[str]], frozense
     return discovered, frozenset().union(*discovered.values())
 
 def _helper_signatures_at_revision(
-    root: Path, revision: str, files: set[str]
+    root: Path, revision: str, files: set[str], reader_names: frozenset[str] = frozenset()
 ) -> dict[tuple[str, str], str]:
     """Hash recognized helper bodies from one committed revision, including test files the head deletes."""
     signatures: dict[tuple[str, str], str] = {}
     discovered, names = _discovered_readers(root)
+    names = names | reader_names
     build_review = root / "build" / "review"
     build_review.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="source-text-helper-base-", dir=build_review) as directory:
@@ -380,10 +381,13 @@ def _helper_signatures_at_revision(
                 signatures[(relative, helper)] = digest
     return signatures
 
-def _helper_signatures_at_head(root: Path, files: set[str]) -> dict[tuple[str, str], str]:
+def _helper_signatures_at_head(
+    root: Path, files: set[str], reader_names: frozenset[str] = frozenset()
+) -> dict[tuple[str, str], str]:
     """Hash recognized helper bodies from the reviewed working tree."""
     signatures: dict[tuple[str, str], str] = {}
     discovered, names = _discovered_readers(root)
+    names = names | reader_names
     for relative in sorted(files | set(discovered)):
         path = root / relative
         if not path.is_file():
@@ -392,38 +396,6 @@ def _helper_signatures_at_head(root: Path, files: set[str]) -> dict[tuple[str, s
         for helper, digest in _helper_signature_records(text, names).items():
             signatures[(relative, helper)] = digest
     return signatures
-
-def _reader_helper_failures(
-    root: Path, revision: str, base_helpers: dict[tuple[str, str], str], head_helpers: dict[tuple[str, str], str]
-) -> list[str]:
-    """Fail seed or discovered reader changes in base files unless the trusted base approves the exact digests."""
-    _, names = _discovered_readers(root)
-    listed = subprocess.run(
-        ["git", "ls-tree", "-r", "--name-only", revision], cwd=root, check=False, capture_output=True, text=True
-    )
-    base_files = set(listed.stdout.splitlines())
-    empty = hashlib.sha256(b"").hexdigest()
-    approved = {
-        (_ratchet_path(entry["file"]), str(entry["validation_flag"]).strip(), entry["base_signature"], entry["head_signature"])
-        for entry in _load_ratchet_replacements(root, revision)[0]
-        if entry["class"] == "READER"
-    }
-    failures: list[str] = []
-    for relative, helper in sorted(set(base_helpers) | set(head_helpers)):
-        name = helper.split(":", 1)[0]
-        base_digest = base_helpers.get((relative, helper), empty)
-        head_digest = head_helpers.get((relative, helper), empty)
-        if base_digest == head_digest or relative not in base_files:
-            continue
-        if not (_readers_module._text_module.SEED_READER_NAME.fullmatch(name) or name in names):
-            continue
-        verdict = "APPROVED" if (_ratchet_path(relative), helper, base_digest, head_digest) in approved else "CHANGED"
-        message = f"SOURCE_TEXT_RATCHET_READER_{verdict} file={relative} helper={helper} base={base_digest} head={head_digest}"
-        if verdict == "APPROVED":
-            print(message)
-        else:
-            failures.append(message)
-    return failures
 
 def _file_has_source_assertion(path: Path) -> bool:
     """Return whether a live validation file still contains a scannable assertion."""
