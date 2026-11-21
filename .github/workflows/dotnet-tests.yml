@@ -551,121 +551,6 @@ jobs:
             build/review/source-text-inventory-trusted/
           if-no-files-found: error
 
-  linux-identity-gate:
-    name: "Linux: source-decomposition identity gate"
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository with provenance history
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
-        with:
-          python-version: "3.12"
-
-      - name: Run source-decomposition base-head identity equivalence gate
-        if: always()
-        env:
-          SOURCE_DECOMPOSITION_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
-          SOURCE_DECOMPOSITION_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: |
-          set -euo pipefail
-          trusted_root="$RUNNER_TEMP/source-decomposition-trusted-base"
-          mkdir -p "$trusted_root"
-          trusted_revision="$SOURCE_DECOMPOSITION_BASE_SHA"
-          if [ "$SOURCE_DECOMPOSITION_BASE_SHA" = "9b3754bd21631e4c1a8717f9a133c1063ab56d33" ]; then
-            # Bootstrap the merged #542 checker regression from its reviewed predecessor once.
-            trusted_revision="ab1487e654ce11b5e217329552751a058a250ef7"
-            echo "IDENTITY_GATE_BOOTSTRAP_REQUIRED: using reviewed pre-#542 checker"
-          fi
-          if ! git merge-base --is-ancestor "$trusted_revision" "$SOURCE_DECOMPOSITION_BASE_SHA"; then
-            echo "Trusted identity checker revision is not an ancestor of the PR base" >&2
-            exit 1
-          fi
-          archive_paths=(Scripts/smoke/foxrun Scripts/smoke/ros2 Scripts/smoke/websocket)
-          checker_relative=""
-          # The selected checker is invoked later with --compatibility; git archive copies its trusted tree.
-          if git cat-file -e "$trusted_revision:Scripts/validation/source_decomposition/compare_identity_surfaces.py" 2>/dev/null; then
-            archive_paths+=(Scripts/validation/source_decomposition)
-            checker_relative="Scripts/validation/source_decomposition/compare_identity_surfaces.py"
-          elif git cat-file -e "$trusted_revision:Scripts/phase192/compare_identity_surfaces.py" 2>/dev/null; then
-            archive_paths+=(Scripts/phase192)
-            checker_relative="Scripts/phase192/compare_identity_surfaces.py"
-            echo "IDENTITY_GATE_BOOTSTRAP_REQUIRED: using legacy source-decomposition checker path"
-          else
-            echo "Trusted source-decomposition checker is missing" >&2
-            exit 1
-          fi
-          # The selected trusted checker must support --compatibility in either layout.
-          git archive "$trusted_revision" -- "${archive_paths[@]}" | tar -x -C "$trusted_root"
-          export PYTHONPATH="$trusted_root"
-          # Both identity invocations compare the checked-out repository: --repository .
-          # The trusted checker path is selected only from the immutable base revision.
-          base_checker="$trusted_root/$checker_relative"
-          if [ ! -f "$base_checker" ]; then
-            echo "Trusted base identity checker is missing" >&2
-            exit 1
-          fi
-          if ! python3 "$base_checker" --help 2>&1 | grep -q -- "--compatibility"; then
-            echo "IDENTITY_GATE_BOOTSTRAP_REQUIRED: trusted base checker lacks --compatibility" >&2
-            exit 1
-          fi
-          trusted_compare_base="$SOURCE_DECOMPOSITION_BASE_SHA"
-          trusted_compare_head="$SOURCE_DECOMPOSITION_HEAD_SHA"
-          trusted_compare_repository="."
-          if [ "$checker_relative" = "Scripts/phase192/compare_identity_surfaces.py" ]; then
-            # The historical checker archives Scripts/phase192. Normalize only the
-            # semantic head in a temporary Git repository before invoking it.
-            compat_root="$RUNNER_TEMP/source-decomposition-legacy-compat"
-            mkdir -p "$compat_root"
-            git init -q "$compat_root"
-            git -C "$compat_root" config user.name "source-decomposition-identity-gate"
-            git -C "$compat_root" config user.email "source-decomposition-identity-gate@example.invalid"
-            git archive "$SOURCE_DECOMPOSITION_BASE_SHA" | tar -x -C "$compat_root"
-            git -C "$compat_root" add -A
-            git -C "$compat_root" commit -q -m "trusted base compatibility snapshot"
-            trusted_compare_base="$(git -C "$compat_root" rev-parse HEAD)"
-            git -C "$compat_root" rm -r -q --ignore-unmatch .
-            git -C "$compat_root" clean -fdx
-            git archive "$SOURCE_DECOMPOSITION_HEAD_SHA" | tar -x -C "$compat_root"
-            if [ -d "$compat_root/Scripts/validation/source_decomposition" ]; then
-              if [ -e "$compat_root/Scripts/phase192" ]; then
-                rm -rf "$compat_root/Scripts/phase192"
-              fi
-              mv "$compat_root/Scripts/validation/source_decomposition" "$compat_root/Scripts/phase192"
-            fi
-            git -C "$compat_root" add -A
-            git -C "$compat_root" commit -q -m "semantic head compatibility snapshot"
-            trusted_compare_head="$(git -C "$compat_root" rev-parse HEAD)"
-            trusted_compare_repository="$compat_root"
-            echo "IDENTITY_GATE_BOOTSTRAP_REQUIRED: normalized semantic head for legacy checker"
-          fi
-          trusted_log="$RUNNER_TEMP/source-decomposition-trusted-base.log"
-          set +e
-          PYTHONPATH="$trusted_root" python3 "$base_checker" \
-            --base "$trusted_compare_base" \
-            --head "$trusted_compare_head" \
-            --repository "$trusted_compare_repository" \
-            --compatibility >"$trusted_log" 2>&1
-          trusted_status=$?
-          set -e
-          if [ "$trusted_status" -ne 0 ]; then
-            cat "$trusted_log"
-            exit "$trusted_status"
-          fi
-          cat "$trusted_log"
-
-          # Run the checked-in head checker as a second gate so newly supported
-          # manifest-backed Python facades cannot remain outside the trusted
-          # base checker's older identity surface.
-          python3 Scripts/validation/source_decomposition/compare_identity_surfaces.py \
-            --base "$SOURCE_DECOMPOSITION_BASE_SHA" \
-            --head "$SOURCE_DECOMPOSITION_HEAD_SHA" \
-            --repository . \
-            --compatibility
-
   linux-conformance-panels:
     name: "Linux: MCAP conformance and Foxglove panels"
     runs-on: ubuntu-latest
@@ -1055,7 +940,6 @@ jobs:
       - linux-runtime
       - linux-python-regressions
       - linux-source-text-inventory
-      - linux-identity-gate
       - linux-conformance-panels
       - optional-ros2-adapter
       - optional-ros2-native
@@ -1072,7 +956,6 @@ jobs:
           LINUX_RUNTIME_RESULT: ${{ needs['linux-runtime'].result }}
           LINUX_PYTHON_RESULT: ${{ needs['linux-python-regressions'].result }}
           SOURCE_TEXT_INVENTORY_RESULT: ${{ needs['linux-source-text-inventory'].result }}
-          LINUX_IDENTITY_RESULT: ${{ needs['linux-identity-gate'].result }}
           LINUX_CONFORMANCE_RESULT: ${{ needs['linux-conformance-panels'].result }}
           ADAPTER_RESULT: ${{ needs['optional-ros2-adapter'].result }}
           NATIVE_RESULT: ${{ needs['optional-ros2-native'].result }}
@@ -1094,7 +977,6 @@ jobs:
             "linux-runtime=$LINUX_RUNTIME_RESULT" \
             "linux-python-regressions=$LINUX_PYTHON_RESULT" \
             "linux-source-text-inventory=$SOURCE_TEXT_INVENTORY_RESULT" \
-            "linux-identity-gate=$LINUX_IDENTITY_RESULT" \
             "linux-conformance-panels=$LINUX_CONFORMANCE_RESULT" \
             "optional-ros2-adapter=$ADAPTER_RESULT" \
             "optional-ros2-native=$NATIVE_RESULT" \

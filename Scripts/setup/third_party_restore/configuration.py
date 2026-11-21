@@ -6,7 +6,15 @@ from collections.abc import Mapping
 from urllib.parse import urlsplit
 
 from Scripts.smoke.foxrun.phase186_provenance.foundation import _REFERENCE_REMOTE
-from Scripts.validation.source_decomposition.freeze_baseline import VENDOR_ROOTS
+
+
+VENDOR_ROOTS = {
+    "third-party/foxglove-sdk": "b298c3d1649e6e5dfd77a53b12ab7c27f97c7aba",
+    "third-party/mcap": "c3cab6bd3ce79199e362766daec3a4689f3a0335",
+    "third-party/ROS-TCP-Connector": "c27f00c6cf750d2d0564349b3039d19aa3925e7c",
+    "external/ros2cs": "4252e38a5bafe6102c3f8f3dcb5cb591492ba087",
+    "external/ros2-for-unity": "6ae8e285115e7ca72c48932df5d673f512b56dd7",
+}
 
 
 SOURCE_URLS = {

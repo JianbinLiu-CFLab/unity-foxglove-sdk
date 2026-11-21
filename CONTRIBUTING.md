@@ -38,14 +38,6 @@ After cloning, run `python Scripts/setup/restore_third_party.py --restore` to re
 - Keep migrated checks mapped in `Packages/dev.unity2foxglove.sdk/Tests/Unit/MIGRATION.md`
 - Manual Unity Editor smoke tests are required for Unity-specific changes (Play Mode, IL2CPP build)
 
-### Python identity compatibility
-
-- Compatibility mode preserves declared public names while allowing private helper renames and unused-import cleanup.
-- A public-name removal requires a prior entry in `Scripts/validation/source_decomposition/identity_waivers.json`; the compatibility check reads waiver authority from the base revision only.
-- A waiver for a facade that is absent from the base revision is invalid. A stale symbol entry for an existing facade is inert, so the removal and later waiver cleanup can both merge.
-- Strict mode rejects any surface removal and ignores compatibility waivers.
-- Run `python -B Scripts/validation/source_decomposition/compare_identity_surfaces.py --base <base> --head <head> --repository . --compatibility` to reproduce the compatibility check locally.
-
 ### Unity compile gate
 
 - Pull requests that change Unity import inputs need a successful self-hosted `unity-compile` run; see

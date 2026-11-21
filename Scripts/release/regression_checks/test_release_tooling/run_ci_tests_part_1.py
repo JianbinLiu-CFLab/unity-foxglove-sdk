@@ -292,7 +292,6 @@ class _RunCiTestsPart1:
             "- name: Run Phase181 custom ROS2 acceptance helper regressions",
             "- name: Check Python regression inventory coverage",
             "- name: Run Phase186 Bridge tooling and package-composition gate",
-            "- name: Run source-decomposition base-head identity equivalence gate",
             "- name: Run official MCAP differential conformance",
         ):
             start = active_workflow_line_index(workflow, step)
@@ -301,35 +300,6 @@ class _RunCiTestsPart1:
                 any(line.strip() == "if: always()" for line in lines[start + 1 : start + 4]),
                 step,
             )
-
-    def test_dotnet_workflow_identity_gate_uses_pull_request_base_and_head(self) -> None:
-        """The required workflow must compare the actual PR base and head refs."""
-        workflow = DOTNET_WORKFLOW_PATH.read_text(encoding="utf-8")
-        start = active_workflow_line_index(
-            workflow,
-            "- name: Run source-decomposition base-head identity equivalence gate",
-        )
-        lines = workflow.splitlines()
-        end = next(
-            index
-            for index in range(start + 1, len(lines))
-            if lines[index].strip() == "# Run the checked-in head checker as a second gate so newly supported"
-        )
-        joined = "\n".join(lines[start:end])
-        self.assertIn("github.event.pull_request.base.sha", joined)
-        self.assertIn("github.event.pull_request.head.sha", joined)
-        self.assertIn("Scripts/validation/source_decomposition/compare_identity_surfaces.py", joined)
-        self.assertIn("--compatibility", joined)
-        self.assertIn("git archive", joined)
-        self.assertIn("IDENTITY_GATE_BOOTSTRAP_REQUIRED", joined)
-        self.assertNotIn("bootstrap_checker_sha", joined)
-        self.assertNotIn("git show", joined)
-        self.assertIn("trusted_root", joined)
-        self.assertIn("PYTHONPATH", joined)
-        self.assertIn("$RUNNER_TEMP", joined)
-        self.assertIn("--repository .", joined)
-        self.assertNotIn("python3 Scripts/validation/source_decomposition/compare_identity_surfaces.py", joined)
-        self.assertNotIn("--strict", joined)
 
     def test_dotnet_workflow_runs_source_inventory_gate_from_trusted_revision(self) -> None:
         """The source inventory ratchet must execute a checker archived from a trusted revision."""
@@ -361,27 +331,6 @@ class _RunCiTestsPart1:
         self.assertNotIn("using reviewed bootstrap checker", gate)
         self.assertIn("build/review/source-text-inventory/", workflow)
         self.assertIn("build/review/source-text-inventory-trusted/", workflow)
-
-    def test_dotnet_workflow_cannot_waive_validator_initializer_changes(self) -> None:
-        """The trusted-base identity result must fail the workflow without a parser waiver."""
-        workflow = DOTNET_WORKFLOW_PATH.read_text(encoding="utf-8")
-        start = active_workflow_line_index(
-            workflow,
-            "- name: Run source-decomposition base-head identity equivalence gate",
-        )
-        gate = "\n".join(workflow.splitlines()[start:])
-        self.assertNotIn("lyrical_validator_errors = [", gate)
-        self.assertNotIn("expected_paths = (", gate)
-        self.assertNotIn("cleanup_lines = [", gate)
-        self.assertNotIn("IDENTITY_GATE_REVIEWED_VALIDATOR_ISOLATION_TRANSITION", gate)
-        self.assertNotIn('python3 - "$trusted_log"', gate)
-        self.assertIn('if [ "$trusted_status" -ne 0 ]; then', gate)
-        self.assertIn('cat "$trusted_log"', gate)
-        self.assertIn('exit "$trusted_status"', gate)
-        self.assertIn(
-            "python3 Scripts/validation/source_decomposition/compare_identity_surfaces.py \\",
-            workflow,
-        )
 
     def test_dotnet_workflow_provisions_phase186_websocket_runtime_dependency(self) -> None:
         """The module-execution regression must run with its websocket dependency installed."""

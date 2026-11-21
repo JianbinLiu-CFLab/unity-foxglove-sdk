@@ -1,28 +1,12 @@
-# Source Decomposition Validation
+# Source Layout Validation
 
-Repository-wide identity and source-layout validation for the maintained source decomposition.
+`source_layout.py` provides the shared helpers used by regression tests that
+load split facades and source sections.
 
-- `compare_identity_surfaces.py` compares public identity surfaces across revisions.
-- `freeze_baseline.py` records the Task 0 inventory and identity baseline.
-- `source_layout.py` loads split facades and source sections without changing runtime behavior.
-- `identity_contracts/` contains the identity-surface extractors.
-- `regression_checks/` contains the identity, baseline, and protocol regression tests.
+- `load_fresh_module` loads a facade in an isolated module environment.
+- `read_split_source` and `read_split_csharp_source` compose facade sources.
+- `read_included_source` expands relative C/C++ include fragments.
+- `load_test_suite` loads an out-of-tree regression module with its package root.
 
-## Migration authority
-
-Reviewed decomposition transitions belong in the checker shipped by a trusted base revision. The workflow does not interpret migration errors or carry transition allowlists; an unrecognized transition fails closed until checker support and regression coverage land in that trusted base.
-
-The Phase146B build-orchestrator split is already part of the current baseline. Future Phase146B changes must follow the checker-first process and must not restore a workflow fallback parser.
-
-The directory name describes the responsibility of this tooling; historical `phase192` references remain only where they identify fixtures, evidence, or test scenarios.
-
-## Entry-point migration
-
-External callers must use the semantic validation modules after the directory cleanup:
-
-| Removed entry point | Replacement |
-| --- | --- |
-| `Scripts.phase190` | `Scripts.validation.conformance` |
-| `Scripts.phase192` | `Scripts.validation.source_decomposition` |
-
-The old package directories are intentionally not retained as compatibility shims.
+The regression tests for these helpers live in
+`regression_checks/test_source_layout.py`.
