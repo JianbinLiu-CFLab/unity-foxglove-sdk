@@ -12,7 +12,7 @@
     <IncludeRos2Bridge Condition="'$(IncludeRos2Bridge)' == ''">false</IncludeRos2Bridge>
     <IncludeManagerProductionBoundary Condition="'$(IncludeManagerProductionBoundary)' == ''">false</IncludeManagerProductionBoundary>
     <IncludeOpenH264EditorSurface
-      Condition="'$(IncludeOpenH264EditorSurface)' == '' and '$(IncludeRos2ForUnityAdapter)' != 'true' and '$(IncludeRos2ForUnityNative)' != 'true' and '$(IncludeRos2Bridge)' != 'true'">true</IncludeOpenH264EditorSurface>
+      Condition="'$(IncludeOpenH264EditorSurface)' == '' and '$(IncludeRos2ForUnityAdapter)' != 'true' and '$(IncludeRos2ForUnityNative)' != 'true' and '$(IncludeRos2Bridge)' != 'true' and '$(IncludeManagerProductionBoundary)' != 'true'">true</IncludeOpenH264EditorSurface>
     <IncludeOpenH264EditorSurface Condition="'$(IncludeOpenH264EditorSurface)' == ''">false</IncludeOpenH264EditorSurface>
     <!-- Compile the reflection discovery boundary in the default focused lane;
          optional analyzer lanes use a different Unity compile-stub surface. -->

@@ -67,14 +67,16 @@ namespace Unity.FoxgloveSDK.Editor
             var tempHelper = finalHelperPath + ".tmp";
             Func<bool> validateDestination = () =>
                 OpenH264InstallLocation.IsAllowedInstallRoot(installRoot, out _);
+            bool TryDelete(string path, bool warnOnFailure = false)
+                => OpenH264OfficialBinaryInstaller.TryDelete(path, warnOnFailure, validateDestination);
             try
             {
                 EnsureInstallRootStillAllowed(installRoot, InstallPhase.Prepare);
                 Directory.CreateDirectory(versionDir);
                 EnsureInstallRootStillAllowed(installRoot, InstallPhase.Prepare);
-                TryDelete(compressedDownloadPath, validateDestination: validateDestination);
-                TryDelete(tempDll, validateDestination: validateDestination);
-                TryDelete(tempHelper, validateDestination: validateDestination);
+                TryDelete(compressedDownloadPath);
+                TryDelete(tempDll);
+                TryDelete(tempHelper);
                 EnsureInstallRootStillAllowed(installRoot, InstallPhase.Download);
                 DownloadFile(OpenH264OfficialBinaryManifest.DownloadUrl, compressedDownloadPath);
                 if (!OpenH264ArtifactHashVerifier.TryVerifySha256(
@@ -84,7 +86,7 @@ namespace Unity.FoxgloveSDK.Editor
                         out _,
                         out var compressedHashError))
                 {
-                    TryDelete(compressedDownloadPath, validateDestination: validateDestination);
+                    TryDelete(compressedDownloadPath);
                     return Fail(
                         compressedHashError
                         + "\nManual fallback: open "
@@ -120,7 +122,6 @@ namespace Unity.FoxgloveSDK.Editor
                         out _,
                         out var dllHashError))
                 {
-                    EnsureDestinationAllowed(validateDestination);
                     TryDelete(tempDll);
                     return Fail(
                         dllHashError
@@ -137,9 +138,7 @@ namespace Unity.FoxgloveSDK.Editor
                         validateDestination,
                         out var buildError))
                 {
-                    EnsureDestinationAllowed(validateDestination);
                     TryDelete(tempDll);
-                    EnsureDestinationAllowed(validateDestination);
                     TryDelete(tempHelper);
                     return Fail(buildError);
                 }
@@ -152,15 +151,14 @@ namespace Unity.FoxgloveSDK.Editor
                     finalHelperPath,
                     validateDestination: validateDestination);
 
-                if (validateDestination == null || validateDestination())
-                    TryDelete(compressedPath, warnOnFailure: true);
+                TryDelete(compressedPath, warnOnFailure: true);
                 return new OpenH264InstallResult(true, finalHelperPath, finalDllPath, "");
             }
             catch (Exception ex)
             {
-                TryDelete(compressedDownloadPath, validateDestination: validateDestination);
-                TryDelete(tempDll, validateDestination: validateDestination);
-                TryDelete(tempHelper, validateDestination: validateDestination);
+                TryDelete(compressedDownloadPath);
+                TryDelete(tempDll);
+                TryDelete(tempHelper);
                 return Fail(
                     ex.Message
                     + "\nManual fallback: open "
@@ -187,6 +185,8 @@ namespace Unity.FoxgloveSDK.Editor
             var installRoot = Directory.GetParent(versionDirectory)?.FullName ?? "";
             Func<bool> validateDestination = () =>
                 OpenH264InstallLocation.IsAllowedInstallRoot(installRoot, out _);
+            bool TryDelete(string path, bool warnOnFailure = false)
+                => OpenH264OfficialBinaryInstaller.TryDelete(path, warnOnFailure, validateDestination);
             EnsureDestinationAllowed(validateDestination);
             TryDelete(tempDestination);
             using (var client = new HttpClient())
@@ -220,7 +220,7 @@ namespace Unity.FoxgloveSDK.Editor
                 }
                 catch
                 {
-                    TryDelete(tempDestination, validateDestination: validateDestination);
+                    TryDelete(tempDestination);
                     throw;
                 }
             }
