@@ -7,6 +7,8 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
 using UnityEditor;
 using UnityEngine;
 
@@ -43,6 +45,62 @@ namespace Unity.FoxgloveSDK.Editor
 
         public static string GetVersionedDirectory(string root)
             => Path.Combine(string.IsNullOrWhiteSpace(root) ? GetPreferredInstallRoot() : root, OpenH264OfficialBinaryManifest.Version);
+
+        internal static bool TryAcquireInstallDirectoryLock(
+            string root,
+            string versionDirectory,
+            out IDisposable directoryLock,
+            out string reason)
+        {
+            directoryLock = null;
+            reason = "";
+            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                reason = "OpenH264 install directory locking is supported only on Windows.";
+                return false;
+            }
+
+            SafeFileHandle rootHandle = null;
+            SafeFileHandle versionHandle = null;
+            try
+            {
+                var fullRoot = Path.GetFullPath(root);
+                var fullVersionDirectory = Path.GetFullPath(versionDirectory);
+                rootHandle = OpenDirectoryHandle(fullRoot);
+                versionHandle = OpenDirectoryHandle(fullVersionDirectory);
+                if (rootHandle == null || rootHandle.IsInvalid
+                    || versionHandle == null || versionHandle.IsInvalid)
+                {
+                    reason = "Could not lock the OpenH264 install directories.";
+                    return false;
+                }
+
+                if (HasReparsePoint(rootHandle)
+                    || HasReparsePoint(versionHandle)
+                    || !FinalPathEquals(rootHandle, fullRoot)
+                    || !FinalPathEquals(versionHandle, fullVersionDirectory)
+                    || !IsSameOrChild(fullVersionDirectory, fullRoot))
+                {
+                    reason = "OpenH264 install directories changed or contain a symlink or junction.";
+                    return false;
+                }
+
+                directoryLock = new InstallDirectoryLock(rootHandle, versionHandle);
+                rootHandle = null;
+                versionHandle = null;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                reason = "Could not lock the OpenH264 install directories: " + ex.Message;
+                return false;
+            }
+            finally
+            {
+                rootHandle?.Dispose();
+                versionHandle?.Dispose();
+            }
+        }
 
         public static bool IsAllowedInstallRoot(string root, out string reason)
         {
@@ -202,5 +260,118 @@ namespace Unity.FoxgloveSDK.Editor
                 return false;
             }
         }
+
+        private static SafeFileHandle OpenDirectoryHandle(string path)
+        {
+            return CreateFileW(
+                path,
+                GenericRead | DeleteAccess,
+                FileShare.Read,
+                IntPtr.Zero,
+                FileMode.Open,
+                FileFlagBackupSemantics | FileFlagOpenReparsePoint,
+                IntPtr.Zero);
+        }
+
+        private static bool HasReparsePoint(SafeFileHandle handle)
+        {
+            if (!GetFileInformationByHandle(handle, out var information))
+                return true;
+
+            return (information.FileAttributes & FileAttributeReparsePoint) != 0;
+        }
+
+        private static bool FinalPathEquals(SafeFileHandle handle, string expected)
+        {
+            var capacity = 512;
+            while (capacity <= 32768)
+            {
+                var buffer = new System.Text.StringBuilder(capacity);
+                var length = GetFinalPathNameByHandleW(handle, buffer, (uint)buffer.Capacity, 0);
+                if (length == 0)
+                    return false;
+                if (length < buffer.Capacity)
+                {
+                    var actual = buffer.ToString();
+                    if (actual.StartsWith(@"\\?\", StringComparison.Ordinal))
+                        actual = actual.Substring(4);
+                    return string.Equals(
+                        actual.TrimEnd('\\'),
+                        expected.TrimEnd('\\'),
+                        StringComparison.OrdinalIgnoreCase);
+                }
+
+                capacity = checked((int)length + 1);
+            }
+
+            return false;
+        }
+
+        private sealed class InstallDirectoryLock : IDisposable
+        {
+            private SafeFileHandle _rootHandle;
+            private SafeFileHandle _versionHandle;
+
+            internal InstallDirectoryLock(SafeFileHandle rootHandle, SafeFileHandle versionHandle)
+            {
+                _rootHandle = rootHandle;
+                _versionHandle = versionHandle;
+            }
+
+            public void Dispose()
+            {
+                _versionHandle?.Dispose();
+                _rootHandle?.Dispose();
+                _versionHandle = null;
+                _rootHandle = null;
+            }
+        }
+
+        private const uint GenericRead = 0x80000000;
+        private const uint DeleteAccess = 0x00010000;
+        private const uint FileFlagBackupSemantics = 0x02000000;
+        private const uint FileFlagOpenReparsePoint = 0x00200000;
+        private const uint FileAttributeReparsePoint = 0x0400;
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct ByHandleFileInformation
+        {
+            internal uint FileAttributes;
+            internal uint CreationTimeLow;
+            internal uint CreationTimeHigh;
+            internal uint LastAccessTimeLow;
+            internal uint LastAccessTimeHigh;
+            internal uint LastWriteTimeLow;
+            internal uint LastWriteTimeHigh;
+            internal uint VolumeSerialNumber;
+            internal uint FileSizeHigh;
+            internal uint FileSizeLow;
+            internal uint NumberOfLinks;
+            internal uint FileIndexHigh;
+            internal uint FileIndexLow;
+        }
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern SafeFileHandle CreateFileW(
+            string fileName,
+            uint desiredAccess,
+            FileShare shareMode,
+            IntPtr securityAttributes,
+            FileMode creationDisposition,
+            uint flagsAndAttributes,
+            IntPtr templateFile);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool GetFileInformationByHandle(
+            SafeFileHandle file,
+            out ByHandleFileInformation information);
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern uint GetFinalPathNameByHandleW(
+            SafeFileHandle file,
+            System.Text.StringBuilder filePath,
+            uint filePathLength,
+            uint flags);
     }
 }

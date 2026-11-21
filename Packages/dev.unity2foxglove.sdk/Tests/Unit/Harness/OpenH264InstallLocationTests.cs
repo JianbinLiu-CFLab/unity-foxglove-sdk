@@ -72,6 +72,49 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             }
         }
 
+        [WindowsSymlinkFact]
+        public void LocksTheInstallDirectoriesAgainstReplacement()
+        {
+            var fixture = CreateFixture("directory-lock");
+            var versionDirectory = OpenH264InstallLocation.GetVersionedDirectory(fixture.Root);
+            var replacement = versionDirectory + ".moved";
+            Directory.CreateDirectory(versionDirectory);
+            try
+            {
+                Assert.True(
+                    OpenH264InstallLocation.TryAcquireInstallDirectoryLock(
+                        fixture.Root,
+                        versionDirectory,
+                        out var directoryLock,
+                        out var reason),
+                    reason);
+                using (directoryLock)
+                {
+                    var blocked = false;
+                    try
+                    {
+                        Directory.Move(versionDirectory, replacement);
+                    }
+                    catch (IOException)
+                    {
+                        blocked = true;
+                    }
+                    catch (UnauthorizedAccessException)
+                    {
+                        blocked = true;
+                    }
+
+                    Assert.True(blocked);
+                }
+            }
+            finally
+            {
+                if (Directory.Exists(replacement))
+                    Directory.Delete(replacement, recursive: true);
+                fixture.Dispose();
+            }
+        }
+
         private static Fixture CreateFixture(string name)
         {
             var root = Path.Combine(
