@@ -8,6 +8,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using Unity.FoxgloveSDK.Components;
 using Unity2Foxglove.Ros2ForUnity.Native;
 using Xunit;
@@ -283,6 +284,66 @@ namespace Unity2Foxglove.Tests.Ros2ForUnity
         }
 
         [Fact]
+        public void ScanAndCaptureStatusUsesIdentityUnionForRetainedCleanupAndSuppressedDemand()
+        {
+            var hub = new FoxRunRos2CustomPublisherHub();
+            var retainedBinding = new FakeHostedBinding(
+                "retained-binding",
+                new List<string>(),
+                throws: false,
+                cleanupPending: true);
+            retainedBinding.Stop();
+            GetPrivateField<List<IFoxRunRos2CustomPublisherHostedBinding>>(hub, "_bindings")
+                .Add(retainedBinding);
+
+            var topic = new FoxTopicContract(
+                "/phase181/status-union",
+                "phase181.Status",
+                "json",
+                "phase181.Status",
+                "status-union",
+                FoxTopicVisibility.Exported,
+                FoxTopicWriterPolicy.SingleWriter);
+            var bus = new FoxTopicBus();
+            const string origin = "phase181-status-union";
+            Assert.True(bus.Register(topic, origin).Accepted);
+            var source = new LifecyclePublisherSource(CreateStatusUnionContract(), topic, origin)
+            {
+                isActiveAndEnabled = true
+            };
+            UnityEngine.Object.RegisterForTests(source);
+            var identity = source.GetInstanceID() + "|" + source.Contract.Id;
+            GetPrivateField<HashSet<string>>(hub, "_terminalRegistrationFailures")
+                .Add(identity);
+
+            var previousRmw = Environment.GetEnvironmentVariable("RMW_IMPLEMENTATION");
+            try
+            {
+                Environment.SetEnvironmentVariable(
+                    "RMW_IMPLEMENTATION",
+                    "rmw_fastrtps_cpp");
+                FoxRunRos2CustomTypesupportCatalogRegistry.ResetForTests();
+                FoxRunRos2CustomTypesupportCatalogRegistry.Register(
+                    new LifecycleTypesupportCatalog());
+                hub.SetProviderSessionActive(true);
+                InvokeScanAndReconcile(hub, bus);
+
+                var status = hub.CaptureTransportStatus();
+
+                Assert.Equal(2, status.ObservedContractCount);
+                Assert.Equal(0, status.ReadyContractCount);
+                Assert.Equal(2, status.FailedContractCount);
+                Assert.Equal(FoxRunTransportObservedState.Failed, status.State);
+            }
+            finally
+            {
+                FoxRunRos2CustomTypesupportCatalogRegistry.ResetForTests();
+                UnityEngine.Object.ResetForTests();
+                Environment.SetEnvironmentVariable("RMW_IMPLEMENTATION", previousRmw);
+            }
+        }
+
+        [Fact]
         public void CapacityRejectedBindingDemandRemainsObservable()
         {
             var demand = new HashSet<string>(StringComparer.Ordinal);
@@ -427,6 +488,130 @@ namespace Unity2Foxglove.Tests.Ros2ForUnity
                 IFoxRunGeneratedMemberAccess member,
                 ulong logTimeNs)
                 => FoxRunTransportPublishResult.Rejected("not used");
+        }
+
+        private static FoxRunRos2CustomPublisherContract CreateStatusUnionContract()
+            => new FoxRunRos2CustomPublisherContract(
+                "status-union-contract",
+                "/phase181/status-union",
+                "Phase181.StatusSource",
+                "Status",
+                "unity2foxglove_foxrun_interfaces_v1/msg/Status",
+                "unity2foxglove_foxrun_interfaces_v1/msg/StatusEnvelope",
+                "dev.unity2foxglove.foxrun.ros2.interfaces",
+                "unity2foxglove_foxrun_interfaces_v1",
+                1,
+                "b218c59b845ddf1cc3f23cb0e45f1dceff336a7693cf5648b6851aca3386e7c5",
+                "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64",
+                FoxRunFlow.Publish,
+                FoxRunQosProfile.Default,
+                hasExplicitQosProfile: true,
+                qosReliability: default,
+                hasExplicitQosReliability: false,
+                qosDurability: default,
+                hasExplicitQosDurability: false,
+                qosHistory: default,
+                hasExplicitQosHistory: false,
+                qosDepth: 0,
+                hasExplicitQosDepth: false);
+
+        private static void InvokeScanAndReconcile(
+            FoxRunRos2CustomPublisherHub hub,
+            FoxTopicBus bus)
+        {
+            var method = typeof(FoxRunRos2CustomPublisherHub).GetMethod(
+                "ScanAndReconcile",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(method);
+            method.Invoke(
+                hub,
+                new object[]
+                {
+                    bus,
+                    FoxRunResolvedQos.Default,
+                    FoxRunRos2RouteEndpoint.WebSocket,
+                    FoxRunRos2RouteEndpoint.R2fu
+                });
+        }
+
+        private static T GetPrivateField<T>(object target, string name)
+        {
+            var field = target.GetType().GetField(
+                name,
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(field);
+            return (T)field.GetValue(target);
+        }
+
+        private sealed class LifecyclePublisherSource :
+            UnityEngine.MonoBehaviour,
+            IFoxRunRos2CustomPublisherSource,
+            IFoxgloveLogSource,
+            IFoxgloveTopicContractSource
+        {
+            private readonly FoxTopicContract _topic;
+            private readonly string _origin;
+
+            public LifecyclePublisherSource(
+                FoxRunRos2CustomPublisherContract contract,
+                FoxTopicContract topic,
+                string origin)
+            {
+                Contract = contract;
+                _topic = topic;
+                _origin = origin;
+            }
+
+            public FoxRunRos2CustomPublisherContract Contract { get; }
+            public int FoxRunRos2CustomPublisherCount => 1;
+            public int FoxgloveLog_TopicCount => 1;
+            public string FoxgloveLog_Origin => _origin;
+
+            public FoxgloveLogTopicInfo FoxgloveLog_GetTopic(int index)
+                => default;
+
+            public FoxTopicContract FoxgloveLog_GetContract(int index)
+                => index == 0 ? _topic : null;
+
+            public void FoxgloveLog_Publish(
+                int topicIndex,
+                FoxgloveManager manager,
+                ulong nowNs) { }
+
+            public void FoxRunRos2RegisterCustomPublishers(
+                IFoxRunRos2CustomPublisherRegistrar registrar)
+                => registrar.Register<TestDto, TestEnvelope>(Contract, null, null);
+        }
+
+        private sealed class TestDto { }
+
+        private sealed class TestEnvelope : ROS2.Message, IDisposable
+        {
+            public bool IsDisposed { get; private set; }
+
+            public void Dispose() => IsDisposed = true;
+        }
+
+        private sealed class LifecycleTypesupportCatalog :
+            IFoxRunRos2CustomTypesupportCatalog
+        {
+            public string SourcePackageId => "dev.unity2foxglove.foxrun.ros2.interfaces";
+            public string RosPackageName => "unity2foxglove_foxrun_interfaces_v1";
+            public int InterfaceRevision => 1;
+            public string InterfaceDigest =>
+                "b218c59b845ddf1cc3f23cb0e45f1dceff336a7693cf5648b6851aca3386e7c5";
+            public string BaseRuntimePackageId =>
+                "dev.unity2foxglove.ros2forunity.runtime.jazzy.win64";
+            public string Platform => "win64";
+            public IReadOnlyList<string> SupportedRmwImplementations =>
+                new[] { "rmw_fastrtps_cpp" };
+            public IReadOnlyList<FoxRunRos2CustomTypesupportTypeMapEntry> TypeMap =>
+                new[]
+                {
+                    new FoxRunRos2CustomTypesupportTypeMapEntry(
+                        "unity2foxglove_foxrun_interfaces_v1/msg/Status",
+                        "unity2foxglove_foxrun_interfaces_v1.msg.Status")
+                };
         }
 
         private sealed class FatalHostedBinding : IFoxRunRos2CustomPublisherHostedBinding

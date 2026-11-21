@@ -37,7 +37,6 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                 _seen.Clear();
                 _nativeDemand.Clear();
                 _terminalRegistrationFailures.Clear();
-                _observedNativeContractCount = 0;
                 _scanCompleted = false;
             }
         }

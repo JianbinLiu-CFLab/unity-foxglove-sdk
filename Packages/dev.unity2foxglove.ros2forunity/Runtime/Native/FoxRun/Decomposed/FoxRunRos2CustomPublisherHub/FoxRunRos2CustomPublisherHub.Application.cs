@@ -190,9 +190,6 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
                     "stale|" + exception.GetType().FullName + "|" + exception.Message,
                     "Custom native ROS2 publisher teardown failed: "
                     + exception.GetType().Name));
-            _observedNativeContractCount = Math.Max(
-                _nativeDemand.Count,
-                _bindings.Count);
             _scanCompleted = true;
         }
 

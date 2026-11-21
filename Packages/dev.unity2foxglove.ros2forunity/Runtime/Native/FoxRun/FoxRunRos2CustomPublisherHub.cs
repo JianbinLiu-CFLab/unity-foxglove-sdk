@@ -61,7 +61,6 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
         private bool _stopping;
         private bool _providerSessionActive;
         private bool _scanCompleted;
-        private int _observedNativeContractCount;
 
         internal void BindProviderOwner(
             FoxgloveManager manager,
@@ -200,32 +199,39 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
         internal FoxRunTransportDirectionStatus CaptureTransportStatus()
         {
-            var ready = 0;
+            var bindingIdentities = new HashSet<string>(StringComparer.Ordinal);
+            var readyIdentities = new HashSet<string>(StringComparer.Ordinal);
+            var observedIdentities = new HashSet<string>(StringComparer.Ordinal);
             for (var index = 0; index < _bindings.Count; index++)
-                if (!_bindings[index].IsStopped)
-                    ready++;
-            var retainedTerminalFailures = CountUnboundTerminalFailures(
-                _terminalRegistrationFailures,
-                _bindings);
-            var unobservedTerminalFailures = CountUnobservedTerminalFailures(
-                _terminalRegistrationFailures,
-                _bindings,
-                _nativeDemand);
-            var failed = CountFailedContracts(
-                _bindings.Count,
-                ready,
-                retainedTerminalFailures);
-            var observed = CountObservedContracts(
-                _observedNativeContractCount,
-                _bindings.Count,
-                unobservedTerminalFailures);
+            {
+                var binding = _bindings[index];
+                var identity = binding?.Identity;
+                if (string.IsNullOrEmpty(identity))
+                    continue;
+                bindingIdentities.Add(identity);
+                observedIdentities.Add(identity);
+                if (!binding.IsStopped)
+                    readyIdentities.Add(identity);
+            }
+
+            observedIdentities.UnionWith(_nativeDemand);
+            observedIdentities.UnionWith(_terminalRegistrationFailures);
+
+            var failedIdentities = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var identity in bindingIdentities)
+                if (!readyIdentities.Contains(identity))
+                    failedIdentities.Add(identity);
+            foreach (var identity in _terminalRegistrationFailures)
+                if (!bindingIdentities.Contains(identity))
+                    failedIdentities.Add(identity);
+
             return BuildTransportStatus(
                 _providerSessionActive,
                 _stopping,
                 _scanCompleted,
-                observed,
-                ready,
-                failed);
+                observedIdentities.Count,
+                readyIdentities.Count,
+                failedIdentities.Count);
         }
 
         internal static int CountFailedContracts(
