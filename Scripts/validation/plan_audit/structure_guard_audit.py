@@ -119,14 +119,7 @@ def _plan_check(base_sha: str) -> audit_lib.Check:
     status_line = next((line for line in text.splitlines() if line.startswith("Status:")), "")
     entry_line = next((line for line in text.splitlines() if line.startswith("Entry base:")), "")
     status_value = status_line.split(":", 1)[1].strip().lower() if ":" in status_line else ""
-    negative_status = re.search(
-        r"\b(?:unimplemented|unfinished|incomplete(?:ly)?)\b|"
-        r"\b(?:not(?:[\s-]+\w+){0,2}|partial(?:ly)?)[\s-]+(?:implemented|completed|complete)\b",
-        status_value,
-    )
-    status_ok = negative_status is None and bool(
-        re.search(r"\b(?:audit pending|implemented|completed)\b", status_value)
-    )
+    status_ok = status_value in {"audit pending", "implemented", "completed"}
     base_ok = base_sha in entry_line
     status = "PASS" if status_ok and base_ok else "FAIL"
     detail = f"{entry_line}; {status_line}; live base={base_sha}"
