@@ -176,9 +176,11 @@ class PlanAuditLibraryTests(unittest.TestCase):
                 self.assertEqual("FAIL", structure_guard_audit._plan_check("base").status)
                 path.write_text("Entry base: base\nStatus: Unimplemented\n", encoding="utf-8")
                 self.assertEqual("FAIL", structure_guard_audit._plan_check("base").status)
+                for value in ("Not yet implemented", "Not fully implemented", "Partially implemented", "Partially completed"):
+                    path.write_text(f"Entry base: base\nStatus: {value}\n", encoding="utf-8")
+                    self.assertEqual("FAIL", structure_guard_audit._plan_check("base").status)
                 path.write_text("Entry base: base\nStatus: implemented\n", encoding="utf-8")
                 self.assertEqual("PASS", structure_guard_audit._plan_check("base").status)
-
     def test_structure_guard_required_status_names_are_exact(self) -> None:
         """Required-check parsing does not accept unrelated substrings."""
         names, valid = structure_guard_audit._required_status_names(
@@ -201,6 +203,8 @@ class PlanAuditLibraryTests(unittest.TestCase):
         )
         self.assertFalse(valid)
         self.assertEqual(set(), names)
+        for payload in ({"contexts": [" "], "checks": []}, {"contexts": [{"context": "\t"}], "checks": []}):
+            self.assertEqual((set(), False), structure_guard_audit._required_status_names(payload))
         names, valid = structure_guard_audit._required_status_names({})
         self.assertFalse(valid)
         self.assertEqual(set(), names)
