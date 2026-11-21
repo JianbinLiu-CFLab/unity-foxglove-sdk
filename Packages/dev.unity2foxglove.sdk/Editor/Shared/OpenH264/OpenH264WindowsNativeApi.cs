@@ -219,10 +219,19 @@ namespace Unity.FoxgloveSDK.Editor
         /// <summary>Rejects network/device namespaces while allowing local extended paths.</summary>
         private static bool IsNetworkOrDevicePath(string path)
             => path.StartsWith(@"\\?\UNC\", StringComparison.OrdinalIgnoreCase)
+                || (path.StartsWith(@"\\?\", StringComparison.Ordinal)
+                    && !IsLocalExtendedPath(path))
                 || path.StartsWith(@"\\.\", StringComparison.OrdinalIgnoreCase)
                 || (path.StartsWith(@"\\", StringComparison.Ordinal)
                     && !path.StartsWith(@"\\?\", StringComparison.Ordinal)
                     && !path.StartsWith(@"\\.\", StringComparison.Ordinal));
+
+        /// <summary>Recognizes only drive-letter local extended-length paths.</summary>
+        private static bool IsLocalExtendedPath(string path)
+            => path.Length >= 7
+                && ((path[4] >= 'A' && path[4] <= 'Z') || (path[4] >= 'a' && path[4] <= 'z'))
+                && path[5] == ':'
+                && path[6] == '\\';
 
         /// <summary>Converts ordinary and local extended paths to NT object-manager paths.</summary>
         private static string ToNtPath(string path)

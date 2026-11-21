@@ -89,6 +89,13 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                     out _,
                     out var extendedUncReason));
             Assert.Contains("unsupported", extendedUncReason, StringComparison.OrdinalIgnoreCase);
+
+            Assert.False(
+                OpenH264WindowsSafeDirectory.TryOpenExisting(
+                    @"\\?\GLOBALROOT\Device\HarddiskVolumeShadowCopy1",
+                    out _,
+                    out var deviceReason));
+            Assert.Contains("unsupported", deviceReason, StringComparison.OrdinalIgnoreCase);
         }
 
         [WindowsSafeFileFact]
