@@ -99,7 +99,8 @@ namespace Unity.FoxgloveSDK.Editor
             string finalDllPath,
             string finalHelperPath,
             Action<string, string> moveFile = null,
-            Action<string> deleteFile = null)
+            Action<string> deleteFile = null,
+            Func<bool> validateDestination = null)
         {
             if (moveFile == null)
                 moveFile = File.Move;
@@ -113,47 +114,58 @@ namespace Unity.FoxgloveSDK.Editor
             var installedDll = false;
             var installedHelper = false;
 
-            DeleteFileIfPresent(dllBackupPath, deleteFile);
-            DeleteFileIfPresent(helperBackupPath, deleteFile);
+            ValidateDestination(validateDestination);
+            DeleteFileIfPresent(dllBackupPath, deleteFile, validateDestination);
+            DeleteFileIfPresent(helperBackupPath, deleteFile, validateDestination);
             try
             {
+                ValidateDestination(validateDestination);
                 MoveOriginalIfPresent(
                     finalDllPath,
                     dllBackupPath,
                     moveFile,
+                    validateDestination,
                     ref originalDllMoved);
+                ValidateDestination(validateDestination);
                 MoveOriginalIfPresent(
                     finalHelperPath,
                     helperBackupPath,
                     moveFile,
+                    validateDestination,
                     ref originalHelperMoved);
 
+                ValidateDestination(validateDestination);
                 moveFile(stagedDllPath, finalDllPath);
                 installedDll = true;
+                ValidateDestination(validateDestination);
                 moveFile(stagedHelperPath, finalHelperPath);
                 installedHelper = true;
 
-                DeleteFileIfPresent(dllBackupPath, deleteFile);
-                DeleteFileIfPresent(helperBackupPath, deleteFile);
+                ValidateDestination(validateDestination);
+                DeleteFileIfPresent(dllBackupPath, deleteFile, validateDestination);
+                DeleteFileIfPresent(helperBackupPath, deleteFile, validateDestination);
             }
             catch
             {
+                ValidateRollbackDestination(validateDestination);
                 if (installedHelper)
-                    DeleteFileIfPresent(finalHelperPath, deleteFile);
+                    DeleteFileIfPresent(finalHelperPath, deleteFile, validateDestination);
                 if (installedDll)
-                    DeleteFileIfPresent(finalDllPath, deleteFile);
+                    DeleteFileIfPresent(finalDllPath, deleteFile, validateDestination);
                 if (originalHelperMoved)
                     RestoreOriginal(
                         helperBackupPath,
                         finalHelperPath,
                         moveFile,
-                        deleteFile);
+                        deleteFile,
+                        validateDestination);
                 if (originalDllMoved)
                     RestoreOriginal(
                         dllBackupPath,
                         finalDllPath,
                         moveFile,
-                        deleteFile);
+                        deleteFile,
+                        validateDestination);
                 throw;
             }
         }
@@ -162,27 +174,45 @@ namespace Unity.FoxgloveSDK.Editor
             string originalPath,
             string backupPath,
             Action<string, string> moveFile,
+            Func<bool> validateDestination,
             ref bool moved)
         {
+            ValidateDestination(validateDestination);
             if (!File.Exists(originalPath))
                 return;
 
+            ValidateDestination(validateDestination);
             moveFile(originalPath, backupPath);
             moved = true;
+        }
+
+        private static void ValidateDestination(Func<bool> validateDestination)
+        {
+            if (validateDestination != null && !validateDestination())
+                throw new IOException("OpenH264 install destination changed during publication.");
+        }
+
+        private static void ValidateRollbackDestination(Func<bool> validateDestination)
+        {
+            if (validateDestination != null && !validateDestination())
+                throw new IOException("OpenH264 install destination changed before rollback.");
         }
 
         private static void RestoreOriginal(
             string backupPath,
             string destinationPath,
             Action<string, string> moveFile,
-            Action<string> deleteFile)
+            Action<string> deleteFile,
+            Func<bool> validateDestination)
         {
+            ValidateDestination(validateDestination);
             if (!File.Exists(backupPath))
                 return;
 
             try
             {
-                DeleteFileIfPresent(destinationPath, deleteFile);
+                DeleteFileIfPresent(destinationPath, deleteFile, validateDestination);
+                ValidateDestination(validateDestination);
                 moveFile(backupPath, destinationPath);
             }
             catch
@@ -192,13 +222,16 @@ namespace Unity.FoxgloveSDK.Editor
 
         private static void DeleteFileIfPresent(
             string path,
-            Action<string> deleteFile)
+            Action<string> deleteFile,
+            Func<bool> validateDestination = null)
         {
+            ValidateDestination(validateDestination);
             if (!File.Exists(path))
                 return;
 
             try
             {
+                ValidateDestination(validateDestination);
                 deleteFile(path);
             }
             catch

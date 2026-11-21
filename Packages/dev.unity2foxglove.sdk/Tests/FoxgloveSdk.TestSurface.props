@@ -87,6 +87,8 @@
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/Shared/FoxRunDescriptor/**/*.cs" LinkBase="Shared/FoxRunDescriptor" />
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/Shared/FoxRunEditorRegistry/**/*.cs" LinkBase="Shared/FoxRunEditorRegistry" />
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/Shared/OpenH264/**/*.cs" LinkBase="Shared/OpenH264" />
+    <Compile Include="$(MSBuildThisFileDirectory)../Editor/Publishers/OpenH264OfficialBinaryManifest.cs" Link="Editor/Publishers/OpenH264OfficialBinaryManifest.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)../Editor/Publishers/OpenH264InstallLocation.cs" Link="Editor/Publishers/OpenH264InstallLocation.cs" Condition="'$(IncludeOpenH264EditorSurface)' == 'true'" />
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/Shared/Process/**/*.cs" LinkBase="Shared/Process" />
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/Shared/SchemaManifest/**/*.cs" LinkBase="Shared/SchemaManifest" />
     <Compile Include="$(MSBuildThisFileDirectory)../Editor/FoxRun/FoxrunManifestWriter.cs" Link="Editor/FoxRun/FoxrunManifestWriter.cs" />
