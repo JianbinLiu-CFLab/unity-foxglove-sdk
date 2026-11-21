@@ -523,7 +523,10 @@ def _approved_reader_change_isolated(
             masked = _flow_module._strip_csharp_comments_and_strings(text)
             spans = [
                 (method.body_start, method.body_end)
-                for method in _flow_module._method_infos(text, masked)
+                for method in [
+                    *_flow_module._method_infos(text, masked),
+                    *_readers_module._generic_method_infos(masked),
+                ]
                 if method.name in names
             ]
             if len(spans) != len(names):
