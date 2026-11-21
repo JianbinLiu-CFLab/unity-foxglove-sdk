@@ -36,6 +36,15 @@ namespace Unity.FoxgloveSDK.Editor
     {
         private const int DownloadBodyTimeoutMs = 60000;
 
+        private enum InstallPhase
+        {
+            Prepare,
+            Download,
+            Decompress,
+            BuildHelper,
+            Publish
+        }
+
         public static bool IsAutomaticInstallSupported => IsWindowsEditor;
 
         public static OpenH264InstallResult Install(string installRoot)
@@ -59,9 +68,11 @@ namespace Unity.FoxgloveSDK.Editor
             try
             {
                 Directory.CreateDirectory(versionDir);
+                EnsureInstallRootStillAllowed(installRoot, InstallPhase.Prepare);
                 TryDelete(compressedDownloadPath);
                 TryDelete(tempDll);
                 TryDelete(tempHelper);
+                EnsureInstallRootStillAllowed(installRoot, InstallPhase.Download);
                 DownloadFile(OpenH264OfficialBinaryManifest.DownloadUrl, compressedDownloadPath);
                 if (!OpenH264ArtifactHashVerifier.TryVerifySha256(
                         compressedDownloadPath,
@@ -80,6 +91,7 @@ namespace Unity.FoxgloveSDK.Editor
                         + ", and compare SHA256 before installing.");
                 }
 
+                EnsureInstallRootStillAllowed(installRoot, InstallPhase.Decompress);
                 if (File.Exists(compressedPath))
                     File.Delete(compressedPath);
 
@@ -109,6 +121,7 @@ namespace Unity.FoxgloveSDK.Editor
                         + ", download and decompress the pinned asset, and compare SHA256 before installing.");
                 }
 
+                EnsureInstallRootStillAllowed(installRoot, InstallPhase.BuildHelper);
                 if (!BuildHelperExecutable(versionDir, tempHelper, packageRoot, out var buildError))
                 {
                     TryDelete(tempDll);
@@ -116,12 +129,16 @@ namespace Unity.FoxgloveSDK.Editor
                     return Fail(buildError);
                 }
 
+                EnsureInstallRootStillAllowed(installRoot, InstallPhase.Publish);
                 OpenH264ArtifactPairPublisher.Publish(
                     tempDll,
                     tempHelper,
                     finalDllPath,
-                    finalHelperPath);
+                    finalHelperPath,
+                    validateDestination: () =>
+                        OpenH264InstallLocation.IsAllowedInstallRoot(installRoot, out _));
 
+                EnsureInstallRootStillAllowed(installRoot, InstallPhase.Publish);
                 TryDelete(compressedPath, warnOnFailure: true);
                 return new OpenH264InstallResult(true, finalHelperPath, finalDllPath, "");
             }
@@ -138,6 +155,15 @@ namespace Unity.FoxgloveSDK.Editor
                     + OpenH264OfficialBinaryManifest.AssetName
                     + ", then choose the DLL and a locally built helper with ....");
             }
+        }
+
+        private static void EnsureInstallRootStillAllowed(string installRoot, InstallPhase phase)
+        {
+            if (OpenH264InstallLocation.IsAllowedInstallRoot(installRoot, out var reason))
+                return;
+
+            throw new IOException(
+                "OpenH264 install destination changed during " + phase + ": " + reason);
         }
 
         private static void DownloadFile(string url, string destination)

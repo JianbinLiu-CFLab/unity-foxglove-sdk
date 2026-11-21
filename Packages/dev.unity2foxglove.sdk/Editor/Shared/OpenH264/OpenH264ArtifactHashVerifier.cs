@@ -99,7 +99,8 @@ namespace Unity.FoxgloveSDK.Editor
             string finalDllPath,
             string finalHelperPath,
             Action<string, string> moveFile = null,
-            Action<string> deleteFile = null)
+            Action<string> deleteFile = null,
+            Func<bool> validateDestination = null)
         {
             if (moveFile == null)
                 moveFile = File.Move;
@@ -113,26 +114,34 @@ namespace Unity.FoxgloveSDK.Editor
             var installedDll = false;
             var installedHelper = false;
 
+            ValidateDestination(validateDestination);
             DeleteFileIfPresent(dllBackupPath, deleteFile);
             DeleteFileIfPresent(helperBackupPath, deleteFile);
             try
             {
+                ValidateDestination(validateDestination);
                 MoveOriginalIfPresent(
                     finalDllPath,
                     dllBackupPath,
                     moveFile,
+                    validateDestination,
                     ref originalDllMoved);
+                ValidateDestination(validateDestination);
                 MoveOriginalIfPresent(
                     finalHelperPath,
                     helperBackupPath,
                     moveFile,
+                    validateDestination,
                     ref originalHelperMoved);
 
+                ValidateDestination(validateDestination);
                 moveFile(stagedDllPath, finalDllPath);
                 installedDll = true;
+                ValidateDestination(validateDestination);
                 moveFile(stagedHelperPath, finalHelperPath);
                 installedHelper = true;
 
+                ValidateDestination(validateDestination);
                 DeleteFileIfPresent(dllBackupPath, deleteFile);
                 DeleteFileIfPresent(helperBackupPath, deleteFile);
             }
@@ -162,13 +171,21 @@ namespace Unity.FoxgloveSDK.Editor
             string originalPath,
             string backupPath,
             Action<string, string> moveFile,
+            Func<bool> validateDestination,
             ref bool moved)
         {
             if (!File.Exists(originalPath))
                 return;
 
+            ValidateDestination(validateDestination);
             moveFile(originalPath, backupPath);
             moved = true;
+        }
+
+        private static void ValidateDestination(Func<bool> validateDestination)
+        {
+            if (validateDestination != null && !validateDestination())
+                throw new IOException("OpenH264 install destination changed during publication.");
         }
 
         private static void RestoreOriginal(
