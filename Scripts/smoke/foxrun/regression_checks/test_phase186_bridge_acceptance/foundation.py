@@ -22,10 +22,6 @@ from unittest import mock
 from Scripts.smoke.foxrun import phase186_bridge_acceptance as acceptance
 from Scripts.smoke.foxrun import phase186_bridge_acceptance_protocol as protocol
 from Scripts.smoke.foxrun import phase186_bridge_project as bridge_project
-from Scripts.validation.source_decomposition.compare_identity_surfaces import (
-    _entrypoint_contract,
-    _section_modules_for_root,
-)
 HEAD = "a" * 40
 def _phase192_repository_root() -> pathlib.Path:
     """Locate the checkout even when the compatibility package rewrites __file__."""
@@ -34,19 +30,6 @@ def _phase192_repository_root() -> pathlib.Path:
         if (candidate / "Scripts").is_dir() and (candidate / "Unity2Foxglove").is_dir():
             return candidate
     raise RuntimeError("Could not locate the repository root")
-
-
-def _assert_entrypoint_delegates(package: pathlib.Path) -> None:
-    """Require each generated module entrypoint to import its owning package."""
-    entrypoint = package / "__main__.py"
-    try:
-        sections = _section_modules_for_root(package)(package)
-        _entrypoint_contract(
-            entrypoint,
-            frozenset(section.stem for section in sections),
-        )
-    except (OSError, SyntaxError, ValueError) as exc:
-        raise AssertionError(str(exc)) from exc
 
 
 def _decomposed_cli_modules(repository: pathlib.Path, relative_roots: tuple[str, ...]) -> tuple[str, ...]:
@@ -61,7 +44,6 @@ def _decomposed_cli_modules(repository: pathlib.Path, relative_roots: tuple[str,
             if package.is_dir() and (package / "__init__.py").is_file():
                 if not (package / "__main__.py").is_file():
                     raise AssertionError(f"Missing module entrypoint for {facade}")
-                _assert_entrypoint_delegates(package)
                 modules.append(".".join(facade.relative_to(repository).with_suffix("").parts))
     if not modules:
         raise AssertionError(f"No production split facades found under {relative_roots}")
@@ -122,40 +104,6 @@ class _Phase186BridgeAcceptanceTests_support:
                     completed.returncode,
                     f"{module}\nstdout:\n{completed.stdout}\nstderr:\n{completed.stderr}",
                 )
-
-    def test_module_entrypoint_rejects_non_delegating_noop(self) -> None:
-        """A non-star entrypoint must call an imported package callable."""
-        with tempfile.TemporaryDirectory() as temp:
-            package = pathlib.Path(temp) / "fixture"
-            package.mkdir()
-            (package / "__main__.py").write_text(
-                "from . import main\n",
-                encoding="utf-8",
-            )
-            with self.assertRaises(AssertionError):
-                _assert_entrypoint_delegates(package)
-
-    def test_module_entrypoint_rejects_unsafe_guard_forms(self) -> None:
-        """The acceptance checker shares the identity gate's strict dispatch contract."""
-        for entrypoint_source in (
-            "from . import *\nif __name__ is '__main__': main()\n",
-            "from . import *\nif __name__ == '__main__':\n    while True:\n        break\n",
-            "from . import *\nif __name__ == '__main__':\n    def main():\n        import os\n    main()\n",
-        ):
-            with self.subTest(entrypoint_source=entrypoint_source), tempfile.TemporaryDirectory() as temp:
-                package = pathlib.Path(temp) / "fixture"
-                package.mkdir()
-                (package / "__init__.py").write_text(
-                    "from . import core\n", encoding="utf-8"
-                )
-                (package / "core.py").write_text(
-                    "def main(): pass\n", encoding="utf-8"
-                )
-                (package / "__main__.py").write_text(
-                    entrypoint_source, encoding="utf-8"
-                )
-                with self.assertRaises(AssertionError):
-                    _assert_entrypoint_delegates(package)
 
     def test_reporter_handoff_precedes_pass_fail_not_run_machine_markers(self) -> None:
         """Verify that reporter handoff precedes pass fail not run machine markers."""

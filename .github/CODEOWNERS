@@ -1,4 +1,4 @@
-# Trusted CI and identity-gate files: changes request review from the repository owner.
+# Trusted validation and source-layout files: changes request review from the repository owner.
 /.github/workflows/ @JianbinLiu-CFLab
 /.github/CODEOWNERS @JianbinLiu-CFLab
 /Scripts/validation/source_decomposition/ @JianbinLiu-CFLab

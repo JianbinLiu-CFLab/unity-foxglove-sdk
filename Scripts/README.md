@@ -15,7 +15,7 @@ Directory layout:
 Scripts/
   validation/   Repository-wide validation and regression gates
     conformance/          Claim, adjudication, and managed conformance validation
-    source_decomposition/ Identity surfaces, source-layout, and decomposition gates
+    source_decomposition/ Shared source-layout helpers and decomposition regression tests
   smoke/        Runnable smoke probes, protocol clients, and live-tool helpers
     assets/     Asset fetch probes
     mcap/       MCAP generation and inspection probes
