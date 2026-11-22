@@ -112,8 +112,6 @@ def _is_delegate_assignment(
             and declared_type != "var"
             and normalized_target not in _NON_DELEGATE_TARGETS
         )
-        or target.lstrip().startswith(("(", "new "))
-        or "?" in target
     )
     if candidate:
         return DELEGATE_STATE_UNKNOWN
@@ -137,7 +135,7 @@ def _delegate_invocation(masked: str, start: int, name: str) -> str:
     invocation = re.search(
         rf"\b{re.escape(name)}(?:\s*!?\s*\([^;]*\)|\s*\?\.\s*Invoke\s*\([^;]*\)|"
         rf"\s*\.\s*(?:Invoke|DynamicInvoke)\s*\([^;]*\))\s*;|"
-        rf"\b[A-Za-z_]\w*\s*\(\s*{re.escape(name)}\s*\)\s*;",
+        rf"\b[A-Za-z_]\w*\s*\(\s*(?:[A-Za-z_]\w*\s*:\s*)?{re.escape(name)}\s*\)\s*;",
         masked[start:],
     )
     return re.sub(r"\s+", " ", invocation.group()).strip() if invocation else ""

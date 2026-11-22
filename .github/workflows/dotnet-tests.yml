@@ -564,7 +564,8 @@ jobs:
             cat > "$migration_approval_file" <<'MIGRATION_APPROVAL'
           {
             "base_revision": "a71a7d862299aab28cc5e89a4e01db5b0ae1039a",
-            "checker_sha256": "7ebd8915c45124d302b57e4fbfa90ed8c6b789bf48d1d94015425e111d553e23",
+            "checker_sha256": "efe1806dbfe10c7e622a7b54bcca681e6fed212d1bf07ace3e3dd26158867807",
+            "trusted_checker_sha256": "72cb00ef15411d65865cf4436917fd8e2119eec9b0f422654d7f376525a32eec",
             "base_inventory_sha256": "a37a42cd84641afb50dc1d496e53e5eb6166cb06995d0cd5616f8ef8e409b991",
             "current_inventory_sha256": "28fef11fd4228a6d79e2c2d61defb424f38acbc6bf80e0db73ed513c5ce40bc0",
             "parser_changes_sha256": "ca11440f3bd3306aa052e7fddd19d5f81a88fb31db621eac50c036b554714395",
@@ -583,7 +584,8 @@ jobs:
             cat > "$migration_approval_file" <<'MIGRATION_APPROVAL'
           {
             "base_revision": "5bc3de2627481dfa616280942317246e99b74675",
-            "checker_sha256": "41bc73a2a2619d0630eaa376d7796f31cda5da34491baf3f38325553f605574e",
+            "checker_sha256": "efe1806dbfe10c7e622a7b54bcca681e6fed212d1bf07ace3e3dd26158867807",
+            "trusted_checker_sha256": "72cb00ef15411d65865cf4436917fd8e2119eec9b0f422654d7f376525a32eec",
             "base_inventory_sha256": "a37a42cd84641afb50dc1d496e53e5eb6166cb06995d0cd5616f8ef8e409b991",
             "current_inventory_sha256": "4c3c7c170649bc53fa3d00b7cf6404ee077c357fa6439c8f0efd466193775fa9",
             "parser_changes_sha256": "b8989bd628b91907298e5d3b4dc801ed3b99aa8ee93e1b67658673576e92a253",
@@ -597,6 +599,13 @@ jobs:
               exit 1
             fi
             migration_args=(--parser-migration-approval "$migration_approval_file")
+          fi
+          if [ "$trusted_revision" = "a71a7d862299aab28cc5e89a4e01db5b0ae1039a" ] || [ "$trusted_revision" = "5bc3de2627481dfa616280942317246e99b74675" ]; then
+            expected_trusted_checker_sha=$(python3 -I -B -c 'import json,sys; print(json.load(open(sys.argv[1])).get("trusted_checker_sha256", ""))' "$migration_approval_file")
+            if [ "$trusted_checker_sha" != "$expected_trusted_checker_sha" ]; then
+              echo "Trusted source-text checker SHA-256 does not match the migration approval" >&2
+              exit 1
+            fi
           fi
           python3 -I -B "$trusted_checker" --root "$trusted_tree" --output build/review/source-text-inventory-trusted
           python3 -I -B "$reviewed_checker_root/source_text_inventory.py" --root . --base-ref "$SOURCE_TEXT_INVENTORY_BASE_SHA" --trusted-base-inventory build/review/source-text-inventory-trusted --output build/review/source-text-inventory "${migration_args[@]}"

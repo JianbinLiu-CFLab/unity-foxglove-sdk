@@ -745,7 +745,7 @@ class SourceTextRatchetTests(unittest.TestCase):
                     "    private static void Noop() { }\n"
                     "    public static void Validate() {\n"
                     "        var run = External.Factory;\n"
-                    "        Run(run);\n"
+                    "        Run(action: run);\n"
                     "    }\n}\n"
                 ),
             )
