@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// Module: Tests/Runtime
+// Module: Tests/Fixtures
 // Purpose: Compose the OpenH264 installer source surface.
 
 using System;
@@ -12,11 +12,14 @@ namespace Unity.FoxgloveSDK.Tests
 {
     internal static class OpenH264InstallerSourceComposer
     {
-        private static readonly string[] RelativePaths =
+        private const string FacadeRelativePath =
+            "Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.cs";
+        private const string FragmentDirectoryRelativePath =
+            "Packages/dev.unity2foxglove.sdk/Editor/Publishers/Decomposed/OpenH264OfficialBinaryInstaller";
+        private static readonly string[] FragmentRelativePaths =
         {
-            "Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.cs",
-            "Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.Download.cs",
-            "Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.Helper.cs",
+            FragmentDirectoryRelativePath + "/OpenH264OfficialBinaryInstaller.Download.cs",
+            FragmentDirectoryRelativePath + "/OpenH264OfficialBinaryInstaller.Helper.cs",
         };
 
         /// <summary>Reads the installer facade and its registered partial sources.</summary>
@@ -30,7 +33,7 @@ namespace Unity.FoxgloveSDK.Tests
                 throw new ArgumentException("Repository root is required.", nameof(repositoryRoot));
 
             var root = Path.GetFullPath(repositoryRoot);
-            var facadePath = Path.Combine(root, RelativePaths[0].Replace('/', Path.DirectorySeparatorChar));
+            var facadePath = Path.Combine(root, FacadeRelativePath.Replace('/', Path.DirectorySeparatorChar));
             if (!File.Exists(facadePath))
                 throw new FileNotFoundException("Missing OpenH264 installer source: " + facadePath, facadePath);
 
@@ -38,14 +41,11 @@ namespace Unity.FoxgloveSDK.Tests
             if (string.IsNullOrEmpty(facadeDirectory))
                 throw new InvalidDataException("OpenH264 installer source directory is missing.");
 
-            var fragmentPaths = RelativePaths
-                .Skip(1)
-                .Select(relativePath => Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar)))
-                .ToArray();
-
-            var expectedFragments = RelativePaths
-                .Skip(1)
-                .Select(Path.GetFileName)
+            var expectedFragments = FragmentRelativePaths
+                .Select(relativePath => Path.GetRelativePath(
+                    facadeDirectory,
+                    Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar)))
+                    .Replace('\\', '/'))
                 .ToHashSet(StringComparer.Ordinal);
             var actualFragments = Directory.GetFiles(
                     facadeDirectory,
@@ -63,10 +63,10 @@ namespace Unity.FoxgloveSDK.Tests
                     + string.Join(", ", actualFragments.OrderBy(name => name, StringComparer.Ordinal)));
 
             var builder = new StringBuilder(File.ReadAllText(facadePath));
-            foreach (var path in fragmentPaths)
+            foreach (var relativePath in FragmentRelativePaths)
             {
-                builder.Append(Environment.NewLine);
-                builder.Append(File.ReadAllText(path));
+                builder.Append('\n');
+                builder.Append(File.ReadAllText(Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar))));
             }
 
             return builder.ToString();

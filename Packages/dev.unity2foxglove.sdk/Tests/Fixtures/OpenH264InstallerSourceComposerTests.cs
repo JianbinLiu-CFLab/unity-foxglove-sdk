@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// Module: Tests/Unit/Harness
+// Module: Tests/Fixtures
 // Purpose: Verify OpenH264 installer source composition boundaries.
 
 using System;
@@ -13,6 +13,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
     public sealed class OpenH264InstallerSourceComposerTests
     {
         private const string SourceRoot = "Packages/dev.unity2foxglove.sdk/Editor/Publishers";
+        private const string FragmentRoot = SourceRoot + "/Decomposed/OpenH264OfficialBinaryInstaller";
 
         [Fact]
         public void ComposeUsesExplicitRepositoryRootForFacadeFallback()
@@ -20,10 +21,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             var root = CreateFixture();
             try
             {
-                const string facade = "facade";
-                Write(root, "OpenH264OfficialBinaryInstaller.cs", facade);
-
-                Assert.Equal(facade, OpenH264InstallerSourceComposer.Compose(root));
+                Write(root, "OpenH264OfficialBinaryInstaller.cs", "facade");
+                Assert.Equal("facade", OpenH264InstallerSourceComposer.Compose(root));
             }
             finally
             {
@@ -32,17 +31,17 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
-        public void ComposeCombinesRegisteredFragments()
+        public void ComposeCombinesRegisteredFragmentsWithStableNewlines()
         {
             var root = CreateFixture();
             try
             {
                 Write(root, "OpenH264OfficialBinaryInstaller.cs", "facade");
-                Write(root, "OpenH264OfficialBinaryInstaller.Download.cs", "download");
-                Write(root, "OpenH264OfficialBinaryInstaller.Helper.cs", "helper");
+                Write(root, FragmentRoot, "OpenH264OfficialBinaryInstaller.Download.cs", "download");
+                Write(root, FragmentRoot, "OpenH264OfficialBinaryInstaller.Helper.cs", "helper");
 
                 Assert.Equal(
-                    "facade" + Environment.NewLine + "download" + Environment.NewLine + "helper",
+                    "facade\ndownload\nhelper",
                     OpenH264InstallerSourceComposer.Compose(root));
             }
             finally
@@ -58,7 +57,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             try
             {
                 Write(root, "OpenH264OfficialBinaryInstaller.cs", "facade");
-                Write(root, "OpenH264OfficialBinaryInstaller.Download.cs", "download");
+                Write(root, FragmentRoot, "OpenH264OfficialBinaryInstaller.Download.cs", "download");
 
                 Assert.Throws<InvalidDataException>(() => OpenH264InstallerSourceComposer.Compose(root));
             }
@@ -75,9 +74,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             try
             {
                 Write(root, "OpenH264OfficialBinaryInstaller.cs", "facade");
-                Write(root, "OpenH264OfficialBinaryInstaller.Download.cs", "download");
-                Write(root, "OpenH264OfficialBinaryInstaller.Helper.cs", "helper");
-                Write(root, "OpenH264OfficialBinaryInstaller.Cleanup.cs", "cleanup");
+                Write(root, FragmentRoot, "OpenH264OfficialBinaryInstaller.Download.cs", "download");
+                Write(root, FragmentRoot, "OpenH264OfficialBinaryInstaller.Helper.cs", "helper");
+                Write(root, FragmentRoot, "OpenH264OfficialBinaryInstaller.Cleanup.cs", "cleanup");
 
                 Assert.Throws<InvalidDataException>(() => OpenH264InstallerSourceComposer.Compose(root));
             }
@@ -99,8 +98,13 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         private static void Write(string root, string fileName, string contents)
+            => Write(root, SourceRoot, fileName, contents);
+
+        private static void Write(string root, string relativeDirectory, string fileName, string contents)
         {
-            File.WriteAllText(Path.Combine(root, SourceRoot, fileName), contents);
+            var directory = Path.Combine(root, relativeDirectory.Replace('/', Path.DirectorySeparatorChar));
+            Directory.CreateDirectory(directory);
+            File.WriteAllText(Path.Combine(directory, fileName), contents);
         }
 
         private static void DeleteFixture(string root)
