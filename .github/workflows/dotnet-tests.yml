@@ -587,8 +587,8 @@ jobs:
             "checker_sha256": "ca366ee3e1af5f61eb3ffbc02a2bafe7096e648cf1cba9b371ddaf4bc7cdab78",
             "trusted_checker_sha256": "72cb00ef15411d65865cf4436917fd8e2119eec9b0f422654d7f376525a32eec",
             "base_inventory_sha256": "a37a42cd84641afb50dc1d496e53e5eb6166cb06995d0cd5616f8ef8e409b991",
-            "current_inventory_sha256": "992726186c711e7b2837f1d09e15cc1b6379f781a3bf5f0dd829ac605780b0b7",
-            "parser_changes_sha256": "60be125fbd22e73ffa380ab17328fe7616ee5f8e6e777741b3d68a5e8a4f0331",
+            "current_inventory_sha256": "b4f5192b6c0f2dcd924da29da9bbd7f8a010b6ab57bd5c4df09a70a2107e33f4",
+            "parser_changes_sha256": "0c92d2e6c7a5a5d60a0a6a8983ecc997a7f38d2520902d17aa585f594784030a",
             "scope": "versioned-parser-maintenance",
             "reason": "Reviewed finite-state delegate-flow ratchet follow-up for PR #805 on 2026-11-22."
           }
