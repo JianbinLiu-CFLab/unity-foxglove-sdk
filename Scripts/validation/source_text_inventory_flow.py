@@ -19,6 +19,9 @@ try:
         _balanced_call_end,
         _DELEGATE_ASSIGNMENT_PATTERN,
         _delegate_type_names,
+        DELEGATE_STATE_NON_DELEGATE,
+        DELEGATE_STATE_UNKNOWN,
+        _delegate_invocation_text,
         _is_delegate_assignment,
         _normalize_csharp_expression,
         _strip_csharp_comments_and_strings,
@@ -34,6 +37,9 @@ except ImportError:
         _balanced_call_end,
         _DELEGATE_ASSIGNMENT_PATTERN,
         _delegate_type_names,
+        DELEGATE_STATE_NON_DELEGATE,
+        DELEGATE_STATE_UNKNOWN,
+        _delegate_invocation_text,
         _is_delegate_assignment,
         _normalize_csharp_expression,
         _strip_csharp_comments_and_strings,
@@ -297,7 +303,6 @@ def _method_call_contexts(
     return _reachability_signatures(
         text.splitlines(), calls, text, masked, methods, argument_definitions
     )
-
 def _line_starts(text: str) -> list[int]:
     """Return source line starts for indexed call-site lookups."""
     starts = [0]
@@ -408,7 +413,6 @@ def _method_call_graph(
         text, masked, {method.identity: (method.body_start, method.body_end, method.signature) for method in methods},
         graph, resolved_calls, argument_definitions, set(field_types),
     )
-
 
 def _partial_termination_barriers(
     text: str, masked: str, methods: list[MethodInfo]
@@ -669,26 +673,27 @@ def _delegate_binding_signature(
     for match in _DELEGATE_ASSIGNMENT_PATTERN.finditer(masked):
         target = re.sub(r"\s+", " ", match.group("target")).strip()
         declared_type = match.group("type") or ""
-        is_delegate = _is_delegate_assignment(
+        name = match.group("name")
+        invocation_text = _delegate_invocation_text(masked, match.end(), target, declared_type, name, delegate_variables, method_names)
+        state = _is_delegate_assignment(
             target,
             declared_type,
-            match.group("name"),
+            name,
             delegate_variables,
             delegate_methods,
+            method_names,
             delegate_type_names,
+            invocation_text,
         )
-        if not is_delegate:
+        if state == DELEGATE_STATE_NON_DELEGATE:
             continue
-        name = match.group("name")
         delegate_variables.add(name)
-        invocation = re.search(
-            rf"\b{re.escape(name)}(?:\s*\([^;]*\)|\s*\?\.\s*Invoke\s*\([^;]*\)|"
-            rf"\s*\.\s*Invoke\s*\([^;]*\))\s*;|"
-            rf"\b[A-Za-z_]\w*\s*\(\s*{re.escape(name)}\s*\)\s*;",
-            masked[match.end() :],
-        )
-        invocation_text = re.sub(r"\s+", " ", invocation.group()).strip() if invocation else ""
-        pieces.append(f"assign:{match.group('type') or ''} {name}={target}|invoke:{invocation_text}")
+        if state == DELEGATE_STATE_UNKNOWN:
+            pieces.append(
+                f"unknown:{state}|{match.group('type') or ''} {name}={target}|invoke:{invocation_text}"
+            )
+        else:
+            pieces.append(f"assign:{match.group('type') or ''} {name}={target}|invoke:{invocation_text}")
     for method in methods:
         for call_name, open_index in _call_sites(text, masked, method):
             arguments = _call_arguments(text, masked, open_index)
@@ -702,7 +707,6 @@ def _delegate_binding_signature(
             normalized = _normalize_csharp_expression(arguments)
             pieces.append(f"call:{call_name}({normalized})")
     return hashlib.sha256("\n".join(sorted(pieces)).encode()).hexdigest() if pieces else ""
-
 
 def _lambda_binding_signature(
     text: str, masked: str, methods: list[MethodInfo] | None = None

@@ -363,7 +363,8 @@ jobs:
             && [ "$trusted_revision" != "042f26d659b45b33935b6fdd1c5818623289e0ab" ] \
             && [ "$trusted_revision" != "c217f990e61d43c4f7989a92bebae49798fc7be8" ] \
             && [ "$trusted_revision" != "8bca2eb23ed73d28a1efe5c14a2eb5bba85a21d0" ] \
-            && [ "$trusted_revision" != "a71a7d862299aab28cc5e89a4e01db5b0ae1039a" ]; then
+            && [ "$trusted_revision" != "a71a7d862299aab28cc5e89a4e01db5b0ae1039a" ] \
+            && [ "$trusted_revision" != "5bc3de2627481dfa616280942317246e99b74675" ]; then
             if [ "$actual_migration_checker_sha" != "$trusted_checker_sha" ]; then
               echo "Current checker differs from immutable base checker without a reviewed migration approval" >&2
               exit 1
@@ -563,12 +564,31 @@ jobs:
             cat > "$migration_approval_file" <<'MIGRATION_APPROVAL'
           {
             "base_revision": "a71a7d862299aab28cc5e89a4e01db5b0ae1039a",
-            "checker_sha256": "be6d4a012f57ede254feaa4aa945caa43061787e1e5f1564993a7b7e8a2a2f7f",
+            "checker_sha256": "7ebd8915c45124d302b57e4fbfa90ed8c6b789bf48d1d94015425e111d553e23",
             "base_inventory_sha256": "a37a42cd84641afb50dc1d496e53e5eb6166cb06995d0cd5616f8ef8e409b991",
             "current_inventory_sha256": "28fef11fd4228a6d79e2c2d61defb424f38acbc6bf80e0db73ed513c5ce40bc0",
             "parser_changes_sha256": "ca11440f3bd3306aa052e7fddd19d5f81a88fb31db621eac50c036b554714395",
             "scope": "versioned-parser-maintenance",
             "reason": "Reviewed casted-var delegate conversion fail-closed follow-up and exact harness-signature migration for the source-text ratchet on 2026-11-22."
+          }
+          MIGRATION_APPROVAL
+            expected_migration_checker_sha=$(python3 -I -B -c 'import json,sys; print(json.load(open(sys.argv[1]))["checker_sha256"])' "$migration_approval_file")
+            if [ "$actual_migration_checker_sha" != "$expected_migration_checker_sha" ]; then
+              echo "Reviewed parser maintenance checker SHA-256 does not match: actual=$actual_migration_checker_sha expected=$expected_migration_checker_sha" >&2
+              exit 1
+            fi
+            migration_args=(--parser-migration-approval "$migration_approval_file")
+          elif [ "$trusted_revision" = "5bc3de2627481dfa616280942317246e99b74675" ]; then
+            migration_approval_file="$RUNNER_TEMP/source-text-parser-maintenance-approval.json"
+            cat > "$migration_approval_file" <<'MIGRATION_APPROVAL'
+          {
+            "base_revision": "5bc3de2627481dfa616280942317246e99b74675",
+            "checker_sha256": "7ebd8915c45124d302b57e4fbfa90ed8c6b789bf48d1d94015425e111d553e23",
+            "base_inventory_sha256": "a37a42cd84641afb50dc1d496e53e5eb6166cb06995d0cd5616f8ef8e409b991",
+            "current_inventory_sha256": "28fef11fd4228a6d79e2c2d61defb424f38acbc6bf80e0db73ed513c5ce40bc0",
+            "parser_changes_sha256": "ca11440f3bd3306aa052e7fddd19d5f81a88fb31db621eac50c036b554714395",
+            "scope": "versioned-parser-maintenance",
+            "reason": "Reviewed finite-state delegate-flow ratchet follow-up for PR #805 on 2026-11-22."
           }
           MIGRATION_APPROVAL
             expected_migration_checker_sha=$(python3 -I -B -c 'import json,sys; print(json.load(open(sys.argv[1]))["checker_sha256"])' "$migration_approval_file")

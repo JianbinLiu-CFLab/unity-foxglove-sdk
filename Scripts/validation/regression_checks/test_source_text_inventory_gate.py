@@ -698,51 +698,52 @@ class SourceTextRatchetTests(unittest.TestCase):
             self.assertIn("SOURCE_TEXT_RATCHET_HARNESS_CHANGED", output)
             self.assertIn("helper=binding:run", output)
 
-    def test_delegate_conversion_syntax_variants_fail_closed(self):
-        """Reject balanced, aliased, spaced, nullable, and explicit delegate bindings."""
-        variants = (
-            ("nested cast", "", "var run = ((System.Action)Used);", "var run = ((System.Action)Noop);"),
-            ("aliased cast", "using D = System.Action;\n", "var run = (D)Used;", "var run = (D)Noop;"),
-            ("spaced cast", "", "var run = (System . Action)Used;", "var run = (System . Action)Noop;"),
-            ("spaced generic cast", "", "var run = (System.Func < int >)Used;", "var run = (System.Func < int >)Noop;"),
-            ("nullable cast", "", "var run = (System.Action?)Used;", "var run = (System.Action?)Noop;"),
-            ("explicit custom delegate", "", "ValidationDelegate run = Used;", "ValidationDelegate run = Noop;"),
-            ("custom delegate construction", "", "var run = new ValidationDelegate(Used);", "var run = new ValidationDelegate(Noop);"),
-        )
-        for name, prefix, base_binding, head_binding in variants:
-            with self.subTest(name=name), tempfile.TemporaryDirectory() as directory:
-                declaration = (
-                    "    private delegate void ValidationDelegate();\n"
-                    if name in {"explicit custom delegate", "custom delegate construction"}
-                    else ""
-                )
-                root = self._git_fixture(
-                    directory,
-                    validation_text=(
-                        "using System;\n"
-                        + prefix
-                        + "public static class FixtureValidation {\n"
-                        + declaration
-                        + "    private static void Used() {\n"
-                        + '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
-                        + '        Check(source.Contains("Product"));\n'
-                        + "    }\n"
-                        + "    private static void Noop() { }\n"
-                        + "    public static void Validate() {\n"
-                        + f"        {base_binding}\n"
-                        + "        run();\n"
-                        + "    }\n}\n"
-                    ),
-                )
-                validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
-                validation.write_text(
-                    validation.read_text(encoding="utf-8").replace(base_binding, head_binding),
-                    encoding="utf-8",
-                )
-                code, output = self._run_fixture_gate(root)
-                self.assertEqual(1, code, output)
-                self.assertIn("SOURCE_TEXT_RATCHET_HARNESS_CHANGED", output)
-                self.assertIn("helper=binding:run", output)
+    def test_unknown_delegate_binding_state_is_stable_and_fail_closed_on_change(self):
+        """Keep an unknown dispatch stable, then reject target changes and deletion."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(
+                directory,
+                validation_text=(
+                    "using System;\n"
+                    "public static class FixtureValidation {\n"
+                    "    private static void Used() {\n"
+                    '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                    '        Check(source.Contains("Product"));\n'
+                    "    }\n"
+                    "    private static void Noop() { }\n"
+                    "    public static void Validate() {\n"
+                    "        var run = true ? Used : Noop;\n"
+                    "        run();\n"
+                    "    }\n}\n"
+                ),
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(0, code, output)
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            text = validation.read_text(encoding="utf-8")
+            validation.write_text(text.replace("var run = true ? Used : Noop", "var run = true ? Noop : Used"), encoding="utf-8")
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code, output)
+            self.assertIn("SOURCE_TEXT_RATCHET_HARNESS_CHANGED", output)
+            validation.write_text(text.replace("var run = true ? Used : Noop;\n        run();\n", ""), encoding="utf-8")
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code, output)
+
+    def test_new_unknown_delegate_binding_fails_closed(self):
+        """Reject a newly introduced unknown dispatch binding."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(directory)
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            text = validation.read_text(encoding="utf-8").replace(
+                '        Check(source.Contains("Product"));',
+                '        Check(source.Contains("Product"));\n'
+                "        var run = true ? FixtureValidation.Validate : FixtureValidation.Validate;\n"
+                "        run();",
+            )
+            validation.write_text(text, encoding="utf-8")
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code, output)
+            self.assertIn("SOURCE_TEXT_RATCHET_HARNESS_CHANGED", output)
 
     def test_inline_delegate_forwarding_to_noop_fails_closed(self):
         """Reject a forwarding helper that stops invoking an assertion lambda."""

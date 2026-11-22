@@ -1,10 +1,7 @@
 """Text scanning primitives for source-text inventory."""
-
 from __future__ import annotations
-
 import re
 from pathlib import Path
-
 PATH_LITERAL_PATTERN = re.compile(
     r'"([^"\r\n]+(?:\.cs|\.py|\.md|\.json|\.yml|\.yaml|\.csproj|\.props|\.targets|\.asmdef|\.meta|\.txt|\.xml|\.cpp|\.h|\.dll|\.so))"'
 )
@@ -19,21 +16,22 @@ SEED_READER_ALTERNATIVES = (
 READER_CALL_PATTERN = re.compile(rf"\b(?P<reader>{SEED_READER_ALTERNATIVES})\s*\(")
 SEED_READER_NAME = re.compile(rf"(?:{SEED_READER_ALTERNATIVES})")
 _DELEGATE_TYPE_PATTERN = r"(?:global::)?[A-Za-z_]\w*(?:\s*\.\s*[A-Za-z_]\w*)*(?:\s*<[^;=]+>)?\??"
-_DELEGATE_METHOD_TARGET_PATTERN = r"(?:global::)?[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*"
 _DELEGATE_ASSIGNMENT_PATTERN = re.compile(
     rf"\b(?:(?P<type>(?:{_DELEGATE_TYPE_PATTERN}|var))\s+)?"
     rf"(?P<name>[A-Za-z_]\w*)\s*=\s*(?P<target>[^;]+);"
 )
-
-
+DELEGATE_STATE_NON_DELEGATE = "NON_DELEGATE"
+DELEGATE_STATE_DIRECT = "DIRECT"
+DELEGATE_STATE_KNOWN_WRAPPER = "KNOWN_WRAPPER"
+DELEGATE_STATE_LAMBDA_FORWARD = "LAMBDA_FORWARD"
+DELEGATE_STATE_UNKNOWN = "UNKNOWN_DELEGATE"
+_NON_DELEGATE_TARGETS = frozenset(("true", "false", "null", "default", "this", "base"))
 def _normalize_delegate_expression(value: str) -> str:
     """Normalize spacing that is insignificant in delegate expressions."""
     normalized = re.sub(r"\s+", " ", value).strip()
     normalized = re.sub(r"\s*\.\s*", ".", normalized)
     normalized = re.sub(r"\s*([<>?])\s*", r"\1", normalized)
     return normalized
-
-
 def _strip_outer_parentheses(value: str) -> str:
     """Remove balanced parentheses that wrap a complete expression."""
     value = value.strip()
@@ -43,21 +41,22 @@ def _strip_outer_parentheses(value: str) -> str:
             break
         value = value[1:-1].strip()
     return value
-
-
-def _is_method_group_target(value: str) -> bool:
-    """Return whether an expression is a bare or qualified method group."""
+def _is_delegate_like_target(value: str) -> bool:
+    """Return whether an expression has a method-group-like token shape."""
     normalized = _strip_outer_parentheses(_normalize_delegate_expression(value))
-    return re.fullmatch(_DELEGATE_METHOD_TARGET_PATTERN, normalized) is not None
-
-
+    return re.fullmatch(
+        r"(?:global::)?[A-Za-z_]\w*(?:\s*<[^;{}()]+>)?"
+        r"(?:\.(?:global::)?[A-Za-z_]\w*(?:\s*<[^;{}()]+>)?)*",
+        normalized,
+    ) is not None
 def _delegate_type_names(text: str, masked: str) -> set[str]:
     """Return built-in, declared, and aliased delegate type names in one file."""
     names = {"Action", "Func", "Predicate"}
     names.update(
         match.group("name")
         for match in re.finditer(
-            r"\bdelegate\b[^;{}()]*?\b(?P<name>[A-Za-z_]\w*)\s*\(", masked
+            r"\bdelegate\b[^;{}()]*?\b(?P<name>[A-Za-z_]\w*)"
+            r"(?:\s*<[^;{}()]*>)?\s*\(", masked
         )
     )
     aliases = {
@@ -73,54 +72,122 @@ def _delegate_type_names(text: str, masked: str) -> set[str]:
             if target_name in names:
                 names.add(alias)
     return names
-
-
 def _is_delegate_type_name(value: str, delegate_type_names: set[str]) -> bool:
     """Return whether a declared type resolves to a known delegate name."""
     normalized = _normalize_delegate_expression(value).rstrip("?").split("<", 1)[0]
     return normalized.rsplit(".", 1)[-1].removeprefix("global::") in delegate_type_names
-
-
 def _is_delegate_assignment(
     target: str,
     declared_type: str,
     name: str,
     delegate_variables: set[str],
     delegate_methods: set[str],
+    method_names: set[str],
     delegate_type_names: set[str],
-) -> bool:
-    """Return whether one assignment participates in delegate flow."""
+    invocation_text: str,
+) -> str:
+    """Classify one binding in the finite delegate-flow state set."""
+    normalized_target = _normalize_delegate_expression(target)
     target_names = set(re.findall(r"\b[A-Za-z_]\w*\b", target))
-    explicit_delegate = (
+    known_wrapper = (
         bool(declared_type)
         and declared_type != "var"
         and _is_delegate_type_name(declared_type, delegate_type_names)
     )
-    return (
-        explicit_delegate
-        or name in delegate_variables
+    known_wrapper = known_wrapper or (
+        name in delegate_variables
         or bool(target_names & delegate_methods)
-        or _is_delegate_conversion(target)
-        or "=>" in target
-        or re.search(r"\bdelegate\s*\(", target) is not None
+        or _is_delegate_conversion(target, delegate_type_names)
     )
-
-
-def _is_delegate_conversion(target: str) -> bool:
-    """Return whether a binding target is an explicit delegate cast or construction."""
+    if "=>" in target or re.search(r"\bdelegate\s*\(", target) is not None:
+        return DELEGATE_STATE_LAMBDA_FORWARD
+    if known_wrapper:
+        return DELEGATE_STATE_KNOWN_WRAPPER
+    if _is_delegate_like_target(target) and bool(target_names & method_names):
+        return DELEGATE_STATE_DIRECT
+    candidate = (
+        bool(invocation_text)
+        or (
+            _is_delegate_like_target(target)
+            and declared_type != "var"
+            and normalized_target not in _NON_DELEGATE_TARGETS
+        )
+        or target.lstrip().startswith(("(", "new "))
+        or "?" in target
+    )
+    if candidate:
+        return DELEGATE_STATE_UNKNOWN
+    return DELEGATE_STATE_NON_DELEGATE
+_DELEGATE_INVOCATION_CACHE: dict[str, set[str]] = {}
+def _delegate_invocation_names(masked: str) -> set[str]:
+    """Return names used in direct delegate-style invocations."""
+    names = _DELEGATE_INVOCATION_CACHE.get(masked)
+    if names is None:
+        names = {
+            match.group("name")
+            for match in re.finditer(
+                r"\b(?P<name>[A-Za-z_]\w*)\s*(?:\([^;]*\)|\?\.\s*Invoke\s*\([^;]*\)|\.\s*Invoke\s*\([^;]*\))\s*;",
+                masked,
+            )
+        }
+        _DELEGATE_INVOCATION_CACHE[masked] = names
+    return names
+def _delegate_invocation(masked: str, start: int, name: str) -> str:
+    """Return the first invocation of a binding after its assignment."""
+    invocation = re.search(
+        rf"\b{re.escape(name)}(?:\s*\([^;]*\)|\s*\?\.\s*Invoke\s*\([^;]*\)|"
+        rf"\s*\.\s*Invoke\s*\([^;]*\))\s*;|"
+        rf"\b[A-Za-z_]\w*\s*\(\s*{re.escape(name)}\s*\)\s*;",
+        masked[start:],
+    )
+    return re.sub(r"\s+", " ", invocation.group()).strip() if invocation else ""
+def _delegate_invocation_needed(
+    target: str,
+    declared_type: str,
+    name: str,
+    delegate_variables: set[str],
+    method_names: set[str],
+) -> bool:
+    """Return whether a binding needs an invocation scan for forwarding."""
+    target_names = set(re.findall(r"\b[A-Za-z_]\w*\b", target))
+    return (
+        name in delegate_variables
+        or bool(target_names & method_names)
+        or target.lstrip().startswith(("(", "new "))
+        or any(marker in target for marker in ("<", "?", "=>", "delegate"))
+    )
+def _delegate_invocation_text(
+    masked: str,
+    start: int,
+    target: str,
+    declared_type: str,
+    name: str,
+    delegate_variables: set[str],
+    method_names: set[str],
+) -> str:
+    """Return the normalized invocation evidence for a delegate binding."""
+    if (
+        name not in _delegate_invocation_names(masked)
+        and not _delegate_invocation_needed(target, declared_type, name, delegate_variables, method_names)
+    ):
+        return ""
+    return _delegate_invocation(masked, start, name)
+def _is_delegate_conversion(target: str, delegate_type_names: set[str]) -> bool:
+    """Return whether a target uses an allowlisted delegate cast or construction."""
     normalized = _strip_outer_parentheses(_normalize_delegate_expression(target))
-    if normalized.startswith("("):
-        close = _balanced_call_end(normalized, 0)
-        if close is not None and _is_method_group_target(normalized[close + 1 :]):
-            return bool(normalized[1:close].strip())
-    if normalized.startswith("new "):
-        open_index = normalized.find("(", 4)
-        close = _balanced_call_end(normalized, open_index) if open_index >= 0 else None
-        if close == len(normalized) - 1 and _is_method_group_target(normalized[open_index + 1 : close]):
-            return bool(normalized[4:open_index].strip())
-    return False
-
-
+    cast = re.fullmatch(
+        rf"\(\s*(?P<type>{_DELEGATE_TYPE_PATTERN})\s*\)\s*"
+        r"(?P<target>(?:global::)?[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)",
+        normalized,
+    )
+    if cast and _is_delegate_type_name(cast.group("type"), delegate_type_names):
+        return True
+    constructor = re.fullmatch(
+        rf"new\s+(?P<type>{_DELEGATE_TYPE_PATTERN})\s*\(\s*"
+        r"(?P<target>(?:global::)?[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*\)",
+        normalized,
+    )
+    return bool(constructor and _is_delegate_type_name(constructor.group("type"), delegate_type_names))
 _ACTIVE_READER_PATTERN: list[re.Pattern[str]] = [READER_CALL_PATTERN]
 _PATH_READER_PATTERNS: dict[str, re.Pattern[str]] = {}
 VARIABLE_READER_PATTERN = re.compile(
@@ -149,15 +216,12 @@ ASSERTION_CALL_PATTERN = re.compile(r"\bAssert\.(?:Contains|DoesNotContain)\s*\(
 DERIVED_METHOD_PATTERN = re.compile(r"\.(?:Contains|IndexOf|DoesNotContain)\s*\(")
 HARNESS_CALL_PATTERN = re.compile(r"\b(?:Check|Assert\.(?:True|False))\s*\(")
 PHASE_LABEL_PATTERN = re.compile(r'"(?P<label>\d+[A-Za-z]?[-A-Za-z0-9]*-[A-Za-z0-9]+:[^"]+)"')
-
 _MASK_CACHE: dict[str, str] = {}
 _COMMENT_CACHE: dict[str, str] = {}
 _REPO_FILE_CACHE: dict[tuple[str, str], Path | None] = {}
 _BRACE_CACHE: dict[str, list[tuple[int, ...]]] = {}
 _LINE_START_CACHE: dict[str, list[int]] = {}
 _PRODUCT_TYPE_CACHE: dict[tuple[str, str], set[str]] = {}
-
-
 def _clear_text_caches() -> None:
     """Clear text and repository caches before scanning a tree."""
     _MASK_CACHE.clear()
@@ -166,20 +230,15 @@ def _clear_text_caches() -> None:
     _BRACE_CACHE.clear()
     _LINE_START_CACHE.clear()
     _PRODUCT_TYPE_CACHE.clear()
+    _DELEGATE_INVOCATION_CACHE.clear()
     _PATH_READER_PATTERNS.clear()
     _ACTIVE_READER_PATTERN[0] = READER_CALL_PATTERN
-
-
 def _reader_call_pattern() -> re.Pattern[str]:
     """Return the reader-call pattern active for the file being scanned."""
     return _ACTIVE_READER_PATTERN[0]
-
-
 def _activate_reader_pattern(path: Path | None = None) -> None:
     """Select the discovered reader pattern for one validation file, or the seed pattern."""
     _ACTIVE_READER_PATTERN[0] = _PATH_READER_PATTERNS.get(str(path), READER_CALL_PATTERN) if path else READER_CALL_PATTERN
-
-
 def classify(target: str, line: str) -> str:
     """Classify one source-text assertion as boundary, wiring, or implementation."""
     if not target or "<unresolved>" in target:
@@ -202,8 +261,6 @@ def classify(target: str, line: str) -> str:
     ):
         return "B"
     return "C"
-
-
 def _normalise_path(value: str) -> str:
     """Normalise a repository-relative path for stable reports."""
     value = value.strip().strip('"').replace("\\", "/")
@@ -212,8 +269,6 @@ def _normalise_path(value: str) -> str:
         if value.startswith("/") or re.match(r"^[A-Za-z]:", value) or ".." in value.split("/")
         else value
     )
-
-
 def _repo_file(root: Path, value: str) -> Path | None:
     """Return a bounded repository file, rejecting links and oversized inputs."""
     cache_key = (str(root.resolve()), value)
@@ -233,8 +288,6 @@ def _repo_file(root: Path, value: str) -> Path | None:
     )
     _REPO_FILE_CACHE[cache_key] = result
     return result
-
-
 def _extract_argument_path(argument: str, paths: dict[str, str]) -> str | None:
     """Resolve a reader argument to a repository path or a documented path set."""
     argument = argument.strip()
@@ -259,8 +312,6 @@ def _extract_argument_path(argument: str, paths: dict[str, str]) -> str | None:
     if "," in argument:
         return _extract_argument_path(argument.split(",", 1)[1], paths)
     return None
-
-
 def _reader_target(reader: dict[str, object], paths: dict[str, str]) -> str | None:
     """Resolve a recognized reader using its documented path argument position."""
     arguments = _split_arguments(str(reader["argument"]))
@@ -274,8 +325,6 @@ def _reader_target(reader: dict[str, object], paths: dict[str, str]) -> str | No
     if target is None and not SEED_READER_NAME.fullmatch(name):
         target = next((value for value in map(lambda item: _extract_argument_path(item, paths), arguments) if value), None)
     return target
-
-
 def _split_arguments(argument: str) -> list[str]:
     """Split top-level C# call arguments while preserving nested expressions."""
     parts: list[str] = []
@@ -320,8 +369,6 @@ def _split_arguments(argument: str) -> list[str]:
         index += 1
     parts.append(argument[start:].strip())
     return parts if any(parts) else []
-
-
 def _balanced_call_end(text: str, open_index: int) -> int | None:
     """Return the closing parenthesis for a call while respecting C# literals."""
     depth = 0
@@ -386,8 +433,6 @@ def _balanced_call_end(text: str, open_index: int) -> int | None:
                 return index
         index += 1
     return None
-
-
 def _line_starts(text: str) -> list[int]:
     """Return character offsets for each line in a source buffer."""
     cached = _LINE_START_CACHE.get(text)
@@ -396,8 +441,6 @@ def _line_starts(text: str) -> list[int]:
     result = [0] + [index + 1 for index, char in enumerate(text) if char == "\n"]
     _LINE_START_CACHE[text] = result
     return result
-
-
 def _line_for_offset(starts: list[int], offset: int) -> int:
     """Map a character offset to a zero-based line number."""
     line = 0

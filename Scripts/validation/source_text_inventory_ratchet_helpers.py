@@ -16,18 +16,20 @@ try:
     from . import source_text_inventory_readers as _readers_module
     from .source_text_inventory_text import (
         _DELEGATE_ASSIGNMENT_PATTERN,
+        DELEGATE_STATE_NON_DELEGATE,
         _delegate_type_names,
-        _is_delegate_conversion,
-        _is_delegate_type_name,
+        _delegate_invocation_text,
+        _is_delegate_assignment,
     )
 except ImportError:
     import source_text_inventory_flow as _flow_module
     import source_text_inventory_readers as _readers_module
     from source_text_inventory_text import (
         _DELEGATE_ASSIGNMENT_PATTERN,
+        DELEGATE_STATE_NON_DELEGATE,
         _delegate_type_names,
-        _is_delegate_conversion,
-        _is_delegate_type_name,
+        _delegate_invocation_text,
+        _is_delegate_assignment,
     )
 
 RATCHET_APPROVALS_PATH = Path("Scripts/validation/source_text_ratchet_approvals.json")
@@ -305,6 +307,7 @@ def _helper_signature_records(text: str, readers: frozenset[str] = frozenset()) 
         return {}
     masked = _flow_module._strip_csharp_comments_and_strings(text)
     methods = _flow_module._method_infos(text, masked)
+    method_names = {method.name for method in methods}
     generic = [method for method in _readers_module._generic_method_infos(masked) if method.name in readers]
     records: dict[str, str] = {}
     for method in [*methods, *generic]:
@@ -334,19 +337,26 @@ def _helper_signature_records(text: str, readers: frozenset[str] = frozenset()) 
     for match in _DELEGATE_ASSIGNMENT_PATTERN.finditer(masked):
         target = match.group("target")
         declared_type = match.group("type") or ""
-        if (
-            (not declared_type or declared_type == "var")
-            and not _is_delegate_conversion(target)
-            and "=>" not in target
-            and "delegate" not in target
-        ) or (
-            declared_type
-            and declared_type != "var"
-            and not _is_delegate_type_name(declared_type, delegate_type_names)
-        ):
+        name = match.group("name")
+        state = _is_delegate_assignment(
+            target,
+            declared_type,
+            name,
+            set(),
+            set(),
+            method_names,
+            delegate_type_names,
+            _delegate_invocation_text(masked, match.end(), target, declared_type, name, set(), method_names),
+        )
+        if state == DELEGATE_STATE_NON_DELEGATE:
             continue
-        name = "binding:" + match.group("name")
-        records[name] = hashlib.sha256(text[match.start() : match.end()].encode("utf-8")).hexdigest()
+        binding_name = "binding:" + name
+        payload = text[match.start() : match.end()]
+        if state != "KNOWN_WRAPPER" and state != "LAMBDA_FORWARD":
+            payload = f"state={state}|{payload}"
+        records[binding_name] = hashlib.sha256(
+            payload.encode("utf-8")
+        ).hexdigest()
     return records
 
 def _archive_revision(root: Path, revision: str, destination: Path) -> None:
