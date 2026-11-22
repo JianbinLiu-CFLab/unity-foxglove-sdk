@@ -17,9 +17,10 @@ READER_CALL_PATTERN = re.compile(rf"\b(?P<reader>{SEED_READER_ALTERNATIVES})\s*\
 SEED_READER_NAME = re.compile(rf"(?:{SEED_READER_ALTERNATIVES})")
 _DELEGATE_TYPE_PATTERN = r"(?:global::)?[A-Za-z_]\w*(?:\s*\.\s*[A-Za-z_]\w*)*(?:\s*<[^;=]+>)?\??"
 _DELEGATE_METHOD_TARGET_PATTERN = r"(?:global::)?[A-Za-z_]\w*(?:\s*<[^;{}()]+>)?(?:\s*\.\s*(?:global::)?[A-Za-z_]\w*(?:\s*<[^;{}()]+>)?)*"
-_KNOWN_DELEGATE_WRAPPER_NAMES = frozenset(("Run", "Ci", "DefaultOnly", "Local", "Manual", "PhaseValidationCase.Run")); _DELEGATE_TARGET_NAME_HINTS = frozenset(("Action",))
+_KNOWN_DELEGATE_WRAPPER_NAMES = frozenset(("Run", "Ci", "DefaultOnly", "Local", "Manual", "PhaseValidationCase.Run")); _DELEGATE_TARGET_NAME_HINTS = frozenset(("Action", "Callback", "Delegate", "Factory", "Handler")); _DIRECT_DELEGATE_TARGET_NAME_HINTS = frozenset(("Action",))
+_DELEGATE_DECLARATION_MODIFIERS = r"(?:(?:public|private|protected|internal|static|readonly|const|volatile|new|unsafe|async|extern|abstract|sealed|partial|virtual|override|ref|out|in)\s+)*"
 _DELEGATE_ASSIGNMENT_PATTERN = re.compile(
-    rf"\b(?:(?P<type>(?:{_DELEGATE_TYPE_PATTERN}|var))\s+)?"
+    rf"\b{_DELEGATE_DECLARATION_MODIFIERS}(?:(?P<type>(?:{_DELEGATE_TYPE_PATTERN}|var))\s+)?"
     rf"(?P<name>[A-Za-z_]\w*)\s*=\s*(?P<target>[^;]+);"
 )
 DELEGATE_STATE_NON_DELEGATE = "NON_DELEGATE"
@@ -73,7 +74,8 @@ def _is_delegate_type_name(value: str, delegate_type_names: set[str]) -> bool:
     """Return whether a declared type resolves to a known delegate name."""
     normalized = _normalize_delegate_expression(value).rstrip("?").split("<", 1)[0]
     return normalized.rsplit(".", 1)[-1].removeprefix("global::") in delegate_type_names
-def _has_delegate_target_hint(value: str) -> bool: return _normalize_delegate_expression(value).rsplit(".", 1)[-1].split("<", 1)[0].endswith("Action")
+def _has_delegate_target_hint(value: str) -> bool: return any(_normalize_delegate_expression(value).rsplit(".", 1)[-1].split("<", 1)[0].endswith(hint) for hint in _DELEGATE_TARGET_NAME_HINTS)
+def _has_direct_delegate_target_hint(value: str) -> bool: return any(_normalize_delegate_expression(value).rsplit(".", 1)[-1].split("<", 1)[0].endswith(hint) for hint in _DIRECT_DELEGATE_TARGET_NAME_HINTS)
 def _is_delegate_assignment(
     target: str,
     declared_type: str,
@@ -103,13 +105,13 @@ def _is_delegate_assignment(
         return DELEGATE_STATE_LAMBDA_FORWARD
     if known_wrapper:
         return DELEGATE_STATE_KNOWN_WRAPPER
-    normalized_target = _strip_outer_parentheses(_normalize_delegate_expression(target)); target_call = re.match(r"(?P<name>(?:global::)?[A-Za-z_]\w*(?:\s*\.\s*[A-Za-z_]\w*)*)\s*\(", normalized_target); target_call_known = bool(target_call and _has_delegate_target_hint(target_call.group("name")))
-    if (_is_delegate_like_target(target) or target_call_known) and (bool(target_names & method_names) or _has_delegate_target_hint(target) or target_call_known):
+    normalized_target = _strip_outer_parentheses(_normalize_delegate_expression(target)); target_call = re.match(r"(?P<name>(?:global::)?[A-Za-z_]\w*(?:\s*\.\s*[A-Za-z_]\w*)*)\s*\(", normalized_target); target_call_known = bool(target_call and _has_direct_delegate_target_hint(target_call.group("name")))
+    if (_is_delegate_like_target(target) or target_call_known) and (bool(target_names & method_names) or _has_direct_delegate_target_hint(target) or target_call_known):
         return DELEGATE_STATE_DIRECT
     invocation_prefix = invocation_text.split("(", 1)[0].strip()
     invocation_identity = re.sub(r"[^A-Za-z0-9_:.]+$", "", invocation_prefix)
     invocation_name = invocation_identity.rsplit(".", 1)[-1]
-    wrapper_candidate = _is_delegate_like_target(target) and "=>" not in invocation_text and re.search(rf"\b{re.escape(name)}\b", invocation_text) is not None and (bool(delegate_wrapper_names and invocation_identity in delegate_wrapper_names) or "." in invocation_identity)
+    wrapper_candidate = _is_delegate_like_target(target) and "=>" not in invocation_text and re.search(rf"\b{re.escape(name)}\b", invocation_text) is not None and bool(delegate_wrapper_names and invocation_identity in delegate_wrapper_names) and _has_delegate_target_hint(target)
     candidate = bool(invocation_text) and (
         bool(delegate_boundary_names and name in delegate_boundary_names)
         or invocation_name == name
@@ -131,7 +133,7 @@ def _delegate_invocation_names(masked: str) -> set[str]:
         names = {
             match.group("name")
             for match in re.finditer(
-                r"\b(?P<name>[A-Za-z_]\w*)\s*(?:!?\s*\(|(?:\?\.|\.)\s*(?:Invoke|DynamicInvoke)\s*\()",
+                r"\b(?P<name>[A-Za-z_]\w*)\s*(?:!?\s*\(|!?\s*\.\s*(?:Invoke|DynamicInvoke)\s*\()",
                 masked,
             )
         }
@@ -140,8 +142,8 @@ def _delegate_invocation_names(masked: str) -> set[str]:
 def _delegate_invocation(masked: str, start: int, name: str) -> str:
     """Return the first invocation of a binding after its assignment."""
     invocation = re.search(
-        rf"\b{re.escape(name)}(?:\s*!?\s*\([^;]*?\)|\s*\?\.\s*Invoke\s*\([^;]*?\)|"
-        rf"\s*\.\s*(?:Invoke|DynamicInvoke)\s*\([^;]*?\))|"
+        rf"\b{re.escape(name)}(?:\s*!?\s*\([^;]*?\)|\s*!?\s*\.\s*(?:Invoke|DynamicInvoke)\s*\([^;]*?\)|"
+        rf"\s*\?\.\s*(?:Invoke|DynamicInvoke)\s*\([^;]*?\))|"
         rf"\b[A-Za-z_]\w*\s*\([^;]*\b(?:[A-Za-z_]\w*\s*:\s*)?{re.escape(name)}\b[^;]*\)\s*;",
         masked[start:],
     )

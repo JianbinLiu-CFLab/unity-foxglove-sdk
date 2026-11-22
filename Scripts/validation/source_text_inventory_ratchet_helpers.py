@@ -318,7 +318,13 @@ def _helper_signature_records(text: str, readers: frozenset[str] = frozenset()) 
         if str(method.return_type).removeprefix("System.").startswith(("Action", "Func", "Predicate"))
     }
     delegate_type_names = _delegate_type_names(text, masked)
-    delegate_variables = _flow_module._delegate_variable_names(masked, delegate_type_names)
+    file_delegate_variables = _flow_module._delegate_variable_names(masked, delegate_type_names)
+    scoped_delegate_variables = {
+        method.identity: _flow_module._delegate_variable_names(
+            masked, delegate_type_names, method.start, method.body_end
+        )
+        for method in methods
+    }
     generic = [method for method in _readers_module._generic_method_infos(masked) if method.name in readers]
     records: dict[str, str] = {}
     for method in [*methods, *generic]:
@@ -339,7 +345,7 @@ def _helper_signature_records(text: str, readers: frozenset[str] = frozenset()) 
             text[method.body_start : method.body_end + 1].encode("utf-8")
         ).hexdigest()
 
-    delegate_wrapper_names, delegate_boundary_names = _flow_module._delegate_parameter_boundaries(
+    delegate_wrapper_names, delegate_boundary_names, _ = _flow_module._delegate_parameter_boundaries(
         text, masked, methods, delegate_type_names
     )
     delegate_wrapper_names.update(_flow_module._KNOWN_DELEGATE_WRAPPER_NAMES)
@@ -350,6 +356,13 @@ def _helper_signature_records(text: str, readers: frozenset[str] = frozenset()) 
         if declared_type == "using" or (not declared_type and target.lstrip().startswith(("=", ">", ")"))):
             continue
         scope = _flow_module._method_for_offset(methods, match.start())
+        scope_key = _flow_module._delegate_scope_key(scope)
+        delegate_variables = (
+            scoped_delegate_variables.setdefault(scope_key, set())
+            if scope
+            else file_delegate_variables
+        )
+        scope_boundary_names = delegate_boundary_names.get(scope_key, set())
         invocation_text = _delegate_invocation_text(
             masked,
             match.end(),
@@ -358,7 +371,7 @@ def _helper_signature_records(text: str, readers: frozenset[str] = frozenset()) 
             name,
             delegate_variables,
             method_names,
-            delegate_boundary_names,
+            scope_boundary_names,
             scope.body_start if scope else 0,
             scope.body_end if scope else len(masked),
         )
@@ -371,7 +384,7 @@ def _helper_signature_records(text: str, readers: frozenset[str] = frozenset()) 
             method_names,
             delegate_type_names,
             invocation_text,
-            delegate_boundary_names,
+            scope_boundary_names,
             delegate_wrapper_names,
         )
         if state == DELEGATE_STATE_NON_DELEGATE:

@@ -15,6 +15,28 @@ from .test_source_text_inventory_semantics import _FixtureSupport
 class SourceTextInventoryReviewTests(_FixtureSupport, unittest.TestCase):
     """Keep helper arguments and branch exits bound to existing inventory rows."""
 
+    def test_delegate_flow_regression_matrix(self):
+        """Cover field modifiers, scope shadowing, qualified calls, and overloads."""
+        used = 'private static void Used() { var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs"); Check(source.Contains("Product")); }'
+        cases = (
+            ("modified field", f"using System; public static class FixtureValidation {{ {used} private static void Noop() {{ }} private static readonly Action run = Used; public static void Validate() {{ run(); }} }}", "private static readonly Action run = Used;", "private static readonly Action run = Noop;", 1, None),
+            ("same-name local", f"using System; public static class FixtureValidation {{ {used} private static void Consume(Action run) {{ }} public static void Validate() {{ var run = 1; }} }}", "var run = 1;", "var run = 2;", 0, None),
+            ("qualified scalar", f"public static class FixtureValidation {{ {used} public static void Validate() {{ var mode = External.Mode; External.Run(mode); }} }}", "Mode => 1", "Mode => 2", 0, "public static class External { public static int Mode => 1; public static void Run(int mode) { } }"),
+            ("scalar overload", f"using System; public static class FixtureValidation {{ {used} private static void Run(Action action) {{ action(); }} private static void Run(int mode) {{ }} public static void Validate() {{ var mode = 1; Run(mode); }} }}", "var mode = 1;", "var mode = 2;", 0, None),
+        )
+        for name, validation_text, old, new, expected, external_text in cases:
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as directory:
+                root = self._git_fixture(directory, validation_text=validation_text)
+                path = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+                if external_text:
+                    path = root / "Packages/fixture/Tests/Runtime/External.cs"
+                    path.write_text(external_text, encoding="utf-8")
+                    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+                    subprocess.run(["git", "-C", str(root), "commit", "-qm", "external"], check=True)
+                path.write_text(path.read_text(encoding="utf-8").replace(old, new), encoding="utf-8")
+                code, output = self._run_fixture_gate(root)
+                self.assertEqual(expected, code, output)
+
     def _run_migration_cli(self, root, approval=None, trusted_base=None):
         """Run the proposed checker with an optional workflow migration approval."""
         args = [

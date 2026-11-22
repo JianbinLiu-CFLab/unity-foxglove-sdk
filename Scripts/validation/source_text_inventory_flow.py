@@ -17,6 +17,8 @@ try:
         _DELEGATE_ASSIGNMENT_PATTERN, _DELEGATE_TYPE_PATTERN, _delegate_type_names,
         _is_delegate_type_name,
         _is_delegate_like_target,
+        _is_delegate_conversion,
+        _has_delegate_target_hint,
         DELEGATE_STATE_NON_DELEGATE,
         DELEGATE_STATE_UNSUPPORTED,
         _delegate_invocation_text,
@@ -36,6 +38,8 @@ except ImportError:
         _DELEGATE_ASSIGNMENT_PATTERN, _DELEGATE_TYPE_PATTERN, _delegate_type_names,
         _is_delegate_type_name,
         _is_delegate_like_target,
+        _is_delegate_conversion,
+        _has_delegate_target_hint,
         DELEGATE_STATE_NON_DELEGATE,
         DELEGATE_STATE_UNSUPPORTED,
         _delegate_invocation_text,
@@ -620,81 +624,81 @@ def _validation_harness_signature(
     if delegate_signature:
         pieces.append(f"delegate:{delegate_signature}")
     return hashlib.sha256("\n".join(pieces).encode()).hexdigest() if pieces else ""
-def _delegate_parameter_boundaries(text: str, masked: str, methods: list[MethodInfo], delegate_type_names: set[str]) -> tuple[set[str], set[str]]:
-    """Return known delegate-wrapper methods and binding names passed to them."""
-    wrapper_parameters: dict[str, set[int]] = {}
+def _method_parameter_names(method: MethodInfo) -> tuple[str, ...]:
+    start, end = method.signature.find("("), method.signature.rfind(")")
+    if start < 0 or end <= start: return ()
+    return tuple((match.group(1) if (match := re.search(r"\b([A-Za-z_]\w*)$", re.sub(r"\b(?:this|ref|out|in|params)\b", "", value.split("=", 1)[0]).strip())) else "") for value in _split_arguments(method.signature[start + 1 : end]))
+def _delegate_scope_key(method: MethodInfo | None) -> str: return method.identity if method else ""
+def _possible_delegate_target(target: str, delegate_type_names: set[str], method_names: set[str] | None = None) -> bool:
+    normalized = target.strip().rstrip("!").strip(); terminal = normalized.rsplit(".", 1)[-1].split("<", 1)[0]
+    return "=>" in target or re.search(r"\bdelegate\s*\(", target) is not None or _is_delegate_conversion(normalized, delegate_type_names) or (_is_delegate_like_target(normalized) and (_has_delegate_target_hint(normalized) or terminal in (method_names or set())))
+def _delegate_parameter_boundaries(text: str, masked: str, methods: list[MethodInfo], delegate_type_names: set[str]) -> tuple[set[str], dict[str, set[str]], set[int]]:
+    method_names = {method.name for method in methods}; wrappers: dict[str, list[tuple[set[int], tuple[str, ...], tuple[str, ...]]]] = {}
     for method in methods:
-        indexes = {index for index, parameter in enumerate(method.parameter_types) if _is_delegate_type_name(parameter, delegate_type_names)}
-        if indexes: wrapper_parameters.setdefault(method.name, set()).update(indexes)
-    possible_bindings = {m.group("name") for m in _DELEGATE_ASSIGNMENT_PATTERN.finditer(masked) if _is_delegate_like_target(m.group("target").strip().rstrip("!")) or "!" in m.group("target")}
-    for _ in range(2): possible_bindings.update(m.group("name") for m in _DELEGATE_ASSIGNMENT_PATTERN.finditer(masked) if m.group("target").strip().rstrip("!") in possible_bindings)
-    boundary_names: set[str] = set()
+        indexes = {i for i, parameter in enumerate(method.parameter_types) if _is_delegate_type_name(parameter, delegate_type_names)}
+        if indexes: wrappers.setdefault(method.name, []).append((indexes, method.parameter_types, _method_parameter_names(method)))
+    assignment_records = [(match, _delegate_scope_key(_method_for_offset(methods, match.start()))) for match in _DELEGATE_ASSIGNMENT_PATTERN.finditer(masked)]; possible: dict[str, set[str]] = {}
+    if not assignment_records and not wrappers: return set(), {}, set()
+    for match, key in assignment_records:
+        if _possible_delegate_target(match.group("target"), delegate_type_names, method_names): possible.setdefault(key, set()).add(match.group("name"))
+    for _ in range(2):
+        for match, key in assignment_records:
+            source = match.group("target").strip().rstrip("!").strip()
+            if source in possible.get(key, set()): possible.setdefault(key, set()).add(match.group("name"))
+    def argument_map(values: list[str], names: tuple[str, ...]) -> dict[int, str]:
+        mapped, next_index = {}, 0
+        for value in values:
+            named = re.match(r"\s*([A-Za-z_]\w*)\s*:\s*(.*)", value, re.DOTALL)
+            if named and named.group(1) in names: mapped[names.index(named.group(1))] = named.group(2).strip(); continue
+            while next_index in mapped: next_index += 1
+            mapped[next_index], next_index = value.strip(), next_index + 1
+        return mapped
+    def possible_binding(value: str, key: str) -> bool:
+        candidate = re.sub(r"^[\s(!]+|[\s!)]+$", "", value)
+        return candidate in possible.get(key, set()) or candidate in possible.get("", set()) or "=>" in value or "delegate" in value or candidate in method_names or _possible_delegate_target(value, delegate_type_names, method_names)
+    boundaries: dict[str, set[str]] = {}; call_offsets: set[int] = set()
     for method in methods:
+        key = method.identity
         for call_name, open_index in _call_sites(text, masked, method):
-            terminal = call_name.rsplit(".", 1)[-1].rsplit("::", 1)[-1]; indexes = wrapper_parameters.get(terminal); qualified_unknown = not indexes and "." in call_name and terminal in _KNOWN_DELEGATE_WRAPPER_NAMES; arguments = _call_arguments(text, masked, open_index)
-            if (not indexes and not qualified_unknown) or arguments is None: continue
-            values = _split_arguments(arguments); selected = values if qualified_unknown else [values[index] for index in indexes if index < len(values)]
-            selected += [value.split(":", 1)[1] for value in values if ":" in value and value.split(":", 1)[0].strip() in {"action", "callback", "delegate", "handler", "run"}]
-            boundary_names.update(candidate for value in selected if "=>" not in value and "delegate" not in value for candidate in [re.sub(r"^[\s(!]+|[\s!)]+$", "", value)] if re.fullmatch(r"[A-Za-z_]\w*", candidate) and (not qualified_unknown or candidate in possible_bindings))
-    return set(wrapper_parameters), boundary_names
-def _delegate_variable_names(masked: str, delegate_type_names: set[str]) -> set[str]:
-    """Return delegate-typed parameter, field, and local names in one file."""
-    pattern = re.compile(r"\b(?P<type>" + _DELEGATE_TYPE_PATTERN + r")\s+" r"(?P<name>[A-Za-z_]\w*)\s*(?=[=;,{)])")
-    return {match.group("name") for match in pattern.finditer(masked) if _is_delegate_type_name(match.group("type"), delegate_type_names)}
+            terminal = call_name.rsplit(".", 1)[-1].rsplit("::", 1)[-1]; overloads = wrappers.get(terminal, []); qualified_unknown = not overloads and "." in call_name and terminal in _KNOWN_DELEGATE_WRAPPER_NAMES; arguments = _call_arguments(text, masked, open_index)
+            if arguments is None or (not overloads and not qualified_unknown): continue
+            values, selected, matched = _split_arguments(arguments), [], False
+            for indexes, parameter_types, parameter_names in overloads:
+                mapped = argument_map(values, parameter_names)
+                if len(mapped) != len(parameter_types) or any(i not in mapped or not possible_binding(mapped[i], key) for i in indexes) or any(i in mapped and possible_binding(mapped[i], key) for i in range(len(parameter_types)) if i not in indexes): continue
+                matched = True; selected.extend(mapped[i] for i in indexes if i in mapped)
+            if qualified_unknown: selected.extend(value for value in values if possible_binding(value, key))
+            if not matched and not qualified_unknown: continue
+            if matched or selected: call_offsets.add(open_index)
+            for value in selected:
+                candidate = re.sub(r"^[\s(!]+|[\s!)]+$", "", value)
+                if re.fullmatch(r"[A-Za-z_]\w*", candidate): boundaries.setdefault(key, set()).add(candidate)
+    return set(wrappers), boundaries, call_offsets
+def _delegate_variable_names(masked: str, delegate_type_names: set[str], scope_start: int = 0, scope_end: int | None = None) -> set[str]:
+    scoped = masked[scope_start : len(masked) if scope_end is None else scope_end]; pattern = re.compile(r"\b(?P<type>" + _DELEGATE_TYPE_PATTERN + r")\s+(?P<name>[A-Za-z_]\w*)\s*(?=[=;,{)])")
+    return {match.group("name") for match in pattern.finditer(scoped) if _is_delegate_type_name(match.group("type"), delegate_type_names)}
 def _delegate_binding_signature(text: str, masked: str, methods: list[MethodInfo]) -> str:
     """Hash delegate assignments, method-group arguments, and forwarding calls."""
     delegate_methods = {method.name for method in methods if _normalize_type(method.return_type).removeprefix("System.").startswith(("Action", "Func", "Predicate"))}
-    delegate_methods.update(
-        match.group("name")
-        for match in re.finditer(
-            r"\b(?:System\.)?(?:Action|Func|Predicate)(?:<[^;{}]+>)?\s+"
-            r"(?P<name>[A-Za-z_]\w*)\s*\([^;{}]*\)\s*=>",
-            masked,
-        )
-    )
+    delegate_methods.update(match.group("name") for match in re.finditer(r"\b(?:System\.)?(?:Action|Func|Predicate)(?:<[^;{}]+>)?\s+(?P<name>[A-Za-z_]\w*)\s*\([^;{}]*\)\s*=>", masked))
     pieces: list[str] = []
     method_names = {method.name for method in methods}
     delegate_type_names = _delegate_type_names(text, masked)
-    delegate_variables = _delegate_variable_names(masked, delegate_type_names)
-    delegate_wrapper_names, delegate_boundary_names = _delegate_parameter_boundaries(text, masked, methods, delegate_type_names)
+    file_delegate_variables = _delegate_variable_names(masked, delegate_type_names)
+    scoped_delegate_variables = {method.identity: _delegate_variable_names(masked, delegate_type_names, method.start, method.body_end) for method in methods}
+    delegate_wrapper_names, delegate_boundary_names, delegate_call_offsets = _delegate_parameter_boundaries(text, masked, methods, delegate_type_names)
     delegate_wrapper_names.update(_KNOWN_DELEGATE_WRAPPER_NAMES)
     for match in _DELEGATE_ASSIGNMENT_PATTERN.finditer(masked):
         target = re.sub(r"\s+", " ", match.group("target")).strip(); declared_type = match.group("type") or ""; name = match.group("name"); scope = _method_for_offset(methods, match.start())
+        scope_key = _delegate_scope_key(scope); delegate_variables = scoped_delegate_variables.setdefault(scope_key, set()) if scope else file_delegate_variables; scope_boundary_names = delegate_boundary_names.get(scope_key, set())
         if declared_type == "using" or (not declared_type and target.lstrip().startswith(("=", ">", ")"))):
             continue
-        invocation_text = _delegate_invocation_text(
-            masked,
-            match.end(),
-            target,
-            declared_type,
-            name,
-            delegate_variables,
-            method_names,
-            delegate_boundary_names,
-            scope.body_start if scope else 0,
-            scope.body_end if scope else len(masked),
-        )
-        state = _is_delegate_assignment(
-            target,
-            declared_type,
-            name,
-            delegate_variables,
-            delegate_methods,
-            method_names,
-            delegate_type_names,
-            invocation_text,
-            delegate_boundary_names,
-            delegate_wrapper_names,
-        )
+        invocation_text = _delegate_invocation_text(masked, match.end(), target, declared_type, name, delegate_variables, method_names, scope_boundary_names, scope.body_start if scope else 0, scope.body_end if scope else len(masked))
+        state = _is_delegate_assignment(target, declared_type, name, delegate_variables, delegate_methods, method_names, delegate_type_names, invocation_text, scope_boundary_names, delegate_wrapper_names)
         if state == DELEGATE_STATE_NON_DELEGATE:
             continue
         delegate_variables.add(name)
-        if state == DELEGATE_STATE_UNSUPPORTED:
-            pieces.append(
-                f"unsupported:{state}|{match.group('type') or ''} {name}={target}|invoke:{invocation_text}"
-            )
-        else:
-            pieces.append(f"assign:{match.group('type') or ''} {name}={target}|invoke:{invocation_text}")
+        pieces.append((f"unsupported:{state}|" if state == DELEGATE_STATE_UNSUPPORTED else "assign:") + f"{match.group('type') or ''} {name}={target}|invoke:{invocation_text}")
     for method in methods:
         for call_name, open_index in _call_sites(text, masked, method):
             arguments = _call_arguments(text, masked, open_index)
@@ -702,7 +706,7 @@ def _delegate_binding_signature(text: str, masked: str, methods: list[MethodInfo
                 continue
             argument_names = set(re.findall(r"\b[A-Za-z_]\w*\b", arguments))
             terminal_name = call_name.rsplit(".", 1)[-1].rsplit("::", 1)[-1]
-            is_delegate_wrapper = call_name in delegate_wrapper_names
+            is_delegate_wrapper = open_index in delegate_call_offsets or call_name in _KNOWN_DELEGATE_WRAPPER_NAMES
             if not argument_names & method_names and not re.search(
                 r"=>|\bdelegate\s*\(", arguments
             ) and not is_delegate_wrapper:
