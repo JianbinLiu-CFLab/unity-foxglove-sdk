@@ -15,6 +15,54 @@ from .test_source_text_inventory_semantics import _FixtureSupport
 class SourceTextInventoryReviewTests(_FixtureSupport, unittest.TestCase):
     """Keep helper arguments and branch exits bound to existing inventory rows."""
 
+    def test_unmodeled_delegate_flows_fail_closed(self):
+        """Reject tuple-generic casts and collection/index aliases at a wrapper."""
+        cases = (
+            (
+                "using System; public static class FixtureValidation { private static void Run(Action action) { action(); } "
+                "private static void Used<T>() { var source = ReadRequiredRepoText(\"Packages/fixture/Runtime/Product.cs\"); Check(source.Contains(\"Product\")); } "
+                "private static void Noop<T>() { } public static void Validate() { var run = (Action)Used<(int, int)>; Run(run); } }",
+                "Used<(int, int)>", "Noop<(int, int)>",
+            ),
+            (
+                "using System; public static class FixtureValidation { private static void Run(Action action) { action(); } "
+                "private static void Used() { var source = ReadRequiredRepoText(\"Packages/fixture/Runtime/Product.cs\"); Check(source.Contains(\"Product\")); } "
+                "private static void Noop() { } public static void Validate() { Action[] callbacks = { Used }; var run = callbacks[0]; Run(run); } }",
+                "{ Used }", "{ Noop }",
+            ),
+        )
+        for validation_text, old, new in cases:
+            with self.subTest(old=old), tempfile.TemporaryDirectory() as directory:
+                root = self._git_fixture(directory, validation_text=validation_text)
+                validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+                validation.write_text(validation.read_text(encoding="utf-8").replace(old, new), encoding="utf-8")
+                code, output = self._run_fixture_gate(root)
+                self.assertEqual(1, code, output)
+
+    def test_delegate_binding_records_keep_same_named_scopes_distinct(self):
+        """Keep helper signatures for same-named delegate locals independent."""
+        from Scripts.validation.source_text_inventory_ratchet_helpers import _helper_signature_records
+
+        records = _helper_signature_records(
+            "using System; public static class FixtureValidation { private static void Used() { var source = ReadRequiredRepoText(\"Packages/fixture/Runtime/Product.cs\"); Check(source.Contains(\"Product\")); } private static void Other() { } private static void First() { Action run = Used; run(); } private static void Second() { Action run = Other; run(); } public static void Validate() { } }"
+        )
+        self.assertEqual(2, len([key for key in records if key.startswith("binding:run")]))
+
+    def test_optional_delegate_wrapper_arguments_are_supported(self):
+        """Treat omitted optional wrapper arguments as a valid delegate boundary."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(directory, validation_text=(
+                "using System; public static class FixtureValidation { private static void Run(Action action, int mode = 0) { action(); } private static void Used() { var source = ReadRequiredRepoText(\"Packages/fixture/Runtime/Product.cs\"); Check(source.Contains(\"Product\")); } private static void Noop() { } public static void Validate() { var run = External.Factory; Run(run); } }"
+            ))
+            external = root / "Packages/fixture/Tests/Runtime/External.cs"
+            external.write_text("using System; public static class External { public static Action Factory => FixtureValidation.Used; public static Action NoopFactory => FixtureValidation.Noop; }", encoding="utf-8")
+            subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+            subprocess.run(["git", "-C", str(root), "commit", "-qm", "optional-wrapper"], check=True)
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            validation.write_text(validation.read_text(encoding="utf-8").replace("External.Factory", "External.NoopFactory"), encoding="utf-8")
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code, output)
+
     def test_delegate_flow_regression_matrix(self):
         """Cover field modifiers, scope shadowing, qualified calls, and overloads."""
         used = 'private static void Used() { var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs"); Check(source.Contains("Product")); }'

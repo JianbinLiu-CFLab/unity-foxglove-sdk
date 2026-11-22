@@ -61,8 +61,7 @@ CONTROL_KEYWORDS = {
     "nameof",
     "return",
     "throw",
-}
-CALL_PATTERN = re.compile(r"\b(?P<name>[A-Za-z_]\w*)\s*(?:<[^;{}()]*>\s*)?\(")
+}; CALL_PATTERN = re.compile(r"\b(?P<name>[A-Za-z_]\w*)\s*(?:<[^;{}()]*>\s*)?\(")
 @dataclass(frozen=True)
 class MethodInfo:
     """Describe one C# method body discovered by the lightweight parser."""
@@ -628,124 +627,23 @@ def _method_parameter_names(method: MethodInfo) -> tuple[str, ...]:
     return tuple((match.group(1) if (match := re.search(r"\b([A-Za-z_]\w*)$", re.sub(r"\b(?:this|ref|out|in|params)\b", "", value.split("=", 1)[0]).strip())) else "") for value in _split_arguments(method.signature[start + 1 : end]))
 def _delegate_scope_key(method: MethodInfo | None) -> str: """Return the stable identity used to scope delegate bindings."""; return method.identity if method else ""
 def _possible_delegate_target(target: str, delegate_type_names: set[str], method_names: set[str] | None = None, possible_names: set[str] | None = None) -> str:
-    """Classify a target with recursive finite-state expression joining."""
-    raw_normalized = _normalize_delegate_expression(target).rstrip("!").strip()
-    normalized = _normalize_delegate_value(target, delegate_type_names)
-    possible_names = possible_names or set()
-    parts = (
-        tuple(
-            part.strip()
-            for part in re.split(r"\s*(?:\?\?|\?|:)\s*", normalized)
-            if part.strip()
-        )
-        if re.search(r"\?|:", normalized)
-        else ()
-    )
-    states = tuple(
-        _possible_delegate_target(part, delegate_type_names, method_names, possible_names)
-        for part in parts
-        if part != normalized
-    )
-    if states:
-        if re.search(r"\?\?|\?|:", normalized) or DELEGATE_STATE_UNKNOWN_SOURCE in states:
-            return DELEGATE_STATE_UNKNOWN_SOURCE
-        if DELEGATE_STATE_DIRECT in states:
-            return DELEGATE_STATE_DIRECT
-        return DELEGATE_STATE_NON_DELEGATE
-
-    cast = re.match(
-        rf"^\s*\(\s*(?P<type>{_DELEGATE_TYPE_PATTERN})\s*\)",
-        raw_normalized,
-    )
-    constructor = re.match(
-        rf"^\s*new\s+(?P<type>{_DELEGATE_TYPE_PATTERN})\s*\(",
-        raw_normalized,
-    )
-    has_known_delegate_type = bool(
-        (cast and _is_delegate_type_name(cast.group("type"), delegate_type_names))
-        or (
-            constructor
-            and _is_delegate_type_name(constructor.group("type"), delegate_type_names)
-        )
-    )
-    if has_known_delegate_type and not _is_delegate_conversion(
-        raw_normalized, delegate_type_names
-    ):
-        return DELEGATE_STATE_UNKNOWN_SOURCE
-    if any(marker in normalized for marker in ("[", "{")):
-        return DELEGATE_STATE_UNKNOWN_SOURCE
-
-    terminal = normalized.rsplit(".", 1)[-1].split("<", 1)[0]
-    known = (
-        normalized in possible_names
-        or "=>" in target
-        or re.search(r"\bdelegate\s*\(", target) is not None
-        or _is_delegate_conversion(normalized, delegate_type_names)
-        or (
-            _is_delegate_like_target(normalized)
-            and (
-                _has_delegate_target_hint(normalized)
-                or terminal in (method_names or set())
-            )
-        )
-    )
-    if known:
-        return DELEGATE_STATE_DIRECT
-    if re.search(r"\([^;]*\)$", normalized) and not normalized.startswith(
-        ("(", "new ")
-    ):
-        return DELEGATE_STATE_UNKNOWN_SOURCE
-    return (
-        DELEGATE_STATE_UNKNOWN_SOURCE
-        if "." in normalized and _is_delegate_like_target(normalized)
-        else DELEGATE_STATE_NON_DELEGATE
-    )
+    """Classify a target with recursive finite-state expression joining."""; raw = _normalize_delegate_expression(target).rstrip("!").strip(); normalized = _normalize_delegate_value(target, delegate_type_names); possible_names = possible_names or set(); parts = tuple(part.strip() for part in re.split(r"\s*(?:\?\?|\?|:)\s*", normalized) if part.strip()) if re.search(r"\?|:", normalized) else (); states = tuple(_possible_delegate_target(part, delegate_type_names, method_names, possible_names) for part in parts if part != normalized); cast = re.match(rf"^\s*\(\s*(?P<type>{_DELEGATE_TYPE_PATTERN})\s*\)", raw); constructor = re.match(rf"^\s*new\s+(?P<type>{_DELEGATE_TYPE_PATTERN})\s*\(", raw); bad_conversion = bool((cast and _is_delegate_type_name(cast.group("type"), delegate_type_names)) or (constructor and _is_delegate_type_name(constructor.group("type"), delegate_type_names))) and not _is_delegate_conversion(raw, delegate_type_names)
+    if states: return DELEGATE_STATE_UNKNOWN_SOURCE if re.search(r"\?\?|\?|:", normalized) or DELEGATE_STATE_UNKNOWN_SOURCE in states else DELEGATE_STATE_DIRECT if DELEGATE_STATE_DIRECT in states else DELEGATE_STATE_NON_DELEGATE
+    terminal = normalized.rsplit(".", 1)[-1].split("<", 1)[0]; known = normalized in possible_names or "=>" in target or re.search(r"\bdelegate\s*\(", target) is not None or _is_delegate_conversion(normalized, delegate_type_names) or (_is_delegate_like_target(normalized) and (_has_delegate_target_hint(normalized) or terminal in (method_names or set())))
+    if known: return DELEGATE_STATE_DIRECT
+    if re.search(r"\([^;]*\)$", normalized) and not normalized.startswith(("(", "new ")): return DELEGATE_STATE_UNKNOWN_SOURCE
+    return DELEGATE_STATE_UNKNOWN_SOURCE if bad_conversion or any(marker in normalized for marker in ("[", "{")) or ("." in normalized and _is_delegate_like_target(normalized)) else DELEGATE_STATE_NON_DELEGATE
 def _delegate_parameter_boundaries(text: str, masked: str, methods: list[MethodInfo], delegate_type_names: set[str]) -> tuple[set[str], dict[str, set[str]], set[int], set[int]]:
-    """Discover delegate wrapper parameters and their binding call sites."""; method_names = {method.name for method in methods}; wrappers: dict[str, list[tuple[set[int], tuple[str, ...], tuple[str, ...], set[int], bool]]] = {}
+    """Discover delegate wrapper parameters and their binding call sites."""; method_names = {method.name for method in methods}; wrappers: dict[str, list[tuple[set[int], tuple[str, ...], tuple[str, ...]]]] = {}
     for method in methods:
         indexes = {i for i, parameter in enumerate(method.parameter_types) if _is_delegate_type_name(parameter, delegate_type_names)}
-        if indexes:
-            signature_start, signature_end = method.signature.find("("), method.signature.rfind(")")
-            parameter_values = _split_arguments(method.signature[signature_start + 1 : signature_end]) if signature_start >= 0 and signature_end > signature_start else []
-            required_indexes = {i for i, value in enumerate(parameter_values) if "=" not in value and re.search(r"\bparams\b", value) is None}
-            has_params = any(re.search(r"\bparams\b", value) for value in parameter_values)
-            wrappers.setdefault(method.name, []).append((indexes, method.parameter_types, _method_parameter_names(method), required_indexes, has_params))
-    assignment_records = [
-        (match, _delegate_scope_key(_method_for_offset(methods, match.start())))
-        for match in _DELEGATE_ASSIGNMENT_PATTERN.finditer(masked)
-    ]
-    possible: dict[str, set[str]] = {}
-    unknown_names: dict[str, set[str]] = {}
-    unknown_targets: dict[str, dict[str, str]] = {}
-    unknown_records: dict[str, set[str]] = {}
-    field_names = {
-        name
-        for name, value in _field_types(text, masked, methods).items()
-        if value and not _is_delegate_type_name(value, delegate_type_names)
-    }
+        if indexes: pvalues = _split_arguments(method.signature[method.signature.find("(") + 1 : method.signature.rfind(")")]); required = {i for i, value in enumerate(pvalues) if "=" not in value and re.search(r"\bparams\b", value) is None}; wrappers.setdefault(method.name, []).append((indexes, method.parameter_types, _method_parameter_names(method), required, any(re.search(r"\bparams\b", value) for value in pvalues)))
+    assignment_records = [(match, _delegate_scope_key(_method_for_offset(methods, match.start()))) for match in _DELEGATE_ASSIGNMENT_PATTERN.finditer(masked)]; possible: dict[str, set[str]] = {}; unknown_names: dict[str, set[str]] = {}; unknown_targets: dict[str, dict[str, str]] = {}; unknown_records: dict[str, set[str]] = {}; field_names = {name for name, value in _field_types(text, masked, methods).items() if value and not _is_delegate_type_name(value, delegate_type_names)}
     scalar_names = {method.identity: field_names | {name for name, value in _local_types(text, method).items() if value and not _is_delegate_type_name(value, delegate_type_names)} | {name for parent in methods if parent.body_start < method.start < method.body_end < parent.body_end for name, value in _local_types(text, parent).items() if value and not _is_delegate_type_name(value, delegate_type_names)} for method in methods}
     for _ in range(2):
         for match, key in assignment_records:
             state = _possible_delegate_target(match.group("target"), delegate_type_names, method_names, possible.get(key, set()))
-            target = match.group("target")
-            target_names = set(re.findall(r"\b[A-Za-z_]\w*\b", target))
-            unknown_target = (
-                state == DELEGATE_STATE_UNKNOWN_SOURCE
-                or bool(target_names & unknown_names.get(key, set()))
-            )
-            if state == DELEGATE_STATE_DIRECT and not re.search(r"[?:]", target):
-                possible.setdefault(key, set()).add(match.group("name"))
-                continue
-            if not unknown_target:
-                continue
-            name = match.group("name")
-            normalized_target = _normalize_csharp_expression(target)
-            unknown_names.setdefault(key, set()).add(name)
-            unknown_targets.setdefault(key, {})[name] = normalized_target
-            if not re.match(r"\s*(?:Read|Source|Text)[A-Za-z_]\w*\s*\(", target):
-                unknown_records.setdefault(key, set()).add(
-                    f"unknown:{name}={normalized_target}"
-                )
+            target = match.group("target"); unknown_target = state == DELEGATE_STATE_UNKNOWN_SOURCE or bool(set(re.findall(r"\b[A-Za-z_]\w*\b", target)) & unknown_names.get(key, set())); normalized_target = _normalize_csharp_expression(target); possible.setdefault(key, set()).add(match.group("name")) if state == DELEGATE_STATE_DIRECT and not re.search(r"[?:]", target) else (unknown_names.setdefault(key, set()).add(match.group("name")), unknown_targets.setdefault(key, {}).__setitem__(match.group("name"), normalized_target), unknown_records.setdefault(key, set()).add(f"unknown:{match.group('name')}={normalized_target}") if not re.match(r"\s*(?:Read|Source|Text)[A-Za-z_]\w*\s*\(", target) else None) if unknown_target else None
     def argument_map(values: list[str], names: tuple[str, ...]) -> dict[int, str]:
         """Map positional and named call arguments to parameter indexes."""; mapped, next_index = {}, 0
         for value in values:
@@ -755,88 +653,25 @@ def _delegate_parameter_boundaries(text: str, masked: str, methods: list[MethodI
             mapped[next_index], next_index = value.strip(), next_index + 1
         return mapped
     def possible_binding(value: str, key: str, allow_unknown_source: bool = True) -> bool:
-        """Return whether an argument may carry a delegate binding."""
-        candidate = _normalize_delegate_value(value, delegate_type_names)
-        state = _possible_delegate_target(
-            value, delegate_type_names, method_names, possible.get(key, set())
-        )
-        receiver = candidate.split(".", 1)[0] if "." in candidate else ""
-        unknown_invocation = state == DELEGATE_STATE_UNKNOWN_SOURCE and (
-            allow_unknown_source
-            or (
-                "(" in candidate
-                and "." in candidate
-                and receiver not in scalar_names.get(key, set())
-            )
-        )
-        return (
-            candidate in possible.get(key, set())
-            or candidate in unknown_names.get(key, set())
-            or candidate in possible.get("", set())
-            or "=>" in value
-            or "delegate" in value
-            or state == DELEGATE_STATE_DIRECT
-            or unknown_invocation
-        )
-
-    boundaries: dict[str, set[str]] = {
-        key: set(values) | possible.get(key, set())
-        for key, values in unknown_records.items()
-    }
-    boundaries.update(
-        {
-            key: set(values)
-            for key, values in possible.items()
-            if key not in unknown_records
-        }
-    )
-    call_offsets: set[int] = set()
+        """Return whether an argument may carry a delegate binding."""; candidate = _normalize_delegate_value(value, delegate_type_names); state = _possible_delegate_target(value, delegate_type_names, method_names, possible.get(key, set())); receiver = candidate.split(".", 1)[0] if "." in candidate else ""; unknown_invocation = state == DELEGATE_STATE_UNKNOWN_SOURCE and (allow_unknown_source or ("(" in candidate and "." in candidate and receiver not in scalar_names.get(key, set()))); return candidate in possible.get(key, set()) or candidate in unknown_names.get(key, set()) or candidate in possible.get("", set()) or "=>" in value or "delegate" in value or state == DELEGATE_STATE_DIRECT or unknown_invocation
+    boundaries: dict[str, set[str]] = {key: set(values) | possible.get(key, set()) for key, values in unknown_records.items()} | {key: set(values) for key, values in possible.items() if key not in unknown_records}; call_offsets: set[int] = set()
     for method in methods:
         key = method.identity
         for call_name, open_index in _call_sites(text, masked, method):
             terminal = call_name.rsplit(".", 1)[-1].rsplit("::", 1)[-1]; overloads = wrappers.get(terminal, []); arguments = _call_arguments(text, masked, open_index); values, selected, matched = _split_arguments(arguments or ""), [], False
             if arguments is None: continue
-            qualified_unknown = (
-                not overloads
-                and "(" not in call_name
-                and "." in call_name
-                and any(possible_binding(value, key, False) for value in values)
-            )
-            for indexes, parameter_types, parameter_names, required_indexes, has_params in overloads:
+            qualified_unknown = not overloads and "(" not in call_name and "." in call_name and any(possible_binding(value, key, False) for value in values)
+            for indexes, parameter_types, parameter_names, required, has_params in overloads:
                 mapped = argument_map(values, parameter_names)
-                if (
-                    (not has_params and any(i >= len(parameter_types) for i in mapped))
-                    or any(i not in mapped for i in required_indexes)
-                    or any(
-                        i not in mapped or not possible_binding(mapped[i], key)
-                        for i in indexes
-                    )
-                    or any(
-                        i in mapped and possible_binding(mapped[i], key)
-                        for i in range(len(parameter_types))
-                        if i not in indexes
-                    )
-                ):
-                    continue
+                if (not has_params and any(i >= len(parameter_types) for i in mapped)) or any(i not in mapped for i in required) or any(i not in mapped or not possible_binding(mapped[i], key) for i in indexes) or any(i in mapped and possible_binding(mapped[i], key) for i in range(len(parameter_types)) if i not in indexes): continue
                 matched = True; selected.extend(mapped[i] for i in indexes if i in mapped)
-            if qualified_unknown:
-                selected.extend(
-                    value for value in values if possible_binding(value, key, False)
-                )
-            if not matched and not qualified_unknown:
-                continue
-            if matched or selected:
-                call_offsets.add(open_index)
+            if qualified_unknown: selected.extend(value for value in values if possible_binding(value, key, False))
+            if not matched and not qualified_unknown: continue
+            if matched or selected: call_offsets.add(open_index)
             for value in selected:
                 candidate = _normalize_delegate_value(value, delegate_type_names)
-                candidate_names = set(re.findall(r"\b[A-Za-z_]\w*\b", candidate))
-                for candidate_name in candidate_names & possible.get(key, set()):
-                    boundaries.setdefault(key, set()).add(candidate_name)
-                for candidate_name in candidate_names & unknown_names.get(key, set()):
-                    target_value = unknown_targets.get(key, {}).get(candidate_name, candidate_name)
-                    boundaries.setdefault(key, set()).add(
-                        f"unknown:{candidate_name}={target_value}"
-                    )
+                for candidate_name in set(re.findall(r"\b[A-Za-z_]\w*\b", candidate)) & possible.get(key, set()): boundaries.setdefault(key, set()).add(candidate_name)
+                for candidate_name in set(re.findall(r"\b[A-Za-z_]\w*\b", candidate)) & unknown_names.get(key, set()): boundaries.setdefault(key, set()).add(f"unknown:{candidate_name}={unknown_targets.get(key, {}).get(candidate_name, candidate_name)}")
     return set(wrappers), boundaries, call_offsets, set()
 def _delegate_variable_names(masked: str, delegate_type_names: set[str], scope_start: int = 0, scope_end: int | None = None) -> set[str]:
     """Return explicitly declared delegate variables within one source scope."""; scoped = masked[scope_start : len(masked) if scope_end is None else scope_end]; pattern = re.compile(r"\b(?P<type>" + _DELEGATE_TYPE_PATTERN + r")\s+(?P<name>[A-Za-z_]\w*)\s*(?=[=;,{)])")

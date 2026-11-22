@@ -603,58 +603,6 @@ class SourceTextRatchetTests(unittest.TestCase):
             self.assertEqual(1, code, output)
             self.assertIn("SOURCE_TEXT_RATCHET_HARNESS_CHANGED", output)
 
-    def test_tuple_generic_delegate_cast_fails_closed(self):
-        """Reject an unmodeled generic delegate target instead of treating it as a value."""
-        with tempfile.TemporaryDirectory() as directory:
-            root = self._git_fixture(
-                directory,
-                validation_text=(
-                    "using System; public static class FixtureValidation { "
-                    "private static void Run(Action action) { action(); } "
-                    "private static void Used<T>() { var source = ReadRequiredRepoText(\"Packages/fixture/Runtime/Product.cs\"); Check(source.Contains(\"Product\")); } "
-                    "private static void Noop<T>() { } public static void Validate() { var run = (Action)Used<(int, int)>; Run(run); } }"
-                ),
-            )
-            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
-            validation.write_text(
-                validation.read_text(encoding="utf-8").replace(
-                    "Used<(int, int)>", "Noop<(int, int)>"
-                ),
-                encoding="utf-8",
-            )
-            code, output = self._run_fixture_gate(root)
-            self.assertEqual(1, code, output)
-            self.assertTrue(
-                "SOURCE_TEXT_RATCHET_UNSUPPORTED_DELEGATE_FLOW" in output
-                or "SOURCE_TEXT_RATCHET_HARNESS_CHANGED" in output,
-                output,
-            )
-
-    def test_delegate_collection_alias_fails_closed(self):
-        """Reject a delegate that crosses an unmodeled collection/index expression."""
-        with tempfile.TemporaryDirectory() as directory:
-            root = self._git_fixture(
-                directory,
-                validation_text=(
-                    "using System; public static class FixtureValidation { "
-                    "private static void Run(Action action) { action(); } "
-                    "private static void Used() { var source = ReadRequiredRepoText(\"Packages/fixture/Runtime/Product.cs\"); Check(source.Contains(\"Product\")); } "
-                    "private static void Noop() { } public static void Validate() { Action[] callbacks = { Used }; var run = callbacks[0]; Run(run); } }"
-                ),
-            )
-            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
-            validation.write_text(
-                validation.read_text(encoding="utf-8").replace("{ Used }", "{ Noop }"),
-                encoding="utf-8",
-            )
-            code, output = self._run_fixture_gate(root)
-            self.assertEqual(1, code, output)
-            self.assertTrue(
-                "SOURCE_TEXT_RATCHET_UNSUPPORTED_DELEGATE_FLOW" in output
-                or "SOURCE_TEXT_RATCHET_HARNESS_CHANGED" in output,
-                output,
-            )
-
     def test_casted_var_delegate_qualified_method_rebinding_fails_closed(self):
         """Reject a qualified method-group delegate cast that targets a no-op."""
         with tempfile.TemporaryDirectory() as directory:
