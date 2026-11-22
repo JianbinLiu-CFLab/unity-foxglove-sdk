@@ -5,9 +5,45 @@
       "validation_flag": "--phase134-19",
       "class": "C",
       "base_signature": "41daf51fce3182827e499854c5a7641847c31012fb84f84954e75094535345e4",
-      "head_signature": "4e69cc85c46b2cab61e6875a9263b7e9d795c2df2f345ddf47f9bc614bd657ba",
-      "reason": "PR #760 moves the verified OpenH264 DLL publish from File.Move into OpenH264ArtifactPairPublisher; 134-19-C2 keeps verify-before-publish ordering against the new call.",
-      "replacement": "EditorSafetyReviewTests.OpenH264PairPublisherRestoresExistingPairWhenHelperPublishFails"
+      "head_signature": "d94b1b21f565ad2381f3c99040bcde5515f18f491fa4cef223d2a1e887a5c5b1",
+      "reason": "Plan207 keeps Phase134-19 archive, decompression, and publish ordering checks valid for the safe-stream installer composition.",
+      "replacement": "Phase134_19Validation Plan207 safe-stream ordering"
+    },
+    {
+      "file": "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase163_16Validation.cs",
+      "validation_flag": "--phase163-16",
+      "class": "C",
+      "base_signature": "3b77887db9e8a7e0400ed0fd9d499623a82a1a5602fd6d8a0013e2fcf3498bb6",
+      "head_signature": "828c6a6b72b9f2e3114f490a4b9103d27b3f7762cf911ea4df34a1c9a7d8c54e",
+      "reason": "Plan207 keeps Phase163-16 download and decompression checks stable across path-based and safe-stream installer implementations.",
+      "replacement": "Phase163_16Validation Plan207 safe-stream compatibility"
+    },
+    {
+      "file": "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase163_26Validation.cs",
+      "validation_flag": "--phase163-26",
+      "class": "C",
+      "base_signature": "2fc1c100d6eac0d76a45bf3a3fd1957ba9a07bcf36097883d8004d3fd1ad1b1d",
+      "head_signature": "db3696a0f4fee5eb7cf8aa105f01e781c7b95e4dea2843f0040d26e380ddfaf2",
+      "reason": "Plan207 keeps Phase163-26 OpenH264 digest, timeout, and decompressor diagnostics checks valid for safe streams.",
+      "replacement": "Phase163_26Validation Plan207 safe-stream compatibility"
+    },
+    {
+      "file": "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase81Validation.cs",
+      "validation_flag": "--phase81",
+      "class": "C",
+      "base_signature": "94366ecd082e4f721a628a3df03706e515c30ec53765e2399a379144319d6af9",
+      "head_signature": "6470192e63a26cd7268a6391dbef651fb29de61713a06fa747197e5087e599f4",
+      "reason": "Plan207 keeps Phase81 OpenH264 installer source checks compatible with the safe-stream helper composition.",
+      "replacement": "Phase81Validation Plan207 safe-stream compatibility"
+    },
+    {
+      "file": "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Decomposed/PhaseValidationSourceHelpers/RepositoryReaders.cs",
+      "validation_flag": "ReadGenericCSharpSource",
+      "class": "READER",
+      "base_signature": "7733cb54e5797900b47524c745198de819cb96536fafae27c3c39df88a76b228",
+      "head_signature": "495dfdf690e2ef1ee9c90e6ffed863ea085c8384c2a94a1723e464ce50be8c22",
+      "reason": "Plan207 composes the OpenH264 facade with registered partial sources while preserving the existing generic source reader contract.",
+      "replacement": "Phase207 OpenH264 safe-stream source composition"
     },
     {
       "file": "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase134_30Validation.cs",
