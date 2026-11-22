@@ -18,7 +18,7 @@ SEED_READER_ALTERNATIVES = (
 )
 READER_CALL_PATTERN = re.compile(rf"\b(?P<reader>{SEED_READER_ALTERNATIVES})\s*\(")
 SEED_READER_NAME = re.compile(rf"(?:{SEED_READER_ALTERNATIVES})")
-_DELEGATE_TYPE_PATTERN = r"(?:global::)?(?:System\.)?(?:Action|Func|Predicate)(?:<[^;=]+>)?"
+_DELEGATE_TYPE_PATTERN = r"(?:global::)?[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*(?:<[^;=]+>)?"
 _DELEGATE_METHOD_TARGET_PATTERN = r"(?:global::)?[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*"
 _DELEGATE_CAST_PATTERN = re.compile(
     rf"^\s*\(\s*{_DELEGATE_TYPE_PATTERN}\s*\)\s*\(?\s*"

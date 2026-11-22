@@ -665,6 +665,39 @@ class SourceTextRatchetTests(unittest.TestCase):
             self.assertIn("SOURCE_TEXT_RATCHET_HARNESS_CHANGED", output)
             self.assertIn("helper=binding:run", output)
 
+    def test_casted_var_custom_delegate_rebinding_fails_closed(self):
+        """Reject a custom delegate cast that targets a no-op."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(
+                directory,
+                validation_text=(
+                    "using System;\n"
+                    "public static class FixtureValidation {\n"
+                    "    private delegate void ValidationDelegate();\n"
+                    "    private static void Used() {\n"
+                    '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                    '        Check(source.Contains("Product"));\n'
+                    "    }\n"
+                    "    private static void Noop() { }\n"
+                    "    public static void Validate() {\n"
+                    "        var run = (ValidationDelegate)Used;\n"
+                    "        run();\n"
+                    "    }\n}\n"
+                ),
+            )
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace(
+                    "var run = (ValidationDelegate)Used;",
+                    "var run = (ValidationDelegate)Noop;",
+                ),
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code, output)
+            self.assertIn("SOURCE_TEXT_RATCHET_HARNESS_CHANGED", output)
+            self.assertIn("helper=binding:run", output)
+
     def test_inline_delegate_forwarding_to_noop_fails_closed(self):
         """Reject a forwarding helper that stops invoking an assertion lambda."""
         with tempfile.TemporaryDirectory() as directory:
