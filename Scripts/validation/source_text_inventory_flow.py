@@ -17,6 +17,7 @@ try:
     from .source_text_inventory_text import (
         _balanced_brace_end,
         _balanced_call_end,
+        _is_delegate_conversion,
         _normalize_csharp_expression,
         _strip_csharp_comments_and_strings,
     )
@@ -29,6 +30,7 @@ except ImportError:
     from source_text_inventory_text import (
         _balanced_brace_end,
         _balanced_call_end,
+        _is_delegate_conversion,
         _normalize_csharp_expression,
         _strip_csharp_comments_and_strings,
     )
@@ -671,6 +673,7 @@ def _delegate_binding_signature(
             explicit_delegate
             or match.group("name") in delegate_variables
             or bool(target_names & delegate_methods)
+            or _is_delegate_conversion(target)
             or "=>" in target
             or re.search(r"\bdelegate\s*\(", target) is not None
         )

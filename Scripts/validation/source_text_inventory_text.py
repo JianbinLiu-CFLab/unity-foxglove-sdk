@@ -18,6 +18,22 @@ SEED_READER_ALTERNATIVES = (
 )
 READER_CALL_PATTERN = re.compile(rf"\b(?P<reader>{SEED_READER_ALTERNATIVES})\s*\(")
 SEED_READER_NAME = re.compile(rf"(?:{SEED_READER_ALTERNATIVES})")
+_DELEGATE_TYPE_PATTERN = r"(?:global::)?(?:System\.)?(?:Action|Func|Predicate)(?:<[^;=]+>)?"
+_DELEGATE_CAST_PATTERN = re.compile(
+    rf"^\s*\(\s*{_DELEGATE_TYPE_PATTERN}\s*\)\s*\(?\s*[A-Za-z_]\w*\s*\)?\s*$"
+)
+_DELEGATE_CONSTRUCTOR_PATTERN = re.compile(rf"^\s*new\s+{_DELEGATE_TYPE_PATTERN}\s*\(")
+
+
+def _is_delegate_conversion(target: str) -> bool:
+    """Return whether a binding target is an explicit delegate cast or construction."""
+    normalized = re.sub(r"\s+", " ", target).strip()
+    return bool(
+        _DELEGATE_CAST_PATTERN.fullmatch(normalized)
+        or _DELEGATE_CONSTRUCTOR_PATTERN.match(normalized)
+    )
+
+
 _ACTIVE_READER_PATTERN: list[re.Pattern[str]] = [READER_CALL_PATTERN]
 _PATH_READER_PATTERNS: dict[str, re.Pattern[str]] = {}
 VARIABLE_READER_PATTERN = re.compile(

@@ -327,6 +327,7 @@ def _helper_signature_records(text: str, readers: frozenset[str] = frozenset()) 
         declared_type = match.group("type") or ""
         if (
             (not declared_type or declared_type == "var")
+            and not _flow_module._is_delegate_conversion(target)
             and "=>" not in target
             and "delegate" not in target
         ):
