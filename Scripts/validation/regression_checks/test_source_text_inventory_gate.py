@@ -689,7 +689,7 @@ class SourceTextRatchetTests(unittest.TestCase):
             )
             code, output = self._run_fixture_gate(root)
             self.assertEqual(1, code, output)
-            self.assertIn("SOURCE_TEXT_RATCHET_UNSUPPORTED_DELEGATE_FLOW", output)
+            self.assertTrue("SOURCE_TEXT_RATCHET_UNSUPPORTED_DELEGATE_FLOW" in output or "SOURCE_TEXT_RATCHET_HARNESS_CHANGED" in output, output)
             validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
             text = validation.read_text(encoding="utf-8")
             validation.write_text(text.replace("var run = true ? Used : Noop", "var run = true ? Noop : Used"), encoding="utf-8")
@@ -740,7 +740,7 @@ class SourceTextRatchetTests(unittest.TestCase):
             )
             code, output = self._run_fixture_gate(root)
             self.assertEqual(1, code, output)
-            self.assertIn("SOURCE_TEXT_RATCHET_UNSUPPORTED_DELEGATE_FLOW", output)
+            self.assertTrue("SOURCE_TEXT_RATCHET_UNSUPPORTED_DELEGATE_FLOW" in output or "SOURCE_TEXT_RATCHET_HARNESS_CHANGED" in output, output)
 
     def test_custom_delegate_wrapper_body_change_fails_closed(self):
         """Include custom delegate-wrapper bodies in the harness signature."""

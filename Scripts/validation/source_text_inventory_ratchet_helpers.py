@@ -349,6 +349,9 @@ def _helper_signature_records(text: str, readers: frozenset[str] = frozenset()) 
         text, masked, methods, delegate_type_names
     )
     delegate_wrapper_names.update(_flow_module._KNOWN_DELEGATE_WRAPPER_NAMES)
+    for scope_key, names in delegate_boundary_names.items():
+        for marker in sorted(name for name in names if name.startswith("unknown:")):
+            records[f"unknown-delegate-flow:{scope_key}:{marker}"] = hashlib.sha256(marker.encode("utf-8")).hexdigest()
     for match in _DELEGATE_ASSIGNMENT_PATTERN.finditer(masked):
         target = match.group("target")
         declared_type = match.group("type") or ""
@@ -387,6 +390,10 @@ def _helper_signature_records(text: str, readers: frozenset[str] = frozenset()) 
             scope_boundary_names,
             delegate_wrapper_names,
         )
+        if state == DELEGATE_STATE_UNSUPPORTED and "!" not in target and "?" not in target and not _is_delegate_type_name(declared_type, delegate_type_names):
+            state = DELEGATE_STATE_NON_DELEGATE
+        if state == DELEGATE_STATE_UNSUPPORTED and scope is None and ("," in target or "\n" in target):
+            state = DELEGATE_STATE_NON_DELEGATE
         if state == DELEGATE_STATE_NON_DELEGATE:
             continue
         payload = text[match.start() : match.end()]

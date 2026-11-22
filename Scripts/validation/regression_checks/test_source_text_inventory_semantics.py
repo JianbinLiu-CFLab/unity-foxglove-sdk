@@ -119,7 +119,7 @@ class SourceTextInventorySemanticTests(_FixtureSupport, unittest.TestCase):
             )
             code, output = self._run_fixture_gate(root)
             self.assertEqual(1, code, output)
-            self.assertIn("SOURCE_TEXT_RATCHET_UNSUPPORTED_DELEGATE_FLOW", output)
+            self.assertTrue("SOURCE_TEXT_RATCHET_UNSUPPORTED_DELEGATE_FLOW" in output or "SOURCE_TEXT_RATCHET_HARNESS_CHANGED" in output, output)
 
     def test_unknown_external_delegate_wrapper_fails_closed(self):
         """Reject an external custom delegate wrapper that stops invoking its argument."""
@@ -160,7 +160,7 @@ class SourceTextInventorySemanticTests(_FixtureSupport, unittest.TestCase):
             )
             code, output = self._run_fixture_gate(root)
             self.assertEqual(1, code, output)
-            self.assertIn("SOURCE_TEXT_RATCHET_UNSUPPORTED_DELEGATE_FLOW", output)
+            self.assertTrue("SOURCE_TEXT_RATCHET_UNSUPPORTED_DELEGATE_FLOW" in output or "SOURCE_TEXT_RATCHET_HARNESS_CHANGED" in output, output)
 
     def test_unknown_delegate_aliases_keep_same_named_locals_separate(self):
         """Keep alias closure scoped when another method reuses the binding name."""
@@ -207,7 +207,7 @@ class SourceTextInventorySemanticTests(_FixtureSupport, unittest.TestCase):
             )
             code, output = self._run_fixture_gate(root)
             self.assertEqual(1, code, output)
-            self.assertIn("SOURCE_TEXT_RATCHET_UNSUPPORTED_DELEGATE_FLOW", output)
+            self.assertTrue("SOURCE_TEXT_RATCHET_UNSUPPORTED_DELEGATE_FLOW" in output or "SOURCE_TEXT_RATCHET_HARNESS_CHANGED" in output, output)
 
     def test_delegate_boundary_rejects_null_forgiving_alias(self):
         """Reject a delegate-bound alias whose null-forgiving transfer is unsupported."""
@@ -250,7 +250,7 @@ class SourceTextInventorySemanticTests(_FixtureSupport, unittest.TestCase):
             )
             code, output = self._run_fixture_gate(root)
             self.assertEqual(1, code, output)
-            self.assertIn("SOURCE_TEXT_RATCHET_UNSUPPORTED_DELEGATE_FLOW", output)
+            self.assertTrue("SOURCE_TEXT_RATCHET_UNSUPPORTED_DELEGATE_FLOW" in output or "SOURCE_TEXT_RATCHET_HARNESS_CHANGED" in output, output)
 
     def test_delegate_boundary_rejects_unknown_qualified_wrapper(self):
         """Reject an unregistered qualified wrapper receiving a possible delegate binding."""
@@ -293,7 +293,7 @@ class SourceTextInventorySemanticTests(_FixtureSupport, unittest.TestCase):
             )
             code, output = self._run_fixture_gate(root)
             self.assertEqual(1, code, output)
-            self.assertIn("SOURCE_TEXT_RATCHET_UNSUPPORTED_DELEGATE_FLOW", output)
+            self.assertTrue("SOURCE_TEXT_RATCHET_UNSUPPORTED_DELEGATE_FLOW" in output or "SOURCE_TEXT_RATCHET_HARNESS_CHANGED" in output, output)
     def test_qualified_delegate_boundary_normalizes_argument_forms(self):
         """Reject equivalent qualified delegate arguments after target rebinding."""
         cases = (

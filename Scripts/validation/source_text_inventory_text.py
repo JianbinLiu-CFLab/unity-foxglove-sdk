@@ -95,12 +95,7 @@ def _is_delegate_assignment(
         and declared_type != "var"
         and _is_delegate_type_name(declared_type, delegate_type_names)
     )
-    known_wrapper = known_wrapper or (
-        name in delegate_variables
-        or bool(target_names & delegate_variables)
-        or bool(target_names & delegate_methods)
-        or _is_delegate_conversion(target, delegate_type_names)
-    )
+    known_wrapper = known_wrapper or name in delegate_variables or bool(delegate_boundary_names and name in delegate_boundary_names) or bool(target_names & delegate_variables) or bool(target_names & delegate_methods) or _is_delegate_conversion(target, delegate_type_names)
     if "=>" in target or re.search(r"\bdelegate\s*\(", target) is not None:
         return DELEGATE_STATE_LAMBDA_FORWARD
     if known_wrapper:

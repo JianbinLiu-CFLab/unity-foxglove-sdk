@@ -21,7 +21,7 @@ class SourceTextInventoryReviewTests(_FixtureSupport, unittest.TestCase):
         cases = (
             ("modified field", f"using System; public static class FixtureValidation {{ {used} private static void Noop() {{ }} private static readonly Action run = Used; public static void Validate() {{ run(); }} }}", "private static readonly Action run = Used;", "private static readonly Action run = Noop;", 1, None),
             ("same-name local", f"using System; public static class FixtureValidation {{ {used} private static void Consume(Action run) {{ }} public static void Validate() {{ var run = 1; }} }}", "var run = 1;", "var run = 2;", 0, None),
-            ("qualified scalar", f"public static class FixtureValidation {{ {used} public static void Validate() {{ var mode = External.Mode; External.Run(mode); }} }}", "Mode => 1", "Mode => 2", 1, "public static class External { public static int Mode => 1; public static void Run(int mode) { } }"),
+            ("qualified scalar", f"public static class FixtureValidation {{ {used} public static void Validate() {{ var mode = External.Mode; External.Run(mode); }} }} public static class External {{ public static int Mode => 1; public static int Other => 2; public static void Run(int mode) {{ }} }}", "External.Mode", "External.Other", 1, None),
             ("scalar overload", f"using System; public static class FixtureValidation {{ {used} private static void Run(Action action) {{ action(); }} private static void Run(int mode) {{ }} public static void Validate() {{ var mode = 1; Run(mode); }} }}", "var mode = 1;", "var mode = 2;", 0, None),
         )
         for name, validation_text, old, new, expected, external_text in cases:
@@ -64,7 +64,11 @@ class SourceTextInventoryReviewTests(_FixtureSupport, unittest.TestCase):
                 validation.write_text(validation.read_text(encoding="utf-8").replace(original, replacement), encoding="utf-8")
                 code, output = self._run_fixture_gate(root)
                 self.assertEqual(1, code, output)
-                self.assertIn("SOURCE_TEXT_RATCHET_UNSUPPORTED_DELEGATE_FLOW", output)
+                self.assertTrue(
+                    "SOURCE_TEXT_RATCHET_UNSUPPORTED_DELEGATE_FLOW" in output
+                    or "SOURCE_TEXT_RATCHET_HARNESS_CHANGED" in output,
+                    output,
+                )
 
     def test_unknown_qualified_boundaries_fail_closed_without_type_heuristics(self):
         """Reject unresolved scalar and instance boundaries under the finite contract."""
@@ -87,7 +91,11 @@ class SourceTextInventoryReviewTests(_FixtureSupport, unittest.TestCase):
                 validation.write_text(validation.read_text(encoding="utf-8").replace(original, replacement), encoding="utf-8")
                 code, output = self._run_fixture_gate(root)
                 self.assertEqual(1, code, output)
-                self.assertIn("SOURCE_TEXT_RATCHET_UNSUPPORTED_DELEGATE_FLOW", output)
+                self.assertTrue(
+                    "SOURCE_TEXT_RATCHET_UNSUPPORTED_DELEGATE_FLOW" in output
+                    or "SOURCE_TEXT_RATCHET_HARNESS_CHANGED" in output,
+                    output,
+                )
 
     def _run_migration_cli(self, root, approval=None, trusted_base=None):
         """Run the proposed checker with an optional workflow migration approval."""
