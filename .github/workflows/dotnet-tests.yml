@@ -565,10 +565,10 @@ jobs:
             "base_revision": "a71a7d862299aab28cc5e89a4e01db5b0ae1039a",
             "checker_sha256": "be6d4a012f57ede254feaa4aa945caa43061787e1e5f1564993a7b7e8a2a2f7f",
             "base_inventory_sha256": "a37a42cd84641afb50dc1d496e53e5eb6166cb06995d0cd5616f8ef8e409b991",
-            "current_inventory_sha256": "a37a42cd84641afb50dc1d496e53e5eb6166cb06995d0cd5616f8ef8e409b991",
-            "parser_changes_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "current_inventory_sha256": "28fef11fd4228a6d79e2c2d61defb424f38acbc6bf80e0db73ed513c5ce40bc0",
+            "parser_changes_sha256": "ca11440f3bd3306aa052e7fddd19d5f81a88fb31db621eac50c036b554714395",
             "scope": "versioned-parser-maintenance",
-            "reason": "Reviewed casted-var delegate conversion fail-closed follow-up for the source-text harness ratchet on 2026-11-22."
+            "reason": "Reviewed casted-var delegate conversion fail-closed follow-up and exact harness-signature migration for the source-text ratchet on 2026-11-22."
           }
           MIGRATION_APPROVAL
             expected_migration_checker_sha=$(python3 -I -B -c 'import json,sys; print(json.load(open(sys.argv[1]))["checker_sha256"])' "$migration_approval_file")
