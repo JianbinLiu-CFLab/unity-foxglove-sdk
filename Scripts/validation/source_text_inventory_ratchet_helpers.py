@@ -17,7 +17,9 @@ try:
     from .source_text_inventory_text import (
         _DELEGATE_ASSIGNMENT_PATTERN,
         DELEGATE_STATE_NON_DELEGATE,
+        DELEGATE_STATE_UNKNOWN,
         _delegate_type_names,
+        _delegate_unknown_aliases,
         _delegate_invocation_text,
         _is_delegate_assignment,
         _is_delegate_type_name,
@@ -28,7 +30,9 @@ except ImportError:
     from source_text_inventory_text import (
         _DELEGATE_ASSIGNMENT_PATTERN,
         DELEGATE_STATE_NON_DELEGATE,
+        DELEGATE_STATE_UNKNOWN,
         _delegate_type_names,
+        _delegate_unknown_aliases,
         _delegate_invocation_text,
         _is_delegate_assignment,
         _is_delegate_type_name,
@@ -334,10 +338,13 @@ def _helper_signature_records(text: str, readers: frozenset[str] = frozenset()) 
     _, delegate_boundary_names = _flow_module._delegate_parameter_boundaries(
         text, masked, methods, delegate_type_names
     )
-    for match in _DELEGATE_ASSIGNMENT_PATTERN.finditer(masked):
+    assignment_matches = list(_DELEGATE_ASSIGNMENT_PATTERN.finditer(masked))
+    pending: list[tuple[re.Match[str], str, str, str, str]] = []
+    for match in assignment_matches:
         target = match.group("target")
         declared_type = match.group("type") or ""
         name = match.group("name")
+        scope = _flow_module._method_for_offset(methods, match.start())
         state = _is_delegate_assignment(
             target,
             declared_type,
@@ -355,10 +362,18 @@ def _helper_signature_records(text: str, readers: frozenset[str] = frozenset()) 
                 set(),
                 method_names,
                 delegate_boundary_names,
+                scope.body_start if scope else 0,
+                scope.body_end if scope else len(masked),
             ),
         )
-        if state == DELEGATE_STATE_NON_DELEGATE:
+        pending.append((match, target, declared_type, name, state))
+    unknown_names = {name for _, _, _, name, state in pending if state == DELEGATE_STATE_UNKNOWN}
+    _delegate_unknown_aliases([(name, target, state) for _, target, _, name, state in pending], unknown_names)
+    for match, target, declared_type, name, state in pending:
+        if state == DELEGATE_STATE_NON_DELEGATE and name not in unknown_names:
             continue
+        if name in unknown_names:
+            state = DELEGATE_STATE_UNKNOWN
         binding_name = "binding:" + name
         payload = text[match.start() : match.end()]
         if state != "KNOWN_WRAPPER" and state != "LAMBDA_FORWARD":

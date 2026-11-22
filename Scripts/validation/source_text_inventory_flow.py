@@ -15,7 +15,7 @@ try:
         _balanced_brace_end,
         _balanced_call_end,
         _DELEGATE_ASSIGNMENT_PATTERN,
-        _delegate_type_names,
+        _delegate_type_names, _delegate_unknown_aliases,
         _is_delegate_type_name,
         DELEGATE_STATE_NON_DELEGATE,
         DELEGATE_STATE_UNKNOWN,
@@ -34,7 +34,7 @@ except ImportError:
         _balanced_brace_end,
         _balanced_call_end,
         _DELEGATE_ASSIGNMENT_PATTERN,
-        _delegate_type_names,
+        _delegate_type_names, _delegate_unknown_aliases,
         _is_delegate_type_name,
         DELEGATE_STATE_NON_DELEGATE,
         DELEGATE_STATE_UNKNOWN,
@@ -630,8 +630,7 @@ def _delegate_parameter_boundaries(text: str, masked: str, methods: list[MethodI
     for method in methods:
         for call_name, open_index in _call_sites(text, masked, method):
             indexes = wrapper_parameters.get(call_name.rsplit(".", 1)[-1].rsplit("::", 1)[-1])
-            if not indexes:
-                continue
+            if not indexes: continue
             arguments = _call_arguments(text, masked, open_index)
             if arguments is None: continue
             if ":" in arguments: boundary_names.update(re.findall(r"\b[A-Za-z_]\w*\b", arguments))
@@ -662,13 +661,10 @@ def _delegate_binding_signature(
     method_names = {method.name for method in methods}
     delegate_variables: set[str] = set()
     delegate_type_names = _delegate_type_names(text, masked)
-    delegate_wrapper_names, delegate_boundary_names = _delegate_parameter_boundaries(
-        text, masked, methods, delegate_type_names
-    )
+    delegate_wrapper_names, delegate_boundary_names = _delegate_parameter_boundaries(text, masked, methods, delegate_type_names)
+    pending: list[tuple[re.Match[str], str, str, str, str, str]] = []
     for match in _DELEGATE_ASSIGNMENT_PATTERN.finditer(masked):
-        target = re.sub(r"\s+", " ", match.group("target")).strip()
-        declared_type = match.group("type") or ""
-        name = match.group("name")
+        target = re.sub(r"\s+", " ", match.group("target")).strip(); declared_type = match.group("type") or ""; name = match.group("name"); scope = _method_for_offset(methods, match.start())
         invocation_text = _delegate_invocation_text(
             masked,
             match.end(),
@@ -678,6 +674,8 @@ def _delegate_binding_signature(
             delegate_variables,
             method_names,
             delegate_boundary_names,
+            scope.body_start if scope else 0,
+            scope.body_end if scope else len(masked),
         )
         state = _is_delegate_assignment(
             target,
@@ -689,9 +687,12 @@ def _delegate_binding_signature(
             delegate_type_names,
             invocation_text,
         )
-        if state == DELEGATE_STATE_NON_DELEGATE:
-            continue
-        delegate_variables.add(name)
+        if state != DELEGATE_STATE_NON_DELEGATE: delegate_variables.add(name)
+        pending.append((match, target, declared_type, name, invocation_text, state))
+    unknown_names = {name for _, _, _, name, _, state in pending if state == DELEGATE_STATE_UNKNOWN}; _delegate_unknown_aliases([(name, target, state) for _, target, _, name, _, state in pending], unknown_names)
+    for match, target, declared_type, name, invocation_text, state in pending:
+        if state == DELEGATE_STATE_NON_DELEGATE and name not in unknown_names: continue
+        if name in unknown_names: state = DELEGATE_STATE_UNKNOWN
         if state == DELEGATE_STATE_UNKNOWN:
             pieces.append(
                 f"unknown:{state}|{match.group('type') or ''} {name}={target}|invoke:{invocation_text}"

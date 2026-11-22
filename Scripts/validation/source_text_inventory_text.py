@@ -16,6 +16,7 @@ SEED_READER_ALTERNATIVES = (
 READER_CALL_PATTERN = re.compile(rf"\b(?P<reader>{SEED_READER_ALTERNATIVES})\s*\(")
 SEED_READER_NAME = re.compile(rf"(?:{SEED_READER_ALTERNATIVES})")
 _DELEGATE_TYPE_PATTERN = r"(?:global::)?[A-Za-z_]\w*(?:\s*\.\s*[A-Za-z_]\w*)*(?:\s*<[^;=]+>)?\??"
+_DELEGATE_METHOD_TARGET_PATTERN = r"(?:global::)?[A-Za-z_]\w*(?:\s*<[^;{}()]+>)?(?:\s*\.\s*(?:global::)?[A-Za-z_]\w*(?:\s*<[^;{}()]+>)?)*"
 _DELEGATE_ASSIGNMENT_PATTERN = re.compile(
     rf"\b(?:(?P<type>(?:{_DELEGATE_TYPE_PATTERN}|var))\s+)?"
     rf"(?P<name>[A-Za-z_]\w*)\s*=\s*(?P<target>[^;]+);"
@@ -44,11 +45,7 @@ def _strip_outer_parentheses(value: str) -> str:
 def _is_delegate_like_target(value: str) -> bool:
     """Return whether an expression has a method-group-like token shape."""
     normalized = _strip_outer_parentheses(_normalize_delegate_expression(value))
-    return re.fullmatch(
-        r"(?:global::)?[A-Za-z_]\w*(?:\s*<[^;{}()]+>)?"
-        r"(?:\.(?:global::)?[A-Za-z_]\w*(?:\s*<[^;{}()]+>)?)*",
-        normalized,
-    ) is not None
+    return re.fullmatch(_DELEGATE_METHOD_TARGET_PATTERN, normalized) is not None
 def _delegate_type_names(text: str, masked: str) -> set[str]:
     """Return built-in, declared, and aliased delegate type names in one file."""
     names = {"Action", "Func", "Predicate"}
@@ -116,6 +113,21 @@ def _is_delegate_assignment(
     if candidate:
         return DELEGATE_STATE_UNKNOWN
     return DELEGATE_STATE_NON_DELEGATE
+def _delegate_unknown_aliases(records: list[tuple[str, str, str]], unknown_names: set[str]) -> None:
+    """Propagate unknown delegate state through local single-name aliases."""
+    names = {record[0] for record in records}
+    aliases: dict[str, str] = {}
+    for name, target, _ in records:
+        candidate = _strip_outer_parentheses(_normalize_delegate_expression(target))
+        if candidate in names and re.fullmatch(r"[A-Za-z_]\w*", candidate):
+            aliases[name] = candidate
+    changed = True
+    while changed:
+        changed = False
+        for name, source in aliases.items():
+            if name in unknown_names and source not in unknown_names:
+                unknown_names.add(source)
+                changed = True
 _DELEGATE_INVOCATION_CACHE: dict[str, set[str]] = {}
 def _delegate_invocation_names(masked: str) -> set[str]:
     """Return names used in direct delegate-style invocations."""
@@ -154,6 +166,7 @@ def _delegate_invocation_needed(
         or bool(delegate_boundary_names and name in delegate_boundary_names)
         or bool(target_names & method_names)
         or target.lstrip().startswith(("(", "new "))
+        or "." in target
         or any(marker in target for marker in ("<", "?", "=>", "delegate"))
     )
 def _delegate_invocation_text(
@@ -165,10 +178,15 @@ def _delegate_invocation_text(
     delegate_variables: set[str],
     method_names: set[str],
     delegate_boundary_names: set[str] | None = None,
+    scope_start: int = 0,
+    scope_end: int | None = None,
 ) -> str:
     """Return the normalized invocation evidence for a delegate binding."""
+    scope_end = len(masked) if scope_end is None else scope_end
+    scoped_masked = masked[scope_start:scope_end]
+    scoped_start = max(start - scope_start, 0)
     if (
-        name not in _delegate_invocation_names(masked)
+        name not in _delegate_invocation_names(scoped_masked)
         and not _delegate_invocation_needed(
             target,
             declared_type,
@@ -179,20 +197,20 @@ def _delegate_invocation_text(
         )
     ):
         return ""
-    return _delegate_invocation(masked, start, name)
+    return _delegate_invocation(scoped_masked, scoped_start, name)
 def _is_delegate_conversion(target: str, delegate_type_names: set[str]) -> bool:
     """Return whether a target uses an allowlisted delegate cast or construction."""
     normalized = _strip_outer_parentheses(_normalize_delegate_expression(target))
     cast = re.fullmatch(
         rf"\(\s*(?P<type>{_DELEGATE_TYPE_PATTERN})\s*\)\s*"
-        r"(?P<target>(?:global::)?[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)",
+        rf"(?P<target>{_DELEGATE_METHOD_TARGET_PATTERN})",
         normalized,
     )
     if cast and _is_delegate_type_name(cast.group("type"), delegate_type_names):
         return True
     constructor = re.fullmatch(
         rf"new\s+(?P<type>{_DELEGATE_TYPE_PATTERN})\s*\(\s*"
-        r"(?P<target>(?:global::)?[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*\)",
+        rf"(?P<target>{_DELEGATE_METHOD_TARGET_PATTERN})\s*\)",
         normalized,
     )
     return bool(constructor and _is_delegate_type_name(constructor.group("type"), delegate_type_names))
@@ -615,7 +633,6 @@ def _brace_paths(lines: list[str]) -> list[tuple[int, ...]]:
     _BRACE_CACHE[cache_key] = scopes
     return scopes
 
-
 def _normalize_csharp_expression(text: str) -> str:
     """Normalize code spacing and comments while retaining every literal character."""
     if '"""' in text or re.search(r'\$@?"|@\$', text):
@@ -627,7 +644,6 @@ def _normalize_csharp_expression(text: str) -> str:
     return re.sub(
         pattern, lambda match: match.group("literal") or " ", text, flags=re.DOTALL
     ).strip()
-
 
 def _strip_csharp_comments_and_strings(text: str) -> str:
     """Remove C# comments and string literals before symbol matching."""
@@ -701,7 +717,6 @@ def _strip_csharp_comments_and_strings(text: str) -> str:
     _MASK_CACHE[text] = result
     return result
 
-
 def _top_level_type_declarations(text: str) -> list[tuple[str, str]]:
     """Return namespace and name pairs for top-level types outside literal-false preprocessor branches."""
     kept: list[str] = []
@@ -752,7 +767,6 @@ def _top_level_type_declarations(text: str) -> list[tuple[str, str]]:
                 namespaces.pop()
     return declarations
 
-
 def _registry_validation_entry(root: Path, source_file: str) -> tuple[str, str] | None:
     """Resolve a validation file to its registry flag through its stem or exactly one declared-type entry."""
     registry = root / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "PhaseValidationRegistry.cs"
@@ -792,7 +806,6 @@ def _registry_validation_entry(root: Path, source_file: str) -> tuple[str, str] 
         for entry in registered(type_name)
     }
     return declared.pop() if len(declared) == 1 else None
-
 
 def _csharp_comment_text(text: str) -> str:
     """Return C# line and block comment text while ignoring strings and chars."""
@@ -862,7 +875,6 @@ def _csharp_comment_text(text: str) -> str:
     _COMMENT_CACHE[text] = result
     return result
 
-
 def _target_comment_only(
     target: str, token: str, root: Path, cache: dict[str, tuple[str, str]]
 ) -> bool:
@@ -893,7 +905,6 @@ def _target_comment_only(
             return True
     return False
 
-
 def _xunit_coverage(target: str, root: Path, xunit_index: dict[str, list[str]]) -> str:
     """Return indexed unit-test files whose text references the target type name."""
     targets = [value for value in target.split(";") if value]
@@ -920,7 +931,6 @@ def _xunit_coverage(target: str, root: Path, xunit_index: dict[str, list[str]]) 
     matches = sorted({match for name in names for match in xunit_index.get(name, [])})
     return ";".join(matches)
 
-
 def _split_arguments(text: str) -> list[str]:
     """Split a masked C# argument or parameter list at top-level commas."""
     parts: list[str] = []
@@ -939,7 +949,6 @@ def _split_arguments(text: str) -> list[str]:
         parts.append(tail)
     return parts
 
-
 def _normalize_type(value: str) -> str:
     """Normalize common C# aliases for lightweight overload matching."""
     normalized = re.sub(r"\s+", "", value).replace("global::", "").rstrip("?")
@@ -950,7 +959,6 @@ def _normalize_type(value: str) -> str:
         "System.Object": "object",
     }
     return aliases.get(normalized, normalized)
-
 
 def _parameter_types(parameter_text: str) -> tuple[str, ...]:
     """Return normalized parameter types from a method declaration."""
@@ -965,8 +973,6 @@ def _parameter_types(parameter_text: str) -> tuple[str, ...]:
         elif tokens:
             result.append(_normalize_type(tokens[0]))
     return tuple(result)
-
-
 def _method_parameter_types(masked: str, start: int, body_start: int) -> tuple[str, ...]:
     """Extract a method's parameter types from its declaration span."""
     open_index = masked.find("(", start, body_start)
@@ -974,8 +980,6 @@ def _method_parameter_types(masked: str, start: int, body_start: int) -> tuple[s
     if open_index < 0 or close_index < open_index:
         return ()
     return _parameter_types(masked[open_index + 1 : close_index])
-
-
 def _method_return_type(signature: str, name: str) -> str:
     """Extract a simple declared return type from a method signature."""
     match = re.search(
@@ -984,8 +988,6 @@ def _method_return_type(signature: str, name: str) -> str:
         signature,
     )
     return _normalize_type(match.group("return")) if match else ""
-
-
 def _constant_values(text: str, masked: str) -> dict[str, str]:
     """Collect simple boolean, integer, and string initializers for branch selectors."""
     values: dict[str, str] = {}

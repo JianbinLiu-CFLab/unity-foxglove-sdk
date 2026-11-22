@@ -20,6 +20,148 @@ class _FixtureSupport:
 class SourceTextInventorySemanticTests(_FixtureSupport, unittest.TestCase):
     """Cover parser schema, control flow, overload, and lambda semantics."""
 
+    def test_generic_delegate_cast_rebinding_fails_closed(self):
+        """Reject a generic method-group cast that targets a no-op."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(
+                directory,
+                validation_text=(
+                    "using System;\n"
+                    "public static class FixtureValidation {\n"
+                    "    private static void Used<T>() {\n"
+                    '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                    '        Check(source.Contains("Product"));\n'
+                    "    }\n"
+                    "    private static void Noop<T>() { }\n"
+                    "    public static void Validate() {\n"
+                    "        var run = (Action)Used<int>;\n"
+                    "    }\n}\n"
+                ),
+            )
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace(
+                    "var run = (Action)Used<int>;", "var run = (Action)Noop<int>;"
+                ),
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code, output)
+            self.assertIn("SOURCE_TEXT_RATCHET_HARNESS_CHANGED", output)
+
+    def test_delegate_invocation_scan_stays_within_containing_method(self):
+        """Ignore a same-named invocation in a different method."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(
+                directory,
+                validation_text=(
+                    "public static class FixtureValidation {\n"
+                    "    private static void Used() {\n"
+                    '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                    '        Check(source.Contains("Product"));\n'
+                    "    }\n"
+                    "    public static void Validate() {\n"
+                    "        var ordinary = 1;\n"
+                    "        Used();\n"
+                    "    }\n"
+                    "    private static void Other() { ordinary(); }\n"
+                    "}\n"
+                ),
+            )
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace(
+                    "var ordinary = 1;", "var ordinary = 2;"
+                ),
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(0, code, output)
+
+    def test_unknown_delegate_state_propagates_through_alias_chain(self):
+        """Reject an external delegate rebinding hidden behind two local aliases."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(
+                directory,
+                validation_text=(
+                    "using System;\n"
+                    "public static class FixtureValidation {\n"
+                    "    private static void Run(Action action) { action(); }\n"
+                    "    private static void Used() {\n"
+                    '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                    '        Check(source.Contains("Product"));\n'
+                    "    }\n"
+                    "    private static void Noop() { }\n"
+                    "    public static void Validate() {\n"
+                    "        var first = External.Factory;\n"
+                    "        var run = first;\n"
+                    "        Run(run);\n"
+                    "    }\n}\n"
+                ),
+            )
+            external = root / "Packages/fixture/Tests/Runtime/External.cs"
+            external.write_text(
+                "using System;\n"
+                "public static class External {\n"
+                "    public static Action Factory => FixtureValidation.Used;\n"
+                "    public static Action NoopFactory => FixtureValidation.Noop;\n"
+                "}\n",
+                encoding="utf-8",
+            )
+            subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+            subprocess.run(["git", "-C", str(root), "commit", "-qm", "external-alias"], check=True)
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace(
+                    "External.Factory", "External.NoopFactory"
+                ),
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code, output)
+            self.assertIn("SOURCE_TEXT_RATCHET_HARNESS_CHANGED", output)
+
+    def test_unknown_external_delegate_wrapper_fails_closed(self):
+        """Reject an external custom delegate wrapper that stops invoking its argument."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(
+                directory,
+                validation_text=(
+                    "public static class FixtureValidation {\n"
+                    "    private static void Used() {\n"
+                    '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                    '        Check(source.Contains("Product"));\n'
+                    "    }\n"
+                    "    private static void Noop() { }\n"
+                    "    public static void Validate() {\n"
+                    "        var run = External.Factory;\n"
+                    "        External.Run(run);\n"
+                    "    }\n}\n"
+                ),
+            )
+            external = root / "Packages/fixture/Tests/Runtime/External.cs"
+            external.write_text(
+                "public static class External {\n"
+                "    public delegate void ValidationDelegate();\n"
+                "    public static void Run(ValidationDelegate action) { action(); }\n"
+                "    public static ValidationDelegate Factory => FixtureValidation.Used;\n"
+                "    public static ValidationDelegate NoopFactory => FixtureValidation.Noop;\n"
+                "}\n",
+                encoding="utf-8",
+            )
+            subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+            subprocess.run(["git", "-C", str(root), "commit", "-qm", "external-wrapper"], check=True)
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace(
+                    "External.Factory", "External.NoopFactory"
+                ),
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code, output)
+            self.assertIn("SOURCE_TEXT_RATCHET_HARNESS_CHANGED", output)
+
 
 
 
