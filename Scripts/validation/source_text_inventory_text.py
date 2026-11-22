@@ -198,7 +198,7 @@ def _delegate_invocation_text(
     return _delegate_invocation(scoped_masked, scoped_start, name)
 def _is_delegate_conversion(target: str, delegate_type_names: set[str]) -> bool:
     """Return whether a target uses an allowlisted delegate cast or construction."""
-    normalized = _strip_outer_parentheses(_normalize_delegate_expression(target))
+    normalized = _strip_outer_parentheses(_normalize_delegate_expression(target).rstrip("!").strip())
     cast = re.fullmatch(
         rf"\(\s*(?P<type>{_DELEGATE_TYPE_PATTERN})\s*\)\s*"
         rf"(?P<target>.+)",

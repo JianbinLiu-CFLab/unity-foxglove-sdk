@@ -587,7 +587,7 @@ class SourceTextRatchetTests(unittest.TestCase):
                     "    }\n"
                     "    private static void Noop() { }\n"
                     "    public static void Validate() {\n"
-                    "        var run = (System.Action)(Used);\n"
+                    "        var run = ((System.Action)(Used))!;\n"
                     "        Run(run);\n"
                     "    }\n}\n"
                 ),
@@ -595,7 +595,7 @@ class SourceTextRatchetTests(unittest.TestCase):
             validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
             validation.write_text(
                 validation.read_text(encoding="utf-8").replace(
-                    "var run = (System.Action)(Used);", "var run = (System.Action)(Noop);"
+                    "var run = ((System.Action)(Used))!;", "var run = ((System.Action)(Noop))!;"
                 ),
                 encoding="utf-8",
             )
