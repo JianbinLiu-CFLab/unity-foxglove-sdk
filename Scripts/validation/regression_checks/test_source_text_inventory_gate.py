@@ -774,7 +774,7 @@ class SourceTextRatchetTests(unittest.TestCase):
 
     def test_unknown_external_delegate_invocation_forms_fail_closed(self):
         """Reject external delegate rebinding through null-forgiving and DynamicInvoke calls."""
-        for invocation in ("run!();", "run.DynamicInvoke();"):
+        for invocation in ("run!();", "run.DynamicInvoke();", "Check(run());"):
             with self.subTest(invocation=invocation), tempfile.TemporaryDirectory() as directory:
                 root = self._git_fixture(
                     directory,

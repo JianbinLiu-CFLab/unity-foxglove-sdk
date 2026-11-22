@@ -124,7 +124,7 @@ def _delegate_invocation_names(masked: str) -> set[str]:
         names = {
             match.group("name")
             for match in re.finditer(
-                r"\b(?P<name>[A-Za-z_]\w*)\s*(?:!?\s*\([^;]*\)|\?\.\s*Invoke\s*\([^;]*\)|\.\s*(?:Invoke|DynamicInvoke)\s*\([^;]*\))\s*;",
+                r"\b(?P<name>[A-Za-z_]\w*)\s*(?:!?\s*\(|(?:\?\.|\.)\s*(?:Invoke|DynamicInvoke)\s*\()",
                 masked,
             )
         }
@@ -133,8 +133,8 @@ def _delegate_invocation_names(masked: str) -> set[str]:
 def _delegate_invocation(masked: str, start: int, name: str) -> str:
     """Return the first invocation of a binding after its assignment."""
     invocation = re.search(
-        rf"\b{re.escape(name)}(?:\s*!?\s*\([^;]*\)|\s*\?\.\s*Invoke\s*\([^;]*\)|"
-        rf"\s*\.\s*(?:Invoke|DynamicInvoke)\s*\([^;]*\))\s*;|"
+        rf"\b{re.escape(name)}(?:\s*!?\s*\([^;]*?\)|\s*\?\.\s*Invoke\s*\([^;]*?\)|"
+        rf"\s*\.\s*(?:Invoke|DynamicInvoke)\s*\([^;]*?\))|"
         rf"\b[A-Za-z_]\w*\s*\(\s*(?:[A-Za-z_]\w*\s*:\s*)?{re.escape(name)}\s*\)\s*;",
         masked[start:],
     )
