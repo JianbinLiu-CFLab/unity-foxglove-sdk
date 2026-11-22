@@ -28,6 +28,7 @@ try:
     from . import source_text_inventory_flow as _flow_module
     from . import source_text_inventory_symbols as _symbols_module
     from . import source_text_inventory_readers as _readers_module
+    from .source_text_inventory_ratchet_helpers import _DelegateBoundaryIndex
     from .source_text_inventory_text import *
     from .source_text_inventory_symbols import *
     from .source_text_inventory_flow import *
@@ -40,6 +41,7 @@ except ImportError:
     import source_text_inventory_flow as _flow_module
     import source_text_inventory_symbols as _symbols_module
     import source_text_inventory_readers as _readers_module
+    from source_text_inventory_ratchet_helpers import _DelegateBoundaryIndex
     from source_text_inventory_text import *
     from source_text_inventory_symbols import *
     from source_text_inventory_flow import *
@@ -430,6 +432,7 @@ def scan_file(
     comment_cache: dict[str, tuple[str, str]] | None = None,
     partial_harness_signature: str | None = None,
     external_helpers: _ExternalHelperIndex | None = None,
+    boundary_index: _DelegateBoundaryIndex | None = None,
     partial_termination_barriers: dict[str, str] | None = None,
 ) -> list[dict[str, object]]:
     """Collect source-text assertions from one validation file."""
@@ -495,6 +498,7 @@ def scan_file(
         entrypoint,
         argument_definitions,
         reachability,
+        boundary_index,
     )
     if partial_harness_signature:
         harness_signature = partial_harness_signature
@@ -752,6 +756,7 @@ def inventory(root: Path) -> list[dict[str, object]]:
         }
     )
     external_helpers = _ExternalHelperIndex(root)
+    boundary_index = _DelegateBoundaryIndex(root)
     _readers_module._discover_reader_patterns(root, files, external_helpers.units)
     scopes = _shared_scope_paths(files)
     partial_signatures: dict[Path, str] = {}
@@ -781,7 +786,7 @@ def inventory(root: Path) -> list[dict[str, object]]:
             if dispatch:
                 entrypoints.update(dispatch.rsplit("|", 1)[-1].split(";"))
         signature = _validation_harness_signature(
-            combined, masked, methods, ";".join(sorted(entrypoints))
+            combined, masked, methods, ";".join(sorted(entrypoints)), boundary_index=boundary_index
         )
         for path in group_paths:
             partial_signatures[path] = signature
@@ -798,6 +803,7 @@ def inventory(root: Path) -> list[dict[str, object]]:
                 comment_cache,
                 partial_signatures.get(path),
                 external_helpers,
+                boundary_index,
                 partial_termination_barriers.get(path),
             )
         )
@@ -812,10 +818,11 @@ def _validation_harness_signature(
     entrypoint: str = "",
     argument_definitions: dict[int, list[tuple[int, str, str, str]]] | None = None,
     call_contexts: dict[int, str] | None = None,
+    boundary_index: _DelegateBoundaryIndex | None = None,
 ) -> str:
     """Hash local assertion and source-reader helper implementations."""
     return _flow_module._validation_harness_signature(
-        text, masked, methods, entrypoint, argument_definitions, call_contexts
+        text, masked, methods, entrypoint, argument_definitions, call_contexts, boundary_index
     )
 
 

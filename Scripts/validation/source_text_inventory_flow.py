@@ -297,8 +297,7 @@ def _line_starts(text: str) -> list[int]:
     starts = [0]; starts.extend(index + 1 for index, character in enumerate(text) if character == "\n")
     return starts
 def _line_number(starts: list[int], offset: int) -> int:
-    """Return a zero-based line number from precomputed line starts."""
-    return bisect_right(starts, offset) - 1
+    """Return a zero-based line number from precomputed line starts."""; return bisect_right(starts, offset) - 1
 def _call_arguments(text: str, masked: str, open_index: int) -> str | None:
     """Return one call's argument text when its parentheses are balanced."""
     close_index = _balanced_call_end(masked, open_index); return text[open_index + 1 : close_index] if close_index is not None else None
@@ -575,6 +574,7 @@ def _validation_harness_signature(
     entrypoint: str = "",
     argument_definitions: dict[int, list[tuple[int, str, str, str]]] | None = None,
     call_contexts: dict[int, str] | None = None,
+    boundary_index=None,
 ) -> str:
     """Hash assertion and reader helper bodies while excluding registered entrypoints."""
     masked = masked if masked is not None else _strip_csharp_comments_and_strings(text)
@@ -618,7 +618,7 @@ def _validation_harness_signature(
     lambda_signature = _lambda_binding_signature(text, masked, methods)
     if lambda_signature:
         pieces.append(f"lambda:{lambda_signature}")
-    delegate_signature = _delegate_binding_signature(text, masked, methods)
+    delegate_signature = _delegate_binding_signature(text, masked, methods, boundary_index)
     if delegate_signature:
         pieces.append(f"delegate:{delegate_signature}")
     return hashlib.sha256("\n".join(pieces).encode()).hexdigest() if pieces else ""
@@ -634,7 +634,7 @@ def _possible_delegate_target(target: str, delegate_type_names: set[str], method
     if known: return DELEGATE_STATE_DIRECT
     if re.search(r"\([^;]*\)$", normalized) and not normalized.startswith(("(", "new ")): return DELEGATE_STATE_UNKNOWN_SOURCE
     return DELEGATE_STATE_UNKNOWN_SOURCE if "." in normalized and _is_delegate_like_target(normalized) else DELEGATE_STATE_NON_DELEGATE
-def _delegate_parameter_boundaries(text: str, masked: str, methods: list[MethodInfo], delegate_type_names: set[str]) -> tuple[set[str], dict[str, set[str]], set[int], set[int]]:
+def _delegate_parameter_boundaries(text: str, masked: str, methods: list[MethodInfo], delegate_type_names: set[str], boundary_index=None) -> tuple[set[str], dict[str, set[str]], set[int], set[int]]:
     """Discover delegate wrapper parameters and their binding call sites."""; method_names = {method.name for method in methods}; wrappers: dict[str, list[tuple[set[int], tuple[str, ...], tuple[str, ...]]]] = {}
     for method in methods:
         indexes = {i for i, parameter in enumerate(method.parameter_types) if _is_delegate_type_name(parameter, delegate_type_names)}
@@ -643,7 +643,7 @@ def _delegate_parameter_boundaries(text: str, masked: str, methods: list[MethodI
     if not assignment_records and not wrappers: return set(), {}, set(), set()
     for _ in range(len(assignment_records) + 1):
         for match, key in assignment_records:
-            state = _possible_delegate_target(match.group("target"), delegate_type_names, method_names, possible.get(key, set()))
+            state = _possible_delegate_target(match.group("target"), delegate_type_names, method_names, possible.get(key, set())); scope_method = _method_for_offset(methods, match.start()); state = boundary_index.expression_state(match.group("target"), text, scope_method, delegate_type_names) if boundary_index is not None and state == DELEGATE_STATE_UNKNOWN_SOURCE else state
             if state == DELEGATE_STATE_DIRECT or (state == DELEGATE_STATE_UNKNOWN_SOURCE and wrappers and _is_delegate_like_target(match.group("target"))): possible.setdefault(key, set()).add(match.group("name"))
     def argument_map(values: list[str], names: tuple[str, ...]) -> dict[int, str]:
         """Map positional and named call arguments to parameter indexes."""; mapped, next_index = {}, 0
@@ -654,14 +654,14 @@ def _delegate_parameter_boundaries(text: str, masked: str, methods: list[MethodI
             mapped[next_index], next_index = value.strip(), next_index + 1
         return mapped
     def possible_binding(value: str, key: str, allow_unknown_source: bool = True) -> bool:
-        """Return whether an argument may carry a delegate binding."""; candidate = _normalize_delegate_value(value, delegate_type_names); state = _possible_delegate_target(value, delegate_type_names, method_names, possible.get(key, set())); receiver = re.match(r"(?:global::)?([A-Za-z_]\w*)\.", candidate); return candidate in possible.get(key, set()) or candidate in possible.get("", set()) or "=>" in value or "delegate" in value or candidate in method_names or state == DELEGATE_STATE_DIRECT or (state == DELEGATE_STATE_UNKNOWN_SOURCE and (allow_unknown_source or "(" in candidate) and not (receiver and receiver.group(1)[0].islower() and receiver.group(1) not in possible.get(key, set())))
+        """Return whether an argument may carry a delegate binding."""; candidate = _normalize_delegate_value(value, delegate_type_names); state = _possible_delegate_target(value, delegate_type_names, method_names, possible.get(key, set())); receiver = re.match(r"(?:global::)?([A-Za-z_]\w*)\.", candidate); return candidate in possible.get(key, set()) or candidate in possible.get("", set()) or "=>" in value or "delegate" in value or candidate in method_names or state == DELEGATE_STATE_DIRECT or (state == DELEGATE_STATE_UNKNOWN_SOURCE and (allow_unknown_source or "(" in candidate) and not (boundary_index is None and receiver and receiver.group(1)[0].islower() and receiver.group(1) not in possible.get(key, set())))
     boundaries: dict[str, set[str]] = {}; call_offsets: set[int] = set(); unsupported_offsets: set[int] = set()
     for method in methods:
         key = method.identity
         for call_name, open_index in _call_sites(text, masked, method):
-            terminal = call_name.rsplit(".", 1)[-1].rsplit("::", 1)[-1]; overloads = wrappers.get(terminal, []); arguments = _call_arguments(text, masked, open_index); values, selected, matched = _split_arguments(arguments or ""), [], False
+            terminal = call_name.rsplit(".", 1)[-1].rsplit("::", 1)[-1]; external_overloads = boundary_index.call_boundary(call_name, text, method) if boundary_index is not None else None; overloads = wrappers.get(terminal, []) if external_overloads is None else external_overloads; arguments = _call_arguments(text, masked, open_index); values, selected, matched = _split_arguments(arguments or ""), [], False
             if arguments is None: continue
-            qualified_unknown = not overloads and "(" not in call_name and "." in call_name and call_name.split(".", 1)[0].removeprefix("global::")[:1].isupper() and terminal not in {"True", "False", "Equal", "Contains", "DoesNotContain", "Throws", "Single", "Empty", "NotNull", "Null", "Same", "NotSame", "All", "Any"} and any(possible_binding(value, key, False) for value in values)
+            qualified_unknown = external_overloads is None and not overloads and "." in call_name and any(possible_binding(value, key, False) for value in values)
             for indexes, parameter_types, parameter_names in overloads:
                 mapped = argument_map(values, parameter_names)
                 if len(mapped) != len(parameter_types) or any(i not in mapped or not possible_binding(mapped[i], key) for i in indexes) or any(i in mapped and possible_binding(mapped[i], key) for i in range(len(parameter_types)) if i not in indexes): continue
@@ -677,7 +677,7 @@ def _delegate_parameter_boundaries(text: str, masked: str, methods: list[MethodI
 def _delegate_variable_names(masked: str, delegate_type_names: set[str], scope_start: int = 0, scope_end: int | None = None) -> set[str]:
     """Return explicitly declared delegate variables within one source scope."""; scoped = masked[scope_start : len(masked) if scope_end is None else scope_end]; pattern = re.compile(r"\b(?P<type>" + _DELEGATE_TYPE_PATTERN + r")\s+(?P<name>[A-Za-z_]\w*)\s*(?=[=;,{)])")
     return {match.group("name") for match in pattern.finditer(scoped) if _is_delegate_type_name(match.group("type"), delegate_type_names)}
-def _delegate_binding_signature(text: str, masked: str, methods: list[MethodInfo]) -> str:
+def _delegate_binding_signature(text: str, masked: str, methods: list[MethodInfo], boundary_index=None) -> str:
     """Hash delegate assignments, method-group arguments, and forwarding calls."""
     delegate_methods = {method.name for method in methods if _normalize_type(method.return_type).removeprefix("System.").startswith(("Action", "Func", "Predicate"))}
     delegate_methods.update(match.group("name") for match in re.finditer(r"\b(?:System\.)?(?:Action|Func|Predicate)(?:<[^;{}]+>)?\s+(?P<name>[A-Za-z_]\w*)\s*\([^;{}]*\)\s*=>", masked))
@@ -686,7 +686,7 @@ def _delegate_binding_signature(text: str, masked: str, methods: list[MethodInfo
     delegate_type_names = _delegate_type_names(text, masked)
     file_delegate_variables = _delegate_variable_names(masked, delegate_type_names)
     scoped_delegate_variables = {method.identity: _delegate_variable_names(masked, delegate_type_names, method.start, method.body_end) for method in methods}
-    delegate_wrapper_names, delegate_boundary_names, delegate_call_offsets, delegate_unsupported_offsets = _delegate_parameter_boundaries(text, masked, methods, delegate_type_names)
+    delegate_wrapper_names, delegate_boundary_names, delegate_call_offsets, delegate_unsupported_offsets = _delegate_parameter_boundaries(text, masked, methods, delegate_type_names, boundary_index)
     delegate_wrapper_names.update(_KNOWN_DELEGATE_WRAPPER_NAMES)
     for match in _DELEGATE_ASSIGNMENT_PATTERN.finditer(masked):
         target = re.sub(r"\s+", " ", match.group("target")).strip(); declared_type = match.group("type") or ""; name = match.group("name"); scope = _method_for_offset(methods, match.start())

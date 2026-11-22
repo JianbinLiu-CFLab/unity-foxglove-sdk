@@ -17,6 +17,7 @@ try:
     from .source_text_inventory_text import (
         _DELEGATE_ASSIGNMENT_PATTERN,
         DELEGATE_STATE_NON_DELEGATE,
+        DELEGATE_STATE_UNKNOWN_SOURCE,
         DELEGATE_STATE_UNSUPPORTED,
         _delegate_type_names,
         _delegate_invocation_text,
@@ -29,6 +30,7 @@ except ImportError:
     from source_text_inventory_text import (
         _DELEGATE_ASSIGNMENT_PATTERN,
         DELEGATE_STATE_NON_DELEGATE,
+        DELEGATE_STATE_UNKNOWN_SOURCE,
         DELEGATE_STATE_UNSUPPORTED,
         _delegate_type_names,
         _delegate_invocation_text,
@@ -45,6 +47,93 @@ RATCHET_REPLACEMENTS_PATH = Path("Scripts/validation/source_text_ratchet_replace
 RATCHET_REPLACEMENT_FIELDS = frozenset(
     {"file", "validation_flag", "class", "base_signature", "head_signature", "reason", "replacement"}
 )
+
+class _DelegateBoundaryIndex:
+    """Summarize cross-file delegate members and call parameter boundaries."""
+
+    _FRAMEWORK_TYPES = frozenset({
+        "Assert", "Task", "SpinWait", "File", "Directory", "Path", "Array", "Math", "Console",
+        "String", "Enumerable", "Regex", "Encoding", "StringBuilder", "Environment", "JObject",
+        "CSharpCompilation", "CSharpSyntaxTree", "GeneratorDriver",
+    })
+
+    def __init__(self, root: Path):
+        """Index source declarations under one repository tree."""
+        self.methods: dict[tuple[str, str], list[tuple[tuple[str, ...], tuple[str, ...], str]]] = {}
+        self.members: dict[tuple[str, str], list[str]] = {}
+        self.delegate_type_names = {"Action", "Func", "Predicate"}
+        paths = {path for pattern in ("Packages/*/Runtime/**/*.cs", "Packages/*/Editor/**/*.cs", "Packages/*/Tests/Runtime/**/*.cs", "Packages/*/Tests/Unit/**/*.cs") for path in root.glob(pattern)}
+        for path in sorted(paths):
+            text = path.read_text(encoding="utf-8", errors="replace")
+            masked = _flow_module._strip_csharp_comments_and_strings(text)
+            self.delegate_type_names.update(_delegate_type_names(text, masked))
+            regions = _flow_module._symbol_helpers._source_type_regions(masked)
+            methods = _flow_module._method_infos(text, masked)
+            for method in methods:
+                owner = min((region for region in regions if region[0] < method.body_start < region[1]), key=lambda region: region[1] - region[0], default=None)
+                if owner is not None:
+                    self.methods.setdefault((owner[2], method.name), []).append((method.parameter_types, _flow_module._method_parameter_names(method), method.return_type))
+            for begin, end, owner in regions:
+                body = masked[begin:end]
+                for match in re.finditer(r"\b(?P<type>(?:global::)?[A-Za-z_]\w*(?:\s*\.\s*[A-Za-z_]\w*)*(?:\s*<[^;=]+>)?\??)\s+(?P<name>[A-Za-z_]\w*)\s*(?:=>|\{)", body):
+                    self.members.setdefault((owner, match.group("name")), []).append(_flow_module._normalize_type(match.group("type")))
+
+    def _records(self, table, owner: str, name: str):
+        """Return declarations for a type/member pair using short-name fallback."""
+        records = table.get((owner, name))
+        if records is not None:
+            return records
+        return next((value for (candidate, member), value in table.items() if candidate.rsplit(".", 1)[-1] == owner.rsplit(".", 1)[-1] and member == name), None)
+
+    def _receiver_type(self, receiver: str, text: str, method):
+        """Resolve a static type name or a local receiver declaration."""
+        first = receiver.removeprefix("global::").split(".", 1)[0]
+        local_types = _flow_module._local_types(text, method) if method is not None else {}
+        return local_types.get(first, first.rsplit(".", 1)[-1])
+
+    def call_boundary(self, call_name: str, text: str, method):
+        """Return known overloads, an empty scalar result, or None when unresolved."""
+        if "(" in call_name or "." not in call_name:
+            return None
+        receiver, _, terminal = call_name.rpartition(".")
+        owner = self._receiver_type(receiver, text, method)
+        if owner in self._FRAMEWORK_TYPES:
+            return []
+        records = self._records(self.methods, owner, terminal)
+        if records is None:
+            return None
+        return [
+            ({index for index, value in enumerate(record[0]) if _is_delegate_type_name(value, self.delegate_type_names)}, record[0], record[1])
+            for record in records
+            if any(_is_delegate_type_name(value, self.delegate_type_names) for value in record[0])
+        ]
+
+    def expression_state(self, target: str, text: str, method, delegate_type_names: set[str]):
+        """Classify one qualified member or call from the indexed declaration type."""
+        normalized = _flow_module._normalize_delegate_value(target, delegate_type_names)
+        call = re.match(r"(?P<name>(?:global::)?[A-Za-z_]\w*(?:\s*\.\s*[A-Za-z_]\w*)*)\s*\(", normalized)
+        if call:
+            receiver, _, terminal = call.group("name").rpartition(".")
+            if not receiver:
+                return DELEGATE_STATE_UNKNOWN_SOURCE
+            owner = self._receiver_type(receiver, text, method)
+            records = self._records(self.methods, owner, terminal)
+            if not records:
+                return DELEGATE_STATE_UNKNOWN_SOURCE
+            returns = {record[2] for record in records if record[2]}
+            if any(_is_delegate_type_name(value, self.delegate_type_names) for value in returns):
+                return _flow_module.DELEGATE_STATE_DIRECT
+            return _flow_module.DELEGATE_STATE_NON_DELEGATE if returns else DELEGATE_STATE_UNKNOWN_SOURCE
+        if "." not in normalized:
+            return DELEGATE_STATE_UNKNOWN_SOURCE
+        receiver, _, member = normalized.rpartition(".")
+        owner = self._receiver_type(receiver, text, method)
+        records = self._records(self.members, owner, member)
+        if not records:
+            return DELEGATE_STATE_UNKNOWN_SOURCE
+        if any(_is_delegate_type_name(value, self.delegate_type_names) for value in records):
+            return _flow_module.DELEGATE_STATE_DIRECT
+        return _flow_module.DELEGATE_STATE_NON_DELEGATE
 
 def _ratchet_path(value: object) -> str:
     """Normalize one inventory path for count-ratchet keys."""
@@ -302,7 +391,7 @@ def _ratchet_assertion_semantics(
         semantics.setdefault(key, Counter())[signature] += 1
     return semantics
 
-def _helper_signature_records(text: str, readers: frozenset[str] = frozenset()) -> dict[str, str]:
+def _helper_signature_records(text: str, readers: frozenset[str] = frozenset(), boundary_index: _DelegateBoundaryIndex | None = None) -> dict[str, str]:
     """Return hashes for recognized assertion/read/source helpers, discovered readers and bindings."""
     if not readers and not re.search(
         r"\b(?:Check|Assert\w*|Read\w*|Source\w*|Validate\w*|Action|Func|Predicate|delegate)\b|=>",
@@ -346,7 +435,7 @@ def _helper_signature_records(text: str, readers: frozenset[str] = frozenset()) 
         ).hexdigest()
 
     delegate_wrapper_names, delegate_boundary_names, _, delegate_unsupported_offsets = _flow_module._delegate_parameter_boundaries(
-        text, masked, methods, delegate_type_names
+        text, masked, methods, delegate_type_names, boundary_index
     )
     delegate_wrapper_names.update(_flow_module._KNOWN_DELEGATE_WRAPPER_NAMES)
     for match in _DELEGATE_ASSIGNMENT_PATTERN.finditer(masked):
@@ -444,6 +533,7 @@ def _helper_signatures_at_revision(
     with tempfile.TemporaryDirectory(prefix="source-text-helper-base-", dir=build_review) as directory:
         tree = Path(directory)
         _archive_revision(root, revision, tree)
+        boundary_index = _DelegateBoundaryIndex(tree)
         deleted = {
             path.relative_to(tree).as_posix()
             for pattern in ("Packages/*/Tests/Runtime/**/*.cs", "Packages/*/Tests/Unit/**/*.cs")
@@ -455,7 +545,7 @@ def _helper_signatures_at_revision(
             if not path.is_file():
                 continue
             text = path.read_text(encoding="utf-8", errors="replace")
-            for helper, digest in _helper_signature_records(text, names).items():
+            for helper, digest in _helper_signature_records(text, names, boundary_index).items():
                 signatures[(relative, helper)] = digest
     return signatures
 
@@ -466,12 +556,13 @@ def _helper_signatures_at_head(
     signatures: dict[tuple[str, str], str] = {}
     discovered, names = _discovered_readers(root)
     names = names | reader_names
+    boundary_index = _DelegateBoundaryIndex(root)
     for relative in sorted(files | set(discovered)):
         path = root / relative
         if not path.is_file():
             continue
         text = path.read_text(encoding="utf-8", errors="replace")
-        for helper, digest in _helper_signature_records(text, names).items():
+        for helper, digest in _helper_signature_records(text, names, boundary_index).items():
             signatures[(relative, helper)] = digest
     return signatures
 
