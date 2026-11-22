@@ -5,6 +5,7 @@
 
 using System;
 using System.IO;
+using System.Linq;
 using System.Text;
 
 namespace Unity.FoxgloveSDK.Tests
@@ -22,14 +23,24 @@ namespace Unity.FoxgloveSDK.Tests
         public static string Compose()
         {
             var root = FindRepositoryRoot();
-            var builder = new StringBuilder();
-            foreach (var relativePath in RelativePaths)
+            var facadePath = Path.Combine(root, RelativePaths[0].Replace('/', Path.DirectorySeparatorChar));
+            if (!File.Exists(facadePath))
+                throw new FileNotFoundException("Missing OpenH264 installer source: " + facadePath, facadePath);
+
+            var fragmentPaths = RelativePaths
+                .Skip(1)
+                .Select(relativePath => Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar)))
+                .ToArray();
+            var fragmentsExist = fragmentPaths.Any(File.Exists);
+            if (!fragmentsExist)
+                return File.ReadAllText(facadePath);
+            if (!fragmentPaths.All(File.Exists))
+                throw new FileNotFoundException("OpenH264 installer source fragments are incomplete.");
+
+            var builder = new StringBuilder(File.ReadAllText(facadePath));
+            foreach (var path in fragmentPaths)
             {
-                var path = Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
-                if (!File.Exists(path))
-                    throw new FileNotFoundException("Missing OpenH264 installer source: " + path, path);
-                if (builder.Length > 0)
-                    builder.Append(Environment.NewLine);
+                builder.Append(Environment.NewLine);
                 builder.Append(File.ReadAllText(path));
             }
 
