@@ -37,6 +37,35 @@ class SourceTextInventoryReviewTests(_FixtureSupport, unittest.TestCase):
                 code, output = self._run_fixture_gate(root)
                 self.assertEqual(expected, code, output)
 
+    def test_delegate_expression_states_join_and_fail_closed(self):
+        """Fail closed when composite delegate expressions cross an unknown boundary."""
+        cases = (
+            ("conditional", "var run = External.Factory; External.Execute(true ? run : run);", "External.Factory", "External.NoopFactory", "public static void Execute(Action action) { action(); }"),
+            ("coalesce", "var run = External.Factory; External.Execute(run ?? run);", "External.Factory", "External.NoopFactory", "public static void Execute(Action action) { action(); }"),
+            ("invocation", "External.Execute(External.Get());", "External.Get()", "External.Zero()", "public static void Execute(Action action) { action(); } public static Action Get() => FixtureValidation.Used; public static Action Zero() => FixtureValidation.Noop;"),
+        )
+        for label, body, original, replacement, members in cases:
+            with self.subTest(label=label), tempfile.TemporaryDirectory() as directory:
+                root = self._git_fixture(directory, validation_text=(
+                    "using System; public static class FixtureValidation { "
+                    "private static void Used() { var source = ReadRequiredRepoText(\"Packages/fixture/Runtime/Product.cs\"); Check(source.Contains(\"Product\")); } "
+                    f"private static void Noop() {{ }} public static void Validate() {{ {body} }} }}"
+                ))
+                external = root / "Packages/fixture/Tests/Runtime/External.cs"
+                external.write_text(
+                    "using System; public static class External { "
+                    "public static Action Factory => FixtureValidation.Used; public static Action NoopFactory => FixtureValidation.Noop; "
+                    + members + " }",
+                    encoding="utf-8",
+                )
+                subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+                subprocess.run(["git", "-C", str(root), "commit", "-qm", "composite-delegate"], check=True)
+                validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+                validation.write_text(validation.read_text(encoding="utf-8").replace(original, replacement), encoding="utf-8")
+                code, output = self._run_fixture_gate(root)
+                self.assertEqual(1, code, output)
+                self.assertIn("SOURCE_TEXT_RATCHET_UNSUPPORTED_DELEGATE_FLOW", output)
+
     def _run_migration_cli(self, root, approval=None, trusted_base=None):
         """Run the proposed checker with an optional workflow migration approval."""
         args = [

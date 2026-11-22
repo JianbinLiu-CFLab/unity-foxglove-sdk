@@ -345,7 +345,7 @@ def _helper_signature_records(text: str, readers: frozenset[str] = frozenset()) 
             text[method.body_start : method.body_end + 1].encode("utf-8")
         ).hexdigest()
 
-    delegate_wrapper_names, delegate_boundary_names, _ = _flow_module._delegate_parameter_boundaries(
+    delegate_wrapper_names, delegate_boundary_names, _, delegate_unsupported_offsets = _flow_module._delegate_parameter_boundaries(
         text, masked, methods, delegate_type_names
     )
     delegate_wrapper_names.update(_flow_module._KNOWN_DELEGATE_WRAPPER_NAMES)
@@ -402,6 +402,15 @@ def _helper_signature_records(text: str, readers: frozenset[str] = frozenset()) 
             payload.encode("utf-8")
         ).hexdigest()
         delegate_variables.add(name)
+    for method in methods:
+        for call_name, open_index in _flow_module._call_sites(text, masked, method):
+            if open_index not in delegate_unsupported_offsets:
+                continue
+            arguments = _flow_module._call_arguments(text, masked, open_index) or ""
+            line = text.count("\n", 0, open_index) + 1
+            binding_name = f"unsupported-delegate-flow:{call_name}@{line}"
+            payload = f"state=UNSUPPORTED_DELEGATE_FLOW|{call_name}({arguments})"
+            records[binding_name] = hashlib.sha256(payload.encode("utf-8")).hexdigest()
     return records
 
 def _archive_revision(root: Path, revision: str, destination: Path) -> None:
