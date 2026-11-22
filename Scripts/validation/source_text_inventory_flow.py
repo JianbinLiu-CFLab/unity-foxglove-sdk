@@ -624,18 +624,19 @@ def _delegate_parameter_boundaries(text: str, masked: str, methods: list[MethodI
     for method in methods:
         indexes = {index for index, parameter in enumerate(method.parameter_types) if _is_delegate_type_name(parameter, delegate_type_names)}
         if indexes: wrapper_parameters.setdefault(method.name, set()).update(indexes)
-    return set(wrapper_parameters), set()
-
-
+    boundary_names: set[str] = set()
+    for method in methods:
+        for call_name, open_index in _call_sites(text, masked, method):
+            indexes = wrapper_parameters.get(call_name.rsplit(".", 1)[-1].rsplit("::", 1)[-1]); arguments = _call_arguments(text, masked, open_index)
+            if not indexes or arguments is None: continue
+            values = _split_arguments(arguments); selected = [values[index] for index in indexes if index < len(values)]
+            selected += [value.split(":", 1)[1] for value in values if ":" in value and value.split(":", 1)[0].strip() in {"action", "callback", "delegate", "handler", "run"}]
+            boundary_names.update(candidate for value in selected if "=>" not in value and "delegate" not in value for candidate in [re.sub(r"^[\s(!]+|[\s!)]+$", "", value)] if re.fullmatch(r"[A-Za-z_]\w*", candidate))
+    return set(wrapper_parameters), boundary_names
 def _delegate_variable_names(masked: str, delegate_type_names: set[str]) -> set[str]:
     """Return delegate-typed parameter, field, and local names in one file."""
-    pattern = re.compile(r"\b(?P<type>" + _DELEGATE_TYPE_PATTERN + r")\s+"
-                         r"(?P<name>[A-Za-z_]\w*)\s*(?=[=;,{)])")
-    return {
-        match.group("name")
-        for match in pattern.finditer(masked)
-        if _is_delegate_type_name(match.group("type"), delegate_type_names)
-    }
+    pattern = re.compile(r"\b(?P<type>" + _DELEGATE_TYPE_PATTERN + r")\s+" r"(?P<name>[A-Za-z_]\w*)\s*(?=[=;,{)])")
+    return {match.group("name") for match in pattern.finditer(masked) if _is_delegate_type_name(match.group("type"), delegate_type_names)}
 def _delegate_binding_signature(
     text: str, masked: str, methods: list[MethodInfo]
 ) -> str:
@@ -686,6 +687,7 @@ def _delegate_binding_signature(
             method_names,
             delegate_type_names,
             invocation_text,
+            delegate_boundary_names,
             delegate_wrapper_names,
         )
         if state == DELEGATE_STATE_NON_DELEGATE:

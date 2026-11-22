@@ -83,6 +83,7 @@ def _is_delegate_assignment(
     method_names: set[str],
     delegate_type_names: set[str],
     invocation_text: str,
+    delegate_boundary_names: set[str] | None = None,
     delegate_wrapper_names: set[str] | None = None,
 ) -> str:
     """Classify one binding in the finite delegate-flow state set."""
@@ -110,7 +111,8 @@ def _is_delegate_assignment(
     invocation_name = invocation_identity.rsplit(".", 1)[-1]
     wrapper_candidate = _is_delegate_like_target(target) and "=>" not in invocation_text and re.search(rf"\b{re.escape(name)}\b", invocation_text) is not None and (bool(delegate_wrapper_names and invocation_identity in delegate_wrapper_names) or "." in invocation_identity)
     candidate = bool(invocation_text) and (
-        invocation_name == name
+        bool(delegate_boundary_names and name in delegate_boundary_names)
+        or invocation_name == name
         or (
             invocation_name in {"Invoke", "DynamicInvoke"}
             and _is_delegate_like_target(target)

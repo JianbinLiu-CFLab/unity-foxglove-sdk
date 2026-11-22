@@ -371,6 +371,7 @@ def _helper_signature_records(text: str, readers: frozenset[str] = frozenset()) 
             method_names,
             delegate_type_names,
             invocation_text,
+            delegate_boundary_names,
             delegate_wrapper_names,
         )
         if state == DELEGATE_STATE_NON_DELEGATE:
