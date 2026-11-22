@@ -641,7 +641,7 @@ def _delegate_parameter_boundaries(text: str, masked: str, methods: list[MethodI
         if indexes: wrappers.setdefault(method.name, []).append((indexes, method.parameter_types, _method_parameter_names(method)))
     assignment_records = [(match, _delegate_scope_key(_method_for_offset(methods, match.start()))) for match in _DELEGATE_ASSIGNMENT_PATTERN.finditer(masked)]; possible: dict[str, set[str]] = {}; scalar_names = {method.identity: {name for name, value in _local_types(text, method).items() if value and not _is_delegate_type_name(value, delegate_type_names)} for method in methods}
     if not assignment_records and not wrappers: return set(), {}, set(), set()
-    for _ in range(len(assignment_records) + 1):
+    for _ in range(2):
         for match, key in assignment_records:
             state = _possible_delegate_target(match.group("target"), delegate_type_names, method_names, possible.get(key, set()))
             if state == DELEGATE_STATE_DIRECT: possible.setdefault(key, set()).add(match.group("name"))
