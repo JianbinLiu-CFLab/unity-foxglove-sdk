@@ -21,21 +21,46 @@ namespace Unity.FoxgloveSDK.Tests
 
         /// <summary>Reads the installer facade and its registered partial sources.</summary>
         public static string Compose()
+            => Compose(FindRepositoryRoot());
+
+        /// <summary>Reads the installer source surface relative to the supplied repository root.</summary>
+        public static string Compose(string repositoryRoot)
         {
-            var root = FindRepositoryRoot();
+            if (string.IsNullOrWhiteSpace(repositoryRoot))
+                throw new ArgumentException("Repository root is required.", nameof(repositoryRoot));
+
+            var root = Path.GetFullPath(repositoryRoot);
             var facadePath = Path.Combine(root, RelativePaths[0].Replace('/', Path.DirectorySeparatorChar));
             if (!File.Exists(facadePath))
                 throw new FileNotFoundException("Missing OpenH264 installer source: " + facadePath, facadePath);
+
+            var facadeDirectory = Path.GetDirectoryName(facadePath);
+            if (string.IsNullOrEmpty(facadeDirectory))
+                throw new InvalidDataException("OpenH264 installer source directory is missing.");
 
             var fragmentPaths = RelativePaths
                 .Skip(1)
                 .Select(relativePath => Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar)))
                 .ToArray();
-            var fragmentsExist = fragmentPaths.Any(File.Exists);
-            if (!fragmentsExist)
+
+            var expectedFragments = RelativePaths
+                .Skip(1)
+                .Select(Path.GetFileName)
+                .ToHashSet(StringComparer.Ordinal);
+            var actualFragments = Directory.GetFiles(
+                    facadeDirectory,
+                    "OpenH264OfficialBinaryInstaller.*.cs",
+                    SearchOption.AllDirectories)
+                .Select(path => Path.GetRelativePath(facadeDirectory, path).Replace('\\', '/'))
+                .ToHashSet(StringComparer.Ordinal);
+            if (actualFragments.Count == 0)
                 return File.ReadAllText(facadePath);
-            if (!fragmentPaths.All(File.Exists))
-                throw new FileNotFoundException("OpenH264 installer source fragments are incomplete.");
+            if (!expectedFragments.SetEquals(actualFragments))
+                throw new InvalidDataException(
+                    "OpenH264 installer source set mismatch. Expected: "
+                    + string.Join(", ", expectedFragments.OrderBy(name => name, StringComparer.Ordinal))
+                    + "; actual: "
+                    + string.Join(", ", actualFragments.OrderBy(name => name, StringComparer.Ordinal)));
 
             var builder = new StringBuilder(File.ReadAllText(facadePath));
             foreach (var path in fragmentPaths)
