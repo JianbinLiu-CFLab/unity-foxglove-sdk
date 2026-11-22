@@ -287,6 +287,26 @@ namespace Unity.FoxgloveSDK.Tests
 
         private static string ReadGenericCSharpSource(string relativePath)
         {
+            if (string.Equals(
+                    relativePath.Replace('\\', '/'),
+                    "Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.cs",
+                    StringComparison.Ordinal))
+            {
+                var root = FindRequiredRepoRoot();
+                var openH264FacadePath = Path.Combine(root, relativePath.Replace('/', Path.DirectorySeparatorChar));
+                var openH264FragmentPaths = new[]
+                {
+                    openH264FacadePath,
+                    Path.Combine(root, "Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.Download.cs"),
+                    Path.Combine(root, "Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.Helper.cs"),
+                };
+                var fragmentsExist = openH264FragmentPaths.Skip(1).Any(File.Exists);
+                if (fragmentsExist && !openH264FragmentPaths.Skip(1).All(File.Exists))
+                    throw new FileNotFoundException("OpenH264 installer source fragments are incomplete.");
+                if (fragmentsExist)
+                    return string.Join(Environment.NewLine, openH264FragmentPaths.Select(File.ReadAllText));
+            }
+
             var facadePath = RepoPath(relativePath);
             if (!relativePath.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
                 return File.ReadAllText(facadePath);
