@@ -41,7 +41,7 @@
       "validation_flag": "ReadGenericCSharpSource",
       "class": "READER",
       "base_signature": "7733cb54e5797900b47524c745198de819cb96536fafae27c3c39df88a76b228",
-      "head_signature": "495dfdf690e2ef1ee9c90e6ffed863ea085c8384c2a94a1723e464ce50be8c22",
+      "head_signature": "ab5351509e8a6a310bef0c63f4ca9699b489ecde6587469e295314c1d784da52",
       "reason": "Plan207 composes the OpenH264 facade with registered partial sources while preserving the existing generic source reader contract.",
       "replacement": "Phase207 OpenH264 safe-stream source composition"
     },
