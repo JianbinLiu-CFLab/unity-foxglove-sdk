@@ -644,7 +644,7 @@ def _delegate_parameter_boundaries(text: str, masked: str, methods: list[MethodI
     for _ in range(2):
         for match, key in assignment_records:
             state = _possible_delegate_target(match.group("target"), delegate_type_names, method_names, possible.get(key, set()))
-            target = match.group("target"); unknown_target = (state == DELEGATE_STATE_UNKNOWN_SOURCE and "(" not in target) or bool(set(re.findall(r"\b[A-Za-z_]\w*\b", target)) & unknown_names.get(key, set())); possible.setdefault(key, set()).add(match.group("name")) if state == DELEGATE_STATE_DIRECT else unknown_names.setdefault(key, set()).add(match.group("name")) or unknown_records.setdefault(key, set()).add(f"unknown:{match.group('name')}={_normalize_csharp_expression(target)}") if unknown_target and match.group("name") not in scalar_names.get(key, set()) else None
+            target = match.group("target"); unknown_target = (state == DELEGATE_STATE_UNKNOWN_SOURCE and "(" not in target) or bool(set(re.findall(r"\b[A-Za-z_]\w*\b", target)) & unknown_names.get(key, set())); possible.setdefault(key, set()).add(match.group("name")) if state == DELEGATE_STATE_DIRECT and not re.search(r"[?:]", target) else unknown_names.setdefault(key, set()).add(match.group("name")) or unknown_records.setdefault(key, set()).add(f"unknown:{match.group('name')}={_normalize_csharp_expression(target)}") if unknown_target and match.group("name") not in scalar_names.get(key, set()) else None
     def argument_map(values: list[str], names: tuple[str, ...]) -> dict[int, str]:
         """Map positional and named call arguments to parameter indexes."""; mapped, next_index = {}, 0
         for value in values:
