@@ -334,6 +334,9 @@ def _helper_signature_records(text: str, readers: frozenset[str] = frozenset()) 
         ).hexdigest()
 
     delegate_type_names = _delegate_type_names(text, masked)
+    _, delegate_boundary_names = _flow_module._delegate_parameter_boundaries(
+        text, masked, methods, delegate_type_names
+    )
     for match in _DELEGATE_ASSIGNMENT_PATTERN.finditer(masked):
         target = match.group("target")
         declared_type = match.group("type") or ""
@@ -346,7 +349,16 @@ def _helper_signature_records(text: str, readers: frozenset[str] = frozenset()) 
             set(),
             method_names,
             delegate_type_names,
-            _delegate_invocation_text(masked, match.end(), target, declared_type, name, set(), method_names),
+            _delegate_invocation_text(
+                masked,
+                match.end(),
+                target,
+                declared_type,
+                name,
+                set(),
+                method_names,
+                delegate_boundary_names,
+            ),
         )
         if state == DELEGATE_STATE_NON_DELEGATE:
             continue

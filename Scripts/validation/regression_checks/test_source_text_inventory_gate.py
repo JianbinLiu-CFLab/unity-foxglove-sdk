@@ -729,6 +729,49 @@ class SourceTextRatchetTests(unittest.TestCase):
             code, output = self._run_fixture_gate(root)
             self.assertEqual(1, code, output)
 
+    def test_unknown_binding_passed_to_delegate_wrapper_fails_closed_on_change(self):
+        """Reject an unknown binding rebinding before a known delegate-parameter wrapper."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(
+                directory,
+                validation_text=(
+                    "using System;\n"
+                    "public static class FixtureValidation {\n"
+                    "    private static void Run(Action action) { action(); }\n"
+                    "    private static void Used() {\n"
+                    '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                    '        Check(source.Contains("Product"));\n'
+                    "    }\n"
+                    "    private static void Noop() { }\n"
+                    "    public static void Validate() {\n"
+                    "        var run = External.Factory;\n"
+                    "        Run(run);\n"
+                    "    }\n}\n"
+                ),
+            )
+            external = root / "Packages/fixture/Tests/Runtime/External.cs"
+            external.write_text(
+                "using System;\n"
+                "public static class External {\n"
+                "    public static Action Factory => FixtureValidation.Used;\n"
+                "    public static Action NoopFactory => FixtureValidation.Noop;\n"
+                "}\n",
+                encoding="utf-8",
+            )
+            subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+            subprocess.run(["git", "-C", str(root), "commit", "-qm", "external-delegate"], check=True)
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace(
+                    "var run = External.Factory", "var run = External.NoopFactory"
+                ),
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code, output)
+            self.assertIn("SOURCE_TEXT_RATCHET_HARNESS_CHANGED", output)
+            self.assertIn("helper=binding:run", output)
+
     def test_new_unknown_delegate_binding_fails_closed(self):
         """Reject a newly introduced unknown dispatch binding."""
         with tempfile.TemporaryDirectory() as directory:

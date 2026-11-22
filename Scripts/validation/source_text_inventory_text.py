@@ -147,11 +147,13 @@ def _delegate_invocation_needed(
     name: str,
     delegate_variables: set[str],
     method_names: set[str],
+    delegate_boundary_names: set[str] | None = None,
 ) -> bool:
     """Return whether a binding needs an invocation scan for forwarding."""
     target_names = set(re.findall(r"\b[A-Za-z_]\w*\b", target))
     return (
         name in delegate_variables
+        or bool(delegate_boundary_names and name in delegate_boundary_names)
         or bool(target_names & method_names)
         or target.lstrip().startswith(("(", "new "))
         or any(marker in target for marker in ("<", "?", "=>", "delegate"))
@@ -164,11 +166,19 @@ def _delegate_invocation_text(
     name: str,
     delegate_variables: set[str],
     method_names: set[str],
+    delegate_boundary_names: set[str] | None = None,
 ) -> str:
     """Return the normalized invocation evidence for a delegate binding."""
     if (
         name not in _delegate_invocation_names(masked)
-        and not _delegate_invocation_needed(target, declared_type, name, delegate_variables, method_names)
+        and not _delegate_invocation_needed(
+            target,
+            declared_type,
+            name,
+            delegate_variables,
+            method_names,
+            delegate_boundary_names,
+        )
     ):
         return ""
     return _delegate_invocation(masked, start, name)
@@ -449,8 +459,6 @@ def _line_for_offset(starts: list[int], offset: int) -> int:
             break
         line = index
     return line
-
-
 def _call_spans(
     lines: list[str],
     pattern: re.Pattern[str],
@@ -480,8 +488,6 @@ def _call_spans(
             }
         )
     return calls
-
-
 def _split_first_argument(argument: str) -> str:
     """Return the first top-level argument from a C# call."""
     depth = 0
@@ -522,8 +528,6 @@ def _split_first_argument(argument: str) -> str:
             return argument[:index].strip()
         index += 1
     return argument.strip()
-
-
 def _call_context(lines: list[str], call: dict[str, object]) -> str:
     """Return the surrounding statement for polarity and source-origin checks."""
     text = str(call.get("text_file") or "\n".join(lines))
@@ -541,8 +545,6 @@ def _call_context(lines: list[str], call: dict[str, object]) -> str:
         + 1
     )
     return text[statement_start:end]
-
-
 def _balanced_brace_end(text: str, open_index: int) -> int | None:
     """Return the matching closing brace in masked source text."""
     depth = 0
@@ -551,8 +553,6 @@ def _balanced_brace_end(text: str, open_index: int) -> int | None:
         if depth == 0:
             return index
     return None
-
-
 def _brace_paths(lines: list[str]) -> list[tuple[int, ...]]:
     """Return a lexical brace scope for each source line."""
     cache_key = "\n".join(lines)
