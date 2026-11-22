@@ -660,9 +660,9 @@ def _delegate_parameter_boundaries(text: str, masked: str, methods: list[MethodI
     for method in methods:
         key = method.identity
         for call_name, open_index in _call_sites(text, masked, method):
-            terminal = call_name.rsplit(".", 1)[-1].rsplit("::", 1)[-1]; overloads = wrappers.get(terminal, []); qualified_unknown = not overloads and "." in call_name and terminal in _KNOWN_DELEGATE_WRAPPER_NAMES; arguments = _call_arguments(text, masked, open_index)
-            if arguments is None or (not overloads and not qualified_unknown): continue
-            values, selected, matched = _split_arguments(arguments), [], False
+            terminal = call_name.rsplit(".", 1)[-1].rsplit("::", 1)[-1]; overloads = wrappers.get(terminal, []); arguments = _call_arguments(text, masked, open_index); values, selected, matched = _split_arguments(arguments or ""), [], False
+            if arguments is None: continue
+            qualified_unknown = not overloads and "." in call_name and any(possible_binding(value, key) for value in values)
             for indexes, parameter_types, parameter_names in overloads:
                 mapped = argument_map(values, parameter_names)
                 if len(mapped) != len(parameter_types) or any(i not in mapped or not possible_binding(mapped[i], key) for i in indexes) or any(i in mapped and possible_binding(mapped[i], key) for i in range(len(parameter_types)) if i not in indexes): continue

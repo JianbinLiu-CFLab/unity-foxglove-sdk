@@ -268,7 +268,7 @@ class SourceTextInventorySemanticTests(_FixtureSupport, unittest.TestCase):
                     "    public static void Validate() {\n"
                     "        var first = External.Factory;\n"
                     "        var run = first!;\n"
-                    "        External.Run(run);\n"
+                    "        External.Execute(run);\n"
                     "    }\n}\n"
                 ),
             )
@@ -278,7 +278,7 @@ class SourceTextInventorySemanticTests(_FixtureSupport, unittest.TestCase):
                 "public static class External {\n"
                 "    public static Action Factory => FixtureValidation.Used;\n"
                 "    public static Action NoopFactory => FixtureValidation.Noop;\n"
-                "    public static void Run(Action action) { action(); }\n"
+                "    public static void Execute(Action action) { action(); }\n"
                 "}\n",
                 encoding="utf-8",
             )
