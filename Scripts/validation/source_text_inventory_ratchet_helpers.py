@@ -17,9 +17,8 @@ try:
     from .source_text_inventory_text import (
         _DELEGATE_ASSIGNMENT_PATTERN,
         DELEGATE_STATE_NON_DELEGATE,
-        DELEGATE_STATE_UNKNOWN,
+        DELEGATE_STATE_UNSUPPORTED,
         _delegate_type_names,
-        _delegate_unknown_aliases,
         _delegate_invocation_text,
         _is_delegate_assignment,
         _is_delegate_type_name,
@@ -30,9 +29,8 @@ except ImportError:
     from source_text_inventory_text import (
         _DELEGATE_ASSIGNMENT_PATTERN,
         DELEGATE_STATE_NON_DELEGATE,
-        DELEGATE_STATE_UNKNOWN,
+        DELEGATE_STATE_UNSUPPORTED,
         _delegate_type_names,
-        _delegate_unknown_aliases,
         _delegate_invocation_text,
         _is_delegate_assignment,
         _is_delegate_type_name,
@@ -314,7 +312,13 @@ def _helper_signature_records(text: str, readers: frozenset[str] = frozenset()) 
     masked = _flow_module._strip_csharp_comments_and_strings(text)
     methods = _flow_module._method_infos(text, masked)
     method_names = {method.name for method in methods}
+    delegate_methods = {
+        method.name
+        for method in methods
+        if str(method.return_type).removeprefix("System.").startswith(("Action", "Func", "Predicate"))
+    }
     delegate_type_names = _delegate_type_names(text, masked)
+    delegate_variables = _flow_module._delegate_variable_names(masked, delegate_type_names)
     generic = [method for method in _readers_module._generic_method_infos(masked) if method.name in readers]
     records: dict[str, str] = {}
     for method in [*methods, *generic]:
@@ -335,52 +339,55 @@ def _helper_signature_records(text: str, readers: frozenset[str] = frozenset()) 
             text[method.body_start : method.body_end + 1].encode("utf-8")
         ).hexdigest()
 
-    _, delegate_boundary_names = _flow_module._delegate_parameter_boundaries(
+    delegate_wrapper_names, delegate_boundary_names = _flow_module._delegate_parameter_boundaries(
         text, masked, methods, delegate_type_names
     )
-    assignment_matches = list(_DELEGATE_ASSIGNMENT_PATTERN.finditer(masked))
-    pending: list[tuple[re.Match[str], str, str, str, str]] = []
-    for match in assignment_matches:
+    delegate_wrapper_names.update(_flow_module._KNOWN_DELEGATE_WRAPPER_NAMES)
+    for match in _DELEGATE_ASSIGNMENT_PATTERN.finditer(masked):
         target = match.group("target")
         declared_type = match.group("type") or ""
         name = match.group("name")
+        if declared_type == "using" or (not declared_type and target.lstrip().startswith(("=", ">", ")"))):
+            continue
         scope = _flow_module._method_for_offset(methods, match.start())
+        invocation_text = _delegate_invocation_text(
+            masked,
+            match.end(),
+            target,
+            declared_type,
+            name,
+            delegate_variables,
+            method_names,
+            delegate_boundary_names,
+            scope.body_start if scope else 0,
+            scope.body_end if scope else len(masked),
+        )
         state = _is_delegate_assignment(
             target,
             declared_type,
             name,
-            set(),
-            set(),
+            delegate_variables,
+            delegate_methods,
             method_names,
             delegate_type_names,
-            _delegate_invocation_text(
-                masked,
-                match.end(),
-                target,
-                declared_type,
-                name,
-                set(),
-                method_names,
-                delegate_boundary_names,
-                scope.body_start if scope else 0,
-                scope.body_end if scope else len(masked),
-            ),
+            invocation_text,
+            delegate_wrapper_names,
         )
-        pending.append((match, target, declared_type, name, state))
-    unknown_names = {name for _, _, _, name, state in pending if state == DELEGATE_STATE_UNKNOWN}
-    _delegate_unknown_aliases([(name, target, state) for _, target, _, name, state in pending], unknown_names)
-    for match, target, declared_type, name, state in pending:
-        if state == DELEGATE_STATE_NON_DELEGATE and name not in unknown_names:
+        if state == DELEGATE_STATE_NON_DELEGATE:
             continue
-        if name in unknown_names:
-            state = DELEGATE_STATE_UNKNOWN
-        binding_name = "binding:" + name
         payload = text[match.start() : match.end()]
-        if state != "KNOWN_WRAPPER" and state != "LAMBDA_FORWARD":
-            payload = f"state={state}|{payload}"
+        if state == DELEGATE_STATE_UNSUPPORTED:
+            line = text.count("\n", 0, match.start()) + 1
+            binding_name = f"unsupported-delegate-flow:{name}@{line}:{invocation_text or target}"
+            payload = f"state={state}|{payload}|invoke:{invocation_text}"
+        else:
+            binding_name = "binding:" + name
+            if state != "KNOWN_WRAPPER" and state != "LAMBDA_FORWARD":
+                payload = f"state={state}|{payload}"
         records[binding_name] = hashlib.sha256(
             payload.encode("utf-8")
         ).hexdigest()
+        delegate_variables.add(name)
     return records
 
 def _archive_revision(root: Path, revision: str, destination: Path) -> None:

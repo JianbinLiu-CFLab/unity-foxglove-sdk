@@ -17,6 +17,7 @@ READER_CALL_PATTERN = re.compile(rf"\b(?P<reader>{SEED_READER_ALTERNATIVES})\s*\
 SEED_READER_NAME = re.compile(rf"(?:{SEED_READER_ALTERNATIVES})")
 _DELEGATE_TYPE_PATTERN = r"(?:global::)?[A-Za-z_]\w*(?:\s*\.\s*[A-Za-z_]\w*)*(?:\s*<[^;=]+>)?\??"
 _DELEGATE_METHOD_TARGET_PATTERN = r"(?:global::)?[A-Za-z_]\w*(?:\s*<[^;{}()]+>)?(?:\s*\.\s*(?:global::)?[A-Za-z_]\w*(?:\s*<[^;{}()]+>)?)*"
+_KNOWN_DELEGATE_WRAPPER_NAMES = frozenset(("Run", "Ci", "DefaultOnly", "Local", "Manual", "PhaseValidationCase.Run")); _DELEGATE_TARGET_NAME_HINTS = frozenset(("Action",))
 _DELEGATE_ASSIGNMENT_PATTERN = re.compile(
     rf"\b(?:(?P<type>(?:{_DELEGATE_TYPE_PATTERN}|var))\s+)?"
     rf"(?P<name>[A-Za-z_]\w*)\s*=\s*(?P<target>[^;]+);"
@@ -25,8 +26,7 @@ DELEGATE_STATE_NON_DELEGATE = "NON_DELEGATE"
 DELEGATE_STATE_DIRECT = "DIRECT"
 DELEGATE_STATE_KNOWN_WRAPPER = "KNOWN_WRAPPER"
 DELEGATE_STATE_LAMBDA_FORWARD = "LAMBDA_FORWARD"
-DELEGATE_STATE_UNKNOWN = "UNKNOWN_DELEGATE"
-_NON_DELEGATE_TARGETS = frozenset(("true", "false", "null", "default", "this", "base"))
+DELEGATE_STATE_UNSUPPORTED = "UNSUPPORTED_DELEGATE_FLOW"
 def _normalize_delegate_expression(value: str) -> str:
     """Normalize spacing that is insignificant in delegate expressions."""
     normalized = re.sub(r"\s+", " ", value).strip()
@@ -73,6 +73,7 @@ def _is_delegate_type_name(value: str, delegate_type_names: set[str]) -> bool:
     """Return whether a declared type resolves to a known delegate name."""
     normalized = _normalize_delegate_expression(value).rstrip("?").split("<", 1)[0]
     return normalized.rsplit(".", 1)[-1].removeprefix("global::") in delegate_type_names
+def _has_delegate_target_hint(value: str) -> bool: return _normalize_delegate_expression(value).rsplit(".", 1)[-1].split("<", 1)[0].endswith("Action")
 def _is_delegate_assignment(
     target: str,
     declared_type: str,
@@ -82,9 +83,9 @@ def _is_delegate_assignment(
     method_names: set[str],
     delegate_type_names: set[str],
     invocation_text: str,
+    delegate_wrapper_names: set[str] | None = None,
 ) -> str:
     """Classify one binding in the finite delegate-flow state set."""
-    normalized_target = _normalize_delegate_expression(target)
     target_names = set(re.findall(r"\b[A-Za-z_]\w*\b", target))
     known_wrapper = (
         bool(declared_type)
@@ -93,6 +94,7 @@ def _is_delegate_assignment(
     )
     known_wrapper = known_wrapper or (
         name in delegate_variables
+        or bool(target_names & delegate_variables)
         or bool(target_names & delegate_methods)
         or _is_delegate_conversion(target, delegate_type_names)
     )
@@ -100,34 +102,25 @@ def _is_delegate_assignment(
         return DELEGATE_STATE_LAMBDA_FORWARD
     if known_wrapper:
         return DELEGATE_STATE_KNOWN_WRAPPER
-    if _is_delegate_like_target(target) and bool(target_names & method_names):
+    normalized_target = _strip_outer_parentheses(_normalize_delegate_expression(target)); target_call = re.match(r"(?P<name>(?:global::)?[A-Za-z_]\w*(?:\s*\.\s*[A-Za-z_]\w*)*)\s*\(", normalized_target); target_call_known = bool(target_call and _has_delegate_target_hint(target_call.group("name")))
+    if (_is_delegate_like_target(target) or target_call_known) and (bool(target_names & method_names) or _has_delegate_target_hint(target) or target_call_known):
         return DELEGATE_STATE_DIRECT
-    candidate = (
-        bool(invocation_text)
+    invocation_prefix = invocation_text.split("(", 1)[0].strip()
+    invocation_identity = re.sub(r"[^A-Za-z0-9_:.]+$", "", invocation_prefix)
+    invocation_name = invocation_identity.rsplit(".", 1)[-1]
+    wrapper_candidate = _is_delegate_like_target(target) and "=>" not in invocation_text and re.search(rf"\b{re.escape(name)}\b", invocation_text) is not None and (bool(delegate_wrapper_names and invocation_identity in delegate_wrapper_names) or "." in invocation_identity)
+    candidate = bool(invocation_text) and (
+        invocation_name == name
         or (
-            _is_delegate_like_target(target)
-            and declared_type != "var"
-            and normalized_target not in _NON_DELEGATE_TARGETS
+            invocation_name in {"Invoke", "DynamicInvoke"}
+            and _is_delegate_like_target(target)
+            and _has_delegate_target_hint(target)
         )
+        or re.search(rf"\b{re.escape(name)}\s*!?\s*\(", invocation_text) is not None
+        or wrapper_candidate
     )
-    if candidate:
-        return DELEGATE_STATE_UNKNOWN
+    if candidate: return DELEGATE_STATE_UNSUPPORTED
     return DELEGATE_STATE_NON_DELEGATE
-def _delegate_unknown_aliases(records: list[tuple[str, str, str]], unknown_names: set[str]) -> None:
-    """Propagate unknown delegate state through local single-name aliases."""
-    names = {record[0] for record in records}
-    aliases: dict[str, str] = {}
-    for name, target, _ in records:
-        candidate = _strip_outer_parentheses(_normalize_delegate_expression(target))
-        if candidate in names and re.fullmatch(r"[A-Za-z_]\w*", candidate):
-            aliases[name] = candidate
-    changed = True
-    while changed:
-        changed = False
-        for name, source in aliases.items():
-            if name in unknown_names and source not in unknown_names:
-                unknown_names.add(source)
-                changed = True
 _DELEGATE_INVOCATION_CACHE: dict[str, set[str]] = {}
 def _delegate_invocation_names(masked: str) -> set[str]:
     """Return names used in direct delegate-style invocations."""
@@ -195,6 +188,7 @@ def _delegate_invocation_text(
             method_names,
             delegate_boundary_names,
         )
+        and re.search(rf"\b[A-Za-z_]\w*\s*\([^;]*\b{re.escape(name)}\b[^;]*\)", scoped_masked[scoped_start:]) is None
     ):
         return ""
     return _delegate_invocation(scoped_masked, scoped_start, name)

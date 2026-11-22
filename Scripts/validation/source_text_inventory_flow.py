@@ -14,15 +14,14 @@ try:
     from .source_text_inventory_text import (
         _balanced_brace_end,
         _balanced_call_end,
-        _DELEGATE_ASSIGNMENT_PATTERN,
-        _delegate_type_names, _delegate_unknown_aliases,
+        _DELEGATE_ASSIGNMENT_PATTERN, _DELEGATE_TYPE_PATTERN, _delegate_type_names,
         _is_delegate_type_name,
         DELEGATE_STATE_NON_DELEGATE,
-        DELEGATE_STATE_UNKNOWN,
+        DELEGATE_STATE_UNSUPPORTED,
         _delegate_invocation_text,
         _is_delegate_assignment,
         _normalize_csharp_expression,
-        _strip_csharp_comments_and_strings,
+        _strip_csharp_comments_and_strings, _KNOWN_DELEGATE_WRAPPER_NAMES,
     )
 except ImportError:
     import source_text_inventory_symbols as _symbol_helpers
@@ -33,15 +32,14 @@ except ImportError:
     from source_text_inventory_text import (
         _balanced_brace_end,
         _balanced_call_end,
-        _DELEGATE_ASSIGNMENT_PATTERN,
-        _delegate_type_names, _delegate_unknown_aliases,
+        _DELEGATE_ASSIGNMENT_PATTERN, _DELEGATE_TYPE_PATTERN, _delegate_type_names,
         _is_delegate_type_name,
         DELEGATE_STATE_NON_DELEGATE,
-        DELEGATE_STATE_UNKNOWN,
+        DELEGATE_STATE_UNSUPPORTED,
         _delegate_invocation_text,
         _is_delegate_assignment,
         _normalize_csharp_expression,
-        _strip_csharp_comments_and_strings,
+        _strip_csharp_comments_and_strings, _KNOWN_DELEGATE_WRAPPER_NAMES,
     )
 CONTROL_KEYWORDS = {
     "if",
@@ -626,18 +624,18 @@ def _delegate_parameter_boundaries(text: str, masked: str, methods: list[MethodI
     for method in methods:
         indexes = {index for index, parameter in enumerate(method.parameter_types) if _is_delegate_type_name(parameter, delegate_type_names)}
         if indexes: wrapper_parameters.setdefault(method.name, set()).update(indexes)
-    boundary_names: set[str] = set()
-    for method in methods:
-        for call_name, open_index in _call_sites(text, masked, method):
-            indexes = wrapper_parameters.get(call_name.rsplit(".", 1)[-1].rsplit("::", 1)[-1])
-            if not indexes: continue
-            arguments = _call_arguments(text, masked, open_index)
-            if arguments is None: continue
-            if ":" in arguments: boundary_names.update(re.findall(r"\b[A-Za-z_]\w*\b", arguments))
-            argument_values = _split_arguments(arguments)
-            for index in indexes:
-                if index < len(argument_values): boundary_names.update(re.findall(r"\b[A-Za-z_]\w*\b", argument_values[index]))
-    return set(wrapper_parameters), boundary_names
+    return set(wrapper_parameters), set()
+
+
+def _delegate_variable_names(masked: str, delegate_type_names: set[str]) -> set[str]:
+    """Return delegate-typed parameter, field, and local names in one file."""
+    pattern = re.compile(r"\b(?P<type>" + _DELEGATE_TYPE_PATTERN + r")\s+"
+                         r"(?P<name>[A-Za-z_]\w*)\s*(?=[=;,{)])")
+    return {
+        match.group("name")
+        for match in pattern.finditer(masked)
+        if _is_delegate_type_name(match.group("type"), delegate_type_names)
+    }
 def _delegate_binding_signature(
     text: str, masked: str, methods: list[MethodInfo]
 ) -> str:
@@ -659,12 +657,14 @@ def _delegate_binding_signature(
     )
     pieces: list[str] = []
     method_names = {method.name for method in methods}
-    delegate_variables: set[str] = set()
     delegate_type_names = _delegate_type_names(text, masked)
+    delegate_variables = _delegate_variable_names(masked, delegate_type_names)
     delegate_wrapper_names, delegate_boundary_names = _delegate_parameter_boundaries(text, masked, methods, delegate_type_names)
-    pending: list[tuple[re.Match[str], str, str, str, str, str]] = []
+    delegate_wrapper_names.update(_KNOWN_DELEGATE_WRAPPER_NAMES)
     for match in _DELEGATE_ASSIGNMENT_PATTERN.finditer(masked):
         target = re.sub(r"\s+", " ", match.group("target")).strip(); declared_type = match.group("type") or ""; name = match.group("name"); scope = _method_for_offset(methods, match.start())
+        if declared_type == "using" or (not declared_type and target.lstrip().startswith(("=", ">", ")"))):
+            continue
         invocation_text = _delegate_invocation_text(
             masked,
             match.end(),
@@ -686,16 +686,14 @@ def _delegate_binding_signature(
             method_names,
             delegate_type_names,
             invocation_text,
+            delegate_wrapper_names,
         )
-        if state != DELEGATE_STATE_NON_DELEGATE: delegate_variables.add(name)
-        pending.append((match, target, declared_type, name, invocation_text, state))
-    unknown_names = {name for _, _, _, name, _, state in pending if state == DELEGATE_STATE_UNKNOWN}; _delegate_unknown_aliases([(name, target, state) for _, target, _, name, _, state in pending], unknown_names)
-    for match, target, declared_type, name, invocation_text, state in pending:
-        if state == DELEGATE_STATE_NON_DELEGATE and name not in unknown_names: continue
-        if name in unknown_names: state = DELEGATE_STATE_UNKNOWN
-        if state == DELEGATE_STATE_UNKNOWN:
+        if state == DELEGATE_STATE_NON_DELEGATE:
+            continue
+        delegate_variables.add(name)
+        if state == DELEGATE_STATE_UNSUPPORTED:
             pieces.append(
-                f"unknown:{state}|{match.group('type') or ''} {name}={target}|invoke:{invocation_text}"
+                f"unsupported:{state}|{match.group('type') or ''} {name}={target}|invoke:{invocation_text}"
             )
         else:
             pieces.append(f"assign:{match.group('type') or ''} {name}={target}|invoke:{invocation_text}")
@@ -706,7 +704,7 @@ def _delegate_binding_signature(
                 continue
             argument_names = set(re.findall(r"\b[A-Za-z_]\w*\b", arguments))
             terminal_name = call_name.rsplit(".", 1)[-1].rsplit("::", 1)[-1]
-            is_delegate_wrapper = terminal_name in delegate_wrapper_names
+            is_delegate_wrapper = call_name in delegate_wrapper_names
             if not argument_names & method_names and not re.search(
                 r"=>|\bdelegate\s*\(", arguments
             ) and not is_delegate_wrapper:

@@ -849,7 +849,7 @@ def _verify_count_ratchet(
         for key in sorted(set(base_helpers) | set(head_helpers))
         if base_helpers.get(key) != head_helpers.get(key)
     ]
-
+    failures.extend(f"SOURCE_TEXT_RATCHET_UNSUPPORTED_DELEGATE_FLOW file={path} detail={helper.removeprefix('unsupported-delegate-flow:')}" for path, helper in sorted(head_helpers) if helper.startswith("unsupported-delegate-flow:"))
     print(
         "SOURCE_TEXT_INVENTORY_BASE_OK "
         f"base_rows={len(base_rows)} head_rows={len(rows)} "

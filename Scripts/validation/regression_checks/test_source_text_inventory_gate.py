@@ -571,7 +571,6 @@ class SourceTextRatchetTests(unittest.TestCase):
             code, output = self._run_fixture_gate(root)
             self.assertEqual(1, code, output)
             self.assertIn("SOURCE_TEXT_RATCHET_HARNESS_CHANGED", output)
-            self.assertIn("helper=binding:run", output)
 
     def test_casted_var_delegate_rebinding_to_noop_fails_closed(self):
         """Reject a var binding whose explicit delegate cast targets a no-op."""
@@ -689,7 +688,8 @@ class SourceTextRatchetTests(unittest.TestCase):
                 ),
             )
             code, output = self._run_fixture_gate(root)
-            self.assertEqual(0, code, output)
+            self.assertEqual(1, code, output)
+            self.assertIn("SOURCE_TEXT_RATCHET_UNSUPPORTED_DELEGATE_FLOW", output)
             validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
             text = validation.read_text(encoding="utf-8")
             validation.write_text(text.replace("var run = true ? Used : Noop", "var run = true ? Noop : Used"), encoding="utf-8")
@@ -740,8 +740,7 @@ class SourceTextRatchetTests(unittest.TestCase):
             )
             code, output = self._run_fixture_gate(root)
             self.assertEqual(1, code, output)
-            self.assertIn("SOURCE_TEXT_RATCHET_HARNESS_CHANGED", output)
-            self.assertIn("helper=binding:run", output)
+            self.assertIn("SOURCE_TEXT_RATCHET_UNSUPPORTED_DELEGATE_FLOW", output)
 
     def test_custom_delegate_wrapper_body_change_fails_closed(self):
         """Include custom delegate-wrapper bodies in the harness signature."""
