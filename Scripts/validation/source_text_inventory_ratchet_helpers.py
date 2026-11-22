@@ -20,6 +20,7 @@ try:
         _delegate_type_names,
         _delegate_invocation_text,
         _is_delegate_assignment,
+        _is_delegate_type_name,
     )
 except ImportError:
     import source_text_inventory_flow as _flow_module
@@ -30,6 +31,7 @@ except ImportError:
         _delegate_type_names,
         _delegate_invocation_text,
         _is_delegate_assignment,
+        _is_delegate_type_name,
     )
 
 RATCHET_APPROVALS_PATH = Path("Scripts/validation/source_text_ratchet_approvals.json")
@@ -308,15 +310,11 @@ def _helper_signature_records(text: str, readers: frozenset[str] = frozenset()) 
     masked = _flow_module._strip_csharp_comments_and_strings(text)
     methods = _flow_module._method_infos(text, masked)
     method_names = {method.name for method in methods}
+    delegate_type_names = _delegate_type_names(text, masked)
     generic = [method for method in _readers_module._generic_method_infos(masked) if method.name in readers]
     records: dict[str, str] = {}
     for method in [*methods, *generic]:
-        delegate_parameter = any(
-            _flow_module._normalize_type(parameter).removeprefix("System.").startswith(
-                ("Action", "Func", "Predicate")
-            )
-            for parameter in method.parameter_types
-        )
+        delegate_parameter = any(_is_delegate_type_name(parameter, delegate_type_names) for parameter in method.parameter_types)
         if not (
             method.name == "Check"
             or method.name.startswith(("Assert", "Read", "Source", "Validate"))
@@ -333,7 +331,6 @@ def _helper_signature_records(text: str, readers: frozenset[str] = frozenset()) 
             text[method.body_start : method.body_end + 1].encode("utf-8")
         ).hexdigest()
 
-    delegate_type_names = _delegate_type_names(text, masked)
     _, delegate_boundary_names = _flow_module._delegate_parameter_boundaries(
         text, masked, methods, delegate_type_names
     )

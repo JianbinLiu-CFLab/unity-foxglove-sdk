@@ -580,6 +580,7 @@ def _validation_harness_signature(
     argument_definitions = argument_definitions if argument_definitions is not None else _argument_definition_index(text, masked, methods)
     call_contexts = call_contexts if call_contexts is not None else _method_call_contexts(text, masked, methods, argument_definitions=argument_definitions)
     entrypoints = set(entrypoint.split(";"))
+    delegate_type_names = _delegate_type_names(text, masked)
     counts = Counter(method.name for method in methods)
     pieces: list[str] = []
     for method in methods:
@@ -587,9 +588,7 @@ def _validation_harness_signature(
             continue
         body = masked[method.body_start : method.body_end]
         delegate_parameter = any(
-            _normalize_type(parameter).removeprefix("System.").startswith(
-                ("Action", "Func", "Predicate")
-            )
+            _is_delegate_type_name(parameter, delegate_type_names)
             for parameter in method.parameter_types
         )
         if (
@@ -635,6 +634,7 @@ def _delegate_parameter_boundaries(text: str, masked: str, methods: list[MethodI
                 continue
             arguments = _call_arguments(text, masked, open_index)
             if arguments is None: continue
+            if ":" in arguments: boundary_names.update(re.findall(r"\b[A-Za-z_]\w*\b", arguments))
             argument_values = _split_arguments(arguments)
             for index in indexes:
                 if index < len(argument_values): boundary_names.update(re.findall(r"\b[A-Za-z_]\w*\b", argument_values[index]))

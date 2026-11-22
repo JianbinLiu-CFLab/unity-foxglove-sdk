@@ -135,7 +135,7 @@ def _delegate_invocation(masked: str, start: int, name: str) -> str:
     invocation = re.search(
         rf"\b{re.escape(name)}(?:\s*!?\s*\([^;]*?\)|\s*\?\.\s*Invoke\s*\([^;]*?\)|"
         rf"\s*\.\s*(?:Invoke|DynamicInvoke)\s*\([^;]*?\))|"
-        rf"\b[A-Za-z_]\w*\s*\(\s*(?:[A-Za-z_]\w*\s*:\s*)?{re.escape(name)}\s*\)\s*;",
+        rf"\b[A-Za-z_]\w*\s*\([^;]*\b(?:[A-Za-z_]\w*\s*:\s*)?{re.escape(name)}\b[^;]*\)\s*;",
         masked[start:],
     )
     return re.sub(r"\s+", " ", invocation.group()).strip() if invocation else ""
