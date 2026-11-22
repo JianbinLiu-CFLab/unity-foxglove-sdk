@@ -405,6 +405,9 @@ def _helper_signature_records(text: str, readers: frozenset[str] = frozenset()) 
             binding_name = "binding:" + name
             if state != "KNOWN_WRAPPER" and state != "LAMBDA_FORWARD":
                 payload = f"state={state}|{payload}"
+        if binding_name in records:
+            line = text.count("\n", 0, match.start()) + 1
+            binding_name = f"{binding_name}@{scope_key or 'file'}:{line}"
         records[binding_name] = hashlib.sha256(
             payload.encode("utf-8")
         ).hexdigest()

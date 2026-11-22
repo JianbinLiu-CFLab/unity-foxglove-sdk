@@ -75,6 +75,7 @@ class SourceTextInventoryReviewTests(_FixtureSupport, unittest.TestCase):
         cases = (
             ("scalar unknown", "private static void Run(Action action) { action(); } var mode = External.Mode; External.Execute(mode);", "External.Mode", "External.Other", "public static int Mode => 1; public static int Other => 2; public static void Execute(int mode) { }"),
             ("instance unknown", "var run = External.Factory; var external = new External(); external.Execute(run);", "External.Factory", "External.NoopFactory", "public static Action Factory => FixtureValidation.Used; public static Action NoopFactory => FixtureValidation.Noop; public void Execute(Action action) { action(); }"),
+            ("delegate-capable scalar receiver", "var run = External.Factory; Task.Factory.StartNew(run).Wait();", "External.Factory", "External.NoopFactory", "public static Action Factory => FixtureValidation.Used; public static Action NoopFactory => FixtureValidation.Noop;"),
         )
         for label, body, original, replacement, members in cases:
             with self.subTest(label=label), tempfile.TemporaryDirectory() as directory:
