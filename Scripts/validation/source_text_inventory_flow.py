@@ -16,6 +16,7 @@ try:
         _balanced_call_end,
         _DELEGATE_ASSIGNMENT_PATTERN, _DELEGATE_TYPE_PATTERN, _delegate_type_names,
         _is_delegate_type_name,
+        _is_delegate_like_target,
         DELEGATE_STATE_NON_DELEGATE,
         DELEGATE_STATE_UNSUPPORTED,
         _delegate_invocation_text,
@@ -34,6 +35,7 @@ except ImportError:
         _balanced_call_end,
         _DELEGATE_ASSIGNMENT_PATTERN, _DELEGATE_TYPE_PATTERN, _delegate_type_names,
         _is_delegate_type_name,
+        _is_delegate_like_target,
         DELEGATE_STATE_NON_DELEGATE,
         DELEGATE_STATE_UNSUPPORTED,
         _delegate_invocation_text,
@@ -624,30 +626,24 @@ def _delegate_parameter_boundaries(text: str, masked: str, methods: list[MethodI
     for method in methods:
         indexes = {index for index, parameter in enumerate(method.parameter_types) if _is_delegate_type_name(parameter, delegate_type_names)}
         if indexes: wrapper_parameters.setdefault(method.name, set()).update(indexes)
+    possible_bindings = {m.group("name") for m in _DELEGATE_ASSIGNMENT_PATTERN.finditer(masked) if _is_delegate_like_target(m.group("target").strip().rstrip("!")) or "!" in m.group("target")}
+    for _ in range(2): possible_bindings.update(m.group("name") for m in _DELEGATE_ASSIGNMENT_PATTERN.finditer(masked) if m.group("target").strip().rstrip("!") in possible_bindings)
     boundary_names: set[str] = set()
     for method in methods:
         for call_name, open_index in _call_sites(text, masked, method):
-            indexes = wrapper_parameters.get(call_name.rsplit(".", 1)[-1].rsplit("::", 1)[-1]); arguments = _call_arguments(text, masked, open_index)
-            if not indexes or arguments is None: continue
-            values = _split_arguments(arguments); selected = [values[index] for index in indexes if index < len(values)]
+            terminal = call_name.rsplit(".", 1)[-1].rsplit("::", 1)[-1]; indexes = wrapper_parameters.get(terminal); qualified_unknown = not indexes and "." in call_name and terminal in _KNOWN_DELEGATE_WRAPPER_NAMES; arguments = _call_arguments(text, masked, open_index)
+            if (not indexes and not qualified_unknown) or arguments is None: continue
+            values = _split_arguments(arguments); selected = values if qualified_unknown else [values[index] for index in indexes if index < len(values)]
             selected += [value.split(":", 1)[1] for value in values if ":" in value and value.split(":", 1)[0].strip() in {"action", "callback", "delegate", "handler", "run"}]
-            boundary_names.update(candidate for value in selected if "=>" not in value and "delegate" not in value for candidate in [re.sub(r"^[\s(!]+|[\s!)]+$", "", value)] if re.fullmatch(r"[A-Za-z_]\w*", candidate))
+            boundary_names.update(candidate for value in selected if "=>" not in value and "delegate" not in value for candidate in [re.sub(r"^[\s(!]+|[\s!)]+$", "", value)] if re.fullmatch(r"[A-Za-z_]\w*", candidate) and (not qualified_unknown or candidate in possible_bindings))
     return set(wrapper_parameters), boundary_names
 def _delegate_variable_names(masked: str, delegate_type_names: set[str]) -> set[str]:
     """Return delegate-typed parameter, field, and local names in one file."""
     pattern = re.compile(r"\b(?P<type>" + _DELEGATE_TYPE_PATTERN + r")\s+" r"(?P<name>[A-Za-z_]\w*)\s*(?=[=;,{)])")
     return {match.group("name") for match in pattern.finditer(masked) if _is_delegate_type_name(match.group("type"), delegate_type_names)}
-def _delegate_binding_signature(
-    text: str, masked: str, methods: list[MethodInfo]
-) -> str:
+def _delegate_binding_signature(text: str, masked: str, methods: list[MethodInfo]) -> str:
     """Hash delegate assignments, method-group arguments, and forwarding calls."""
-    delegate_methods = {
-        method.name
-        for method in methods
-        if _normalize_type(method.return_type)
-        .removeprefix("System.")
-        .startswith(("Action", "Func", "Predicate"))
-    }
+    delegate_methods = {method.name for method in methods if _normalize_type(method.return_type).removeprefix("System.").startswith(("Action", "Func", "Predicate"))}
     delegate_methods.update(
         match.group("name")
         for match in re.finditer(

@@ -564,7 +564,7 @@ jobs:
             cat > "$migration_approval_file" <<'MIGRATION_APPROVAL'
           {
             "base_revision": "a71a7d862299aab28cc5e89a4e01db5b0ae1039a",
-            "checker_sha256": "f782fb63ed006505c034f068bcf69217631e615efa9f0e802208d65e2bb35c9c",
+            "checker_sha256": "50010b0364ad3349204a57a05d6e1bc34089788cd985f9116493c9f216f7fa4c",
             "trusted_checker_sha256": "72cb00ef15411d65865cf4436917fd8e2119eec9b0f422654d7f376525a32eec",
             "base_inventory_sha256": "a37a42cd84641afb50dc1d496e53e5eb6166cb06995d0cd5616f8ef8e409b991",
             "current_inventory_sha256": "28fef11fd4228a6d79e2c2d61defb424f38acbc6bf80e0db73ed513c5ce40bc0",
@@ -584,7 +584,7 @@ jobs:
             cat > "$migration_approval_file" <<'MIGRATION_APPROVAL'
           {
             "base_revision": "5bc3de2627481dfa616280942317246e99b74675",
-            "checker_sha256": "f782fb63ed006505c034f068bcf69217631e615efa9f0e802208d65e2bb35c9c",
+            "checker_sha256": "50010b0364ad3349204a57a05d6e1bc34089788cd985f9116493c9f216f7fa4c",
             "trusted_checker_sha256": "72cb00ef15411d65865cf4436917fd8e2119eec9b0f422654d7f376525a32eec",
             "base_inventory_sha256": "a37a42cd84641afb50dc1d496e53e5eb6166cb06995d0cd5616f8ef8e409b991",
             "current_inventory_sha256": "4c3c7c170649bc53fa3d00b7cf6404ee077c357fa6439c8f0efd466193775fa9",
