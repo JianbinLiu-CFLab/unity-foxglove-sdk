@@ -18,22 +18,107 @@ SEED_READER_ALTERNATIVES = (
 )
 READER_CALL_PATTERN = re.compile(rf"\b(?P<reader>{SEED_READER_ALTERNATIVES})\s*\(")
 SEED_READER_NAME = re.compile(rf"(?:{SEED_READER_ALTERNATIVES})")
-_DELEGATE_TYPE_PATTERN = r"(?:global::)?[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*(?:<[^;=]+>)?"
+_DELEGATE_TYPE_PATTERN = r"(?:global::)?[A-Za-z_]\w*(?:\s*\.\s*[A-Za-z_]\w*)*(?:\s*<[^;=]+>)?\??"
 _DELEGATE_METHOD_TARGET_PATTERN = r"(?:global::)?[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*"
-_DELEGATE_CAST_PATTERN = re.compile(
-    rf"^\s*\(\s*{_DELEGATE_TYPE_PATTERN}\s*\)\s*\(?\s*"
-    rf"{_DELEGATE_METHOD_TARGET_PATTERN}\s*\)?\s*$"
+_DELEGATE_ASSIGNMENT_PATTERN = re.compile(
+    rf"\b(?:(?P<type>(?:{_DELEGATE_TYPE_PATTERN}|var))\s+)?"
+    rf"(?P<name>[A-Za-z_]\w*)\s*=\s*(?P<target>[^;]+);"
 )
-_DELEGATE_CONSTRUCTOR_PATTERN = re.compile(rf"^\s*new\s+{_DELEGATE_TYPE_PATTERN}\s*\(")
+
+
+def _normalize_delegate_expression(value: str) -> str:
+    """Normalize spacing that is insignificant in delegate expressions."""
+    normalized = re.sub(r"\s+", " ", value).strip()
+    normalized = re.sub(r"\s*\.\s*", ".", normalized)
+    normalized = re.sub(r"\s*([<>?])\s*", r"\1", normalized)
+    return normalized
+
+
+def _strip_outer_parentheses(value: str) -> str:
+    """Remove balanced parentheses that wrap a complete expression."""
+    value = value.strip()
+    while value.startswith("("):
+        close = _balanced_call_end(value, 0)
+        if close != len(value) - 1:
+            break
+        value = value[1:-1].strip()
+    return value
+
+
+def _is_method_group_target(value: str) -> bool:
+    """Return whether an expression is a bare or qualified method group."""
+    normalized = _strip_outer_parentheses(_normalize_delegate_expression(value))
+    return re.fullmatch(_DELEGATE_METHOD_TARGET_PATTERN, normalized) is not None
+
+
+def _delegate_type_names(text: str, masked: str) -> set[str]:
+    """Return built-in, declared, and aliased delegate type names in one file."""
+    names = {"Action", "Func", "Predicate"}
+    names.update(
+        match.group("name")
+        for match in re.finditer(
+            r"\bdelegate\b[^;{}()]*?\b(?P<name>[A-Za-z_]\w*)\s*\(", masked
+        )
+    )
+    aliases = {
+        match.group("name"): match.group("target")
+        for match in re.finditer(
+            r"\busing\s+(?P<name>[A-Za-z_]\w*)\s*=\s*(?P<target>[^;]+);", masked
+        )
+    }
+    for _ in range(len(aliases)):
+        for alias, target in aliases.items():
+            target_name = _normalize_delegate_expression(target).rstrip("?").split("<", 1)[0]
+            target_name = target_name.rsplit(".", 1)[-1]
+            if target_name in names:
+                names.add(alias)
+    return names
+
+
+def _is_delegate_type_name(value: str, delegate_type_names: set[str]) -> bool:
+    """Return whether a declared type resolves to a known delegate name."""
+    normalized = _normalize_delegate_expression(value).rstrip("?").split("<", 1)[0]
+    return normalized.rsplit(".", 1)[-1].removeprefix("global::") in delegate_type_names
+
+
+def _is_delegate_assignment(
+    target: str,
+    declared_type: str,
+    name: str,
+    delegate_variables: set[str],
+    delegate_methods: set[str],
+    delegate_type_names: set[str],
+) -> bool:
+    """Return whether one assignment participates in delegate flow."""
+    target_names = set(re.findall(r"\b[A-Za-z_]\w*\b", target))
+    explicit_delegate = (
+        bool(declared_type)
+        and declared_type != "var"
+        and _is_delegate_type_name(declared_type, delegate_type_names)
+    )
+    return (
+        explicit_delegate
+        or name in delegate_variables
+        or bool(target_names & delegate_methods)
+        or _is_delegate_conversion(target)
+        or "=>" in target
+        or re.search(r"\bdelegate\s*\(", target) is not None
+    )
 
 
 def _is_delegate_conversion(target: str) -> bool:
     """Return whether a binding target is an explicit delegate cast or construction."""
-    normalized = re.sub(r"\s+", " ", target).strip()
-    return bool(
-        _DELEGATE_CAST_PATTERN.fullmatch(normalized)
-        or _DELEGATE_CONSTRUCTOR_PATTERN.match(normalized)
-    )
+    normalized = _strip_outer_parentheses(_normalize_delegate_expression(target))
+    if normalized.startswith("("):
+        close = _balanced_call_end(normalized, 0)
+        if close is not None and _is_method_group_target(normalized[close + 1 :]):
+            return bool(normalized[1:close].strip())
+    if normalized.startswith("new "):
+        open_index = normalized.find("(", 4)
+        close = _balanced_call_end(normalized, open_index) if open_index >= 0 else None
+        if close == len(normalized) - 1 and _is_method_group_target(normalized[open_index + 1 : close]):
+            return bool(normalized[4:open_index].strip())
+    return False
 
 
 _ACTIVE_READER_PATTERN: list[re.Pattern[str]] = [READER_CALL_PATTERN]

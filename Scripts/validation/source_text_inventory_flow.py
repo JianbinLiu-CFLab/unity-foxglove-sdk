@@ -17,7 +17,9 @@ try:
     from .source_text_inventory_text import (
         _balanced_brace_end,
         _balanced_call_end,
-        _is_delegate_conversion,
+        _DELEGATE_ASSIGNMENT_PATTERN,
+        _delegate_type_names,
+        _is_delegate_assignment,
         _normalize_csharp_expression,
         _strip_csharp_comments_and_strings,
     )
@@ -30,7 +32,9 @@ except ImportError:
     from source_text_inventory_text import (
         _balanced_brace_end,
         _balanced_call_end,
-        _is_delegate_conversion,
+        _DELEGATE_ASSIGNMENT_PATTERN,
+        _delegate_type_names,
+        _is_delegate_assignment,
         _normalize_csharp_expression,
         _strip_csharp_comments_and_strings,
     )
@@ -661,21 +665,17 @@ def _delegate_binding_signature(
     pieces: list[str] = []
     method_names = {method.name for method in methods}
     delegate_variables: set[str] = set()
-    assignment_pattern = re.compile(
-        r"\b(?:(?P<type>(?:(?:System\.)?(?:Action|Func|Predicate)(?:<[^;=]+>)?|var))\s+)?"
-        r"(?P<name>[A-Za-z_]\w*)\s*=\s*(?P<target>[^;]+);"
-    )
-    for match in assignment_pattern.finditer(masked):
+    delegate_type_names = _delegate_type_names(text, masked)
+    for match in _DELEGATE_ASSIGNMENT_PATTERN.finditer(masked):
         target = re.sub(r"\s+", " ", match.group("target")).strip()
-        target_names = set(re.findall(r"\b[A-Za-z_]\w*\b", target))
-        explicit_delegate = bool(match.group("type")) and match.group("type") != "var"
-        is_delegate = (
-            explicit_delegate
-            or match.group("name") in delegate_variables
-            or bool(target_names & delegate_methods)
-            or _is_delegate_conversion(target)
-            or "=>" in target
-            or re.search(r"\bdelegate\s*\(", target) is not None
+        declared_type = match.group("type") or ""
+        is_delegate = _is_delegate_assignment(
+            target,
+            declared_type,
+            match.group("name"),
+            delegate_variables,
+            delegate_methods,
+            delegate_type_names,
         )
         if not is_delegate:
             continue

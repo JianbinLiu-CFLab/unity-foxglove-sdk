@@ -14,9 +14,21 @@ from pathlib import Path
 try:
     from . import source_text_inventory_flow as _flow_module
     from . import source_text_inventory_readers as _readers_module
+    from .source_text_inventory_text import (
+        _DELEGATE_ASSIGNMENT_PATTERN,
+        _delegate_type_names,
+        _is_delegate_conversion,
+        _is_delegate_type_name,
+    )
 except ImportError:
     import source_text_inventory_flow as _flow_module
     import source_text_inventory_readers as _readers_module
+    from source_text_inventory_text import (
+        _DELEGATE_ASSIGNMENT_PATTERN,
+        _delegate_type_names,
+        _is_delegate_conversion,
+        _is_delegate_type_name,
+    )
 
 RATCHET_APPROVALS_PATH = Path("Scripts/validation/source_text_ratchet_approvals.json")
 RATCHET_CLASSES = frozenset({"A", "B", "C", "UNKNOWN", "UNRESOLVED"})
@@ -318,18 +330,19 @@ def _helper_signature_records(text: str, readers: frozenset[str] = frozenset()) 
             text[method.body_start : method.body_end + 1].encode("utf-8")
         ).hexdigest()
 
-    binding_pattern = re.compile(
-        r"\b(?P<type>(?:(?:System\.)?(?:Action|Func|Predicate)(?:<[^;=]+>)?|var))?\s*"
-        r"(?P<name>[A-Za-z_]\w*)\s*=\s*(?P<target>[^;]+);"
-    )
-    for match in binding_pattern.finditer(masked):
+    delegate_type_names = _delegate_type_names(text, masked)
+    for match in _DELEGATE_ASSIGNMENT_PATTERN.finditer(masked):
         target = match.group("target")
         declared_type = match.group("type") or ""
         if (
             (not declared_type or declared_type == "var")
-            and not _flow_module._is_delegate_conversion(target)
+            and not _is_delegate_conversion(target)
             and "=>" not in target
             and "delegate" not in target
+        ) or (
+            declared_type
+            and declared_type != "var"
+            and not _is_delegate_type_name(declared_type, delegate_type_names)
         ):
             continue
         name = "binding:" + match.group("name")
