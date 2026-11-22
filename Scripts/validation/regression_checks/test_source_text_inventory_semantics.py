@@ -294,12 +294,54 @@ class SourceTextInventorySemanticTests(_FixtureSupport, unittest.TestCase):
             code, output = self._run_fixture_gate(root)
             self.assertEqual(1, code, output)
             self.assertIn("SOURCE_TEXT_RATCHET_UNSUPPORTED_DELEGATE_FLOW", output)
-
-
-
-
-
-
+    def test_qualified_delegate_boundary_normalizes_argument_forms(self):
+        """Reject equivalent qualified delegate arguments after target rebinding."""
+        cases = (
+            ("bare", "External.Execute(run);"),
+            ("named", "External.Execute(action: run);"),
+            ("generic", "External.Execute<object>(run);"),
+            ("cast", "External.Execute((System.Action)run);"),
+        )
+        for label, invocation in cases:
+            with self.subTest(label=label), tempfile.TemporaryDirectory() as directory:
+                root = self._git_fixture(
+                    directory,
+                    validation_text=(
+                        "using System;\n"
+                        "public static class FixtureValidation {\n"
+                        "    private static void Used() {\n"
+                        '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                        '        Check(source.Contains("Product"));\n'
+                        "    }\n"
+                        "    private static void Noop() { }\n"
+                        "    public static void Validate() {\n"
+                        "        var run = External.Factory;\n"
+                        f"        {invocation}\n"
+                        "    }\n}\n"
+                    ),
+                )
+                external = root / "Packages/fixture/Tests/Runtime/External.cs"
+                external.write_text(
+                    "using System;\n"
+                    "public static class External {\n"
+                    "    public static Action Factory => FixtureValidation.Used;\n"
+                    "    public static Action NoopFactory => FixtureValidation.Noop;\n"
+                    "    public static void Execute<T>(Action action) { action(); }\n"
+                    "}\n",
+                    encoding="utf-8",
+                )
+                subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+                subprocess.run(["git", "-C", str(root), "commit", "-qm", "qualified-argument-forms"], check=True)
+                validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+                validation.write_text(
+                    validation.read_text(encoding="utf-8").replace(
+                        "External.Factory", "External.NoopFactory"
+                    ),
+                    encoding="utf-8",
+                )
+                code, output = self._run_fixture_gate(root)
+                self.assertEqual(1, code, output)
+                self.assertIn("SOURCE_TEXT_RATCHET_HARNESS_CHANGED", output)
     def test_runtime_method_additions_do_not_change_validation_helper_signatures(self):
         """Ignore unresolved production helper candidates when signing validation harnesses."""
         with tempfile.TemporaryDirectory() as directory:
@@ -312,7 +354,6 @@ class SourceTextInventorySemanticTests(_FixtureSupport, unittest.TestCase):
             before = _gate_module.inventory(root)
             runtime_helper.write_text(base + "public sealed class UnrelatedHelper { public bool TryMap(string source) => false; }\n", encoding="utf-8")
             self.assertEqual(before[0]["harness_signature"], _gate_module.inventory(root)[0]["harness_signature"])
-
     def test_task_run_without_wait_fails_closed(self):
         """Reject dropping task completion when a background lambda owns an assertion."""
         with tempfile.TemporaryDirectory() as directory:

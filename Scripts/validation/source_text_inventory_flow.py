@@ -23,7 +23,7 @@ try:
         DELEGATE_STATE_UNSUPPORTED,
         _delegate_invocation_text,
         _is_delegate_assignment,
-        _normalize_csharp_expression,
+        _normalize_csharp_expression, _normalize_delegate_value,
         _strip_csharp_comments_and_strings, _KNOWN_DELEGATE_WRAPPER_NAMES,
     )
 except ImportError:
@@ -44,7 +44,7 @@ except ImportError:
         DELEGATE_STATE_UNSUPPORTED,
         _delegate_invocation_text,
         _is_delegate_assignment,
-        _normalize_csharp_expression,
+        _normalize_csharp_expression, _normalize_delegate_value,
         _strip_csharp_comments_and_strings, _KNOWN_DELEGATE_WRAPPER_NAMES,
     )
 CONTROL_KEYWORDS = {
@@ -62,7 +62,7 @@ CONTROL_KEYWORDS = {
     "return",
     "throw",
 }
-CALL_PATTERN = re.compile(r"\b(?P<name>[A-Za-z_]\w*)\s*\(")
+CALL_PATTERN = re.compile(r"\b(?P<name>[A-Za-z_]\w*)\s*(?:<[^;{}()]*>\s*)?\(")
 @dataclass(frozen=True)
 class MethodInfo:
     """Describe one C# method body discovered by the lightweight parser."""
@@ -654,7 +654,7 @@ def _delegate_parameter_boundaries(text: str, masked: str, methods: list[MethodI
             mapped[next_index], next_index = value.strip(), next_index + 1
         return mapped
     def possible_binding(value: str, key: str) -> bool:
-        """Return whether an argument may carry a delegate binding."""; candidate = re.sub(r"^[\s(!]+|[\s!)]+$", "", value)
+        """Return whether an argument may carry a delegate binding."""; candidate = _normalize_delegate_value(value, delegate_type_names)
         return candidate in possible.get(key, set()) or candidate in possible.get("", set()) or "=>" in value or "delegate" in value or candidate in method_names or _possible_delegate_target(value, delegate_type_names, method_names)
     boundaries: dict[str, set[str]] = {}; call_offsets: set[int] = set()
     for method in methods:
@@ -671,7 +671,7 @@ def _delegate_parameter_boundaries(text: str, masked: str, methods: list[MethodI
             if not matched and not qualified_unknown: continue
             if matched or selected: call_offsets.add(open_index)
             for value in selected:
-                candidate = re.sub(r"^[\s(!]+|[\s!)]+$", "", value)
+                candidate = _normalize_delegate_value(value, delegate_type_names)
                 if re.fullmatch(r"[A-Za-z_]\w*", candidate): boundaries.setdefault(key, set()).add(candidate)
     return set(wrappers), boundaries, call_offsets
 def _delegate_variable_names(masked: str, delegate_type_names: set[str], scope_start: int = 0, scope_end: int | None = None) -> set[str]:

@@ -572,36 +572,36 @@ class SourceTextRatchetTests(unittest.TestCase):
             self.assertEqual(1, code, output)
             self.assertIn("SOURCE_TEXT_RATCHET_HARNESS_CHANGED", output)
 
-    def test_casted_var_delegate_rebinding_to_noop_fails_closed(self):
-        """Reject a var binding whose explicit delegate cast targets a no-op."""
+    def test_parenthesized_var_delegate_rebinding_fails_closed(self):
+        """Reject a parenthesized method-group delegate cast that targets a no-op."""
         with tempfile.TemporaryDirectory() as directory:
             root = self._git_fixture(
                 directory,
                 validation_text=(
                     "using System;\n"
                     "public static class FixtureValidation {\n"
+                    "    private static void Run(Action action) { action(); }\n"
                     "    private static void Used() {\n"
                     '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
                     '        Check(source.Contains("Product"));\n'
                     "    }\n"
                     "    private static void Noop() { }\n"
                     "    public static void Validate() {\n"
-                    "        var run = (System.Action)Used;\n"
-                    "        run();\n"
+                    "        var run = (System.Action)(Used);\n"
+                    "        Run(run);\n"
                     "    }\n}\n"
                 ),
             )
             validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
             validation.write_text(
                 validation.read_text(encoding="utf-8").replace(
-                    "var run = (System.Action)Used;", "var run = (System.Action)Noop;"
+                    "var run = (System.Action)(Used);", "var run = (System.Action)(Noop);"
                 ),
                 encoding="utf-8",
             )
             code, output = self._run_fixture_gate(root)
             self.assertEqual(1, code, output)
             self.assertIn("SOURCE_TEXT_RATCHET_HARNESS_CHANGED", output)
-            self.assertIn("helper=binding:run", output)
 
     def test_casted_var_delegate_qualified_method_rebinding_fails_closed(self):
         """Reject a qualified method-group delegate cast that targets a no-op."""

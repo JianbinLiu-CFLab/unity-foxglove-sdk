@@ -144,7 +144,7 @@ def _delegate_invocation(masked: str, start: int, name: str) -> str:
     invocation = re.search(
         rf"\b{re.escape(name)}(?:\s*!?\s*\([^;]*?\)|\s*!?\s*\.\s*(?:Invoke|DynamicInvoke)\s*\([^;]*?\)|"
         rf"\s*\?\.\s*(?:Invoke|DynamicInvoke)\s*\([^;]*?\))|"
-        rf"\b[A-Za-z_]\w*\s*\([^;]*\b(?:[A-Za-z_]\w*\s*:\s*)?{re.escape(name)}\b[^;]*\)\s*;",
+        rf"\b[A-Za-z_]\w*(?:\s*<[^;{{}}()]*>)?\s*\([^;]*\b(?:[A-Za-z_]\w*\s*:\s*)?{re.escape(name)}\b[^;]*\)\s*;",
         masked[start:],
     )
     return re.sub(r"\s+", " ", invocation.group()).strip() if invocation else ""
@@ -201,17 +201,28 @@ def _is_delegate_conversion(target: str, delegate_type_names: set[str]) -> bool:
     normalized = _strip_outer_parentheses(_normalize_delegate_expression(target))
     cast = re.fullmatch(
         rf"\(\s*(?P<type>{_DELEGATE_TYPE_PATTERN})\s*\)\s*"
-        rf"(?P<target>{_DELEGATE_METHOD_TARGET_PATTERN})",
+        rf"(?P<target>.+)",
         normalized,
     )
     if cast and _is_delegate_type_name(cast.group("type"), delegate_type_names):
-        return True
+        return _is_delegate_like_target(cast.group("target"))
     constructor = re.fullmatch(
         rf"new\s+(?P<type>{_DELEGATE_TYPE_PATTERN})\s*\(\s*"
-        rf"(?P<target>{_DELEGATE_METHOD_TARGET_PATTERN})\s*\)",
+        rf"(?P<target>.+?)\s*\)",
         normalized,
     )
-    return bool(constructor and _is_delegate_type_name(constructor.group("type"), delegate_type_names))
+    return bool(constructor and _is_delegate_type_name(constructor.group("type"), delegate_type_names) and _is_delegate_like_target(constructor.group("target")))
+def _normalize_delegate_value(value: str, delegate_type_names: set[str]) -> str:
+    """Normalize a delegate argument to its innermost expression."""
+    normalized = re.sub(r"^\s*[A-Za-z_]\w*\s*:\s*", "", _normalize_delegate_expression(value)).strip()
+    normalized = _strip_outer_parentheses(normalized).rstrip("!").strip()
+    cast = re.fullmatch(rf"\(\s*(?P<type>{_DELEGATE_TYPE_PATTERN})\s*\)\s*(?P<target>.+)", normalized)
+    if cast and _is_delegate_type_name(cast.group("type"), delegate_type_names):
+        return _normalize_delegate_value(cast.group("target"), delegate_type_names)
+    constructor = re.fullmatch(rf"new\s+(?P<type>{_DELEGATE_TYPE_PATTERN})\s*\(\s*(?P<target>.+?)\s*\)", normalized)
+    if constructor and _is_delegate_type_name(constructor.group("type"), delegate_type_names):
+        return _normalize_delegate_value(constructor.group("target"), delegate_type_names)
+    return normalized
 _ACTIVE_READER_PATTERN: list[re.Pattern[str]] = [READER_CALL_PATTERN]
 _PATH_READER_PATTERNS: dict[str, re.Pattern[str]] = {}
 VARIABLE_READER_PATTERN = re.compile(
@@ -630,7 +641,6 @@ def _brace_paths(lines: list[str]) -> list[tuple[int, ...]]:
             index += 1
     _BRACE_CACHE[cache_key] = scopes
     return scopes
-
 def _normalize_csharp_expression(text: str) -> str:
     """Normalize code spacing and comments while retaining every literal character."""
     if '"""' in text or re.search(r'\$@?"|@\$', text):
@@ -642,7 +652,6 @@ def _normalize_csharp_expression(text: str) -> str:
     return re.sub(
         pattern, lambda match: match.group("literal") or " ", text, flags=re.DOTALL
     ).strip()
-
 def _strip_csharp_comments_and_strings(text: str) -> str:
     """Remove C# comments and string literals before symbol matching."""
     cached = _MASK_CACHE.get(text)
@@ -714,7 +723,6 @@ def _strip_csharp_comments_and_strings(text: str) -> str:
     result = "".join(output)
     _MASK_CACHE[text] = result
     return result
-
 def _top_level_type_declarations(text: str) -> list[tuple[str, str]]:
     """Return namespace and name pairs for top-level types outside literal-false preprocessor branches."""
     kept: list[str] = []
@@ -764,7 +772,6 @@ def _top_level_type_declarations(text: str) -> list[tuple[str, str]]:
             if namespaces and depth == namespaces[-1][1]:
                 namespaces.pop()
     return declarations
-
 def _registry_validation_entry(root: Path, source_file: str) -> tuple[str, str] | None:
     """Resolve a validation file to its registry flag through its stem or exactly one declared-type entry."""
     registry = root / "Packages" / "dev.unity2foxglove.sdk" / "Tests" / "Runtime" / "PhaseValidationRegistry.cs"
@@ -777,7 +784,6 @@ def _registry_validation_entry(root: Path, source_file: str) -> tuple[str, str] 
         (match, text[match.start() : matches[index + 1].start() if index + 1 < len(matches) else len(text)])
         for index, match in enumerate(matches)
     ]
-
     def registered(type_name: str) -> list[tuple[str, str]]:
         """Return every registry entry that dispatches to one of a type's Validate methods."""
         entries: list[tuple[str, str]] = []
@@ -787,7 +793,6 @@ def _registry_validation_entry(root: Path, source_file: str) -> tuple[str, str] 
                 default = "false" if re.search(r"\bincludeInDefault\s*:\s*false\b", block) else "true"
                 entries.append((match.group("flag"), f"{match.group('kind')}|{default}|{entrypoint.group('entry')}"))
         return entries
-
     stem_entries = registered(Path(source_file).stem)
     source_path = root / source_file
     if stem_entries or "/Tests/Runtime/" not in f"/{source_file}" or not source_path.is_file():
@@ -804,7 +809,6 @@ def _registry_validation_entry(root: Path, source_file: str) -> tuple[str, str] 
         for entry in registered(type_name)
     }
     return declared.pop() if len(declared) == 1 else None
-
 def _csharp_comment_text(text: str) -> str:
     """Return C# line and block comment text while ignoring strings and chars."""
     cached = _COMMENT_CACHE.get(text)
@@ -872,7 +876,6 @@ def _csharp_comment_text(text: str) -> str:
     result = "".join(output)
     _COMMENT_CACHE[text] = result
     return result
-
 def _target_comment_only(
     target: str, token: str, root: Path, cache: dict[str, tuple[str, str]]
 ) -> bool:
@@ -902,7 +905,6 @@ def _target_comment_only(
         ):
             return True
     return False
-
 def _xunit_coverage(target: str, root: Path, xunit_index: dict[str, list[str]]) -> str:
     """Return indexed unit-test files whose text references the target type name."""
     targets = [value for value in target.split(";") if value]
