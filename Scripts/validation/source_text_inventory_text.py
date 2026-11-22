@@ -74,8 +74,8 @@ def _is_delegate_type_name(value: str, delegate_type_names: set[str]) -> bool:
     """Return whether a declared type resolves to a known delegate name."""
     normalized = _normalize_delegate_expression(value).rstrip("?").split("<", 1)[0]
     return normalized.rsplit(".", 1)[-1].removeprefix("global::") in delegate_type_names
-def _has_delegate_target_hint(value: str) -> bool: return any(_normalize_delegate_expression(value).rsplit(".", 1)[-1].split("<", 1)[0].endswith(hint) for hint in _DELEGATE_TARGET_NAME_HINTS)
-def _has_direct_delegate_target_hint(value: str) -> bool: return any(_normalize_delegate_expression(value).rsplit(".", 1)[-1].split("<", 1)[0].endswith(hint) for hint in _DIRECT_DELEGATE_TARGET_NAME_HINTS)
+def _has_delegate_target_hint(value: str) -> bool: """Return whether a target name carries a delegate-like suffix."""; return any(_normalize_delegate_expression(value).rsplit(".", 1)[-1].split("<", 1)[0].endswith(hint) for hint in _DELEGATE_TARGET_NAME_HINTS)
+def _has_direct_delegate_target_hint(value: str) -> bool: """Return whether a target name carries a directly supported suffix."""; return any(_normalize_delegate_expression(value).rsplit(".", 1)[-1].split("<", 1)[0].endswith(hint) for hint in _DIRECT_DELEGATE_TARGET_NAME_HINTS)
 def _is_delegate_assignment(
     target: str,
     declared_type: str,
