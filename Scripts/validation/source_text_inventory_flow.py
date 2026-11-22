@@ -639,12 +639,12 @@ def _delegate_parameter_boundaries(text: str, masked: str, methods: list[MethodI
     for method in methods:
         indexes = {i for i, parameter in enumerate(method.parameter_types) if _is_delegate_type_name(parameter, delegate_type_names)}
         if indexes: wrappers.setdefault(method.name, []).append((indexes, method.parameter_types, _method_parameter_names(method)))
-    assignment_records = [(match, _delegate_scope_key(_method_for_offset(methods, match.start()))) for match in _DELEGATE_ASSIGNMENT_PATTERN.finditer(masked)]; possible: dict[str, set[str]] = {}; scalar_names = {method.identity: {name for name, value in _local_types(text, method).items() if value and not _is_delegate_type_name(value, delegate_type_names)} for method in methods}
+    assignment_records = [(match, _delegate_scope_key(_method_for_offset(methods, match.start()))) for match in _DELEGATE_ASSIGNMENT_PATTERN.finditer(masked)]; possible: dict[str, set[str]] = {}; unknown_names: dict[str, set[str]] = {}; scalar_names = {method.identity: {name for name, value in _local_types(text, method).items() if value and not _is_delegate_type_name(value, delegate_type_names)} for method in methods}
     if not assignment_records and not wrappers: return set(), {}, set(), set()
     for _ in range(2):
         for match, key in assignment_records:
             state = _possible_delegate_target(match.group("target"), delegate_type_names, method_names, possible.get(key, set()))
-            if state == DELEGATE_STATE_DIRECT: possible.setdefault(key, set()).add(match.group("name"))
+            possible.setdefault(key, set()).add(match.group("name")) if state == DELEGATE_STATE_DIRECT else unknown_names.setdefault(key, set()).add(match.group("name")) if match.group("name") not in scalar_names.get(key, set()) else None
     def argument_map(values: list[str], names: tuple[str, ...]) -> dict[int, str]:
         """Map positional and named call arguments to parameter indexes."""; mapped, next_index = {}, 0
         for value in values:
@@ -654,7 +654,7 @@ def _delegate_parameter_boundaries(text: str, masked: str, methods: list[MethodI
             mapped[next_index], next_index = value.strip(), next_index + 1
         return mapped
     def possible_binding(value: str, key: str, allow_unknown_source: bool = True) -> bool:
-        """Return whether an argument may carry a delegate binding."""; candidate = _normalize_delegate_value(value, delegate_type_names); state = _possible_delegate_target(value, delegate_type_names, method_names, possible.get(key, set())); known_scalar = candidate in scalar_names.get(key, set()); unknown_bare = bool(re.fullmatch(r"[A-Za-z_]\w*", candidate)) and candidate not in possible.get(key, set()) and not known_scalar; return candidate in possible.get(key, set()) or candidate in possible.get("", set()) or "=>" in value or "delegate" in value or candidate in method_names or state == DELEGATE_STATE_DIRECT or unknown_bare or state == DELEGATE_STATE_UNKNOWN_SOURCE
+        """Return whether an argument may carry a delegate binding."""; candidate = _normalize_delegate_value(value, delegate_type_names); state = _possible_delegate_target(value, delegate_type_names, method_names, possible.get(key, set())); return candidate in possible.get(key, set()) or candidate in possible.get("", set()) or candidate in unknown_names.get(key, set()) or "=>" in value or "delegate" in value or candidate in method_names or state == DELEGATE_STATE_DIRECT or (state == DELEGATE_STATE_UNKNOWN_SOURCE and "." in candidate)
     boundaries: dict[str, set[str]] = {}; call_offsets: set[int] = set(); unsupported_offsets: set[int] = set()
     for method in methods:
         key = method.identity
@@ -669,7 +669,7 @@ def _delegate_parameter_boundaries(text: str, masked: str, methods: list[MethodI
             if qualified_unknown: selected.extend(value for value in values if possible_binding(value, key, False))
             if not matched and not qualified_unknown: continue
             if matched or selected: call_offsets.add(open_index)
-            if any(_possible_delegate_target(value, delegate_type_names, method_names, possible.get(key, set())) == DELEGATE_STATE_UNKNOWN_SOURCE or (re.fullmatch(r"[A-Za-z_]\w*", _normalize_delegate_value(value, delegate_type_names)) is not None and _normalize_delegate_value(value, delegate_type_names) not in possible.get(key, set()) and _normalize_delegate_value(value, delegate_type_names) not in scalar_names.get(key, set())) for value in selected): unsupported_offsets.add(open_index)
+            if any(_normalize_delegate_value(value, delegate_type_names) in unknown_names.get(key, set()) or _possible_delegate_target(value, delegate_type_names, method_names, possible.get(key, set())) == DELEGATE_STATE_UNKNOWN_SOURCE for value in selected): unsupported_offsets.add(open_index)
             for value in selected:
                 candidate = _normalize_delegate_value(value, delegate_type_names)
                 for candidate_name in set(re.findall(r"\b[A-Za-z_]\w*\b", candidate)) & possible.get(key, set()): boundaries.setdefault(key, set()).add(candidate_name)
