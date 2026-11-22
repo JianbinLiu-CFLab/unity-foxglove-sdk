@@ -700,8 +700,8 @@ class SourceTextRatchetTests(unittest.TestCase):
             code, output = self._run_fixture_gate(root)
             self.assertEqual(1, code, output)
 
-    def test_unknown_binding_passed_to_delegate_wrapper_fails_closed_on_change(self):
-        """Reject an unknown binding rebinding before a known delegate-parameter wrapper."""
+    def test_unknown_delegate_source_passed_to_wrapper_fails_closed_on_change(self):
+        """Reject an untyped qualified delegate source before a known wrapper."""
         with tempfile.TemporaryDirectory() as directory:
             root = self._git_fixture(
                 directory,
@@ -715,7 +715,7 @@ class SourceTextRatchetTests(unittest.TestCase):
                     "    }\n"
                     "    private static void Noop() { }\n"
                     "    public static void Validate() {\n"
-                    "        var run = External.Factory;\n"
+                    "        var run = External.Get;\n"
                     "        Run(action: run, mode: 1);\n"
                     "    }\n}\n"
                 ),
@@ -724,8 +724,8 @@ class SourceTextRatchetTests(unittest.TestCase):
             external.write_text(
                 "using System;\n"
                 "public static class External {\n"
-                "    public static Action Factory => FixtureValidation.Used;\n"
-                "    public static Action NoopFactory => FixtureValidation.Noop;\n"
+                "    public static Action Get => FixtureValidation.Used;\n"
+                "    public static Action Zero => FixtureValidation.Noop;\n"
                 "}\n",
                 encoding="utf-8",
             )
@@ -734,7 +734,7 @@ class SourceTextRatchetTests(unittest.TestCase):
             validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
             validation.write_text(
                 validation.read_text(encoding="utf-8").replace(
-                    "var run = External.Factory", "var run = External.NoopFactory"
+                    "var run = External.Get", "var run = External.Zero"
                 ),
                 encoding="utf-8",
             )

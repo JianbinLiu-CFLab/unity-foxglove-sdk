@@ -19,7 +19,7 @@ try:
         _is_delegate_like_target,
         _is_delegate_conversion,
         _has_delegate_target_hint,
-        DELEGATE_STATE_NON_DELEGATE,
+        DELEGATE_STATE_DIRECT, DELEGATE_STATE_NON_DELEGATE, DELEGATE_STATE_UNKNOWN_SOURCE,
         DELEGATE_STATE_UNSUPPORTED,
         _delegate_invocation_text,
         _is_delegate_assignment,
@@ -40,7 +40,7 @@ except ImportError:
         _is_delegate_like_target,
         _is_delegate_conversion,
         _has_delegate_target_hint,
-        DELEGATE_STATE_NON_DELEGATE,
+        DELEGATE_STATE_DIRECT, DELEGATE_STATE_NON_DELEGATE, DELEGATE_STATE_UNKNOWN_SOURCE,
         DELEGATE_STATE_UNSUPPORTED,
         _delegate_invocation_text,
         _is_delegate_assignment,
@@ -629,9 +629,9 @@ def _method_parameter_names(method: MethodInfo) -> tuple[str, ...]:
     if start < 0 or end <= start: return ()
     return tuple((match.group(1) if (match := re.search(r"\b([A-Za-z_]\w*)$", re.sub(r"\b(?:this|ref|out|in|params)\b", "", value.split("=", 1)[0]).strip())) else "") for value in _split_arguments(method.signature[start + 1 : end]))
 def _delegate_scope_key(method: MethodInfo | None) -> str: """Return the stable identity used to scope delegate bindings."""; return method.identity if method else ""
-def _possible_delegate_target(target: str, delegate_type_names: set[str], method_names: set[str] | None = None) -> bool:
-    """Return whether an assignment target may carry delegate semantics."""; normalized = target.strip().rstrip("!").strip(); terminal = normalized.rsplit(".", 1)[-1].split("<", 1)[0]
-    return "=>" in target or re.search(r"\bdelegate\s*\(", target) is not None or _is_delegate_conversion(normalized, delegate_type_names) or (_is_delegate_like_target(normalized) and (_has_delegate_target_hint(normalized) or terminal in (method_names or set())))
+def _possible_delegate_target(target: str, delegate_type_names: set[str], method_names: set[str] | None = None) -> str:
+    """Classify a target as known, unknown qualified source, or ordinary value."""; normalized = target.strip().rstrip("!").strip(); terminal = normalized.rsplit(".", 1)[-1].split("<", 1)[0]
+    known = "=>" in target or re.search(r"\bdelegate\s*\(", target) is not None or _is_delegate_conversion(normalized, delegate_type_names) or (_is_delegate_like_target(normalized) and (_has_delegate_target_hint(normalized) or terminal in (method_names or set()))); return DELEGATE_STATE_DIRECT if known else DELEGATE_STATE_UNKNOWN_SOURCE if "." in normalized and _is_delegate_like_target(normalized) else DELEGATE_STATE_NON_DELEGATE
 def _delegate_parameter_boundaries(text: str, masked: str, methods: list[MethodInfo], delegate_type_names: set[str]) -> tuple[set[str], dict[str, set[str]], set[int]]:
     """Discover delegate wrapper parameters and their binding call sites."""; method_names = {method.name for method in methods}; wrappers: dict[str, list[tuple[set[int], tuple[str, ...], tuple[str, ...]]]] = {}
     for method in methods:
@@ -640,7 +640,7 @@ def _delegate_parameter_boundaries(text: str, masked: str, methods: list[MethodI
     assignment_records = [(match, _delegate_scope_key(_method_for_offset(methods, match.start()))) for match in _DELEGATE_ASSIGNMENT_PATTERN.finditer(masked)]; possible: dict[str, set[str]] = {}
     if not assignment_records and not wrappers: return set(), {}, set()
     for match, key in assignment_records:
-        if _possible_delegate_target(match.group("target"), delegate_type_names, method_names): possible.setdefault(key, set()).add(match.group("name"))
+        if _possible_delegate_target(match.group("target"), delegate_type_names, method_names) == DELEGATE_STATE_DIRECT or (_possible_delegate_target(match.group("target"), delegate_type_names, method_names) == DELEGATE_STATE_UNKNOWN_SOURCE and wrappers): possible.setdefault(key, set()).add(match.group("name"))
     for _ in range(2):
         for match, key in assignment_records:
             source = match.group("target").strip().rstrip("!").strip()
@@ -653,21 +653,21 @@ def _delegate_parameter_boundaries(text: str, masked: str, methods: list[MethodI
             while next_index in mapped: next_index += 1
             mapped[next_index], next_index = value.strip(), next_index + 1
         return mapped
-    def possible_binding(value: str, key: str) -> bool:
-        """Return whether an argument may carry a delegate binding."""; candidate = _normalize_delegate_value(value, delegate_type_names)
-        return candidate in possible.get(key, set()) or candidate in possible.get("", set()) or "=>" in value or "delegate" in value or candidate in method_names or _possible_delegate_target(value, delegate_type_names, method_names)
+    def possible_binding(value: str, key: str, allow_unknown_source: bool = True) -> bool:
+        """Return whether an argument may carry a delegate binding."""; candidate = _normalize_delegate_value(value, delegate_type_names); state = _possible_delegate_target(value, delegate_type_names, method_names)
+        return candidate in possible.get(key, set()) or candidate in possible.get("", set()) or "=>" in value or "delegate" in value or candidate in method_names or state == DELEGATE_STATE_DIRECT or (allow_unknown_source and state == DELEGATE_STATE_UNKNOWN_SOURCE)
     boundaries: dict[str, set[str]] = {}; call_offsets: set[int] = set()
     for method in methods:
         key = method.identity
         for call_name, open_index in _call_sites(text, masked, method):
             terminal = call_name.rsplit(".", 1)[-1].rsplit("::", 1)[-1]; overloads = wrappers.get(terminal, []); arguments = _call_arguments(text, masked, open_index); values, selected, matched = _split_arguments(arguments or ""), [], False
             if arguments is None: continue
-            qualified_unknown = not overloads and "." in call_name and any(possible_binding(value, key) for value in values)
+            qualified_unknown = not overloads and "." in call_name and any(possible_binding(value, key, False) for value in values)
             for indexes, parameter_types, parameter_names in overloads:
                 mapped = argument_map(values, parameter_names)
                 if len(mapped) != len(parameter_types) or any(i not in mapped or not possible_binding(mapped[i], key) for i in indexes) or any(i in mapped and possible_binding(mapped[i], key) for i in range(len(parameter_types)) if i not in indexes): continue
                 matched = True; selected.extend(mapped[i] for i in indexes if i in mapped)
-            if qualified_unknown: selected.extend(value for value in values if possible_binding(value, key))
+            if qualified_unknown: selected.extend(value for value in values if possible_binding(value, key, False))
             if not matched and not qualified_unknown: continue
             if matched or selected: call_offsets.add(open_index)
             for value in selected:
