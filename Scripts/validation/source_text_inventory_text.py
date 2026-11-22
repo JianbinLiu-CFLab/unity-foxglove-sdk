@@ -17,7 +17,7 @@ READER_CALL_PATTERN = re.compile(rf"\b(?P<reader>{SEED_READER_ALTERNATIVES})\s*\
 SEED_READER_NAME = re.compile(rf"(?:{SEED_READER_ALTERNATIVES})")
 _DELEGATE_TYPE_PATTERN = r"(?:global::)?[A-Za-z_]\w*(?:\s*\.\s*[A-Za-z_]\w*)*(?:\s*<[^;=]+>)?\??"
 _DELEGATE_METHOD_TARGET_PATTERN = r"(?:global::)?[A-Za-z_]\w*(?:\s*<[^;{}()]+>)?(?:\s*\.\s*(?:global::)?[A-Za-z_]\w*(?:\s*<[^;{}()]+>)?)*"
-_KNOWN_DELEGATE_WRAPPER_NAMES = frozenset(("Run", "Ci", "DefaultOnly", "Local", "Manual", "PhaseValidationCase.Run")); _DELEGATE_TARGET_NAME_HINTS = frozenset(("Action", "Callback", "Delegate", "Factory", "Handler")); _DIRECT_DELEGATE_TARGET_NAME_HINTS = frozenset(("Action",))
+_KNOWN_DELEGATE_WRAPPER_NAMES = frozenset(("Run", "Ci", "DefaultOnly", "Local", "Manual", "PhaseValidationCase.Run")); _KNOWN_SCALAR_CALL_RECEIVERS = frozenset(("Assert", "Task", "SpinWait", "File", "Directory", "Path", "Array", "Math", "Console", "String", "Enumerable", "Regex", "Encoding", "StringBuilder", "Environment", "JObject", "CSharpCompilation", "CSharpSyntaxTree", "GeneratorDriver")); _DELEGATE_TARGET_NAME_HINTS = frozenset(("Action", "Callback", "Delegate", "Factory", "Handler")); _DIRECT_DELEGATE_TARGET_NAME_HINTS = frozenset(("Action",))
 _DELEGATE_DECLARATION_MODIFIERS = r"(?:(?:public|private|protected|internal|static|readonly|const|volatile|new|unsafe|async|extern|abstract|sealed|partial|virtual|override|ref|out|in)\s+)*"
 _DELEGATE_ASSIGNMENT_PATTERN = re.compile(
     rf"\b{_DELEGATE_DECLARATION_MODIFIERS}(?:(?P<type>(?:{_DELEGATE_TYPE_PATTERN}|var))\s+)?"

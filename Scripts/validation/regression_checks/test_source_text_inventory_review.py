@@ -21,7 +21,7 @@ class SourceTextInventoryReviewTests(_FixtureSupport, unittest.TestCase):
         cases = (
             ("modified field", f"using System; public static class FixtureValidation {{ {used} private static void Noop() {{ }} private static readonly Action run = Used; public static void Validate() {{ run(); }} }}", "private static readonly Action run = Used;", "private static readonly Action run = Noop;", 1, None),
             ("same-name local", f"using System; public static class FixtureValidation {{ {used} private static void Consume(Action run) {{ }} public static void Validate() {{ var run = 1; }} }}", "var run = 1;", "var run = 2;", 0, None),
-            ("qualified scalar", f"public static class FixtureValidation {{ {used} public static void Validate() {{ var mode = External.Mode; External.Run(mode); }} }}", "Mode => 1", "Mode => 2", 0, "public static class External { public static int Mode => 1; public static void Run(int mode) { } }"),
+            ("qualified scalar", f"public static class FixtureValidation {{ {used} public static void Validate() {{ var mode = External.Mode; External.Run(mode); }} }}", "Mode => 1", "Mode => 2", 1, "public static class External { public static int Mode => 1; public static void Run(int mode) { } }"),
             ("scalar overload", f"using System; public static class FixtureValidation {{ {used} private static void Run(Action action) {{ action(); }} private static void Run(int mode) {{ }} public static void Validate() {{ var mode = 1; Run(mode); }} }}", "var mode = 1;", "var mode = 2;", 0, None),
         )
         for name, validation_text, old, new, expected, external_text in cases:
@@ -60,6 +60,29 @@ class SourceTextInventoryReviewTests(_FixtureSupport, unittest.TestCase):
                 )
                 subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
                 subprocess.run(["git", "-C", str(root), "commit", "-qm", "composite-delegate"], check=True)
+                validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+                validation.write_text(validation.read_text(encoding="utf-8").replace(original, replacement), encoding="utf-8")
+                code, output = self._run_fixture_gate(root)
+                self.assertEqual(1, code, output)
+                self.assertIn("SOURCE_TEXT_RATCHET_UNSUPPORTED_DELEGATE_FLOW", output)
+
+    def test_unknown_qualified_boundaries_fail_closed_without_type_heuristics(self):
+        """Reject unresolved scalar and instance boundaries under the finite contract."""
+        cases = (
+            ("scalar unknown", "private static void Run(Action action) { action(); } var mode = External.Mode; External.Execute(mode);", "External.Mode", "External.Other", "public static int Mode => 1; public static int Other => 2; public static void Execute(int mode) { }"),
+            ("instance unknown", "var run = External.Factory; var external = new External(); external.Execute(run);", "External.Factory", "External.NoopFactory", "public static Action Factory => FixtureValidation.Used; public static Action NoopFactory => FixtureValidation.Noop; public void Execute(Action action) { action(); }"),
+        )
+        for label, body, original, replacement, members in cases:
+            with self.subTest(label=label), tempfile.TemporaryDirectory() as directory:
+                root = self._git_fixture(directory, validation_text=(
+                    "using System; public static class FixtureValidation { "
+                    "private static void Used() { var source = ReadRequiredRepoText(\"Packages/fixture/Runtime/Product.cs\"); Check(source.Contains(\"Product\")); } "
+                    f"private static void Noop() {{ }} public static void Validate() {{ {body} }} }}"
+                ))
+                external = root / "Packages/fixture/Tests/Runtime/External.cs"
+                external.write_text("using System; public class External { " + members + " }", encoding="utf-8")
+                subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+                subprocess.run(["git", "-C", str(root), "commit", "-qm", "unknown-boundary"], check=True)
                 validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
                 validation.write_text(validation.read_text(encoding="utf-8").replace(original, replacement), encoding="utf-8")
                 code, output = self._run_fixture_gate(root)
