@@ -261,6 +261,12 @@ class SourceLayoutTests(unittest.TestCase):
                 self.assertNotIn("Scripts.smoke.foxrun", sys.modules)
                 self.assertNotIn("Scripts.smoke.foxrun.child", sys.modules)
                 self.assertNotIn("foxrun", smoke_module.__dict__)
+                from Scripts.smoke import foxrun as imported_package
+
+                imported_child = importlib.import_module("Scripts.smoke.foxrun.child")
+                self.assertIs(imported_package, smoke_module.foxrun)
+                self.assertIs(imported_package, sys.modules["Scripts.smoke.foxrun"])
+                self.assertEqual(2, imported_child.VALUE)
             finally:
                 sys.path[:] = original_path
                 for name in tuple(sys.modules):
