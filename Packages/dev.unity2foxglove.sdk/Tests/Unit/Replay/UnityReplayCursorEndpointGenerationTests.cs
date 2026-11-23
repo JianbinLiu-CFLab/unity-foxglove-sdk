@@ -339,16 +339,19 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
         }
 
         [Fact]
-        public void StopRetiresIdleWorkerWithoutWarning()
+        public async Task StopRetiresIdleWorkerWithoutWarning()
         {
             var logger = new RecordingLogger();
             using var endpoint = new UnityReplayCursorEndpoint(logger);
-            StartEndpointWithRetry(
+            var port = StartEndpointWithRetry(
                 endpoint,
                 "/stop-idle",
                 "stop-idle-token",
                 _ => new UnityReplayCursorEndpointQueueResult(true, "Cursor accepted."));
 
+            Assert.Equal(
+                HttpStatusCode.Accepted,
+                await PostCursorAsync(port, "/stop-idle", "stop-idle-token"));
             endpoint.Stop();
 
             Assert.Empty(logger.Warnings);
