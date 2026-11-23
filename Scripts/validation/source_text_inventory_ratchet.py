@@ -30,7 +30,6 @@ try:
         _file_has_source_assertion,
         _helper_signatures_at_head,
         _helper_signatures_at_revision,
-        _apply_harness_replacements,
         _apply_ratchet_replacements,
         _load_ratchet_approvals,
         _ratchet_change_tokens,
@@ -57,7 +56,6 @@ except ImportError:
         _file_has_source_assertion,
         _helper_signatures_at_head,
         _helper_signatures_at_revision,
-        _apply_harness_replacements,
         _apply_ratchet_replacements,
         _load_ratchet_approvals,
         _ratchet_change_tokens,
@@ -75,7 +73,6 @@ except ImportError:
         _reader_helper_failures,
         _reader_replacement_context,
     )
-
 
 NEW_FIELDS = {
     "assertion_signature",
@@ -188,7 +185,6 @@ def _assertion_literal(token: str) -> str:
     first = _split_first_argument(token[open_index + 1 : close_index]).strip()
     literal = re.fullmatch(r'"((?:\\.|[^"\\])*)"', first)
     return literal.group(1) if literal else re.sub(r"\s+", " ", first)
-
 
 def _assertion_polarity(token: str, harness: str | None = None) -> str:
     """Return the outer assertion operator for a source expression."""
@@ -836,31 +832,18 @@ def _verify_count_ratchet(
     failures.extend(
         _reader_helper_failures(root, revision, base_helpers, head_helpers, reader_names)
     )
-    failures.extend(
-        _harness_change_failures(
-            base_rows,
-            rows,
-            base_helpers,
-            head_helpers,
-            approved_reader_helpers,
-            reader_changes_isolated,
-        )
+    harness_failures, harness_errors = _harness_change_failures(
+        root,
+        revision,
+        base_rows,
+        rows,
+        base_helpers,
+        head_helpers,
+        approved_reader_helpers,
+        reader_changes_isolated,
     )
-    changed_helpers = {
-        (path, helper)
-        for path, helper in set(base_helpers) | set(head_helpers)
-        if base_helpers.get((path, helper)) != head_helpers.get((path, helper))
-    }
-    approval_errors.extend(
-        _apply_harness_replacements(
-            root,
-            revision,
-            failures,
-            base_rows,
-            rows,
-            changed_helpers,
-        )
-    )
+    failures.extend(harness_failures)
+    approval_errors.extend(harness_errors)
     helper_changed = [
         f"SOURCE_TEXT_RATCHET_HELPER_CHANGED file={key[0]} helper={key[1]}"
         for key in sorted(set(base_helpers) | set(head_helpers))

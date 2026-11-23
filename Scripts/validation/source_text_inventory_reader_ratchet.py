@@ -13,6 +13,7 @@ try:
     from . import source_text_inventory_readers as _readers_module
     from .source_text_inventory_ratchet_helpers import (
         _discovered_readers,
+        _apply_harness_replacements,
         _load_ratchet_replacements,
         _ratchet_key,
         _ratchet_path,
@@ -22,6 +23,7 @@ except ImportError:
     import source_text_inventory_readers as _readers_module
     from source_text_inventory_ratchet_helpers import (
         _discovered_readers,
+        _apply_harness_replacements,
         _load_ratchet_replacements,
         _ratchet_key,
         _ratchet_path,
@@ -180,13 +182,15 @@ def _approved_reader_change_isolated(
     return True
 
 def _harness_change_failures(
+    root: Path,
+    revision: str,
     base_rows: list[dict[str, object]],
     head_rows: list[dict[str, object]],
     base_helpers: dict[tuple[str, str], str],
     head_helpers: dict[tuple[str, str], str],
     approved_reader_helpers: set[tuple[str, str]],
     reader_changes_isolated: bool,
-) -> list[str]:
+) -> tuple[list[str], list[str]]:
     """Fail closed when a source assertion's harness signature changes unexpectedly."""
     base_harness: dict[tuple[str, str, str], Counter[str]] = {}
     head_harness: dict[tuple[str, str, str], Counter[str]] = {}
@@ -215,5 +219,13 @@ def _harness_change_failures(
                 f"SOURCE_TEXT_RATCHET_HARNESS_CHANGED file={key[0]} "
                 f"flag={key[1]} class={key[2]}"
             )
-    return failures
+    approval_errors = _apply_harness_replacements(
+        root,
+        revision,
+        failures,
+        base_rows,
+        head_rows,
+        changed_helpers,
+    )
+    return failures, approval_errors
 
