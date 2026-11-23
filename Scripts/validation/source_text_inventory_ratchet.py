@@ -16,9 +16,11 @@ from typing import Callable
 
 try:
     from . import source_text_inventory_flow as _flow_module
+    from .source_text_inventory_delegate_ratchet import _delegate_manifest_failures
     from .source_text_inventory_text import _balanced_call_end, _normalize_csharp_expression, _split_first_argument
 except ImportError:
     import source_text_inventory_flow as _flow_module
+    from source_text_inventory_delegate_ratchet import _delegate_manifest_failures
     from source_text_inventory_text import _balanced_call_end, _normalize_csharp_expression, _split_first_argument
 
 try:
@@ -831,9 +833,7 @@ def _verify_count_ratchet(
         head_helpers,
         changed_source_paths,
     )
-    failures.extend(
-        _reader_helper_failures(root, revision, base_helpers, head_helpers, reader_names)
-    )
+    failures.extend(_reader_helper_failures(root, revision, base_helpers, head_helpers, reader_names))
     failures.extend(
         _harness_change_failures(
             base_rows,
@@ -849,7 +849,7 @@ def _verify_count_ratchet(
         for key in sorted(set(base_helpers) | set(head_helpers))
         if base_helpers.get(key) != head_helpers.get(key)
     ]
-    failures.extend(f"SOURCE_TEXT_RATCHET_UNSUPPORTED_DELEGATE_FLOW file={path} detail={helper.removeprefix('unsupported-delegate-flow:')}" for (path, helper), _digest in sorted(head_helpers.items()) if helper.startswith("unsupported-delegate-flow:"))
+    failures.extend(_delegate_manifest_failures(root, revision, base_rows, rows))
     print(
         "SOURCE_TEXT_INVENTORY_BASE_OK "
         f"base_rows={len(base_rows)} head_rows={len(rows)} "

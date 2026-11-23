@@ -30,6 +30,7 @@ class SourceTextInventoryGateTests(unittest.TestCase):
             shutil.copy2(source, destination)
         approvals = root / "Scripts/validation/source_text_ratchet_approvals.json"
         approvals.write_text('{"approvals": []}\n', encoding="utf-8")
+        (root / "Scripts/validation/source_text_delegate_targets.tsv").write_bytes(b"")
         runtime = root / "Packages/fixture/Tests/Runtime"
         runtime.mkdir(parents=True)
         product = root / "Packages/fixture/Runtime/Product.cs"
