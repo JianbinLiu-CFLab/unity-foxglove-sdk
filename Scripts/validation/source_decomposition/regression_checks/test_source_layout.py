@@ -147,6 +147,123 @@ class SourceLayoutTests(unittest.TestCase):
                     sys.modules["phase_namespace_fixture"] = previous_fixture
                 sys.modules.update(saved_modules)
 
+    def test_load_fresh_module_clears_removed_parent_package_attributes(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            facade = root / "Scripts" / "facade.py"
+            child_path = root / "Scripts" / "ns" / "child.py"
+            facade.parent.mkdir(parents=True)
+            child_path.parent.mkdir(parents=True)
+            facade.write_text("VALUE = 1\n", encoding="utf-8")
+            child_path.write_text("VALUE = 2\n", encoding="utf-8")
+            original_path = list(sys.path)
+            saved_modules = {
+                name: module
+                for name, module in sys.modules.items()
+                if name == "Scripts" or name.startswith("Scripts.")
+            }
+            missing = object()
+            previous_fixture = sys.modules.get("phase_namespace_parent_fixture", missing)
+            for name in tuple(saved_modules):
+                sys.modules.pop(name, None)
+            sys.path.insert(0, str(root))
+            try:
+                importlib.import_module("Scripts.ns.child")
+                scripts_module = sys.modules["Scripts"]
+                source_layout.load_fresh_module("phase_namespace_parent_fixture", facade)
+                self.assertNotIn("Scripts.ns", sys.modules)
+                self.assertNotIn("ns", scripts_module.__dict__)
+            finally:
+                sys.path[:] = original_path
+                for name in tuple(sys.modules):
+                    if name == "Scripts" or name.startswith("Scripts."):
+                        sys.modules.pop(name, None)
+                sys.modules.pop("phase_namespace_parent_fixture", None)
+                if previous_fixture is not missing:
+                    sys.modules["phase_namespace_parent_fixture"] = previous_fixture
+                sys.modules.update(saved_modules)
+
+    def test_load_fresh_module_restores_parent_package_attributes_on_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            facade = root / "Scripts" / "facade.py"
+            child_path = root / "Scripts" / "ns" / "child.py"
+            facade.parent.mkdir(parents=True)
+            child_path.parent.mkdir(parents=True)
+            facade.write_text(
+                "import Scripts.ns.child\nraise RuntimeError('boom')\n",
+                encoding="utf-8",
+            )
+            child_path.write_text("VALUE = 2\n", encoding="utf-8")
+            original_path = list(sys.path)
+            saved_modules = {
+                name: module
+                for name, module in sys.modules.items()
+                if name == "Scripts" or name.startswith("Scripts.")
+            }
+            missing = object()
+            previous_fixture = sys.modules.get("phase_namespace_parent_failure", missing)
+            for name in tuple(saved_modules):
+                sys.modules.pop(name, None)
+            sys.path.insert(0, str(root))
+            try:
+                importlib.import_module("Scripts.ns.child")
+                scripts_module = sys.modules["Scripts"]
+                old_namespace = sys.modules["Scripts.ns"]
+                old_child = sys.modules["Scripts.ns.child"]
+                with self.assertRaisesRegex(RuntimeError, "boom"):
+                    source_layout.load_fresh_module("phase_namespace_parent_failure", facade)
+                self.assertIs(old_namespace, sys.modules["Scripts.ns"])
+                self.assertIs(old_namespace, scripts_module.ns)
+                self.assertIs(old_child, sys.modules["Scripts.ns.child"])
+                self.assertIs(old_child, old_namespace.child)
+            finally:
+                sys.path[:] = original_path
+                for name in tuple(sys.modules):
+                    if name == "Scripts" or name.startswith("Scripts."):
+                        sys.modules.pop(name, None)
+                sys.modules.pop("phase_namespace_parent_failure", None)
+                if previous_fixture is not missing:
+                    sys.modules["phase_namespace_parent_failure"] = previous_fixture
+                sys.modules.update(saved_modules)
+
+    def test_load_fresh_module_removes_orphaned_child_when_parent_is_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            facade = root / "Scripts" / "facade.py"
+            child_path = root / "Scripts" / "ns" / "child.py"
+            facade.parent.mkdir(parents=True)
+            child_path.parent.mkdir(parents=True)
+            facade.write_text("VALUE = 1\n", encoding="utf-8")
+            child_path.write_text("VALUE = 2\n", encoding="utf-8")
+            original_path = list(sys.path)
+            saved_modules = {
+                name: module
+                for name, module in sys.modules.items()
+                if name == "Scripts" or name.startswith("Scripts.")
+            }
+            missing = object()
+            previous_fixture = sys.modules.get("phase_namespace_orphan_fixture", missing)
+            for name in tuple(saved_modules):
+                sys.modules.pop(name, None)
+            sys.path.insert(0, str(root))
+            try:
+                importlib.import_module("Scripts.ns.child")
+                scripts_module = sys.modules["Scripts"]
+                sys.modules.pop("Scripts.ns")
+                source_layout.load_fresh_module("phase_namespace_orphan_fixture", facade)
+                self.assertNotIn("Scripts.ns.child", sys.modules)
+                self.assertNotIn("ns", scripts_module.__dict__)
+            finally:
+                sys.path[:] = original_path
+                for name in tuple(sys.modules):
+                    if name == "Scripts" or name.startswith("Scripts."):
+                        sys.modules.pop(name, None)
+                sys.modules.pop("phase_namespace_orphan_fixture", None)
+                if previous_fixture is not missing:
+                    sys.modules["phase_namespace_orphan_fixture"] = previous_fixture
+                sys.modules.update(saved_modules)
+
     def test_load_fresh_module_restores_path_for_import_setup_failures(self) -> None:
         """Import setup failures must restore the caller's sys.path exactly."""
         import sys

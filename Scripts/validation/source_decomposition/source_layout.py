@@ -145,13 +145,98 @@ def load_fresh_module(module_name: str, facade: Path) -> ModuleType:
     package_dir = facade.with_suffix("")
     saved_modules: dict[str, ModuleType] = {}
     initial_module_names = set(sys.modules)
+    initial_module_ids = {
+        id(module) for module in sys.modules.values() if isinstance(module, ModuleType)
+    }
+    missing_attribute = object()
+    saved_parent_attributes: dict[tuple[int, str], tuple[ModuleType, str, object]] = {}
+
+    def resolve_module(name: str) -> ModuleType | None:
+        module = sys.modules.get(name) or saved_modules.get(name)
+        if isinstance(module, ModuleType):
+            return module
+        parts = name.split(".")
+        current = sys.modules.get(parts[0]) or saved_modules.get(parts[0])
+        if not isinstance(current, ModuleType):
+            return None
+        for part in parts[1:]:
+            current = current.__dict__.get(part)
+            if not isinstance(current, ModuleType):
+                return None
+        return current
+
+    def remember_parent_attribute(parent_name: str, parent: ModuleType, attribute: str) -> None:
+        key = (id(parent), attribute)
+        if key in saved_parent_attributes:
+            return
+        original = (
+            parent.__dict__.get(attribute, missing_attribute)
+            if id(parent) in initial_module_ids
+            else missing_attribute
+        )
+        saved_parent_attributes[key] = (parent, attribute, original)
+
+    def detach_module_binding(
+        name: str,
+        module: ModuleType,
+        visited: set[tuple[str, int]],
+    ) -> None:
+        if "." not in name or (name, id(module)) in visited:
+            return
+        visited.add((name, id(module)))
+        parent_name, attribute = name.rsplit(".", 1)
+        parent = resolve_module(parent_name)
+        if parent is None:
+            return
+        if parent.__dict__.get(attribute, missing_attribute) is module:
+            remember_parent_attribute(parent_name, parent, attribute)
+            parent.__dict__.pop(attribute, None)
+        if parent_name not in sys.modules and parent_name not in saved_modules:
+            detach_module_binding(parent_name, parent, visited)
 
     def remove_module_tree(name: str) -> None:
         """Save and remove a cached module together with its descendants."""
-        for candidate in tuple(sys.modules):
-            if candidate == name or candidate.startswith(name + "."):
-                saved_modules.setdefault(candidate, sys.modules[candidate])
-                sys.modules.pop(candidate, None)
+        candidates = tuple(
+            sorted(
+                (
+                    candidate
+                    for candidate in tuple(sys.modules)
+                    if candidate == name or candidate.startswith(name + ".")
+                ),
+                key=lambda candidate: candidate.count("."),
+            )
+        )
+        for candidate in candidates:
+            saved_modules.setdefault(candidate, sys.modules[candidate])
+        for candidate in candidates:
+            detach_module_binding(candidate, saved_modules[candidate], set())
+        for candidate in candidates:
+            sys.modules.pop(candidate, None)
+
+    def discard_module_tree(name: str) -> None:
+        candidates = tuple(
+            sorted(
+                (
+                    candidate
+                    for candidate in tuple(sys.modules)
+                    if candidate == name or candidate.startswith(name + ".")
+                ),
+                key=lambda candidate: candidate.count("."),
+            )
+        )
+        modules = {candidate: sys.modules[candidate] for candidate in candidates}
+        for candidate, module in modules.items():
+            if isinstance(module, ModuleType):
+                detach_module_binding(candidate, module, set())
+        for candidate in candidates:
+            sys.modules.pop(candidate, None)
+
+    def restore_parent_attributes() -> None:
+        for parent, attribute, original in saved_parent_attributes.values():
+            if original is missing_attribute:
+                parent.__dict__.pop(attribute, None)
+            else:
+                parent.__dict__[attribute] = original
 
     target_scripts_prefix: str | None = None
     try:
@@ -319,6 +404,8 @@ def load_fresh_module(module_name: str, facade: Path) -> ModuleType:
         return module
     except BaseException:
         for loaded_name in tuple(sys.modules):
+            if loaded_name not in sys.modules:
+                continue
             remove = loaded_name in saved_modules or any(
                 loaded_name == prefix or loaded_name.startswith(prefix + ".")
                 for prefix in prefixes
@@ -326,8 +413,9 @@ def load_fresh_module(module_name: str, facade: Path) -> ModuleType:
             if not remove and loaded_name not in initial_module_names:
                 remove = should_remove(loaded_name, sys.modules[loaded_name])
             if remove:
-                sys.modules.pop(loaded_name, None)
+                discard_module_tree(loaded_name)
         sys.modules.update(saved_modules)
+        restore_parent_attributes()
         raise
     finally:
         sys.path[:] = original_path
