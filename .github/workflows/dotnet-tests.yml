@@ -364,7 +364,8 @@ jobs:
             && [ "$trusted_revision" != "c217f990e61d43c4f7989a92bebae49798fc7be8" ] \
             && [ "$trusted_revision" != "8bca2eb23ed73d28a1efe5c14a2eb5bba85a21d0" ] \
             && [ "$trusted_revision" != "a71a7d862299aab28cc5e89a4e01db5b0ae1039a" ] \
-            && [ "$trusted_revision" != "5bc3de2627481dfa616280942317246e99b74675" ]; then
+            && [ "$trusted_revision" != "5bc3de2627481dfa616280942317246e99b74675" ] \
+            && [ "$trusted_revision" != "90b44193b091af2c75bdd37fa7533322f49dcfe1" ]; then
             if [ "$actual_migration_checker_sha" != "$trusted_checker_sha" ]; then
               echo "Current checker differs from immutable base checker without a reviewed migration approval" >&2
               exit 1
@@ -591,6 +592,25 @@ jobs:
             "parser_changes_sha256": "9856203272133236088eb3c230f27c0aa3994de9064a3698ae3e2f270acbcfcd",
             "scope": "versioned-parser-maintenance",
             "reason": "Reviewed finite-state delegate-flow ratchet follow-up for PR #805 on 2026-11-22."
+          }
+          MIGRATION_APPROVAL
+            expected_migration_checker_sha=$(python3 -I -B -c 'import json,sys; print(json.load(open(sys.argv[1]))["checker_sha256"])' "$migration_approval_file")
+            if [ "$actual_migration_checker_sha" != "$expected_migration_checker_sha" ]; then
+              echo "Reviewed parser maintenance checker SHA-256 does not match: actual=$actual_migration_checker_sha expected=$expected_migration_checker_sha" >&2
+              exit 1
+            fi
+            migration_args=(--parser-migration-approval "$migration_approval_file")
+          elif [ "$trusted_revision" = "90b44193b091af2c75bdd37fa7533322f49dcfe1" ]; then
+            migration_approval_file="$RUNNER_TEMP/source-text-parser-maintenance-approval.json"
+            cat > "$migration_approval_file" <<'MIGRATION_APPROVAL'
+          {
+            "base_revision": "90b44193b091af2c75bdd37fa7533322f49dcfe1",
+            "checker_sha256": "680734d731683c4c38fc0f30e031fe1cea21e6050951ac832e001974eb71c4b1",
+            "base_inventory_sha256": "9ff836dc593bb4eccf7fbd14768a67c68c8bb18e354341b79f52e91db09bceaa",
+            "current_inventory_sha256": "9ff836dc593bb4eccf7fbd14768a67c68c8bb18e354341b79f52e91db09bceaa",
+            "parser_changes_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "scope": "versioned-parser-maintenance",
+            "reason": "User approved the finite exact harness replacement contract for the Phase134-19 consumer on 2026-11-23."
           }
           MIGRATION_APPROVAL
             expected_migration_checker_sha=$(python3 -I -B -c 'import json,sys; print(json.load(open(sys.argv[1]))["checker_sha256"])' "$migration_approval_file")

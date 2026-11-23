@@ -15,6 +15,117 @@ from .test_source_text_inventory_semantics import _FixtureSupport
 class SourceTextInventoryReviewTests(_FixtureSupport, unittest.TestCase):
     """Keep helper arguments and branch exits bound to existing inventory rows."""
 
+    def _harness_replacement_fixture(self, directory, head_signature=None):
+        """Create a fixture with one exact trusted harness transition."""
+        from Scripts.validation.source_text_inventory import inventory
+        from Scripts.validation.source_text_inventory_ratchet_helpers import (
+            _ratchet_harness_signature,
+        )
+
+        root = self._git_fixture(
+            directory,
+            validation_text=(
+                "public static class FixtureValidation {\n"
+                "    private static void Other() { Check(true); }\n"
+                "    public static void Validate() {\n"
+                '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                '        Check(source.Contains("Product"));\n'
+                "    }\n}\n"
+            ),
+        )
+        validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+        original = validation.read_text(encoding="utf-8")
+        key = ("packages/fixture/tests/runtime/fixturevalidation.cs", "--phase-fixture")
+        base_signature = _ratchet_harness_signature(inventory(root), key)
+        validation.write_text(
+            original.replace(
+                "Check(true);",
+                "Check(false);",
+            ),
+            encoding="utf-8",
+        )
+        approved_head = head_signature or _ratchet_harness_signature(inventory(root), key)
+        validation.write_text(original, encoding="utf-8")
+        replacements = root / "Scripts/validation/source_text_ratchet_replacements.json"
+        replacements.write_text(
+            json.dumps({"replacements": [{
+                "file": "Packages/fixture/Tests/Runtime/FixtureValidation.cs",
+                "validation_flag": "--phase-fixture",
+                "class": "HARNESS",
+                "base_signature": base_signature,
+                "head_signature": approved_head,
+                "reason": "Approve the exact reviewed harness transition for this validation consumer.",
+                "replacement": "harness-transition",
+            }]}) + "\n",
+            encoding="utf-8",
+        )
+        subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+        subprocess.run(["git", "-C", str(root), "commit", "-qm", "trusted-harness-replacement"], check=True)
+        validation.write_text(
+            original.replace(
+                "Check(true);",
+                "Check(false);",
+            ),
+            encoding="utf-8",
+        )
+        return root
+
+    def test_exact_harness_replacement_passes(self):
+        """Allow one exact trusted harness transition without a helper change."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._harness_replacement_fixture(directory)
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(0, code, output)
+            self.assertIn("SOURCE_TEXT_RATCHET_HARNESS_REPLACEMENT_APPROVED", output)
+
+    def test_harness_replacement_signature_mismatch_fails(self):
+        """Reject a harness approval with a different trusted head signature."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._harness_replacement_fixture(directory, head_signature="0" * 64)
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code, output)
+            self.assertIn("SOURCE_TEXT_RATCHET_HARNESS_REPLACEMENT_MISMATCH", output)
+            self.assertIn("SOURCE_TEXT_RATCHET_HARNESS_CHANGED", output)
+
+    def test_harness_replacement_rejects_extra_changed_source_path(self):
+        """Reject an exact harness approval when another C# source path changes."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._harness_replacement_fixture(directory)
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace(
+                    "Check(false);",
+                    "Check(true);",
+                ),
+                encoding="utf-8",
+            )
+            external = root / "Packages/fixture/Tests/Runtime/External.cs"
+            external.write_text(
+                "public static class External {\n"
+                "    public static string Normalize(string source) => source.Trim();\n"
+                "}\n",
+                encoding="utf-8",
+            )
+            subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+            subprocess.run(["git", "-C", str(root), "commit", "-qm", "trusted-external"], check=True)
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace(
+                    "Check(true);",
+                    "Check(false);",
+                ),
+                encoding="utf-8",
+            )
+            external.write_text(
+                "public static class External {\n"
+                '    public static string Normalize(string source) => "Other";\n'
+                "}\n",
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code, output)
+            self.assertNotIn("SOURCE_TEXT_RATCHET_HARNESS_REPLACEMENT_APPROVED", output)
+            self.assertIn("SOURCE_TEXT_RATCHET_HARNESS_SCOPE_CHANGED", output)
+
     def test_unmodeled_delegate_flows_fail_closed(self):
         """Reject tuple-generic casts and collection/index aliases at a wrapper."""
         cases = (
