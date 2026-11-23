@@ -110,6 +110,7 @@
     <Compile Include="../Runtime/FoxRunGenerationDescriptorJsonReader.cs" Link="TestHelpers/FoxRunGenerationDescriptorJsonReader.cs" />
     <Compile Include="../Runtime/Decomposed/FoxRunGenerationDescriptorJsonReader/*.cs" Link="TestHelpers/%(Filename)%(Extension)" />
     <Compile Include="../../../../Tools/source_text_delegate_targets/src/*.cs" LinkBase="TestHelpers/SourceTextDelegateTargets" />
+    <Compile Include="../../../../Tools/source_text_delegate_targets/tests/*.cs" LinkBase="TestHelpers/SourceTextDelegateTargets/Tests" />
   </ItemGroup>
 
   <Target Name="ValidatePhase179NativeCompileSurface" BeforeTargets="CoreCompile" Condition="'$(IncludeRos2ForUnityNative)' == 'true'">

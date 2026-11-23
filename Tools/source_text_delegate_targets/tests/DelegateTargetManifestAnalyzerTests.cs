@@ -22,7 +22,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
     public sealed class DelegateTargetManifestAnalyzerTests
     {
         private static readonly string Root = Path.Combine(Path.GetTempPath(), "foxdt-root") + Path.DirectorySeparatorChar;
-        private const string File = "Packages/fixture/Tests/Unit/Fixture.cs";
+        private const string FixturePath = "Packages/fixture/Tests/Unit/Fixture.cs";
 
         private const string Prelude =
             "using System;\nusing System.Collections.Generic;\nusing System.Threading.Tasks;\n" +
@@ -70,7 +70,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             {
                 var lines = EntryLines(members);
                 Assert.Equal(targets, lines.Select(line => line.Split('\t')[3]).Distinct().OrderBy(t => t, StringComparer.Ordinal).ToArray());
-                Assert.All(lines, line => Assert.StartsWith("unit\t" + File + "\tM:Fixture.FixtureValidation.Validate", line));
+                Assert.All(lines, line => Assert.StartsWith("unit\t" + FixturePath + "\tM:Fixture.FixtureValidation.Validate", line));
             }
         }
 
@@ -121,23 +121,23 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         public void RuleEAcceptsAnExactManifestAndRejectsEveryMismatch()
         {
             var source = Fixture("public static void Validate() { Action a = Used; Action b = Used; Action c = Noop; }");
-            var used = "unit\t" + File + "\tM:Fixture.FixtureValidation.Validate\tM:Fixture.FixtureValidation.Used\t2";
-            var noop = "unit\t" + File + "\tM:Fixture.FixtureValidation.Validate\tM:Fixture.FixtureValidation.Noop\t1";
+            var used = "unit\t" + FixturePath + "\tM:Fixture.FixtureValidation.Validate\tM:Fixture.FixtureValidation.Used\t2";
+            var noop = "unit\t" + FixturePath + "\tM:Fixture.FixtureValidation.Validate\tM:Fixture.FixtureValidation.Noop\t1";
             var exact = Manifest(noop, used);
-            Assert.DoesNotContain(Run(new[] { (File, source) }, exact), IsError);
+            Assert.DoesNotContain(Run(new[] { (FixturePath, source) }, exact), IsError);
 
             var cases = new Dictionary<string, string>
             {
                 ["missing entry"] = Manifest(used),
-                ["extra entry"] = Manifest(noop, used, "unit\t" + File + "\tM:Fixture.FixtureValidation.Validate\tM:Fixture.Holder.Used\t1"),
+                ["extra entry"] = Manifest(noop, used, "unit\t" + FixturePath + "\tM:Fixture.FixtureValidation.Validate\tM:Fixture.Holder.Used\t1"),
                 ["changed count"] = Manifest(noop, used.Replace("\t2", "\t1")),
                 ["stale file"] = Manifest(noop, used, "unit\tPackages/fixture/Tests/Unit/Gone.cs\tM:Fixture.Gone.Validate\tM:Fixture.Gone.Used\t1"),
             };
             foreach (var pair in cases)
             {
-                Assert.True(Run(new[] { (File, source) }, pair.Value).Any(d => d.Id == "FOXDT001"), pair.Key);
+                Assert.True(Run(new[] { (FixturePath, source) }, pair.Value).Any(d => d.Id == "FOXDT001"), pair.Key);
             }
-            Assert.Contains(Run(new[] { (File, source) }, manifest: null), d => d.Id == "FOXDT001");
+            Assert.Contains(Run(new[] { (FixturePath, source) }, manifest: null), d => d.Id == "FOXDT001");
         }
 
         [Fact]
@@ -146,10 +146,10 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             var source = Fixture(
                 "public static void Validate() {\n#if MANAGER_PRODUCTION_BOUNDARY\n    Action a = Noop;\n#else\n    Action a = Used;\n#endif\n}");
             var manifest = Manifest(
-                "unit\t" + File + "\tM:Fixture.FixtureValidation.Validate\tM:Fixture.FixtureValidation.Used\t1",
-                "unit-manager\t" + File + "\tM:Fixture.FixtureValidation.Validate\tM:Fixture.FixtureValidation.Noop\t1");
-            Assert.DoesNotContain(Run(new[] { (File, source) }, manifest, variant: "unit"), IsError);
-            Assert.DoesNotContain(Run(new[] { (File, source) }, manifest, variant: "unit-manager", symbols: new[] { "MANAGER_PRODUCTION_BOUNDARY" }), IsError);
+                "unit\t" + FixturePath + "\tM:Fixture.FixtureValidation.Validate\tM:Fixture.FixtureValidation.Used\t1",
+                "unit-manager\t" + FixturePath + "\tM:Fixture.FixtureValidation.Validate\tM:Fixture.FixtureValidation.Noop\t1");
+            Assert.DoesNotContain(Run(new[] { (FixturePath, source) }, manifest, variant: "unit"), IsError);
+            Assert.DoesNotContain(Run(new[] { (FixturePath, source) }, manifest, variant: "unit-manager", symbols: new[] { "MANAGER_PRODUCTION_BOUNDARY" }), IsError);
         }
 
         [Fact]
@@ -157,28 +157,28 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         {
             var source = Fixture("public static void Validate() { }");
             var outside = Path.Combine(Path.GetTempPath(), "elsewhere", "Packages", "fixture", "Tests", "Unit", "Fixture.cs");
-            Assert.Contains(Run(new[] { (File, source) }, "", root: null), d => d.Id == "FOXDT002");
-            Assert.Contains(Run(new[] { (File, source) }, "", variant: "runtime-native"), d => d.Id == "FOXDT002");
-            Assert.Contains(Run(new[] { (File, source) }, "", variant: null), d => d.Id == "FOXDT002");
-            Assert.Contains(Run(new[] { (File, source), (File, source) }, ""), d => d.Id == "FOXDT002");
+            Assert.Contains(Run(new[] { (FixturePath, source) }, "", root: null), d => d.Id == "FOXDT002");
+            Assert.Contains(Run(new[] { (FixturePath, source) }, "", variant: "runtime-native"), d => d.Id == "FOXDT002");
+            Assert.Contains(Run(new[] { (FixturePath, source) }, "", variant: null), d => d.Id == "FOXDT002");
+            Assert.Contains(Run(new[] { (FixturePath, source), (FixturePath, source) }, ""), d => d.Id == "FOXDT002");
             Assert.Contains(RunAbsolute(new[] { (outside, source) }, ""), d => d.Id == "FOXDT002");
         }
 
         [Fact]
         public void EmitModeReportsEntriesWithoutComparingTheManifest()
         {
-            var result = Run(new[] { (File, Fixture("public static void Validate() { Action a = Used; }")) }, manifest: null, emit: true);
+            var result = Run(new[] { (FixturePath, Fixture("public static void Validate() { Action a = Used; }")) }, manifest: null, emit: true);
             Assert.DoesNotContain(result, d => d.Id == "FOXDT001");
             Assert.Contains(result, d => d.Id == "FOXDT900"
-                && d.GetMessage() == "unit\t" + File + "\tM:Fixture.FixtureValidation.Validate\tM:Fixture.FixtureValidation.Used\t1");
+                && d.GetMessage() == "unit\t" + FixturePath + "\tM:Fixture.FixtureValidation.Validate\tM:Fixture.FixtureValidation.Used\t1");
         }
 
         [Fact]
         public void MalformedManifestsFailClosedWithFoxdt003()
         {
             var source = Fixture("public static void Validate() { Action a = Used; }");
-            var good = "unit\t" + File + "\tM:Fixture.FixtureValidation.Validate\tM:Fixture.FixtureValidation.Used\t1";
-            var other = "unit\t" + File + "\tM:Fixture.FixtureValidation.Zeta\tM:Fixture.FixtureValidation.Used\t1";
+            var good = "unit\t" + FixturePath + "\tM:Fixture.FixtureValidation.Validate\tM:Fixture.FixtureValidation.Used\t1";
+            var other = "unit\t" + FixturePath + "\tM:Fixture.FixtureValidation.Zeta\tM:Fixture.FixtureValidation.Used\t1";
             var cases = new Dictionary<string, string>
             {
                 ["wrong column count"] = good.Replace("\t1", "") + "\n",
@@ -197,9 +197,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             };
             foreach (var pair in cases)
             {
-                Assert.True(Run(new[] { (File, source) }, pair.Value).Any(d => d.Id == "FOXDT003"), pair.Key);
+                Assert.True(Run(new[] { (FixturePath, source) }, pair.Value).Any(d => d.Id == "FOXDT003"), pair.Key);
             }
-            Assert.DoesNotContain(Run(new[] { (File, source) }, good + "\n"), IsError);
+            Assert.DoesNotContain(Run(new[] { (FixturePath, source) }, good + "\n"), IsError);
         }
 
         private static bool IsError(Diagnostic diagnostic) => diagnostic.Severity == DiagnosticSeverity.Error;
@@ -208,7 +208,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             string.Concat(lines.OrderBy(line => line, StringComparer.Ordinal).Select(line => line + "\n"));
 
         private static string[] EntryLines(string members) =>
-            Run(new[] { (File, Fixture(members)) }, manifest: null, emit: true)
+            Run(new[] { (FixturePath, Fixture(members)) }, manifest: null, emit: true)
                 .Where(d => d.Id == "FOXDT900")
                 .Select(d => d.GetMessage())
                 .OrderBy(line => line, StringComparer.Ordinal)
