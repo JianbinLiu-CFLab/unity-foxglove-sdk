@@ -152,6 +152,7 @@ def load_fresh_module(module_name: str, facade: Path) -> ModuleType:
     saved_parent_attributes: dict[tuple[int, str], tuple[ModuleType, str, object]] = {}
 
     def resolve_module(name: str) -> ModuleType | None:
+        """Resolve a module from the active, saved, or package attribute graph."""
         module = sys.modules.get(name) or saved_modules.get(name)
         if isinstance(module, ModuleType):
             return module
@@ -166,6 +167,7 @@ def load_fresh_module(module_name: str, facade: Path) -> ModuleType:
         return current
 
     def remember_parent_attribute(parent_name: str, parent: ModuleType, attribute: str) -> None:
+        """Remember the original package attribute before detaching it."""
         key = (id(parent), attribute)
         if key in saved_parent_attributes:
             return
@@ -181,6 +183,7 @@ def load_fresh_module(module_name: str, facade: Path) -> ModuleType:
         module: ModuleType,
         visited: set[tuple[str, int]],
     ) -> None:
+        """Detach a module and any missing package ancestors from parent attributes."""
         if "." not in name or (name, id(module)) in visited:
             return
         visited.add((name, id(module)))
@@ -214,6 +217,7 @@ def load_fresh_module(module_name: str, facade: Path) -> ModuleType:
             sys.modules.pop(candidate, None)
 
     def discard_module_tree(name: str) -> None:
+        """Remove a module tree without adding newly loaded modules to saved state."""
         candidates = tuple(
             sorted(
                 (
@@ -232,6 +236,7 @@ def load_fresh_module(module_name: str, facade: Path) -> ModuleType:
             sys.modules.pop(candidate, None)
 
     def restore_parent_attributes() -> None:
+        """Restore package attributes captured before a failed fresh load."""
         for parent, attribute, original in saved_parent_attributes.values():
             if original is missing_attribute:
                 parent.__dict__.pop(attribute, None)

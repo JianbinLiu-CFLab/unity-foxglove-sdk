@@ -148,6 +148,7 @@ class SourceLayoutTests(unittest.TestCase):
                 sys.modules.update(saved_modules)
 
     def test_load_fresh_module_clears_removed_parent_package_attributes(self) -> None:
+        """A fresh load removes stale parent package attributes with cached modules."""
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             facade = root / "Scripts" / "facade.py"
@@ -184,6 +185,7 @@ class SourceLayoutTests(unittest.TestCase):
                 sys.modules.update(saved_modules)
 
     def test_load_fresh_module_restores_parent_package_attributes_on_failure(self) -> None:
+        """A failed fresh load restores original parent package attributes and modules."""
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             facade = root / "Scripts" / "facade.py"
@@ -228,6 +230,7 @@ class SourceLayoutTests(unittest.TestCase):
                 sys.modules.update(saved_modules)
 
     def test_load_fresh_module_removes_orphaned_child_when_parent_is_missing(self) -> None:
+        """A missing namespace parent does not preserve its cached child module."""
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             facade = root / "Scripts" / "facade.py"
