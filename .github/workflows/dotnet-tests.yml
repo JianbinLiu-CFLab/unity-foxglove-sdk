@@ -605,7 +605,7 @@ jobs:
             cat > "$migration_approval_file" <<'MIGRATION_APPROVAL'
           {
             "base_revision": "90b44193b091af2c75bdd37fa7533322f49dcfe1",
-            "checker_sha256": "3d103c885c3470956504b6f2152cc1a5d69355f3694c140d0aa760f22f9644c3",
+            "checker_sha256": "680734d731683c4c38fc0f30e031fe1cea21e6050951ac832e001974eb71c4b1",
             "base_inventory_sha256": "9ff836dc593bb4eccf7fbd14768a67c68c8bb18e354341b79f52e91db09bceaa",
             "current_inventory_sha256": "9ff836dc593bb4eccf7fbd14768a67c68c8bb18e354341b79f52e91db09bceaa",
             "parser_changes_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
