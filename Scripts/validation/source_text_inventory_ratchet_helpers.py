@@ -45,6 +45,12 @@ RATCHET_REPLACEMENTS_PATH = Path("Scripts/validation/source_text_ratchet_replace
 RATCHET_REPLACEMENT_FIELDS = frozenset(
     {"file", "validation_flag", "class", "base_signature", "head_signature", "reason", "replacement"}
 )
+DELEGATE_VARIANTS = frozenset(
+    {"runtime", "runtime-adapter", "unit", "unit-adapter", "unit-native", "unit-manager", "bridge-unit"}
+)
+DELEGATE_REPLACEMENT_FLAG = re.compile(
+    r"(runtime|runtime-adapter|unit|unit-adapter|unit-native|unit-manager|bridge-unit)\|[A-Z]:\S+"
+)
 
 def _ratchet_path(value: object) -> str:
     """Normalize one inventory path for count-ratchet keys."""
@@ -227,8 +233,13 @@ def _load_ratchet_replacements(
         if key in seen:
             entry_errors.append(f"replacement {index} is duplicated")
         seen.add(key)
-        if entry["class"] not in {"C", "READER"}:
+        if entry["class"] not in {"C", "READER", "DELEGATE"}:
             entry_errors.append(f"replacement {index} has invalid class")
+        if entry["class"] == "DELEGATE" and (
+            not isinstance(entry["validation_flag"], str)
+            or DELEGATE_REPLACEMENT_FLAG.fullmatch(entry["validation_flag"]) is None
+        ):
+            entry_errors.append(f"replacement {index} has invalid delegate validation_flag")
         for field in ("base_signature", "head_signature"):
             value = entry[field]
             if not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{64}", value) is None:
