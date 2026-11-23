@@ -841,6 +841,7 @@ def _verify_count_ratchet(
         head_helpers,
         approved_reader_helpers,
         reader_changes_isolated,
+        changed_source_paths,
     )
     failures.extend(harness_failures)
     approval_errors.extend(harness_errors)
@@ -870,7 +871,6 @@ def _verify_count_ratchet(
     for failure in failures:
         print(failure)
     return 1 if failures or approval_errors else 0
-
 
 def _verify_base_inventory(
     root: Path,

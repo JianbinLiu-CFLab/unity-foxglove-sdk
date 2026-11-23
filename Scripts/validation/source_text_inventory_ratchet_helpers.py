@@ -296,11 +296,10 @@ def _apply_harness_replacements(
     base_rows: list[dict[str, object]],
     head_rows: list[dict[str, object]],
     changed_helpers: set[tuple[str, str]],
+    changed_source_paths: set[str],
 ) -> list[str]:
-    """Clear only exact harness transitions with no concurrent helper changes."""
+    """Clear only exact harness transitions within the approved path and helper scope."""
     replacements, errors = _load_ratchet_replacements(root, revision)
-    if changed_helpers:
-        return errors
     for entry in replacements:
         if entry["class"] != "HARNESS":
             continue
@@ -313,6 +312,16 @@ def _apply_harness_replacements(
             )
         }
         if not messages:
+            continue
+        approved_path = _ratchet_path(entry["file"])
+        if changed_source_paths != {approved_path}:
+            actual_paths = ",".join(sorted(changed_source_paths))
+            print(
+                f"SOURCE_TEXT_RATCHET_HARNESS_SCOPE_CHANGED file={key[0]} "
+                f"flag={key[1]} expected={approved_path} actual={actual_paths}"
+            )
+            continue
+        if changed_helpers:
             continue
         base_signature = _ratchet_harness_signature(base_rows, key)
         head_signature = _ratchet_harness_signature(head_rows, key)

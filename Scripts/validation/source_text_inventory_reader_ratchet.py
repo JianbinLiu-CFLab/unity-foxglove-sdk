@@ -190,6 +190,7 @@ def _harness_change_failures(
     head_helpers: dict[tuple[str, str], str],
     approved_reader_helpers: set[tuple[str, str]],
     reader_changes_isolated: bool,
+    changed_source_paths: set[str],
 ) -> tuple[list[str], list[str]]:
     """Fail closed when a source assertion's harness signature changes unexpectedly."""
     base_harness: dict[tuple[str, str, str], Counter[str]] = {}
@@ -226,6 +227,7 @@ def _harness_change_failures(
         base_rows,
         head_rows,
         changed_helpers,
+        changed_source_paths,
     )
     return failures, approval_errors
 

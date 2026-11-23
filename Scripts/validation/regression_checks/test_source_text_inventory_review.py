@@ -87,6 +87,45 @@ class SourceTextInventoryReviewTests(_FixtureSupport, unittest.TestCase):
             self.assertIn("SOURCE_TEXT_RATCHET_HARNESS_REPLACEMENT_MISMATCH", output)
             self.assertIn("SOURCE_TEXT_RATCHET_HARNESS_CHANGED", output)
 
+    def test_harness_replacement_rejects_extra_changed_source_path(self):
+        """Reject an exact harness approval when another C# source path changes."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._harness_replacement_fixture(directory)
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace(
+                    "Check(false);",
+                    "Check(true);",
+                ),
+                encoding="utf-8",
+            )
+            external = root / "Packages/fixture/Tests/Runtime/External.cs"
+            external.write_text(
+                "public static class External {\n"
+                "    public static string Normalize(string source) => source.Trim();\n"
+                "}\n",
+                encoding="utf-8",
+            )
+            subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+            subprocess.run(["git", "-C", str(root), "commit", "-qm", "trusted-external"], check=True)
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace(
+                    "Check(true);",
+                    "Check(false);",
+                ),
+                encoding="utf-8",
+            )
+            external.write_text(
+                "public static class External {\n"
+                '    public static string Normalize(string source) => "Other";\n'
+                "}\n",
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code, output)
+            self.assertNotIn("SOURCE_TEXT_RATCHET_HARNESS_REPLACEMENT_APPROVED", output)
+            self.assertIn("SOURCE_TEXT_RATCHET_HARNESS_SCOPE_CHANGED", output)
+
     def test_unmodeled_delegate_flows_fail_closed(self):
         """Reject tuple-generic casts and collection/index aliases at a wrapper."""
         cases = (
