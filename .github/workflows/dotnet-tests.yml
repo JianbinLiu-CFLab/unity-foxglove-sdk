@@ -626,11 +626,11 @@ jobs:
             cat > "$migration_approval_file" <<'MIGRATION_APPROVAL'
           {
             "base_revision": "c9207199630b811c6e36daa63b2a4d9e8459e3a3",
-            "checker_sha256": "5285c6d46ab34d83f15877038e16decdf31305477bb6bf670221bc3471d05b81",
+            "checker_sha256": "f69630a1533c43b4035bc1abc5189cd4476f773477beca4c1ad626162a16afff",
             "trusted_checker_sha256": "680734d731683c4c38fc0f30e031fe1cea21e6050951ac832e001974eb71c4b1",
             "base_inventory_sha256": "9ff836dc593bb4eccf7fbd14768a67c68c8bb18e354341b79f52e91db09bceaa",
-            "current_inventory_sha256": "7e8d45a38f9b1f07ff20524dc7fc2b0b037177793dbc39d1cc16ad1ad7034e9b",
-            "parser_changes_sha256": "e9f4699acc27945d8017ae7150cebacbe7c2cf50e4dae8b36ccd47979bdc7d52",
+            "current_inventory_sha256": "50d468935eb34476a8db2d3bdebebf550280520163f8956ae9c3fad8eb3f4755",
+            "parser_changes_sha256": "c31de95a641ac864dfd0bd86555589bde66209d11942027595392ea9705084cc",
             "scope": "versioned-parser-maintenance",
             "reason": "Reviewed exact parser maintenance for Plan 209 Roslyn delegate-target manifest migration."
           }
