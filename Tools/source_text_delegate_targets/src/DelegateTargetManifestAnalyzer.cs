@@ -50,10 +50,13 @@ namespace Unity2Foxglove.SourceTextDelegateTargets
                 options.TryGetValue("build_property.FoxDelegateTargetsRepoRoot", out var root);
                 options.TryGetValue("build_property.FoxDelegateTargetsVariant", out var variant);
                 options.TryGetValue("build_property.FoxDelegateTargetsEmit", out var emit);
+                options.TryGetValue("build_property.FoxDelegateTargetsEmitAuthorized", out var emitAuthorized);
                 var state = new CompilationState(root, variant);
                 start.RegisterOperationAction(state.Record, OperationKind.DelegateCreation);
                 start.RegisterCompilationEndAction(end => state.Finish(
-                    end, string.Equals((emit ?? string.Empty).Trim(), "true", StringComparison.OrdinalIgnoreCase)));
+                    end,
+                    string.Equals((emit ?? string.Empty).Trim(), "true", StringComparison.OrdinalIgnoreCase),
+                    string.Equals((emitAuthorized ?? string.Empty).Trim(), "true", StringComparison.OrdinalIgnoreCase)));
             });
         }
 
@@ -91,7 +94,7 @@ namespace Unity2Foxglove.SourceTextDelegateTargets
                 _entries.AddOrUpdate((file, member, target), 1, (_, count) => count + 1);
             }
 
-            public void Finish(CompilationAnalysisContext context, bool emit)
+            public void Finish(CompilationAnalysisContext context, bool emit, bool emitAuthorized)
             {
                 var errors = new List<string>();
                 if (_root == null)
@@ -133,6 +136,15 @@ namespace Unity2Foxglove.SourceTextDelegateTargets
                     {
                         context.ReportDiagnostic(Diagnostic.Create(IdentityRule, Location.None, error));
                     }
+                    return;
+                }
+
+                if (emit && !emitAuthorized)
+                {
+                    context.ReportDiagnostic(Diagnostic.Create(
+                        IdentityRule,
+                        Location.None,
+                        "Emit mode requires the dedicated generator authorization property."));
                     return;
                 }
 

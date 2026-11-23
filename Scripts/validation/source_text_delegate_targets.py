@@ -35,7 +35,13 @@ class DelegateTargetsError(RuntimeError):
 def _run(command: Sequence[str], cwd: Path) -> "subprocess.CompletedProcess[str]":
     """Run one build command and capture its output."""
     return subprocess.run(
-        list(command), cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace", check=False
+        list(command),
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
     )
 
 
@@ -78,6 +84,7 @@ def collect(root: Path, variants: Sequence[str], runner: Runner = _run) -> list[
         command = [
             "dotnet", "build", project, "-nologo",
             "-p:FoxDelegateTargetsEmit=true",
+            "-p:FoxDelegateTargetsEmitAuthorized=true",
             f"-p:FoxDelegateTargetsErrorLog={sarif}",
             *switches,
         ]

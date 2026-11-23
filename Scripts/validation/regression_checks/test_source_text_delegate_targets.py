@@ -133,6 +133,7 @@ class DelegateTargetsGeneratorTests(unittest.TestCase):
         self.assertEqual(len(targets.VARIANTS), len(builds.commands))
         for command in builds.commands:
             self.assertIn("-p:FoxDelegateTargetsEmit=true", command)
+            self.assertIn("-p:FoxDelegateTargetsEmitAuthorized=true", command)
         logs_used = [next(a for a in c if a.startswith("-p:FoxDelegateTargetsErrorLog=")) for c in builds.commands]
         self.assertEqual(len(set(logs_used)), len(logs_used))
 

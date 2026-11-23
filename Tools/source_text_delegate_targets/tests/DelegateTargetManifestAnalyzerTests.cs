@@ -174,6 +174,19 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         }
 
         [Fact]
+        public void EmitModeRequiresGeneratorAuthorization()
+        {
+            var result = Run(
+                new[] { (FixturePath, Fixture("public static void Validate() { Action a = Used; }")) },
+                manifest: null,
+                emit: true,
+                emitAuthorized: false);
+            Assert.Contains(result, diagnostic => diagnostic.Id == "FOXDT002"
+                && diagnostic.GetMessage().Contains("dedicated generator authorization property", StringComparison.Ordinal));
+            Assert.DoesNotContain(result, diagnostic => diagnostic.Id == "FOXDT900");
+        }
+
+        [Fact]
         public void MalformedManifestsFailClosedWithFoxdt003()
         {
             var source = Fixture("public static void Validate() { Action a = Used; }");
@@ -220,10 +233,11 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             string variant = "unit",
             bool emit = false,
             string root = "<default>",
-            string[] symbols = null) =>
+            string[] symbols = null,
+            bool emitAuthorized = true) =>
             RunAbsolute(
                 sources.Select(source => (Path.Combine(Root, source.Path.Replace('/', Path.DirectorySeparatorChar)), source.Text)).ToArray(),
-                manifest, variant, emit, root == "<default>" ? Root : root, symbols);
+                manifest, variant, emit, root == "<default>" ? Root : root, symbols, emitAuthorized);
 
         private static ImmutableArray<Diagnostic> RunAbsolute(
             (string Path, string Text)[] sources,
@@ -231,7 +245,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             string variant = "unit",
             bool emit = false,
             string root = "<default>",
-            string[] symbols = null)
+            string[] symbols = null,
+            bool emitAuthorized = true)
         {
             var parse = new CSharpParseOptions(LanguageVersion.CSharp9, preprocessorSymbols: symbols ?? Array.Empty<string>());
             var trees = sources.Select(source => CSharpSyntaxTree.ParseText(source.Text, parse, source.Path)).ToArray();
@@ -251,6 +266,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 properties["build_property.FoxDelegateTargetsVariant"] = variant;
             }
             properties["build_property.FoxDelegateTargetsEmit"] = emit ? "true" : "false";
+            properties["build_property.FoxDelegateTargetsEmitAuthorized"] = emit && emitAuthorized ? "true" : "false";
             var additional = manifest == null
                 ? ImmutableArray<AdditionalText>.Empty
                 : ImmutableArray.Create<AdditionalText>(new ManifestText(Path.Combine(Root, "Scripts", "validation", "source_text_delegate_targets.tsv"), manifest));

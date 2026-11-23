@@ -8,6 +8,7 @@
     <FoxDelegateTargetsVariant Condition="'$(IncludeRos2ForUnityNative)' != 'true' and '$(IncludeRos2ForUnityAdapter)' == 'true'">$(FoxDelegateTargetsProject)-adapter</FoxDelegateTargetsVariant>
     <FoxDelegateTargetsVariant Condition="'$(IncludeManagerProductionBoundary)' == 'true'">$(FoxDelegateTargetsVariant)-manager</FoxDelegateTargetsVariant>
     <FoxDelegateTargetsEmit Condition="'$(FoxDelegateTargetsEmit)' == ''">false</FoxDelegateTargetsEmit>
+    <FoxDelegateTargetsEmitAuthorized Condition="'$(FoxDelegateTargetsEmitAuthorized)' == ''">false</FoxDelegateTargetsEmitAuthorized>
     <ErrorLog Condition="'$(FoxDelegateTargetsErrorLog)' != ''">$(FoxDelegateTargetsErrorLog),version=2.1</ErrorLog>
   </PropertyGroup>
   <ItemGroup>
@@ -15,6 +16,6 @@
                       OutputItemType="Analyzer"
                       ReferenceOutputAssembly="false" />
     <AdditionalFiles Include="$(FoxDelegateTargetsRepoRoot)Scripts/validation/source_text_delegate_targets.tsv" />
-    <CompilerVisibleProperty Include="FoxDelegateTargetsRepoRoot;FoxDelegateTargetsVariant;FoxDelegateTargetsEmit" />
+    <CompilerVisibleProperty Include="FoxDelegateTargetsRepoRoot;FoxDelegateTargetsVariant;FoxDelegateTargetsEmit;FoxDelegateTargetsEmitAuthorized" />
   </ItemGroup>
 </Project>
