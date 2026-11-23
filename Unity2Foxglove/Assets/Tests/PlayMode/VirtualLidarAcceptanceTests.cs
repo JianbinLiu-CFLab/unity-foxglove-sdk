@@ -108,8 +108,28 @@ namespace Unity2Foxglove.Tests.PlayMode
                 Assert.That(offsets[offsets.Count - 1] - offsets[0], Is.GreaterThan(0.04f));
                 Assert.That(ticks, Is.GreaterThan(3), "The acceptance scan did not span multiple physics ticks.");
                 AssertElapsedDiffersFromNominalStep(stepper, scanStartPhysSeconds);
-                var expectedByColumn = BuildExpectedAcquisitionByColumn(batches, scanStartPhysSeconds, columns: 256);
-                Assert.That(expectedByColumn.Count, Is.EqualTo(256), "The observed batches did not cover one complete scan.");
+                const int scanColumns = 256;
+                const int budgetColumns = 64;
+                var expectedBatches = BuildExpectedBatches(
+                    stepper.Times,
+                    stepper.NominalSteps,
+                    scanStartPhysSeconds,
+                    scanColumns,
+                    budgetColumns,
+                    scanPeriodSeconds: 1d);
+                Assert.That(expectedBatches.Count, Is.EqualTo(batches.Count), "The observed batch count differed from the elapsed-time model.");
+                for (var index = 0; index < expectedBatches.Count; index++)
+                {
+                    var expectedBatch = expectedBatches[index];
+                    var observedBatch = batches[index];
+                    Assert.That(observedBatch.ColumnsToEmit, Is.EqualTo(expectedBatch.ColumnsToEmit), $"Unexpected emitted column count for batch {index}.");
+                    Assert.That(observedBatch.Cursor, Is.EqualTo(expectedBatch.Cursor), $"Unexpected scan cursor for batch {index}.");
+                    Assert.That(observedBatch.AcquisitionPhysSeconds, Is.EqualTo(expectedBatch.AcquisitionPhysSeconds).Within(0.000001d), $"Unexpected acquisition time for batch {index}.");
+                    Assert.That(observedBatch.FixedDeltaTimeSeconds, Is.EqualTo(expectedBatch.FixedDeltaTimeSeconds).Within(0.00001f), $"Unexpected fixed step for batch {index}.");
+                }
+
+                var expectedByColumn = BuildExpectedAcquisitionByColumn(expectedBatches, scanStartPhysSeconds, scanColumns);
+                Assert.That(expectedByColumn.Count, Is.EqualTo(scanColumns), "The elapsed-time model did not cover one complete scan.");
 
                 var observedColumns = new HashSet<int>();
                 foreach (var point in firstFrame.Points)
@@ -117,9 +137,9 @@ namespace Unity2Foxglove.Tests.PlayMode
                     var azimuth = Math.Atan2(-point.Y, point.X);
                     if (azimuth < 0d)
                         azimuth += 2d * Math.PI;
-                    var column = (int)Math.Round(azimuth / (2d * Math.PI) * 256d) % 256;
+                    var column = (int)Math.Round(azimuth / (2d * Math.PI) * scanColumns) % scanColumns;
                     observedColumns.Add(column);
-                    var normalizedOffset = column / 256f;
+                    var normalizedOffset = column / (float)scanColumns;
                     Assert.That(expectedByColumn.TryGetValue(column, out var expected), Is.True, $"No acquisition time was recorded for column {column}.");
                     var expectedOffset = ExpectedAcquisitionOffset(
                         expected.ElapsedSeconds,
@@ -128,7 +148,7 @@ namespace Unity2Foxglove.Tests.PlayMode
                     Assert.That(point.TimeOffsetSeconds, Is.EqualTo(expectedOffset).Within(0.003f), $"Unexpected acquisition offset for column {column}.");
                 }
 
-                Assert.That(observedColumns.Count, Is.EqualTo(256), "The first frame did not contain points from every scan column.");
+                Assert.That(observedColumns.Count, Is.EqualTo(scanColumns), "The first frame did not contain points from every scan column.");
                 Assert.That(observedColumns.SetEquals(expectedByColumn.Keys), Is.True, "Point columns did not match the recorded batch columns.");
             }
             finally
@@ -256,6 +276,57 @@ namespace Unity2Foxglove.Tests.PlayMode
             }
 
             Assert.That(distinguishingSteps, Is.GreaterThan(3), "Elapsed physics time did not differ from the nominal step seen by VirtualLidar.");
+        }
+
+        private static List<LidarBatchObservation> BuildExpectedBatches(
+            IReadOnlyList<double> fixedTimes,
+            IReadOnlyList<float> nominalSteps,
+            double scanStartPhysSeconds,
+            int columns,
+            int budgetColumns,
+            double scanPeriodSeconds)
+        {
+            var expected = new List<LidarBatchObservation>();
+            var progress = 0d;
+            var cursor = 0;
+            var columnsScheduled = 0;
+            var previousPhysSeconds = scanStartPhysSeconds;
+            var primed = false;
+            for (var index = 0; index < fixedTimes.Count && columnsScheduled < columns; index++)
+            {
+                var acquisitionPhysSeconds = fixedTimes[index];
+                if (acquisitionPhysSeconds <= scanStartPhysSeconds)
+                    continue;
+                if (!primed)
+                {
+                    previousPhysSeconds = acquisitionPhysSeconds;
+                    primed = true;
+                    continue;
+                }
+
+                var elapsedPhysicsSeconds = acquisitionPhysSeconds - previousPhysSeconds;
+                previousPhysSeconds = acquisitionPhysSeconds;
+                progress += elapsedPhysicsSeconds * columns / scanPeriodSeconds;
+                progress = Math.Min(progress, columns + budgetColumns);
+
+                var remainingColumns = columns - columnsScheduled;
+                var boundedBudgetColumns = Math.Min(budgetColumns, remainingColumns);
+                var columnsToEmit = Math.Min((int)Math.Floor(progress), boundedBudgetColumns);
+                if (columnsToEmit <= 0)
+                    continue;
+
+                cursor = (cursor + columnsToEmit) % columns;
+                expected.Add(new LidarBatchObservation(
+                    columnsToEmit,
+                    cursor,
+                    acquisitionPhysSeconds,
+                    nominalSteps[index]));
+                progress -= columnsToEmit;
+                columnsScheduled += columnsToEmit;
+            }
+
+            Assert.That(columnsScheduled, Is.EqualTo(columns), "The elapsed-time model did not schedule one complete scan.");
+            return expected;
         }
 
         private static Dictionary<int, (double ElapsedSeconds, float FixedDeltaTimeSeconds)> BuildExpectedAcquisitionByColumn(
