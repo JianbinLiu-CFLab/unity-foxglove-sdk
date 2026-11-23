@@ -4,10 +4,10 @@
       "file": "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase134_19Validation.cs",
       "validation_flag": "--phase134-19",
       "class": "C",
-      "base_signature": "41daf51fce3182827e499854c5a7641847c31012fb84f84954e75094535345e4",
-      "head_signature": "d94b1b21f565ad2381f3c99040bcde5515f18f491fa4cef223d2a1e887a5c5b1",
-      "reason": "Plan207 keeps Phase134-19 archive, decompression, and publish ordering checks valid for the safe-stream installer composition.",
-      "replacement": "Phase134_19Validation Plan207 safe-stream ordering"
+        "base_signature": "4e69cc85c46b2cab61e6875a9263b7e9d795c2df2f345ddf47f9bc614bd657ba",
+        "head_signature": "62452749ad3655864555734418de5dfdcb0bbc2731d37aeef2037bc294581433",
+        "reason": "Stage the exact current-base approval for the Phase134-19 ordering consumer before its validation-only consumer PR.",
+        "replacement": "Phase134_19Validation current-base ordering consumer"
     },
     {
       "file": "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase163_16Validation.cs",
