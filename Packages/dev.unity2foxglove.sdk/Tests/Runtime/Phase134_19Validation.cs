@@ -98,7 +98,7 @@ namespace Unity.FoxgloveSDK.Tests
             var installer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.cs");
             var downloadIndex = installer.IndexOf("OpenH264OfficialBinaryManifest.DownloadUrl", StringComparison.Ordinal);
             var compressedVerifyIndex = installer.IndexOf("OpenH264OfficialBinaryManifest.CompressedAssetSha256", StringComparison.Ordinal);
-            var promoteDownloadIndex = installer.IndexOf("OpenH264ArtifactPairPublisher.Publish(", StringComparison.Ordinal);
+            var promoteDownloadIndex = installer.IndexOf("File.Move(compressedDownloadPath, compressedPath)", StringComparison.Ordinal);
             var decompressIndex = installer.IndexOf("TryDecompressBZip2(", StringComparison.Ordinal);
             var dllVerifyIndex = installer.IndexOf("OpenH264OfficialBinaryManifest.DllSha256", StringComparison.Ordinal);
             var publishIndex = installer.IndexOf("OpenH264ArtifactPairPublisher.Publish(", StringComparison.Ordinal);
@@ -106,7 +106,8 @@ namespace Unity.FoxgloveSDK.Tests
             Check(downloadIndex >= 0
                   && compressedVerifyIndex > downloadIndex
                   && compressedVerifyIndex < decompressIndex
-                  && promoteDownloadIndex > decompressIndex,
+                  && promoteDownloadIndex > compressedVerifyIndex
+                  && promoteDownloadIndex < decompressIndex,
                 "134-19-C1: OpenH264 installer verifies downloaded compressed asset before decompression");
             Check(decompressIndex >= 0
                   && dllVerifyIndex > decompressIndex

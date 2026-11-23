@@ -5,7 +5,7 @@
       "validation_flag": "--phase134-19",
       "class": "C",
         "base_signature": "4e69cc85c46b2cab61e6875a9263b7e9d795c2df2f345ddf47f9bc614bd657ba",
-        "head_signature": "d94b1b21f565ad2381f3c99040bcde5515f18f491fa4cef223a7b6258a24a438",
+        "head_signature": "9516235e498fca0f773845cfed6b8ada2f698244b2e9bbd898051a94ef7513b5",
         "reason": "The Phase134-19 consumer now uses stable installer URL, decompression, and publish ordering anchors against the current trusted base.",
         "replacement": "Phase134_19Validation current-base ordering consumer"
     },
