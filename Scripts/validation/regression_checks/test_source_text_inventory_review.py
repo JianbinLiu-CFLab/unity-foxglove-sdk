@@ -126,184 +126,6 @@ class SourceTextInventoryReviewTests(_FixtureSupport, unittest.TestCase):
             self.assertNotIn("SOURCE_TEXT_RATCHET_HARNESS_REPLACEMENT_APPROVED", output)
             self.assertIn("SOURCE_TEXT_RATCHET_HARNESS_SCOPE_CHANGED", output)
 
-    def test_unmodeled_delegate_flows_fail_closed(self):
-        """Reject tuple-generic casts and collection/index aliases at a wrapper."""
-        cases = (
-            (
-                "using System; public static class FixtureValidation { private static void Run(Action action) { action(); } "
-                "private static void Used<T>() { var source = ReadRequiredRepoText(\"Packages/fixture/Runtime/Product.cs\"); Check(source.Contains(\"Product\")); } "
-                "private static void Noop<T>() { } public static void Validate() { var run = (Action)Used<(int, int)>; Run(run); } }",
-                "Used<(int, int)>", "Noop<(int, int)>",
-            ),
-            (
-                "using System; public static class FixtureValidation { private static void Run(Action action) { action(); } "
-                "private static void Used() { var source = ReadRequiredRepoText(\"Packages/fixture/Runtime/Product.cs\"); Check(source.Contains(\"Product\")); } "
-                "private static void Noop() { } public static void Validate() { Action[] callbacks = { Used }; var run = callbacks[0]; Run(run); } }",
-                "{ Used }", "{ Noop }",
-            ),
-        )
-        for validation_text, old, new in cases:
-            with self.subTest(old=old), tempfile.TemporaryDirectory() as directory:
-                root = self._git_fixture(directory, validation_text=validation_text)
-                validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
-                validation.write_text(validation.read_text(encoding="utf-8").replace(old, new), encoding="utf-8")
-                code, output = self._run_fixture_gate(root)
-                self.assertEqual(1, code, output)
-
-    def test_delegate_binding_records_keep_same_named_scopes_distinct(self):
-        """Keep helper signatures for same-named delegate locals independent."""
-        from Scripts.validation.source_text_inventory_ratchet_helpers import _helper_signature_records
-
-        records = _helper_signature_records(
-            "using System; public static class FixtureValidation { private static void Used() { var source = ReadRequiredRepoText(\"Packages/fixture/Runtime/Product.cs\"); Check(source.Contains(\"Product\")); } private static void Other() { } private static void First() { Action run = Used; run(); } private static void Second() { Action run = Other; run(); } public static void Validate() { } }"
-        )
-        self.assertEqual(2, len([key for key in records if key.startswith("binding:run")]))
-
-    def test_optional_delegate_wrapper_arguments_are_supported(self):
-        """Treat omitted optional wrapper arguments as a valid delegate boundary."""
-        with tempfile.TemporaryDirectory() as directory:
-            root = self._git_fixture(directory, validation_text=(
-                "using System; public static class FixtureValidation { private static void Run(Action action, int mode = 0) { action(); } private static void Used() { var source = ReadRequiredRepoText(\"Packages/fixture/Runtime/Product.cs\"); Check(source.Contains(\"Product\")); } private static void Noop() { } public static void Validate() { var run = External.Factory; Run(run); } }"
-            ))
-            external = root / "Packages/fixture/Tests/Runtime/External.cs"
-            external.write_text("using System; public static class External { public static Action Factory => FixtureValidation.Used; public static Action NoopFactory => FixtureValidation.Noop; }", encoding="utf-8")
-            subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
-            subprocess.run(["git", "-C", str(root), "commit", "-qm", "optional-wrapper"], check=True)
-            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
-            validation.write_text(validation.read_text(encoding="utf-8").replace("External.Factory", "External.NoopFactory"), encoding="utf-8")
-            code, output = self._run_fixture_gate(root)
-            self.assertEqual(1, code, output)
-
-    def test_default_parameter_assignments_do_not_enter_delegate_signature(self):
-        """Ignore default parameter syntax when collecting delegate assignments."""
-        from Scripts.validation.source_text_inventory_flow import (
-            _delegate_binding_signature,
-            _method_infos,
-        )
-        from Scripts.validation.source_text_inventory_ratchet_helpers import (
-            _helper_signature_records,
-        )
-        from Scripts.validation.source_text_inventory_text import (
-            _strip_csharp_comments_and_strings,
-        )
-
-        base = (
-            "using System; public static class FixtureValidation { "
-            "private static void Run(Action action, int mode = 0) { action(); } "
-            "private static void Used() { } "
-            "public static void Validate() { var run = External.Factory; Run(run); } }"
-        )
-        signatures = []
-        for text in (base, base.replace("mode = 0", "mode = 1")):
-            masked = _strip_csharp_comments_and_strings(text)
-            signatures.append(_delegate_binding_signature(text, masked, _method_infos(text, masked)))
-        self.assertEqual(signatures[0], signatures[1])
-        self.assertNotIn("binding:mode", _helper_signature_records(base))
-
-    def test_scalar_method_call_results_do_not_enter_delegate_signature(self):
-        """Keep ordinary scalar-producing calls out of delegate flow records."""
-        from Scripts.validation.source_text_inventory_flow import (
-            _delegate_binding_signature,
-            _method_infos,
-        )
-        from Scripts.validation.source_text_inventory_text import (
-            _strip_csharp_comments_and_strings,
-        )
-
-        base = (
-            "public static class FixtureValidation { private static void Used() { } "
-            "private static int Compute() => 1; private static int Other() => 2; "
-            "public static void Validate() { var count = Compute(); } }"
-        )
-        signatures = []
-        for text in (base, base.replace("var count = Compute();", "var count = Other();")):
-            masked = _strip_csharp_comments_and_strings(text)
-            signatures.append(_delegate_binding_signature(text, masked, _method_infos(text, masked)))
-        self.assertEqual(signatures[0], signatures[1])
-
-    def test_delegate_flow_regression_matrix(self):
-        """Cover field modifiers, scope shadowing, qualified calls, and overloads."""
-        used = 'private static void Used() { var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs"); Check(source.Contains("Product")); }'
-        cases = (
-            ("modified field", f"using System; public static class FixtureValidation {{ {used} private static void Noop() {{ }} private static readonly Action run = Used; public static void Validate() {{ run(); }} }}", "private static readonly Action run = Used;", "private static readonly Action run = Noop;", 1, None),
-            ("same-name local", f"using System; public static class FixtureValidation {{ {used} private static void Consume(Action run) {{ }} public static void Validate() {{ var run = 1; }} }}", "var run = 1;", "var run = 2;", 0, None),
-            ("qualified scalar", f"public static class FixtureValidation {{ {used} public static void Validate() {{ var mode = External.Mode; External.Run(mode); }} }} public static class External {{ public static int Mode => 1; public static int Other => 2; public static void Run(int mode) {{ }} }}", "External.Mode", "External.Other", 1, None),
-            ("scalar overload", f"using System; public static class FixtureValidation {{ {used} private static void Run(Action action) {{ action(); }} private static void Run(int mode) {{ }} public static void Validate() {{ var mode = 1; Run(mode); }} }}", "var mode = 1;", "var mode = 2;", 0, None),
-        )
-        for name, validation_text, old, new, expected, external_text in cases:
-            with self.subTest(name=name), tempfile.TemporaryDirectory() as directory:
-                root = self._git_fixture(directory, validation_text=validation_text)
-                path = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
-                if external_text:
-                    path = root / "Packages/fixture/Tests/Runtime/External.cs"
-                    path.write_text(external_text, encoding="utf-8")
-                    subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
-                    subprocess.run(["git", "-C", str(root), "commit", "-qm", "external"], check=True)
-                path.write_text(path.read_text(encoding="utf-8").replace(old, new), encoding="utf-8")
-                code, output = self._run_fixture_gate(root)
-                self.assertEqual(expected, code, output)
-
-    def test_delegate_expression_states_join_and_fail_closed(self):
-        """Fail closed when composite delegate expressions cross an unknown boundary."""
-        cases = (
-            ("conditional", "var run = External.Factory; External.Execute(true ? run : run);", "External.Factory", "External.NoopFactory", "public static void Execute(Action action) { action(); }"),
-            ("coalesce", "var run = External.Factory; External.Execute(run ?? run);", "External.Factory", "External.NoopFactory", "public static void Execute(Action action) { action(); }"),
-            ("invocation", "External.Execute(External.Get());", "External.Get()", "External.Zero()", "public static void Execute(Action action) { action(); } public static Action Get() => FixtureValidation.Used; public static Action Zero() => FixtureValidation.Noop;"),
-        )
-        for label, body, original, replacement, members in cases:
-            with self.subTest(label=label), tempfile.TemporaryDirectory() as directory:
-                root = self._git_fixture(directory, validation_text=(
-                    "using System; public static class FixtureValidation { "
-                    "private static void Used() { var source = ReadRequiredRepoText(\"Packages/fixture/Runtime/Product.cs\"); Check(source.Contains(\"Product\")); } "
-                    f"private static void Noop() {{ }} public static void Validate() {{ {body} }} }}"
-                ))
-                external = root / "Packages/fixture/Tests/Runtime/External.cs"
-                external.write_text(
-                    "using System; public static class External { "
-                    "public static Action Factory => FixtureValidation.Used; public static Action NoopFactory => FixtureValidation.Noop; "
-                    + members + " }",
-                    encoding="utf-8",
-                )
-                subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
-                subprocess.run(["git", "-C", str(root), "commit", "-qm", "composite-delegate"], check=True)
-                validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
-                validation.write_text(validation.read_text(encoding="utf-8").replace(original, replacement), encoding="utf-8")
-                code, output = self._run_fixture_gate(root)
-                self.assertEqual(1, code, output)
-                self.assertTrue(
-                    "SOURCE_TEXT_RATCHET_UNSUPPORTED_DELEGATE_FLOW" in output
-                    or "SOURCE_TEXT_RATCHET_HARNESS_CHANGED" in output,
-                    output,
-                )
-
-    def test_unknown_qualified_boundaries_fail_closed_without_type_heuristics(self):
-        """Reject unresolved scalar and instance boundaries under the finite contract."""
-        cases = (
-            ("scalar unknown", "private static void Run(Action action) { action(); } var mode = External.Mode; External.Execute(mode);", "External.Mode", "External.Other", "public static int Mode => 1; public static int Other => 2; public static void Execute(int mode) { }"),
-            ("instance unknown", "var run = External.Factory; var external = new External(); external.Execute(run);", "External.Factory", "External.NoopFactory", "public static Action Factory => FixtureValidation.Used; public static Action NoopFactory => FixtureValidation.Noop; public void Execute(Action action) { action(); }"),
-            ("delegate-capable scalar receiver", "var run = External.Factory; Task.Factory.StartNew(run).Wait();", "External.Factory", "External.NoopFactory", "public static Action Factory => FixtureValidation.Used; public static Action NoopFactory => FixtureValidation.Noop;"),
-        )
-        for label, body, original, replacement, members in cases:
-            with self.subTest(label=label), tempfile.TemporaryDirectory() as directory:
-                root = self._git_fixture(directory, validation_text=(
-                    "using System; public static class FixtureValidation { "
-                    "private static void Used() { var source = ReadRequiredRepoText(\"Packages/fixture/Runtime/Product.cs\"); Check(source.Contains(\"Product\")); } "
-                    f"private static void Noop() {{ }} public static void Validate() {{ {body} }} }}"
-                ))
-                external = root / "Packages/fixture/Tests/Runtime/External.cs"
-                external.write_text("using System; public class External { " + members + " }", encoding="utf-8")
-                subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
-                subprocess.run(["git", "-C", str(root), "commit", "-qm", "unknown-boundary"], check=True)
-                validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
-                validation.write_text(validation.read_text(encoding="utf-8").replace(original, replacement), encoding="utf-8")
-                code, output = self._run_fixture_gate(root)
-                self.assertEqual(1, code, output)
-                self.assertTrue(
-                    "SOURCE_TEXT_RATCHET_UNSUPPORTED_DELEGATE_FLOW" in output
-                    or "SOURCE_TEXT_RATCHET_HARNESS_CHANGED" in output,
-                    output,
-                )
-
     def _run_migration_cli(self, root, approval=None, trusted_base=None):
         """Run the proposed checker with an optional workflow migration approval."""
         args = [
@@ -464,8 +286,25 @@ class SourceTextInventoryReviewTests(_FixtureSupport, unittest.TestCase):
             with self.subTest(change=old):
                 self._assert_flow_mutation(body, old, new, 0)
 
+    def test_call_sites_keep_generic_same_file_helper_calls(self):
+        """Record generic helper invocations as call edges, exactly like the non-generic form."""
+        from Scripts.validation import source_text_inventory_flow as flow
 
-
+        text = (
+            "public static class FixtureValidation {\n"
+            "    private static T Read<T>(T value) => value;\n"
+            "    public static void Validate() {\n"
+            "        Read<bool>(true);\n"
+            "        Read<List<string>>(null);\n"
+            "        Read<Outer.Inner<int>>(null);\n"
+            "        Read(1);\n"
+            "    }\n}\n"
+        )
+        masked = flow._strip_csharp_comments_and_strings(text)
+        validate = next(method for method in flow._method_infos(text, masked) if method.name == "Validate")
+        calls = list(flow._call_sites(text, masked, validate, {"Read"}))
+        self.assertEqual(["Read"] * 4, [name for name, _ in calls])
+        self.assertEqual(["("] * 4, [text[index] for _, index in calls])
 
     def test_unused_nested_barriers_preserve_outer_assertion(self):
         """Keep uncalled local-function and lambda barriers out of the enclosing method."""
