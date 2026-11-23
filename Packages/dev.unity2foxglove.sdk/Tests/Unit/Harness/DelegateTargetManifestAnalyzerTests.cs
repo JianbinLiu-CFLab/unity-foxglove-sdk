@@ -55,6 +55,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 ("public static void Validate() { var a = (Action)Holder.Used; }", new[] { "M:Fixture.Holder.Used" }),
                 ("public static void Validate() { var a = new Action(Used); }", new[] { "M:Fixture.FixtureValidation.Used" }),
                 ("public static void Validate() { ValidationDelegate d = Used; }", new[] { "M:Fixture.FixtureValidation.Used" }),
+                ("public static void Validate() { var d = (ValidationDelegate)Used; var a = (Action)(Used); }", new[] { "M:Fixture.FixtureValidation.Used" }),
+                ("public static void Validate() { var f = (Func<int, int>)Id<int>; var s = (Func<(int, int), int>)Sum; }", new[] { "M:Fixture.FixtureValidation.Id``1(``0)~``0{System.Int32}", "M:Fixture.FixtureValidation.Sum(System.ValueTuple{System.Int32,System.Int32})~System.Int32" }),
                 ("public static void Validate() { Action a = @Used; Action b = (Action)@Used; }", new[] { "M:Fixture.FixtureValidation.Used" }),
                 ("public static void Validate() { var many = new Action[] { Used, Noop }; }", new[] { "M:Fixture.FixtureValidation.Noop", "M:Fixture.FixtureValidation.Used" }),
                 ("public static void Validate() { var many = new List<Action> { Used }; }", new[] { "M:Fixture.FixtureValidation.Used" }),
