@@ -114,6 +114,7 @@ namespace Unity2Foxglove.Tests.PlayMode
                     stepper.Times,
                     stepper.NominalSteps,
                     scanStartPhysSeconds,
+                    batches,
                     scanColumns,
                     budgetColumns,
                     scanPeriodSeconds: 1d);
@@ -282,6 +283,7 @@ namespace Unity2Foxglove.Tests.PlayMode
             IReadOnlyList<double> fixedTimes,
             IReadOnlyList<float> nominalSteps,
             double scanStartPhysSeconds,
+            IReadOnlyList<LidarBatchObservation> observedBatches,
             int columns,
             int budgetColumns,
             double scanPeriodSeconds)
@@ -292,6 +294,7 @@ namespace Unity2Foxglove.Tests.PlayMode
             var columnsScheduled = 0;
             var previousPhysSeconds = scanStartPhysSeconds;
             var primed = false;
+            var observedBatchIndex = 0;
             for (var index = 0; index < fixedTimes.Count && columnsScheduled < columns; index++)
             {
                 var acquisitionPhysSeconds = fixedTimes[index];
@@ -303,6 +306,10 @@ namespace Unity2Foxglove.Tests.PlayMode
                     primed = true;
                     continue;
                 }
+
+                if (observedBatchIndex >= observedBatches.Count
+                    || Math.Abs(acquisitionPhysSeconds - observedBatches[observedBatchIndex].AcquisitionPhysSeconds) > 0.000001d)
+                    continue;
 
                 var elapsedPhysicsSeconds = acquisitionPhysSeconds - previousPhysSeconds;
                 previousPhysSeconds = acquisitionPhysSeconds;
@@ -323,8 +330,10 @@ namespace Unity2Foxglove.Tests.PlayMode
                     nominalSteps[index]));
                 progress -= columnsToEmit;
                 columnsScheduled += columnsToEmit;
+                observedBatchIndex++;
             }
 
+            Assert.That(observedBatchIndex, Is.EqualTo(observedBatches.Count), "The elapsed-time model did not align with every observed scheduling tick.");
             Assert.That(columnsScheduled, Is.EqualTo(columns), "The elapsed-time model did not schedule one complete scan.");
             return expected;
         }
