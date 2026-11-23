@@ -289,6 +289,7 @@ jobs:
         timeout-minutes: 20
         env:
           SOURCE_TEXT_INVENTORY_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          SOURCE_TEXT_DELEGATE_MANIFEST_BOOTSTRAP_BASE: c9207199630b811c6e36daa63b2a4d9e8459e3a3
         run: |
           set -euo pipefail
           trusted_root="$RUNNER_TEMP/source-text-inventory-trusted-base"
@@ -365,7 +366,8 @@ jobs:
             && [ "$trusted_revision" != "8bca2eb23ed73d28a1efe5c14a2eb5bba85a21d0" ] \
             && [ "$trusted_revision" != "a71a7d862299aab28cc5e89a4e01db5b0ae1039a" ] \
             && [ "$trusted_revision" != "5bc3de2627481dfa616280942317246e99b74675" ] \
-            && [ "$trusted_revision" != "90b44193b091af2c75bdd37fa7533322f49dcfe1" ]; then
+            && [ "$trusted_revision" != "90b44193b091af2c75bdd37fa7533322f49dcfe1" ] \
+            && [ "$trusted_revision" != "c9207199630b811c6e36daa63b2a4d9e8459e3a3" ]; then
             if [ "$actual_migration_checker_sha" != "$trusted_checker_sha" ]; then
               echo "Current checker differs from immutable base checker without a reviewed migration approval" >&2
               exit 1
@@ -619,8 +621,28 @@ jobs:
               exit 1
             fi
             migration_args=(--parser-migration-approval "$migration_approval_file")
+          elif [ "$trusted_revision" = "c9207199630b811c6e36daa63b2a4d9e8459e3a3" ]; then
+            migration_approval_file="$RUNNER_TEMP/source-text-parser-maintenance-approval.json"
+            cat > "$migration_approval_file" <<'MIGRATION_APPROVAL'
+          {
+            "base_revision": "c9207199630b811c6e36daa63b2a4d9e8459e3a3",
+            "checker_sha256": "5285c6d46ab34d83f15877038e16decdf31305477bb6bf670221bc3471d05b81",
+            "trusted_checker_sha256": "680734d731683c4c38fc0f30e031fe1cea21e6050951ac832e001974eb71c4b1",
+            "base_inventory_sha256": "9ff836dc593bb4eccf7fbd14768a67c68c8bb18e354341b79f52e91db09bceaa",
+            "current_inventory_sha256": "7e8d45a38f9b1f07ff20524dc7fc2b0b037177793dbc39d1cc16ad1ad7034e9b",
+            "parser_changes_sha256": "e9f4699acc27945d8017ae7150cebacbe7c2cf50e4dae8b36ccd47979bdc7d52",
+            "scope": "versioned-parser-maintenance",
+            "reason": "Reviewed exact parser maintenance for Plan 209 Roslyn delegate-target manifest migration."
+          }
+          MIGRATION_APPROVAL
+            expected_migration_checker_sha=$(python3 -I -B -c 'import json,sys; print(json.load(open(sys.argv[1]))["checker_sha256"])' "$migration_approval_file")
+            if [ "$actual_migration_checker_sha" != "$expected_migration_checker_sha" ]; then
+              echo "Reviewed parser maintenance checker SHA-256 does not match: actual=$actual_migration_checker_sha expected=$expected_migration_checker_sha" >&2
+              exit 1
+            fi
+            migration_args=(--parser-migration-approval "$migration_approval_file")
           fi
-          if [ "$trusted_revision" = "a71a7d862299aab28cc5e89a4e01db5b0ae1039a" ] || [ "$trusted_revision" = "5bc3de2627481dfa616280942317246e99b74675" ]; then
+          if [ "$trusted_revision" = "a71a7d862299aab28cc5e89a4e01db5b0ae1039a" ] || [ "$trusted_revision" = "5bc3de2627481dfa616280942317246e99b74675" ] || [ "$trusted_revision" = "c9207199630b811c6e36daa63b2a4d9e8459e3a3" ]; then
             expected_trusted_checker_sha=$(python3 -I -B -c 'import json,sys; print(json.load(open(sys.argv[1])).get("trusted_checker_sha256", ""))' "$migration_approval_file")
             if [ "$trusted_checker_sha" != "$expected_trusted_checker_sha" ]; then
               echo "Trusted source-text checker SHA-256 does not match the migration approval" >&2
