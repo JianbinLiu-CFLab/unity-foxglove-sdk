@@ -172,6 +172,7 @@ namespace Unity.FoxgloveSDK.Core
         private sealed class WorkerGeneration
         {
             private int _stopRequested;
+            private int _started;
 
             public WorkerGeneration(
                 HttpListener listener,
@@ -193,8 +194,11 @@ namespace Unity.FoxgloveSDK.Core
             public ReplayCursorGenerationLease GenerationLease { get; }
             public Thread Worker { get; set; }
             public bool StopRequested => Volatile.Read(ref _stopRequested) != 0;
+            public bool Started => Volatile.Read(ref _started) != 0;
 
             public void RequestStop() => Interlocked.Exchange(ref _stopRequested, 1);
+
+            public void MarkStarted() => Volatile.Write(ref _started, 1);
         }
 
         private readonly IFoxgloveLogger _logger;
@@ -279,6 +283,7 @@ namespace Unity.FoxgloveSDK.Core
                     try
                     {
                         generation.Worker.Start();
+                        SpinWait.SpinUntil(() => generation.Started);
                     }
                     catch
                     {
@@ -388,7 +393,17 @@ namespace Unity.FoxgloveSDK.Core
                     HttpListenerContext context = null;
                     try
                     {
-                        context = generation.Listener.GetContext();
+                        try
+                        {
+                            var contextTask = generation.Listener.GetContextAsync();
+                            generation.MarkStarted();
+                            context = contextTask.GetAwaiter().GetResult();
+                        }
+                        catch (NotSupportedException)
+                        {
+                            generation.MarkStarted();
+                            context = generation.Listener.GetContext();
+                        }
                         if (context != null)
                         {
                             if (generation.StopRequested)
@@ -409,6 +424,7 @@ namespace Unity.FoxgloveSDK.Core
                     }
                     catch (Exception ex)
                     {
+                        generation.MarkStarted();
                         if (generation.StopRequested)
                         {
                             return;
@@ -425,6 +441,7 @@ namespace Unity.FoxgloveSDK.Core
             }
             finally
             {
+                generation.MarkStarted();
                 if (Interlocked.CompareExchange(
                         ref _generation,
                         null,
