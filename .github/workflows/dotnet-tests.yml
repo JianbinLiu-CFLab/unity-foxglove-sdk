@@ -289,7 +289,6 @@ jobs:
         timeout-minutes: 20
         env:
           SOURCE_TEXT_INVENTORY_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
-          SOURCE_TEXT_DELEGATE_MANIFEST_BOOTSTRAP_BASE: 90b44193b091af2c75bdd37fa7533322f49dcfe1
         run: |
           set -euo pipefail
           trusted_root="$RUNNER_TEMP/source-text-inventory-trusted-base"
@@ -606,13 +605,12 @@ jobs:
             cat > "$migration_approval_file" <<'MIGRATION_APPROVAL'
           {
             "base_revision": "90b44193b091af2c75bdd37fa7533322f49dcfe1",
-            "checker_sha256": "47603510cc3fc315e5a52f5e742e5678bf615c843ca5a4b100778772402873ec",
-            "trusted_checker_sha256": "5a170347c4b8f15a097db0de114c2372863600e51c1b5a5f9f1083455831961c",
+            "checker_sha256": "680734d731683c4c38fc0f30e031fe1cea21e6050951ac832e001974eb71c4b1",
             "base_inventory_sha256": "9ff836dc593bb4eccf7fbd14768a67c68c8bb18e354341b79f52e91db09bceaa",
-            "current_inventory_sha256": "a37a42cd84641afb50dc1d496e53e5eb6166cb06995d0cd5616f8ef8e409b991",
-            "parser_changes_sha256": "ef050e6e416c44e184b28bd45f2786c6d5c2697a4304eeea1c4fff684182574a",
+            "current_inventory_sha256": "9ff836dc593bb4eccf7fbd14768a67c68c8bb18e354341b79f52e91db09bceaa",
+            "parser_changes_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
             "scope": "versioned-parser-maintenance",
-            "reason": "Reviewed Plan 209 removal of the PR #805 regex delegate classifier, replaced by the Roslyn delegate-target manifest, on 2026-11-23."
+            "reason": "User approved the finite exact harness replacement contract for the Phase134-19 consumer on 2026-11-23."
           }
           MIGRATION_APPROVAL
             expected_migration_checker_sha=$(python3 -I -B -c 'import json,sys; print(json.load(open(sys.argv[1]))["checker_sha256"])' "$migration_approval_file")
@@ -622,7 +620,7 @@ jobs:
             fi
             migration_args=(--parser-migration-approval "$migration_approval_file")
           fi
-          if [ "$trusted_revision" = "a71a7d862299aab28cc5e89a4e01db5b0ae1039a" ] || [ "$trusted_revision" = "5bc3de2627481dfa616280942317246e99b74675" ] || [ "$trusted_revision" = "90b44193b091af2c75bdd37fa7533322f49dcfe1" ]; then
+          if [ "$trusted_revision" = "a71a7d862299aab28cc5e89a4e01db5b0ae1039a" ] || [ "$trusted_revision" = "5bc3de2627481dfa616280942317246e99b74675" ]; then
             expected_trusted_checker_sha=$(python3 -I -B -c 'import json,sys; print(json.load(open(sys.argv[1])).get("trusted_checker_sha256", ""))' "$migration_approval_file")
             if [ "$trusted_checker_sha" != "$expected_trusted_checker_sha" ]; then
               echo "Trusted source-text checker SHA-256 does not match the migration approval" >&2
