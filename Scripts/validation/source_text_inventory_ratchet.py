@@ -30,6 +30,7 @@ try:
         _file_has_source_assertion,
         _helper_signatures_at_head,
         _helper_signatures_at_revision,
+        _apply_harness_replacements,
         _apply_ratchet_replacements,
         _load_ratchet_approvals,
         _ratchet_change_tokens,
@@ -56,6 +57,7 @@ except ImportError:
         _file_has_source_assertion,
         _helper_signatures_at_head,
         _helper_signatures_at_revision,
+        _apply_harness_replacements,
         _apply_ratchet_replacements,
         _load_ratchet_approvals,
         _ratchet_change_tokens,
@@ -842,6 +844,21 @@ def _verify_count_ratchet(
             head_helpers,
             approved_reader_helpers,
             reader_changes_isolated,
+        )
+    )
+    changed_helpers = {
+        (path, helper)
+        for path, helper in set(base_helpers) | set(head_helpers)
+        if base_helpers.get((path, helper)) != head_helpers.get((path, helper))
+    }
+    approval_errors.extend(
+        _apply_harness_replacements(
+            root,
+            revision,
+            failures,
+            base_rows,
+            rows,
+            changed_helpers,
         )
     )
     helper_changed = [

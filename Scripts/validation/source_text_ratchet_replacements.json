@@ -10,6 +10,15 @@
         "replacement": "Phase134_19Validation current-base ordering consumer"
     },
     {
+      "file": "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase134_19Validation.cs",
+      "validation_flag": "--phase134-19",
+      "class": "HARNESS",
+      "base_signature": "52aef319d15a1066e481ace17935fa35e467b70e9a77cf1fcf546697a6b51eb2",
+      "head_signature": "955d72d4376ea0ca97da511e6f2b6c6bff2485d13153992df99b2560f498f886",
+      "reason": "Approve the exact Phase134-19 harness transition for the follow-up validation consumer.",
+      "replacement": "Phase134_19Validation exact harness consumer"
+    },
+    {
       "file": "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase163_16Validation.cs",
       "validation_flag": "--phase163-16",
       "class": "C",

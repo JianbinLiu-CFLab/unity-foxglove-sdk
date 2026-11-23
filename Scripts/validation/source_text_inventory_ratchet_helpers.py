@@ -61,6 +61,10 @@ def _ratchet_key(row: dict[str, object]) -> tuple[str, str, str]:
         str(row.get("class", "")).strip(),
     )
 
+def _ratchet_harness_key(row: dict[str, object]) -> tuple[str, str]:
+    """Return the normalized file and validation flag for one harness group."""
+    return (_ratchet_path(row.get("file", "")), str(row.get("validation_flag", "")).strip())
+
 def _validate_ratchet_rows(rows: list[dict[str, object]], source: str) -> list[str]:
     """Validate the trusted or reviewed inventory shape before counting it."""
     errors: list[str] = []
@@ -187,6 +191,18 @@ def _ratchet_key_signature(
         json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
 
+def _ratchet_harness_signature(rows: list[dict[str, object]], key: tuple[str, str]) -> str:
+    """Hash the complete class-and-harness multiset for one validation file."""
+    signatures = Counter(
+        (str(row.get("class", "")), str(row.get("harness_signature", "")))
+        for row in rows
+        if _ratchet_harness_key(row) == key
+    )
+    payload = {"harness": sorted(([list(signature), count] for signature, count in signatures.items()))}
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
 def _load_ratchet_replacements(
     root: Path, revision: str | None = None
 ) -> tuple[list[dict[str, object]], list[str]]:
@@ -227,7 +243,7 @@ def _load_ratchet_replacements(
         if key in seen:
             entry_errors.append(f"replacement {index} is duplicated")
         seen.add(key)
-        if entry["class"] not in {"C", "READER"}:
+        if entry["class"] not in {"C", "READER", "HARNESS"}:
             entry_errors.append(f"replacement {index} has invalid class")
         for field in ("base_signature", "head_signature"):
             value = entry[field]
@@ -270,6 +286,43 @@ def _apply_ratchet_replacements(
         print(
             f"SOURCE_TEXT_RATCHET_REPLACEMENT_{verdict} file={key[0]} flag={key[1]} "
             f"base={base_signature} head={head_signature}"
+        )
+    return errors
+
+def _apply_harness_replacements(
+    root: Path,
+    revision: str | None,
+    failures: list[str],
+    base_rows: list[dict[str, object]],
+    head_rows: list[dict[str, object]],
+    changed_helpers: set[tuple[str, str]],
+) -> list[str]:
+    """Clear only exact harness transitions with no concurrent helper changes."""
+    replacements, errors = _load_ratchet_replacements(root, revision)
+    if changed_helpers:
+        return errors
+    for entry in replacements:
+        if entry["class"] != "HARNESS":
+            continue
+        key = (_ratchet_path(entry["file"]), str(entry["validation_flag"]).strip())
+        messages = {
+            failure
+            for failure in failures
+            if failure.startswith(
+                f"SOURCE_TEXT_RATCHET_HARNESS_CHANGED file={key[0]} flag={key[1]} class="
+            )
+        }
+        if not messages:
+            continue
+        base_signature = _ratchet_harness_signature(base_rows, key)
+        head_signature = _ratchet_harness_signature(head_rows, key)
+        verdict = "MISMATCH"
+        if entry["base_signature"] == base_signature and entry["head_signature"] == head_signature:
+            failures[:] = [failure for failure in failures if failure not in messages]
+            verdict = "APPROVED"
+        print(
+            f"SOURCE_TEXT_RATCHET_HARNESS_REPLACEMENT_{verdict} "
+            f"file={key[0]} flag={key[1]} base={base_signature} head={head_signature}"
         )
     return errors
 
