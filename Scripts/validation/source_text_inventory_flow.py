@@ -671,6 +671,10 @@ def _delegate_binding_signature(
             explicit_delegate
             or match.group("name") in delegate_variables
             or bool(target_names & delegate_methods)
+            or re.search(
+                r"\(\s*(?:System\.)?(?:Action|Func|Predicate)(?:<[^;=]+>)?\s*\)",
+                target,
+            ) is not None
             or "=>" in target
             or re.search(r"\bdelegate\s*\(", target) is not None
         )
