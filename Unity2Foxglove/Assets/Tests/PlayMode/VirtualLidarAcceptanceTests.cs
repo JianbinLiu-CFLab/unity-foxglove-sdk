@@ -40,7 +40,7 @@ namespace Unity2Foxglove.Tests.PlayMode
         [Category("LidarAcceptance")]
         public IEnumerator LidarAcceptance_ElapsedPhysicsTimeSpansMultipleTicks()
         {
-            var target = CreateTarget(new Vector3(0f, 0f, 5f));
+            var target = CreateEnclosingTarget();
             var stepperObject = new GameObject("lidar-physics-steps");
             var stepper = stepperObject.AddComponent<PhysicsStepAlternator>();
             var previousSimulationMode = Physics.simulationMode;
@@ -215,6 +215,32 @@ namespace Unity2Foxglove.Tests.PlayMode
             target.transform.localScale = new Vector3(20f, 20f, 0.2f);
             Physics.SyncTransforms();
             return target;
+        }
+
+        private static GameObject CreateEnclosingTarget()
+        {
+            const float extent = 10f;
+            const float thickness = 0.2f;
+            var root = new GameObject("lidar-enclosing-target");
+            var diameter = extent * 2f + thickness;
+            AddEnclosingWall(root, new Vector3(-extent, 0f, 0f), new Vector3(thickness, diameter, diameter));
+            AddEnclosingWall(root, new Vector3(extent, 0f, 0f), new Vector3(thickness, diameter, diameter));
+            AddEnclosingWall(root, new Vector3(0f, -extent, 0f), new Vector3(diameter, thickness, diameter));
+            AddEnclosingWall(root, new Vector3(0f, extent, 0f), new Vector3(diameter, thickness, diameter));
+            AddEnclosingWall(root, new Vector3(0f, 0f, -extent), new Vector3(diameter, diameter, thickness));
+            AddEnclosingWall(root, new Vector3(0f, 0f, extent), new Vector3(diameter, diameter, thickness));
+            Physics.SyncTransforms();
+            return root;
+        }
+
+        private static void AddEnclosingWall(GameObject root, Vector3 position, Vector3 scale)
+        {
+            var wall = new GameObject("lidar-enclosing-wall");
+            wall.transform.SetParent(root.transform);
+            wall.transform.localPosition = position;
+            wall.transform.localScale = scale;
+            wall.layer = root.layer;
+            wall.AddComponent<BoxCollider>();
         }
 
         private static void AssertElapsedDiffersFromNominalStep(PhysicsStepAlternator stepper, double scanStartPhysSeconds)
