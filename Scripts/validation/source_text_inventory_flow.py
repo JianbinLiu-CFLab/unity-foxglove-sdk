@@ -1,10 +1,13 @@
 """Control-flow and helper-call analysis for source-text inventory."""
+
 from __future__ import annotations
+
 import hashlib
 import re
 from bisect import bisect_right
 from collections import Counter
 from dataclasses import dataclass
+
 try:
     from . import source_text_inventory_symbols as _symbol_helpers
     from .source_text_inventory_symbols import (
@@ -14,17 +17,8 @@ try:
     from .source_text_inventory_text import (
         _balanced_brace_end,
         _balanced_call_end,
-        _DELEGATE_ASSIGNMENT_PATTERN, _DELEGATE_TYPE_PATTERN, _delegate_type_names,
-        _is_delegate_type_name,
-        _is_delegate_like_target,
-        _is_delegate_conversion,
-        _has_delegate_target_hint,
-        DELEGATE_STATE_DIRECT, DELEGATE_STATE_NON_DELEGATE, DELEGATE_STATE_UNKNOWN_SOURCE,
-        DELEGATE_STATE_UNSUPPORTED,
-        _delegate_invocation_text,
-        _is_delegate_assignment,
-        _normalize_csharp_expression, _normalize_delegate_expression, _normalize_delegate_value,
-        _strip_csharp_comments_and_strings, _KNOWN_DELEGATE_WRAPPER_NAMES, _KNOWN_SCALAR_CALL_RECEIVERS,
+        _normalize_csharp_expression,
+        _strip_csharp_comments_and_strings,
     )
 except ImportError:
     import source_text_inventory_symbols as _symbol_helpers
@@ -35,18 +29,10 @@ except ImportError:
     from source_text_inventory_text import (
         _balanced_brace_end,
         _balanced_call_end,
-        _DELEGATE_ASSIGNMENT_PATTERN, _DELEGATE_TYPE_PATTERN, _delegate_type_names,
-        _is_delegate_type_name,
-        _is_delegate_like_target,
-        _is_delegate_conversion,
-        _has_delegate_target_hint,
-        DELEGATE_STATE_DIRECT, DELEGATE_STATE_NON_DELEGATE, DELEGATE_STATE_UNKNOWN_SOURCE,
-        DELEGATE_STATE_UNSUPPORTED,
-        _delegate_invocation_text,
-        _is_delegate_assignment,
-        _normalize_csharp_expression, _normalize_delegate_expression, _normalize_delegate_value,
-        _strip_csharp_comments_and_strings, _KNOWN_DELEGATE_WRAPPER_NAMES, _KNOWN_SCALAR_CALL_RECEIVERS,
+        _normalize_csharp_expression,
+        _strip_csharp_comments_and_strings,
     )
+
 CONTROL_KEYWORDS = {
     "if",
     "else",
@@ -61,10 +47,13 @@ CONTROL_KEYWORDS = {
     "nameof",
     "return",
     "throw",
-}; CALL_PATTERN = re.compile(r"\b(?P<name>[A-Za-z_]\w*)\s*(?:<[^;{}()]*>\s*)?\(")
+}
+CALL_PATTERN = re.compile(r"\b(?P<name>[A-Za-z_]\w*)\s*\(")
+
 @dataclass(frozen=True)
 class MethodInfo:
     """Describe one C# method body discovered by the lightweight parser."""
+
     name: str
     start: int
     body_start: int
@@ -72,10 +61,12 @@ class MethodInfo:
     signature: str
     parameter_types: tuple[str, ...] = ()
     return_type: str = ""
+
     @property
     def identity(self) -> str:
         """Return a source-stable identity for one method declaration."""
         return f"{self.name}@{self.start}"
+
 def _method_infos(text: str, masked: str) -> list[MethodInfo]:
     """Discover method-like declarations and their balanced bodies."""
     pattern = re.compile(
@@ -135,10 +126,12 @@ def _method_infos(text: str, masked: str) -> list[MethodInfo]:
             )
         )
     return sorted(methods, key=lambda method: method.start)
+
 def _method_for_offset(methods: list[MethodInfo], offset: int) -> MethodInfo | None:
     """Return the smallest method body containing an offset."""
     candidates = [method for method in methods if method.body_start < offset < method.body_end]
     return min(candidates, key=lambda method: method.body_end - method.body_start, default=None)
+
 def _method_return_types(methods: list[MethodInfo]) -> dict[str, str]:
     """Return unambiguous same-file method return types."""
     grouped: dict[str, list[MethodInfo]] = {}
@@ -149,6 +142,7 @@ def _method_return_types(methods: list[MethodInfo]) -> dict[str, str]:
         for name, methods_for_name in grouped.items()
         if len(methods_for_name) == 1 and methods_for_name[0].return_type
     }
+
 def _field_types(text: str, masked: str, methods: list[MethodInfo]) -> dict[str, str]:
     """Collect simple field declarations outside method bodies."""
     result: dict[str, str] = {}
@@ -161,6 +155,7 @@ def _field_types(text: str, masked: str, methods: list[MethodInfo]) -> dict[str,
             continue
         result[match.group("name")] = _normalize_type(match.group("type"))
     return result
+
 def _local_types(
     text: str,
     method: MethodInfo,
@@ -177,6 +172,7 @@ def _local_types(
         tokens = [token for token in tokens if token not in {"this", "ref", "out", "in", "params"}]
         if len(tokens) >= 2:
             result[tokens[-1]] = _normalize_type(" ".join(tokens[:-1]))
+
     body = text[method.body_start : method.body_end]
     for match in re.finditer(
         r"\b(?P<type>[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)?(?:<[^;=]+>)?(?:\[\])?|var)\s+"
@@ -192,6 +188,7 @@ def _local_types(
             else _normalize_type(declared)
         )
     return result
+
 def _infer_expression_type(
     expression: str,
     local_types: dict[str, str],
@@ -221,6 +218,7 @@ def _infer_expression_type(
         return (return_types or {}).get(call.group(1), "")
     match = re.match(r"\(([^)]+)\)", expression)
     return _normalize_type(match.group(1)) if match else ""
+
 def _call_sites(
     text: str,
     masked: str,
@@ -252,6 +250,7 @@ def _call_sites(
                 if cursor < len(masked) and masked[cursor] in "{=":
                     continue
         yield name, open_index
+
 def _argument_definition_index(text: str, masked: str, methods: list[MethodInfo]) -> dict[int, list[tuple[int, str, str, str]]]:
     """Build one local-definition index from the already-discovered method bodies."""
     regions = [(method.body_start, method.body_end) for method in methods]
@@ -260,6 +259,7 @@ def _argument_definition_index(text: str, masked: str, methods: list[MethodInfo]
         result[owner].extend(definitions)
         result[owner].sort(key=lambda definition: definition[0])
     return result
+
 def _method_call_contexts(
     text: str,
     masked: str,
@@ -291,16 +291,22 @@ def _method_call_contexts(
     return _reachability_signatures(
         text.splitlines(), calls, text, masked, methods, argument_definitions
     )
+
 def _line_starts(text: str) -> list[int]:
     """Return source line starts for indexed call-site lookups."""
-    starts = [0]; starts.extend(index + 1 for index, character in enumerate(text) if character == "\n")
+    starts = [0]
+    starts.extend(index + 1 for index, character in enumerate(text) if character == "\n")
     return starts
+
 def _line_number(starts: list[int], offset: int) -> int:
     """Return a zero-based line number from precomputed line starts."""
     return bisect_right(starts, offset) - 1
+
 def _call_arguments(text: str, masked: str, open_index: int) -> str | None:
     """Return one call's argument text when its parentheses are balanced."""
-    close_index = _balanced_call_end(masked, open_index); return text[open_index + 1 : close_index] if close_index is not None else None
+    close_index = _balanced_call_end(masked, open_index)
+    return text[open_index + 1 : close_index] if close_index is not None else None
+
 def _resolve_call_target(
     name: str,
     arguments: str,
@@ -331,6 +337,7 @@ def _resolve_call_target(
         ):
             exact.append(candidate)
     return exact[0] if len(exact) == 1 else None
+
 def _method_call_graph(
     text: str,
     masked: str,
@@ -395,6 +402,8 @@ def _method_call_graph(
         text, masked, {method.identity: (method.body_start, method.body_end, method.signature) for method in methods},
         graph, resolved_calls, argument_definitions, set(field_types),
     )
+
+
 def _partial_termination_barriers(
     text: str, masked: str, methods: list[MethodInfo]
 ) -> dict[str, str]:
@@ -427,6 +436,7 @@ def _partial_termination_barriers(
         )
         result[method.name] = hashlib.sha256(body.encode()).hexdigest()[:16]
     return result
+
 def _ambiguous_call_bindings(
     text: str, masked: str, methods: list[MethodInfo]
 ) -> dict[str, str]:
@@ -484,6 +494,7 @@ def _ambiguous_call_bindings(
             if method.name == name:
                 bindings[method.identity] = f"ambiguous:{digest}"
     return bindings
+
 def _method_labels(methods: list[MethodInfo]) -> dict[str, str]:
     """Return stable display labels that distinguish overloaded methods."""
     counts = Counter(method.name for method in methods)
@@ -495,6 +506,7 @@ def _method_labels(methods: list[MethodInfo]) -> dict[str, str]:
         )
         for method in methods
     }
+
 def _call_path_for_offset(text: str, masked: str, offset: int, entrypoint: str) -> str:
     """Return a registry-to-method path or ``UNKNOWN`` when static binding fails."""
     methods = _method_infos(text, masked)
@@ -503,6 +515,7 @@ def _call_path_for_offset(text: str, masked: str, offset: int, entrypoint: str) 
         return "UNKNOWN"
     _, paths = _call_path_index(text, masked, entrypoint)
     return paths.get(target.identity, "UNKNOWN")
+
 def _call_path_index(
     text: str,
     masked: str,
@@ -567,6 +580,7 @@ def _call_path_index(
             digest = hashlib.sha256(repr(sorted(edges)).encode("utf-8")).hexdigest()
             paths[target] += "|edges(" + digest + ")"
     return methods, paths
+
 def _validation_harness_signature(
     text: str,
     masked: str | None = None,
@@ -581,7 +595,6 @@ def _validation_harness_signature(
     argument_definitions = argument_definitions if argument_definitions is not None else _argument_definition_index(text, masked, methods)
     call_contexts = call_contexts if call_contexts is not None else _method_call_contexts(text, masked, methods, argument_definitions=argument_definitions)
     entrypoints = set(entrypoint.split(";"))
-    delegate_type_names = _delegate_type_names(text, masked)
     counts = Counter(method.name for method in methods)
     pieces: list[str] = []
     for method in methods:
@@ -589,7 +602,9 @@ def _validation_harness_signature(
             continue
         body = masked[method.body_start : method.body_end]
         delegate_parameter = any(
-            _is_delegate_type_name(parameter, delegate_type_names)
+            _normalize_type(parameter).removeprefix("System.").startswith(
+                ("Action", "Func", "Predicate")
+            )
             for parameter in method.parameter_types
         )
         if (
@@ -621,100 +636,71 @@ def _validation_harness_signature(
     if delegate_signature:
         pieces.append(f"delegate:{delegate_signature}")
     return hashlib.sha256("\n".join(pieces).encode()).hexdigest() if pieces else ""
-def _method_parameter_names(method: MethodInfo) -> tuple[str, ...]:
-    """Return parameter names for one method declaration."""; start, end = method.signature.find("("), method.signature.rfind(")")
-    if start < 0 or end <= start: return ()
-    return tuple((match.group(1) if (match := re.search(r"\b([A-Za-z_]\w*)$", re.sub(r"\b(?:this|ref|out|in|params)\b", "", value.split("=", 1)[0]).strip())) else "") for value in _split_arguments(method.signature[start + 1 : end]))
-def _delegate_scope_key(method: MethodInfo | None) -> str: """Return the stable identity used to scope delegate bindings."""; return method.identity if method else ""
-def _possible_delegate_target(target: str, delegate_type_names: set[str], method_names: set[str] | None = None, possible_names: set[str] | None = None) -> str:
-    """Classify a target with recursive finite-state expression joining."""; raw = _normalize_delegate_expression(target).rstrip("!").strip(); normalized = _normalize_delegate_value(target, delegate_type_names); possible_names = possible_names or set(); parts = tuple(part.strip() for part in re.split(r"\s*(?:\?\?|\?|:)\s*", normalized) if part.strip()) if re.search(r"\?|:", normalized) else (); states = tuple(_possible_delegate_target(part, delegate_type_names, method_names, possible_names) for part in parts if part != normalized); cast = re.match(rf"^\s*\(\s*(?P<type>{_DELEGATE_TYPE_PATTERN})\s*\)", raw); constructor = re.match(rf"^\s*new\s+(?P<type>{_DELEGATE_TYPE_PATTERN})\s*\(", raw); bad_conversion = bool((cast and _is_delegate_type_name(cast.group("type"), delegate_type_names)) or (constructor and _is_delegate_type_name(constructor.group("type"), delegate_type_names))) and not _is_delegate_conversion(raw, delegate_type_names)
-    if states: return DELEGATE_STATE_UNKNOWN_SOURCE if re.search(r"\?\?|\?|:", normalized) or DELEGATE_STATE_UNKNOWN_SOURCE in states else DELEGATE_STATE_DIRECT if DELEGATE_STATE_DIRECT in states else DELEGATE_STATE_NON_DELEGATE
-    terminal = normalized.rsplit(".", 1)[-1].split("<", 1)[0]; known = normalized in possible_names or "=>" in target or re.search(r"\bdelegate\s*\(", target) is not None or _is_delegate_conversion(normalized, delegate_type_names) or (_is_delegate_like_target(normalized) and (_has_delegate_target_hint(normalized) or terminal in (method_names or set())))
-    if known: return DELEGATE_STATE_DIRECT
-    if re.search(r"\([^;]*\)$", normalized) and not normalized.startswith(("(", "new ")): return DELEGATE_STATE_UNKNOWN_SOURCE
-    return DELEGATE_STATE_UNKNOWN_SOURCE if bad_conversion or any(marker in normalized for marker in ("[", "{")) or ("." in normalized and _is_delegate_like_target(normalized)) else DELEGATE_STATE_NON_DELEGATE
-def _delegate_parameter_boundaries(text: str, masked: str, methods: list[MethodInfo], delegate_type_names: set[str]) -> tuple[set[str], dict[str, set[str]], set[int], set[int]]:
-    """Discover delegate wrapper parameters and their binding call sites."""; method_names = {method.name for method in methods}; wrappers: dict[str, list[tuple[set[int], tuple[str, ...], tuple[str, ...]]]] = {}
-    for method in methods:
-        indexes = {i for i, parameter in enumerate(method.parameter_types) if _is_delegate_type_name(parameter, delegate_type_names)}
-        if indexes: pvalues = _split_arguments(method.signature[method.signature.find("(") + 1 : method.signature.rfind(")")]); required = {i for i, value in enumerate(pvalues) if "=" not in value and re.search(r"\bparams\b", value) is None}; wrappers.setdefault(method.name, []).append((indexes, method.parameter_types, _method_parameter_names(method), required, any(re.search(r"\bparams\b", value) for value in pvalues)))
-    signature_methods = sorted(methods, key=lambda method: method.start); method_starts = [method.start for method in signature_methods]; assignment_records = [(match, _delegate_scope_key(scope)) for match in _DELEGATE_ASSIGNMENT_PATTERN.finditer(masked) if (scope := (_method_for_offset(methods, match.start()) or (signature_methods[index] if (index := bisect_right(method_starts, match.start()) - 1) >= 0 and signature_methods[index].body_start > match.start() else None))) is None or match.start() >= scope.body_start]; possible: dict[str, set[str]] = {}; unknown_names: dict[str, set[str]] = {}; unknown_targets: dict[str, dict[str, str]] = {}; unknown_records: dict[str, set[str]] = {}; field_names = {name for name, value in _field_types(text, masked, methods).items() if value and not _is_delegate_type_name(value, delegate_type_names)}
-    scalar_names = {method.identity: field_names | {name for name, value in _local_types(text, method).items() if value and not _is_delegate_type_name(value, delegate_type_names)} | {name for parent in methods if parent.body_start < method.start < method.body_end < parent.body_end for name, value in _local_types(text, parent).items() if value and not _is_delegate_type_name(value, delegate_type_names)} for method in methods}
-    for _ in range(2):
-        for match, key in assignment_records:
-            state = _possible_delegate_target(match.group("target"), delegate_type_names, method_names, possible.get(key, set()))
-            target = match.group("target"); unknown_target = state == DELEGATE_STATE_UNKNOWN_SOURCE or bool(set(re.findall(r"\b[A-Za-z_]\w*\b", target)) & unknown_names.get(key, set())); normalized_target = _normalize_csharp_expression(target); possible.setdefault(key, set()).add(match.group("name")) if state == DELEGATE_STATE_DIRECT and not re.search(r"[?:]", target) else (unknown_names.setdefault(key, set()).add(match.group("name")), unknown_targets.setdefault(key, {}).__setitem__(match.group("name"), normalized_target), unknown_records.setdefault(key, set()).add(f"unknown:{match.group('name')}={normalized_target}") if not re.match(r"\s*(?:Read|Source|Text)[A-Za-z_]\w*\s*\(", target) and not re.search(r"\([^;]*\)$", normalized_target) else None) if unknown_target else None
-    def argument_map(values: list[str], names: tuple[str, ...]) -> dict[int, str]:
-        """Map positional and named call arguments to parameter indexes."""; mapped, next_index = {}, 0
-        for value in values:
-            named = re.match(r"\s*([A-Za-z_]\w*)\s*:\s*(.*)", value, re.DOTALL)
-            if named and named.group(1) in names: mapped[names.index(named.group(1))] = named.group(2).strip(); continue
-            while next_index in mapped: next_index += 1
-            mapped[next_index], next_index = value.strip(), next_index + 1
-        return mapped
-    def possible_binding(value: str, key: str, allow_unknown_source: bool = True) -> bool:
-        """Return whether an argument may carry a delegate binding."""; candidate = _normalize_delegate_value(value, delegate_type_names); state = _possible_delegate_target(value, delegate_type_names, method_names, possible.get(key, set())); receiver = candidate.split(".", 1)[0] if "." in candidate else ""; unknown_invocation = state == DELEGATE_STATE_UNKNOWN_SOURCE and (allow_unknown_source or ("(" in candidate and "." in candidate and receiver not in scalar_names.get(key, set()))); return candidate in possible.get(key, set()) or candidate in unknown_names.get(key, set()) or candidate in possible.get("", set()) or "=>" in value or "delegate" in value or state == DELEGATE_STATE_DIRECT or unknown_invocation
-    boundaries: dict[str, set[str]] = {key: set(values) | possible.get(key, set()) for key, values in unknown_records.items()} | {key: set(values) for key, values in possible.items() if key not in unknown_records}; call_offsets: set[int] = set()
-    for method in methods:
-        key = method.identity
-        for call_name, open_index in _call_sites(text, masked, method):
-            terminal = call_name.rsplit(".", 1)[-1].rsplit("::", 1)[-1]; overloads = wrappers.get(terminal, []); arguments = _call_arguments(text, masked, open_index); values, selected, matched = _split_arguments(arguments or ""), [], False
-            if arguments is None: continue
-            qualified_unknown = not overloads and "(" not in call_name and "." in call_name and any(possible_binding(value, key, False) for value in values)
-            for indexes, parameter_types, parameter_names, required, has_params in overloads:
-                mapped = argument_map(values, parameter_names)
-                if (not has_params and any(i >= len(parameter_types) for i in mapped)) or any(i not in mapped for i in required) or any(i not in mapped or not possible_binding(mapped[i], key) for i in indexes) or any(i in mapped and possible_binding(mapped[i], key) for i in range(len(parameter_types)) if i not in indexes): continue
-                matched = True; selected.extend(mapped[i] for i in indexes if i in mapped)
-            if qualified_unknown: selected.extend(value for value in values if possible_binding(value, key, False))
-            if not matched and not qualified_unknown: continue
-            if matched or selected: call_offsets.add(open_index)
-            for value in selected:
-                candidate = _normalize_delegate_value(value, delegate_type_names)
-                for candidate_name in set(re.findall(r"\b[A-Za-z_]\w*\b", candidate)) & possible.get(key, set()): boundaries.setdefault(key, set()).add(candidate_name)
-                for candidate_name in set(re.findall(r"\b[A-Za-z_]\w*\b", candidate)) & unknown_names.get(key, set()): boundaries.setdefault(key, set()).add(f"unknown:{candidate_name}={unknown_targets.get(key, {}).get(candidate_name, candidate_name)}")
-    return set(wrappers), boundaries, call_offsets, set()
-def _delegate_variable_names(masked: str, delegate_type_names: set[str], scope_start: int = 0, scope_end: int | None = None) -> set[str]:
-    """Return explicitly declared delegate variables within one source scope."""; scoped = masked[scope_start : len(masked) if scope_end is None else scope_end]; pattern = re.compile(r"\b(?P<type>" + _DELEGATE_TYPE_PATTERN + r")\s+(?P<name>[A-Za-z_]\w*)\s*(?=[=;,{)])")
-    return {match.group("name") for match in pattern.finditer(scoped) if _is_delegate_type_name(match.group("type"), delegate_type_names)}
-def _delegate_binding_signature(text: str, masked: str, methods: list[MethodInfo]) -> str:
+
+def _delegate_binding_signature(
+    text: str, masked: str, methods: list[MethodInfo]
+) -> str:
     """Hash delegate assignments, method-group arguments, and forwarding calls."""
-    delegate_methods = {method.name for method in methods if _normalize_type(method.return_type).removeprefix("System.").startswith(("Action", "Func", "Predicate"))}
-    delegate_methods.update(match.group("name") for match in re.finditer(r"\b(?:System\.)?(?:Action|Func|Predicate)(?:<[^;{}]+>)?\s+(?P<name>[A-Za-z_]\w*)\s*\([^;{}]*\)\s*=>", masked))
+    delegate_methods = {
+        method.name
+        for method in methods
+        if _normalize_type(method.return_type)
+        .removeprefix("System.")
+        .startswith(("Action", "Func", "Predicate"))
+    }
+    delegate_methods.update(
+        match.group("name")
+        for match in re.finditer(
+            r"\b(?:System\.)?(?:Action|Func|Predicate)(?:<[^;{}]+>)?\s+"
+            r"(?P<name>[A-Za-z_]\w*)\s*\([^;{}]*\)\s*=>",
+            masked,
+        )
+    )
     pieces: list[str] = []
     method_names = {method.name for method in methods}
-    delegate_type_names = _delegate_type_names(text, masked)
-    file_delegate_variables = _delegate_variable_names(masked, delegate_type_names)
-    scoped_delegate_variables = {method.identity: _delegate_variable_names(masked, delegate_type_names, method.start, method.body_end) for method in methods}
-    delegate_wrapper_names, delegate_boundary_names, delegate_call_offsets, delegate_unsupported_offsets = _delegate_parameter_boundaries(text, masked, methods, delegate_type_names)
-    pieces.extend(f"{scope}:{value}" for scope, values in delegate_boundary_names.items() for value in sorted(values) if value.startswith("unknown:"))
-    delegate_wrapper_names.update(_KNOWN_DELEGATE_WRAPPER_NAMES); signature_methods = sorted(methods, key=lambda method: method.start); method_starts = [method.start for method in signature_methods]
-    for match in (candidate for candidate in _DELEGATE_ASSIGNMENT_PATTERN.finditer(masked) if (scope_candidate := (_method_for_offset(methods, candidate.start()) or (signature_methods[index] if (index := bisect_right(method_starts, candidate.start()) - 1) >= 0 and signature_methods[index].body_start > candidate.start() else None))) is None or candidate.start() >= scope_candidate.body_start):
-        target = re.sub(r"\s+", " ", match.group("target")).strip(); declared_type = match.group("type") or ""; name = match.group("name"); scope = _method_for_offset(methods, match.start()) or (signature_methods[index] if (index := bisect_right(method_starts, match.start()) - 1) >= 0 and signature_methods[index].body_start > match.start() else None)
-        scope_key = _delegate_scope_key(scope); delegate_variables = scoped_delegate_variables.setdefault(scope_key, set()) if scope else file_delegate_variables; scope_boundary_names = delegate_boundary_names.get(scope_key, set())
-        if declared_type == "using" or (not declared_type and target.lstrip().startswith(("=", ">", ")"))):
+    delegate_variables: set[str] = set()
+    assignment_pattern = re.compile(
+        r"\b(?:(?P<type>(?:(?:System\.)?(?:Action|Func|Predicate)(?:<[^;=]+>)?|var))\s+)?"
+        r"(?P<name>[A-Za-z_]\w*)\s*=\s*(?P<target>[^;]+);"
+    )
+    for match in assignment_pattern.finditer(masked):
+        target = re.sub(r"\s+", " ", match.group("target")).strip()
+        target_names = set(re.findall(r"\b[A-Za-z_]\w*\b", target))
+        explicit_delegate = bool(match.group("type")) and match.group("type") != "var"
+        is_delegate = (
+            explicit_delegate
+            or match.group("name") in delegate_variables
+            or bool(target_names & delegate_methods)
+            or "=>" in target
+            or re.search(r"\bdelegate\s*\(", target) is not None
+        )
+        if not is_delegate:
             continue
-        invocation_text = _delegate_invocation_text(masked, match.end(), target, declared_type, name, delegate_variables, method_names, scope_boundary_names, scope.body_start if scope else 0, scope.body_end if scope else len(masked))
-        state = _is_delegate_assignment(target, declared_type, name, delegate_variables, delegate_methods, method_names, delegate_type_names, invocation_text, scope_boundary_names, delegate_wrapper_names)
-        if state == DELEGATE_STATE_NON_DELEGATE:
-            continue
+        name = match.group("name")
         delegate_variables.add(name)
-        pieces.append((f"unsupported:{state}|" if state == DELEGATE_STATE_UNSUPPORTED else "assign:") + f"{match.group('type') or ''} {name}={target}|invoke:{invocation_text}")
+        invocation = re.search(
+            rf"\b{re.escape(name)}(?:\s*\([^;]*\)|\s*\?\.\s*Invoke\s*\([^;]*\)|"
+            rf"\s*\.\s*Invoke\s*\([^;]*\))\s*;|"
+            rf"\b[A-Za-z_]\w*\s*\(\s*{re.escape(name)}\s*\)\s*;",
+            masked[match.end() :],
+        )
+        invocation_text = re.sub(r"\s+", " ", invocation.group()).strip() if invocation else ""
+        pieces.append(f"assign:{match.group('type') or ''} {name}={target}|invoke:{invocation_text}")
     for method in methods:
         for call_name, open_index in _call_sites(text, masked, method):
             arguments = _call_arguments(text, masked, open_index)
             if arguments is None:
                 continue
             argument_names = set(re.findall(r"\b[A-Za-z_]\w*\b", arguments))
-            terminal_name = call_name.rsplit(".", 1)[-1].rsplit("::", 1)[-1]
-            is_delegate_wrapper = open_index in delegate_call_offsets or call_name in _KNOWN_DELEGATE_WRAPPER_NAMES
             if not argument_names & method_names and not re.search(
                 r"=>|\bdelegate\s*\(", arguments
-            ) and not is_delegate_wrapper:
+            ):
                 continue
             normalized = _normalize_csharp_expression(arguments)
-            kind = "unsupported" if open_index in delegate_unsupported_offsets else "boundary" if is_delegate_wrapper else "call"
-            pieces.append(f"{kind}:{call_name}({normalized})")
+            pieces.append(f"call:{call_name}({normalized})")
     return hashlib.sha256("\n".join(sorted(pieces)).encode()).hexdigest() if pieces else ""
+
+
 def _lambda_binding_signature(
     text: str, masked: str, methods: list[MethodInfo] | None = None
 ) -> str:
@@ -729,6 +715,7 @@ def _lambda_binding_signature(
     methods_by_name: dict[str, list[MethodInfo]] = {}
     for method in methods or []:
         methods_by_name.setdefault(method.name, []).append(method)
+
     def owner_signature(owner: str) -> str:
         """Return a stable digest for an inline lambda receiver method."""
         candidates = methods_by_name.get(owner, [])
@@ -743,6 +730,7 @@ def _lambda_binding_signature(
             for method in candidates
         )
         return hashlib.sha256(payload.encode()).hexdigest()[:16]
+
     def region_end(cursor: int) -> int | None:
         """Return the end of one lambda or delegate body."""
         while cursor < len(masked) and masked[cursor].isspace():
@@ -750,6 +738,7 @@ def _lambda_binding_signature(
         if cursor < len(masked) and masked[cursor] == "{":
             return _balanced_brace_end(masked, cursor)
         return masked.find(";", cursor)
+
     def statement_for(lambda_start: int, body_end: int) -> str:
         """Return the normalized statement that binds one inline lambda."""
         start = masked.rfind(";", 0, lambda_start) + 1
@@ -757,6 +746,7 @@ def _lambda_binding_signature(
         if end < 0:
             return ""
         return re.sub(r"\s+", " ", masked[start : end + 1]).strip()
+
     pattern = re.compile(
         r"\b(?P<name>[A-Za-z_]\w*)\s*=\s*"
         r"(?P<lambda>(?:\([^)]*\)|[A-Za-z_]\w*)\s*=>|delegate(?:\s*\([^)]*\))?\s*\{)"
@@ -776,6 +766,7 @@ def _lambda_binding_signature(
         invocation_matches = list(invocation_pattern.finditer(masked, end + 1))
         assignment_records.append((match, end, invocation_matches))
         context_positions.extend(item.start() for item in invocation_matches)
+
     inline_pattern = re.compile(r"(?:\([^)]*\)|[A-Za-z_]\w*)\s*=>")
     for match in inline_pattern.finditer(masked):
         if match.start() in seen:
@@ -792,6 +783,7 @@ def _lambda_binding_signature(
             (owner, owner_signature(owner), statement, body, match.start())
         )
         context_positions.append(match.start())
+
     delegate_pattern = re.compile(r"\bdelegate(?:\s*\([^)]*\))?\s*\{")
     for match in delegate_pattern.finditer(masked):
         if match.start() in seen:
@@ -837,6 +829,7 @@ def _lambda_binding_signature(
             f"delegate:{owner}:{owner_digest}:{statement}:{body}:context:{contexts.get(position, '')}"
         )
     return hashlib.sha256("\n".join(pieces).encode()).hexdigest() if pieces else ""
+
 def _reachability_signatures(
     lines: list[str],
     calls: list[dict[str, object]],
