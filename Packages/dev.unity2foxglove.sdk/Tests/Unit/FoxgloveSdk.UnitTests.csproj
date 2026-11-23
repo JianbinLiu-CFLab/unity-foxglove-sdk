@@ -34,7 +34,10 @@
     <AssemblyName Condition="'$(IncludeRos2ForUnityNative)' == 'true'">Unity2Foxglove.Ros2ForUnity.Native</AssemblyName>
     <OutputPath>$(BaseOutputPath)$(Phase179OptionalCompilationLane)\$(Configuration)\</OutputPath>
     <IntermediateOutputPath>$(BaseIntermediateOutputPath)$(Phase179OptionalCompilationLane)\$(Configuration)\$(TargetFramework)\</IntermediateOutputPath>
+    <FoxDelegateTargetsProject>unit</FoxDelegateTargetsProject>
   </PropertyGroup>
+
+  <Import Project="../../../../Tools/source_text_delegate_targets/FoxDelegateTargets.props" />
 
   <!-- Shared SDK compile surface (single source of truth with the console runner). -->
   <Import Project="../FoxgloveSdk.TestSurface.props" />
@@ -106,6 +109,8 @@
     <Compile Include="../Runtime/Decomposed/PhaseValidationSourceHelpers/*.cs" LinkBase="TestHelpers/Decomposed/PhaseValidationSourceHelpers" />
     <Compile Include="../Runtime/FoxRunGenerationDescriptorJsonReader.cs" Link="TestHelpers/FoxRunGenerationDescriptorJsonReader.cs" />
     <Compile Include="../Runtime/Decomposed/FoxRunGenerationDescriptorJsonReader/*.cs" Link="TestHelpers/%(Filename)%(Extension)" />
+    <Compile Include="../../../../Tools/source_text_delegate_targets/src/*.cs" LinkBase="TestHelpers/SourceTextDelegateTargets" />
+    <Compile Include="../../../../Tools/source_text_delegate_targets/tests/*.cs" LinkBase="TestHelpers/SourceTextDelegateTargets/Tests" />
   </ItemGroup>
 
   <Target Name="ValidatePhase179NativeCompileSurface" BeforeTargets="CoreCompile" Condition="'$(IncludeRos2ForUnityNative)' == 'true'">

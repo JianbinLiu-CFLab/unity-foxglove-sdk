@@ -14,27 +14,9 @@ from pathlib import Path
 try:
     from . import source_text_inventory_flow as _flow_module
     from . import source_text_inventory_readers as _readers_module
-    from .source_text_inventory_text import (
-        _DELEGATE_ASSIGNMENT_PATTERN,
-        DELEGATE_STATE_NON_DELEGATE,
-        DELEGATE_STATE_UNSUPPORTED,
-        _delegate_type_names,
-        _delegate_invocation_text,
-        _is_delegate_assignment,
-        _is_delegate_type_name,
-    )
 except ImportError:
     import source_text_inventory_flow as _flow_module
     import source_text_inventory_readers as _readers_module
-    from source_text_inventory_text import (
-        _DELEGATE_ASSIGNMENT_PATTERN,
-        DELEGATE_STATE_NON_DELEGATE,
-        DELEGATE_STATE_UNSUPPORTED,
-        _delegate_type_names,
-        _delegate_invocation_text,
-        _is_delegate_assignment,
-        _is_delegate_type_name,
-    )
 
 RATCHET_APPROVALS_PATH = Path("Scripts/validation/source_text_ratchet_approvals.json")
 RATCHET_CLASSES = frozenset({"A", "B", "C", "UNKNOWN", "UNRESOLVED"})
@@ -44,6 +26,12 @@ RATCHET_APPROVAL_FIELDS = frozenset(
 RATCHET_REPLACEMENTS_PATH = Path("Scripts/validation/source_text_ratchet_replacements.json")
 RATCHET_REPLACEMENT_FIELDS = frozenset(
     {"file", "validation_flag", "class", "base_signature", "head_signature", "reason", "replacement"}
+)
+DELEGATE_VARIANTS = frozenset(
+    {"runtime", "runtime-adapter", "unit", "unit-adapter", "unit-native", "unit-manager", "bridge-unit"}
+)
+DELEGATE_REPLACEMENT_FLAG = re.compile(
+    r"(runtime|runtime-adapter|unit|unit-adapter|unit-native|unit-manager|bridge-unit)\|[A-Z]:\S+"
 )
 
 def _ratchet_path(value: object) -> str:
@@ -243,8 +231,13 @@ def _load_ratchet_replacements(
         if key in seen:
             entry_errors.append(f"replacement {index} is duplicated")
         seen.add(key)
-        if entry["class"] not in {"C", "READER", "HARNESS"}:
+        if entry["class"] not in {"C", "READER", "HARNESS", "DELEGATE"}:
             entry_errors.append(f"replacement {index} has invalid class")
+        if entry["class"] == "DELEGATE" and (
+            not isinstance(entry["validation_flag"], str)
+            or DELEGATE_REPLACEMENT_FLAG.fullmatch(entry["validation_flag"]) is None
+        ):
+            entry_errors.append(f"replacement {index} has invalid delegate validation_flag")
         for field in ("base_signature", "head_signature"):
             value = entry[field]
             if not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{64}", value) is None:
@@ -373,24 +366,15 @@ def _helper_signature_records(text: str, readers: frozenset[str] = frozenset()) 
         return {}
     masked = _flow_module._strip_csharp_comments_and_strings(text)
     methods = _flow_module._method_infos(text, masked)
-    method_names = {method.name for method in methods}
-    delegate_methods = {
-        method.name
-        for method in methods
-        if str(method.return_type).removeprefix("System.").startswith(("Action", "Func", "Predicate"))
-    }
-    delegate_type_names = _delegate_type_names(text, masked)
-    file_delegate_variables = _flow_module._delegate_variable_names(masked, delegate_type_names)
-    scoped_delegate_variables = {
-        method.identity: _flow_module._delegate_variable_names(
-            masked, delegate_type_names, method.start, method.body_end
-        )
-        for method in methods
-    }
     generic = [method for method in _readers_module._generic_method_infos(masked) if method.name in readers]
     records: dict[str, str] = {}
     for method in [*methods, *generic]:
-        delegate_parameter = any(_is_delegate_type_name(parameter, delegate_type_names) for parameter in method.parameter_types)
+        delegate_parameter = any(
+            _flow_module._normalize_type(parameter).removeprefix("System.").startswith(
+                ("Action", "Func", "Predicate")
+            )
+            for parameter in method.parameter_types
+        )
         if not (
             method.name == "Check"
             or method.name.startswith(("Assert", "Read", "Source", "Validate"))
@@ -407,82 +391,21 @@ def _helper_signature_records(text: str, readers: frozenset[str] = frozenset()) 
             text[method.body_start : method.body_end + 1].encode("utf-8")
         ).hexdigest()
 
-    delegate_wrapper_names, delegate_boundary_names, _, delegate_unsupported_offsets = _flow_module._delegate_parameter_boundaries(
-        text, masked, methods, delegate_type_names
+    binding_pattern = re.compile(
+        r"\b(?P<type>(?:(?:System\.)?(?:Action|Func|Predicate)(?:<[^;=]+>)?|var))?\s*"
+        r"(?P<name>[A-Za-z_]\w*)\s*=\s*(?P<target>[^;]+);"
     )
-    delegate_wrapper_names.update(_flow_module._KNOWN_DELEGATE_WRAPPER_NAMES); signature_methods = sorted(methods, key=lambda method: method.start); method_starts = [method.start for method in signature_methods]
-    for scope_key, names in delegate_boundary_names.items():
-        for marker in sorted(name for name in names if name.startswith("unknown:")):
-            records[f"unknown-delegate-flow:{scope_key}:{marker}"] = hashlib.sha256(marker.encode("utf-8")).hexdigest()
-    for match in (candidate for candidate in _DELEGATE_ASSIGNMENT_PATTERN.finditer(masked) if (scope_candidate := (_flow_module._method_for_offset(methods, candidate.start()) or (signature_methods[index] if (index := _flow_module.bisect_right(method_starts, candidate.start()) - 1) >= 0 and signature_methods[index].body_start > candidate.start() else None))) is None or candidate.start() >= scope_candidate.body_start):
+    for match in binding_pattern.finditer(masked):
         target = match.group("target")
         declared_type = match.group("type") or ""
-        name = match.group("name")
-        if declared_type == "using" or (not declared_type and target.lstrip().startswith(("=", ">", ")"))):
+        if (
+            (not declared_type or declared_type == "var")
+            and "=>" not in target
+            and "delegate" not in target
+        ):
             continue
-        scope = _flow_module._method_for_offset(methods, match.start()) or (signature_methods[index] if (index := _flow_module.bisect_right(method_starts, match.start()) - 1) >= 0 and signature_methods[index].body_start > match.start() else None)
-        scope_key = _flow_module._delegate_scope_key(scope)
-        delegate_variables = (
-            scoped_delegate_variables.setdefault(scope_key, set())
-            if scope
-            else file_delegate_variables
-        )
-        scope_boundary_names = delegate_boundary_names.get(scope_key, set())
-        invocation_text = _delegate_invocation_text(
-            masked,
-            match.end(),
-            target,
-            declared_type,
-            name,
-            delegate_variables,
-            method_names,
-            scope_boundary_names,
-            scope.body_start if scope else 0,
-            scope.body_end if scope else len(masked),
-        )
-        state = _is_delegate_assignment(
-            target,
-            declared_type,
-            name,
-            delegate_variables,
-            delegate_methods,
-            method_names,
-            delegate_type_names,
-            invocation_text,
-            scope_boundary_names,
-            delegate_wrapper_names,
-        )
-        if state == DELEGATE_STATE_UNSUPPORTED and "!" not in target and "?" not in target and not _is_delegate_type_name(declared_type, delegate_type_names):
-            state = DELEGATE_STATE_NON_DELEGATE
-        if state == DELEGATE_STATE_UNSUPPORTED and scope is None and ("," in target or "\n" in target):
-            state = DELEGATE_STATE_NON_DELEGATE
-        if state == DELEGATE_STATE_NON_DELEGATE:
-            continue
-        payload = text[match.start() : match.end()]
-        if state == DELEGATE_STATE_UNSUPPORTED:
-            line = text.count("\n", 0, match.start()) + 1
-            binding_name = f"unsupported-delegate-flow:{name}@{line}:{invocation_text or target}"
-            payload = f"state={state}|{payload}|invoke:{invocation_text}"
-        else:
-            binding_name = "binding:" + name
-            if state != "KNOWN_WRAPPER" and state != "LAMBDA_FORWARD":
-                payload = f"state={state}|{payload}"
-        if binding_name in records:
-            line = text.count("\n", 0, match.start()) + 1
-            binding_name = f"{binding_name}@{scope_key or 'file'}:{line}"
-        records[binding_name] = hashlib.sha256(
-            payload.encode("utf-8")
-        ).hexdigest()
-        delegate_variables.add(name)
-    for method in methods:
-        for call_name, open_index in _flow_module._call_sites(text, masked, method):
-            if open_index not in delegate_unsupported_offsets:
-                continue
-            arguments = _flow_module._call_arguments(text, masked, open_index) or ""
-            line = text.count("\n", 0, open_index) + 1
-            binding_name = f"unsupported-delegate-flow:{call_name}@{line}"
-            payload = f"state=UNSUPPORTED_DELEGATE_FLOW|{call_name}({arguments})"
-            records[binding_name] = hashlib.sha256(payload.encode("utf-8")).hexdigest()
+        name = "binding:" + match.group("name")
+        records[name] = hashlib.sha256(text[match.start() : match.end()].encode("utf-8")).hexdigest()
     return records
 
 def _archive_revision(root: Path, revision: str, destination: Path) -> None:

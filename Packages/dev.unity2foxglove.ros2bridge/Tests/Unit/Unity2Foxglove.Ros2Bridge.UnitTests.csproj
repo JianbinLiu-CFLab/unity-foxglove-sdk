@@ -11,7 +11,10 @@
     <AssemblyName>Unity2Foxglove.Ros2Bridge.UnitTests</AssemblyName>
     <OutputPath>$(MSBuildThisFileDirectory)..\..\..\..\build\Tests\Ros2Bridge\$(Configuration)\</OutputPath>
     <IntermediateOutputPath>$(MSBuildThisFileDirectory)..\..\..\..\build\Tests\Ros2Bridge\obj\$(Configuration)\$(TargetFramework)\</IntermediateOutputPath>
+    <FoxDelegateTargetsProject>bridge-unit</FoxDelegateTargetsProject>
   </PropertyGroup>
+
+  <Import Project="../../../../Tools/source_text_delegate_targets/FoxDelegateTargets.props" />
 
   <Import Project="../../../dev.unity2foxglove.sdk/Tests/FoxgloveSdk.TestSurface.props" />
 
