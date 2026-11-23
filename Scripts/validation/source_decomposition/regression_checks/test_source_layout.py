@@ -229,6 +229,48 @@ class SourceLayoutTests(unittest.TestCase):
                     sys.modules["phase_namespace_parent_failure"] = previous_fixture
                 sys.modules.update(saved_modules)
 
+    def test_load_fresh_module_restores_missing_parent_attribute_on_failure(self) -> None:
+        """A failed fresh load does not restore a child attribute that was initially absent."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            facade = root / "Scripts" / "smoke" / "foxrun" / "facade.py"
+            child_path = root / "Scripts" / "smoke" / "foxrun" / "child.py"
+            facade.parent.mkdir(parents=True)
+            child_path.parent.mkdir(parents=True, exist_ok=True)
+            facade.write_text(
+                "import Scripts.smoke.foxrun.child\nraise RuntimeError('boom')\n",
+                encoding="utf-8",
+            )
+            child_path.write_text("VALUE = 2\n", encoding="utf-8")
+            original_path = list(sys.path)
+            saved_modules = {
+                name: module
+                for name, module in sys.modules.items()
+                if name == "Scripts" or name.startswith("Scripts.")
+            }
+            missing = object()
+            previous_fixture = sys.modules.get("phase_namespace_missing_parent", missing)
+            for name in tuple(saved_modules):
+                sys.modules.pop(name, None)
+            sys.path.insert(0, str(root))
+            try:
+                smoke_module = importlib.import_module("Scripts.smoke")
+                self.assertNotIn("foxrun", smoke_module.__dict__)
+                with self.assertRaisesRegex(RuntimeError, "boom"):
+                    source_layout.load_fresh_module("phase_namespace_missing_parent", facade)
+                self.assertNotIn("Scripts.smoke.foxrun", sys.modules)
+                self.assertNotIn("Scripts.smoke.foxrun.child", sys.modules)
+                self.assertNotIn("foxrun", smoke_module.__dict__)
+            finally:
+                sys.path[:] = original_path
+                for name in tuple(sys.modules):
+                    if name == "Scripts" or name.startswith("Scripts."):
+                        sys.modules.pop(name, None)
+                sys.modules.pop("phase_namespace_missing_parent", None)
+                if previous_fixture is not missing:
+                    sys.modules["phase_namespace_missing_parent"] = previous_fixture
+                sys.modules.update(saved_modules)
+
     def test_load_fresh_module_removes_orphaned_child_when_parent_is_missing(self) -> None:
         """A missing namespace parent does not preserve its cached child module."""
         with tempfile.TemporaryDirectory() as temp:

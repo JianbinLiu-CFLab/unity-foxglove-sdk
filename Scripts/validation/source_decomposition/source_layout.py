@@ -145,8 +145,12 @@ def load_fresh_module(module_name: str, facade: Path) -> ModuleType:
     package_dir = facade.with_suffix("")
     saved_modules: dict[str, ModuleType] = {}
     initial_module_names = set(sys.modules)
-    initial_module_ids = {
-        id(module) for module in sys.modules.values() if isinstance(module, ModuleType)
+    initial_modules = dict(sys.modules)
+    initial_parent_attributes = {
+        (id(module), attribute): value
+        for module in initial_modules.values()
+        if isinstance(module, ModuleType)
+        for attribute, value in module.__dict__.items()
     }
     missing_attribute = object()
     saved_parent_attributes: dict[tuple[int, str], tuple[ModuleType, str, object]] = {}
@@ -171,11 +175,7 @@ def load_fresh_module(module_name: str, facade: Path) -> ModuleType:
         key = (id(parent), attribute)
         if key in saved_parent_attributes:
             return
-        original = (
-            parent.__dict__.get(attribute, missing_attribute)
-            if id(parent) in initial_module_ids
-            else missing_attribute
-        )
+        original = initial_parent_attributes.get((id(parent), attribute), missing_attribute)
         saved_parent_attributes[key] = (parent, attribute, original)
 
     def detach_module_binding(
@@ -357,6 +357,12 @@ def load_fresh_module(module_name: str, facade: Path) -> ModuleType:
 
     def should_remove(loaded_name: str, loaded_module: ModuleType) -> bool:
         """Return whether one cached module would contaminate the fresh checkout."""
+        if (
+            target_scripts_prefix is not None
+            and target_scripts_prefix != "Scripts"
+            and loaded_name == target_scripts_prefix
+        ):
+            return True
         if any(
             loaded_name == prefix or loaded_name.startswith(prefix + ".")
             for prefix in prefixes
