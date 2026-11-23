@@ -13,8 +13,8 @@
       "file": "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase134_19Validation.cs",
       "validation_flag": "--phase134-19",
       "class": "HARNESS",
-      "base_signature": "52aef319d15a1066e481ace17935fa35e467b70e9a77cf1fcf546697a6b51eb2",
-      "head_signature": "955d72d4376ea0ca97da511e6f2b6c6bff2485d13153992df99b2560f498f886",
+      "base_signature": "d3d2aa722a1f5c4d0bf5e8b0d0ef4d2f01bb6c0266224a80a85f7dd1562f71fb",
+      "head_signature": "3790f6699cf2201ffca0f809d9b62743dd58ab45c59463be255b1ee576c890ac",
       "reason": "Approve the exact Phase134-19 harness transition for the follow-up validation consumer.",
       "replacement": "Phase134_19Validation exact harness consumer"
     },
