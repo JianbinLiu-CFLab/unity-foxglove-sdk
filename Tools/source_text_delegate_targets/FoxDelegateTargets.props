@@ -1,0 +1,20 @@
+<Project>
+  <!-- Wires the source-text delegate-target manifest analyzer (Rule E) into a .NET test project.
+       Import after the project's first PropertyGroup, and set FoxDelegateTargetsProject before the import. -->
+  <PropertyGroup>
+    <FoxDelegateTargetsRepoRoot>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', '..', '..'))</FoxDelegateTargetsRepoRoot>
+    <FoxDelegateTargetsVariant>$(FoxDelegateTargetsProject)</FoxDelegateTargetsVariant>
+    <FoxDelegateTargetsVariant Condition="'$(IncludeRos2ForUnityNative)' == 'true'">$(FoxDelegateTargetsProject)-native</FoxDelegateTargetsVariant>
+    <FoxDelegateTargetsVariant Condition="'$(IncludeRos2ForUnityNative)' != 'true' and '$(IncludeRos2ForUnityAdapter)' == 'true'">$(FoxDelegateTargetsProject)-adapter</FoxDelegateTargetsVariant>
+    <FoxDelegateTargetsVariant Condition="'$(IncludeManagerProductionBoundary)' == 'true'">$(FoxDelegateTargetsVariant)-manager</FoxDelegateTargetsVariant>
+    <FoxDelegateTargetsEmit Condition="'$(FoxDelegateTargetsEmit)' == ''">false</FoxDelegateTargetsEmit>
+    <ErrorLog Condition="'$(FoxDelegateTargetsErrorLog)' != ''">$(FoxDelegateTargetsErrorLog),version=2.1</ErrorLog>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="$(MSBuildThisFileDirectory)Unity2Foxglove.SourceTextDelegateTargets.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false" />
+    <AdditionalFiles Include="$(FoxDelegateTargetsRepoRoot)Scripts/validation/source_text_delegate_targets.tsv" />
+    <CompilerVisibleProperty Include="FoxDelegateTargetsRepoRoot;FoxDelegateTargetsVariant;FoxDelegateTargetsEmit" />
+  </ItemGroup>
+</Project>
