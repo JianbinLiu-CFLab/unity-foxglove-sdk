@@ -48,7 +48,7 @@ CONTROL_KEYWORDS = {
     "return",
     "throw",
 }
-CALL_PATTERN = re.compile(r"\b(?P<name>[A-Za-z_]\w*)\s*\(")
+CALL_PATTERN = re.compile(r"\b(?P<name>[A-Za-z_]\w*)\s*(?:<[^;{}()]*>\s*)?\(")
 
 @dataclass(frozen=True)
 class MethodInfo:

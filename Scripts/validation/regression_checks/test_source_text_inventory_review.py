@@ -286,8 +286,25 @@ class SourceTextInventoryReviewTests(_FixtureSupport, unittest.TestCase):
             with self.subTest(change=old):
                 self._assert_flow_mutation(body, old, new, 0)
 
+    def test_call_sites_keep_generic_same_file_helper_calls(self):
+        """Record generic helper invocations as call edges, exactly like the non-generic form."""
+        from Scripts.validation import source_text_inventory_flow as flow
 
-
+        text = (
+            "public static class FixtureValidation {\n"
+            "    private static T Read<T>(T value) => value;\n"
+            "    public static void Validate() {\n"
+            "        Read<bool>(true);\n"
+            "        Read<List<string>>(null);\n"
+            "        Read<Outer.Inner<int>>(null);\n"
+            "        Read(1);\n"
+            "    }\n}\n"
+        )
+        masked = flow._strip_csharp_comments_and_strings(text)
+        validate = next(method for method in flow._method_infos(text, masked) if method.name == "Validate")
+        calls = list(flow._call_sites(text, masked, validate, {"Read"}))
+        self.assertEqual(["Read"] * 4, [name for name, _ in calls])
+        self.assertEqual(["("] * 4, [text[index] for _, index in calls])
 
     def test_unused_nested_barriers_preserve_outer_assertion(self):
         """Keep uncalled local-function and lambda barriers out of the enclosing method."""
