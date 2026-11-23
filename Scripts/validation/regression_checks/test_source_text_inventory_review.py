@@ -63,6 +63,53 @@ class SourceTextInventoryReviewTests(_FixtureSupport, unittest.TestCase):
             code, output = self._run_fixture_gate(root)
             self.assertEqual(1, code, output)
 
+    def test_default_parameter_assignments_do_not_enter_delegate_signature(self):
+        """Ignore default parameter syntax when collecting delegate assignments."""
+        from Scripts.validation.source_text_inventory_flow import (
+            _delegate_binding_signature,
+            _method_infos,
+        )
+        from Scripts.validation.source_text_inventory_ratchet_helpers import (
+            _helper_signature_records,
+        )
+        from Scripts.validation.source_text_inventory_text import (
+            _strip_csharp_comments_and_strings,
+        )
+
+        base = (
+            "using System; public static class FixtureValidation { "
+            "private static void Run(Action action, int mode = 0) { action(); } "
+            "private static void Used() { } "
+            "public static void Validate() { var run = External.Factory; Run(run); } }"
+        )
+        signatures = []
+        for text in (base, base.replace("mode = 0", "mode = 1")):
+            masked = _strip_csharp_comments_and_strings(text)
+            signatures.append(_delegate_binding_signature(text, masked, _method_infos(text, masked)))
+        self.assertEqual(signatures[0], signatures[1])
+        self.assertNotIn("binding:mode", _helper_signature_records(base))
+
+    def test_scalar_method_call_results_do_not_enter_delegate_signature(self):
+        """Keep ordinary scalar-producing calls out of delegate flow records."""
+        from Scripts.validation.source_text_inventory_flow import (
+            _delegate_binding_signature,
+            _method_infos,
+        )
+        from Scripts.validation.source_text_inventory_text import (
+            _strip_csharp_comments_and_strings,
+        )
+
+        base = (
+            "public static class FixtureValidation { private static void Used() { } "
+            "private static int Compute() => 1; private static int Other() => 2; "
+            "public static void Validate() { var count = Compute(); } }"
+        )
+        signatures = []
+        for text in (base, base.replace("var count = Compute();", "var count = Other();")):
+            masked = _strip_csharp_comments_and_strings(text)
+            signatures.append(_delegate_binding_signature(text, masked, _method_infos(text, masked)))
+        self.assertEqual(signatures[0], signatures[1])
+
     def test_delegate_flow_regression_matrix(self):
         """Cover field modifiers, scope shadowing, qualified calls, and overloads."""
         used = 'private static void Used() { var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs"); Check(source.Contains("Product")); }'

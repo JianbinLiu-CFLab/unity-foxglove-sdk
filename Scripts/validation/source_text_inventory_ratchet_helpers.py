@@ -348,17 +348,17 @@ def _helper_signature_records(text: str, readers: frozenset[str] = frozenset()) 
     delegate_wrapper_names, delegate_boundary_names, _, delegate_unsupported_offsets = _flow_module._delegate_parameter_boundaries(
         text, masked, methods, delegate_type_names
     )
-    delegate_wrapper_names.update(_flow_module._KNOWN_DELEGATE_WRAPPER_NAMES)
+    delegate_wrapper_names.update(_flow_module._KNOWN_DELEGATE_WRAPPER_NAMES); signature_methods = sorted(methods, key=lambda method: method.start); method_starts = [method.start for method in signature_methods]
     for scope_key, names in delegate_boundary_names.items():
         for marker in sorted(name for name in names if name.startswith("unknown:")):
             records[f"unknown-delegate-flow:{scope_key}:{marker}"] = hashlib.sha256(marker.encode("utf-8")).hexdigest()
-    for match in _DELEGATE_ASSIGNMENT_PATTERN.finditer(masked):
+    for match in (candidate for candidate in _DELEGATE_ASSIGNMENT_PATTERN.finditer(masked) if (scope_candidate := (_flow_module._method_for_offset(methods, candidate.start()) or (signature_methods[index] if (index := _flow_module.bisect_right(method_starts, candidate.start()) - 1) >= 0 and signature_methods[index].body_start > candidate.start() else None))) is None or candidate.start() >= scope_candidate.body_start):
         target = match.group("target")
         declared_type = match.group("type") or ""
         name = match.group("name")
         if declared_type == "using" or (not declared_type and target.lstrip().startswith(("=", ">", ")"))):
             continue
-        scope = _flow_module._method_for_offset(methods, match.start())
+        scope = _flow_module._method_for_offset(methods, match.start()) or (signature_methods[index] if (index := _flow_module.bisect_right(method_starts, match.start()) - 1) >= 0 and signature_methods[index].body_start > match.start() else None)
         scope_key = _flow_module._delegate_scope_key(scope)
         delegate_variables = (
             scoped_delegate_variables.setdefault(scope_key, set())
