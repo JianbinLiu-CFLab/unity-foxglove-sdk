@@ -5,7 +5,7 @@
       "validation_flag": "--phase134-19",
       "class": "C",
         "base_signature": "4e69cc85c46b2cab61e6875a9263b7e9d795c2df2f345ddf47f9bc614bd657ba",
-        "head_signature": "9516235e498fca0f773845cfed6b8ada2f698244b2e9bbd898051a94ef7513b5",
+        "head_signature": "62452749ad3655864555734418de5dfdcb0bbc2731d37aeef2037bc294581433",
         "reason": "Stage the exact current-base approval for the Phase134-19 ordering consumer before its validation-only consumer PR.",
         "replacement": "Phase134_19Validation current-base ordering consumer"
     },
