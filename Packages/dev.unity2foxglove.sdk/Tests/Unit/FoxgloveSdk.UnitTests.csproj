@@ -36,6 +36,7 @@
     <IntermediateOutputPath>$(BaseIntermediateOutputPath)$(Phase179OptionalCompilationLane)\$(Configuration)\$(TargetFramework)\</IntermediateOutputPath>
   </PropertyGroup>
 
+
   <!-- Shared SDK compile surface (single source of truth with the console runner). -->
   <Import Project="../FoxgloveSdk.TestSurface.props" />
 
@@ -106,6 +107,7 @@
     <Compile Include="../Runtime/Decomposed/PhaseValidationSourceHelpers/*.cs" LinkBase="TestHelpers/Decomposed/PhaseValidationSourceHelpers" />
     <Compile Include="../Runtime/FoxRunGenerationDescriptorJsonReader.cs" Link="TestHelpers/FoxRunGenerationDescriptorJsonReader.cs" />
     <Compile Include="../Runtime/Decomposed/FoxRunGenerationDescriptorJsonReader/*.cs" Link="TestHelpers/%(Filename)%(Extension)" />
+    <Compile Include="../../../../Tools/source_text_delegate_targets/src/*.cs" LinkBase="TestHelpers/SourceTextDelegateTargets" />
   </ItemGroup>
 
   <Target Name="ValidatePhase179NativeCompileSurface" BeforeTargets="CoreCompile" Condition="'$(IncludeRos2ForUnityNative)' == 'true'">
