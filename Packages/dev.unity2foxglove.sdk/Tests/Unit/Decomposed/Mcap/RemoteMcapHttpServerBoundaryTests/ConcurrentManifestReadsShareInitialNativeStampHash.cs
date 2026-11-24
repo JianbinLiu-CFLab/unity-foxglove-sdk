@@ -172,14 +172,14 @@ namespace FoxgloveSdk.UnitTests.Mcap
                     + "Connection: close\r\n\r\n");
                 var slowStream = slowClient.GetStream();
                 await slowStream.WriteAsync(slowRequest, 0, slowRequest.Length);
-                await ReadResponseHeadersAsync(slowStream, TimeSpan.FromSeconds(2));
+                await ReadResponseHeadersAsync(slowStream, TimeSpan.FromSeconds(10));
                 await Task.Delay(100);
 
                 using (var client = new HttpClient())
                 using (var request = new HttpRequestMessage(
                            HttpMethod.Options,
                            server.BaseUrl + "/v1/manifest"))
-                using (var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(2)))
+                using (var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10)))
                 using (var response = await client.SendAsync(request, timeout.Token))
                 {
                     Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);

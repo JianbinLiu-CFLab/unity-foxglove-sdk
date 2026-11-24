@@ -427,7 +427,7 @@ class SourceTextRatchetTests(unittest.TestCase):
             self.assertNotIn("SOURCE_TEXT_RATCHET_REPLACEMENT_APPROVED", output)
 
     def test_class_c_replacement_rejects_count_changes_and_other_classes(self):
-        """Keep Class C count changes fail-closed and reject non-C replacement entries."""
+        """Keep Class C count changes fail-closed and reject replacement entries outside Class A and C."""
         with tempfile.TemporaryDirectory() as directory:
             root = self._class_c_replacement_fixture(directory)
             validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
@@ -451,7 +451,7 @@ class SourceTextRatchetTests(unittest.TestCase):
                             {
                                 "file": "Packages/fixture/Tests/Runtime/FixtureValidation.cs",
                                 "validation_flag": "--phase-fixture",
-                                "class": "A",
+                                "class": "B",
                                 "base_signature": "1" * 64,
                                 "head_signature": "2" * 64,
                                 "reason": "A forged class must not be accepted as a replacement.",
