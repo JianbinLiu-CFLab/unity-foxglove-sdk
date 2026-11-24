@@ -71,6 +71,41 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
             Assert.True(watch.ElapsedMilliseconds < SlowTimeoutMs / 3, "elapsed " + watch.ElapsedMilliseconds + " ms");
         }
 
+        /// <summary>A grandchild that keeps the redirected pipes open cannot outlast the timeout budget.</summary>
+        [Fact]
+        public void RunBytesBoundsStreamDrainAfterChildExit()
+        {
+            var watch = Stopwatch.StartNew();
+
+            var result = FoxgloveEditorProcessRunner.RunBytes(PipeHoldingGrandchild(), Array.Empty<byte>(), 64 * 1024, 2000);
+
+            Assert.True(result.TimedOut);
+            Assert.True(result.OutputReadFailed);
+            Assert.True(watch.ElapsedMilliseconds < SlowTimeoutMs / 3, "elapsed " + watch.ElapsedMilliseconds + " ms");
+        }
+
+        /// <summary>A child that exits without consuming stdin fails the transfer.</summary>
+        [Fact]
+        public void RunBytesReportsStdinTransferFailure()
+        {
+            var result = FoxgloveEditorProcessRunner.RunBytes(ExitImmediately(), new byte[8 * 1024 * 1024], 4096, SlowTimeoutMs);
+
+            Assert.False(result.TimedOut);
+            Assert.True(result.OutputReadFailed);
+        }
+
+        /// <summary>Returns a child that exits while a background grandchild inherits its output pipes.</summary>
+        private static ProcessStartInfo PipeHoldingGrandchild()
+            => RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+                ? new ProcessStartInfo("cmd.exe", "/c start /b ping -n 30 127.0.0.1")
+                : new ProcessStartInfo("/bin/sh", "-c \"sleep 30 &\"");
+
+        /// <summary>Returns a child that exits successfully without reading stdin.</summary>
+        private static ProcessStartInfo ExitImmediately()
+            => RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+                ? new ProcessStartInfo("cmd.exe", "/c exit 0")
+                : new ProcessStartInfo("/bin/sh", "-c \"exit 0\"");
+
         /// <summary>Returns a child that copies stdin to the named standard stream.</summary>
         private static ProcessStartInfo CopyStdin(string stream)
             => RuntimeInformation.IsOSPlatform(OSPlatform.Windows)

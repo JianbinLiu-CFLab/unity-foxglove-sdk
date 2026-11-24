@@ -160,13 +160,21 @@ namespace Unity.FoxgloveSDK.Editor
                 }
 
                 process.WaitForExit();
-                WaitForStreamDrain(stdinTask, stdoutTask, stderrTask, -1);
+                WaitForStreamDrain(
+                    stdinTask,
+                    stdoutTask,
+                    stderrTask,
+                    (int)Math.Max(1, timeoutMs - watch.ElapsedMilliseconds));
+                var drained = stdinTask.IsCompleted && stdoutTask.IsCompleted && stderrTask.IsCompleted;
                 return new FoxgloveEditorBinaryProcessResult(
                     process.ExitCode,
-                    false,
-                    GetCompletedBytes(stdoutTask),
+                    !drained,
+                    drained ? GetCompletedBytes(stdoutTask) : Array.Empty<byte>(),
                     GetCompletedOutput(stderrTask),
-                    stdoutTask.IsFaulted || stdoutTask.IsCanceled || stderrTask.IsFaulted || stderrTask.IsCanceled);
+                    !drained
+                        || stdinTask.IsFaulted || stdinTask.IsCanceled
+                        || stdoutTask.IsFaulted || stdoutTask.IsCanceled
+                        || stderrTask.IsFaulted || stderrTask.IsCanceled);
             }
         }
 
