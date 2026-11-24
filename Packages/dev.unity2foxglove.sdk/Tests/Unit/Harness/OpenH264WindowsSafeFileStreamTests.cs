@@ -5,6 +5,7 @@
 // Purpose: Exercise stream and replacement behavior in the Windows safe-file layer.
 
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Threading;
 using Unity.FoxgloveSDK.Editor;
@@ -110,6 +111,50 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                     Directory.Delete(movedVersionPath, recursive: true);
                 if (Directory.Exists(movedRootPath))
                     Directory.Delete(movedRootPath, recursive: true);
+                fixture.Dispose();
+            }
+        }
+
+        [WindowsSafeFileFact]
+        /// <summary>Lets the helper build use a locked version directory as its working directory.</summary>
+        public void LockedVersionDirectoryAllowsChildProcessWorkingDirectory()
+        {
+            var fixture = CreateFixture("locked-working-directory");
+            var versionPath = Path.Combine(fixture.Root, "version");
+            var movedVersionPath = versionPath + ".moved";
+            Directory.CreateDirectory(versionPath);
+            try
+            {
+                Assert.True(
+                    OpenH264WindowsSafeDirectory.TryOpenExisting(fixture.Root, out var root, out var rootReason),
+                    rootReason);
+                using (root)
+                {
+                    Assert.True(
+                        root.TryOpenLockedDirectory("version", out var version, out var versionReason),
+                        versionReason);
+                    using (version)
+                    using (var child = Process.Start(new ProcessStartInfo("cmd.exe", "/c cd > cwd.txt")
+                    {
+                        WorkingDirectory = versionPath,
+                        UseShellExecute = false,
+                        CreateNoWindow = true
+                    }))
+                    {
+                        Assert.True(child.WaitForExit(30000));
+                        Assert.Equal(0, child.ExitCode);
+                        Assert.Equal(
+                            versionPath,
+                            File.ReadAllText(Path.Combine(versionPath, "cwd.txt")).Trim(),
+                            ignoreCase: true);
+                        Assert.ThrowsAny<IOException>(() => Directory.Move(versionPath, movedVersionPath));
+                    }
+                }
+            }
+            finally
+            {
+                if (Directory.Exists(movedVersionPath))
+                    Directory.Delete(movedVersionPath, recursive: true);
                 fixture.Dispose();
             }
         }
