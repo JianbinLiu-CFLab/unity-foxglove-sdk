@@ -2,22 +2,16 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Module: Editor/Publishers
-// Purpose: OpenH264 helper executable build and Visual Studio discovery.
+// Purpose: OpenH264 download, decompression and process helpers.
 
 using System;
-using System.ComponentModel;
 using System.IO;
-using System.Net.Http;
-using System.Threading;
-using UnityEditor.PackageManager;
-using UnityEngine;
-using Process = System.Diagnostics.Process;
-using ProcessStartInfo = System.Diagnostics.ProcessStartInfo;
 
 namespace Unity.FoxgloveSDK.Editor
 {
     public static partial class OpenH264OfficialBinaryInstaller
     {
+        /// <summary>Builds the local OpenH264 helper executable in the private staging directory.</summary>
         private static bool BuildHelperExecutable(
             string workingDirectory,
             string outputPath,
@@ -119,24 +113,7 @@ namespace Unity.FoxgloveSDK.Editor
                 return false;
             }
         }
-
-        internal static string GetPackageRoot()
-        {
-            try
-            {
-                var package = PackageInfo.FindForAssembly(typeof(OpenH264OfficialBinaryInstaller).Assembly);
-                if (package != null && !string.IsNullOrWhiteSpace(package.resolvedPath))
-                    return package.resolvedPath;
-            }
-            catch
-            {
-                // Fall through to repository-style layout.
-            }
-
-            var candidate = Path.Combine(Directory.GetCurrentDirectory(), "Packages", "dev.unity2foxglove.sdk");
-            return Directory.Exists(candidate) ? candidate : "";
-        }
-
+        /// <summary>Finds a Visual Studio x64 developer environment for helper compilation.</summary>
         private static string FindVcVars64(out string error)
         {
             error = "";
@@ -170,7 +147,7 @@ namespace Unity.FoxgloveSDK.Editor
                 + " manually and choose it with ....";
             return "";
         }
-
+        /// <summary>Finds the Visual Studio x64 environment through vswhere when available.</summary>
         private static string FindVcVars64WithVsWhere()
         {
             var programFilesX86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
@@ -205,7 +182,7 @@ namespace Unity.FoxgloveSDK.Editor
 
             return "";
         }
-
+        /// <summary>Returns the supported Visual Studio installation roots.</summary>
         private static string[] CandidateVisualStudioRoots()
         {
             return new[]
@@ -213,6 +190,52 @@ namespace Unity.FoxgloveSDK.Editor
                 Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
                 Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86)
             };
+        }
+        /// <summary>Quotes a path for a Windows batch file while escaping percent signs.</summary>
+        private static string QuoteBatchPath(string value)
+            => "\"" + (value ?? "").Replace("%", "%%").Replace("\"", "\"\"") + "\"";
+
+        /// <summary>Deletes a legacy path-based helper artifact after validating its destination.</summary>
+        private static bool TryDelete(
+            string path,
+            bool warnOnFailure = false,
+            Func<bool> validateDestination = null)
+        {
+            try
+            {
+                EnsureDestinationAllowed(validateDestination);
+                if (File.Exists(path))
+                {
+                    EnsureDestinationAllowed(validateDestination);
+                    File.Delete(path);
+                }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                if (warnOnFailure)
+                    UnityEngine.Debug.LogWarning("[Foxglove] Could not delete temporary OpenH264 installer file '" + path + "': " + ex.Message);
+                return false;
+            }
+        }
+
+        /// <summary>Rejects a path operation when the validated install root changed.</summary>
+        private static void EnsureDestinationAllowed(Func<bool> validateDestination)
+        {
+            if (validateDestination != null && !validateDestination())
+                throw new IOException("OpenH264 install destination changed during an install operation.");
+        }
+
+        /// <summary>Formats helper compiler output for a user-facing failure.</summary>
+        private static string BuildProcessDetails(string stdout, string stderr)
+        {
+            var details = "";
+            if (!string.IsNullOrWhiteSpace(stdout))
+                details += "\nstdout:\n" + stdout.Trim();
+            if (!string.IsNullOrWhiteSpace(stderr))
+                details += "\nstderr:\n" + stderr.Trim();
+            return details;
         }
     }
 }
