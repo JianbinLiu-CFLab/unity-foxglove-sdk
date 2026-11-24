@@ -65,12 +65,17 @@ namespace Unity.FoxgloveSDK.Editor
             var tempHelper = finalHelperPath + ".tmp";
             var compressedDownloadName = Path.GetFileName(compressedDownloadPath);
             var tempDllName = Path.GetFileName(tempDll);
+            var tempHelperName = Path.GetFileName(tempHelper);
+            var dllName = Path.GetFileName(finalDllPath);
+            var helperName = Path.GetFileName(finalHelperPath);
+            var stagingNames = new[] { compressedDownloadName, tempDllName, tempHelperName };
             Func<bool> validateDestination = () =>
                 OpenH264InstallLocation.IsAllowedInstallRoot(installRoot, out _);
             bool TryDelete(string path, bool warnOnFailure = false)
                 => OpenH264OfficialBinaryInstaller.TryDelete(path, warnOnFailure, validateDestination);
             OpenH264WindowsSafeDirectory safeRoot = null;
             OpenH264WindowsSafeDirectory safeVersion = null;
+            OpenH264WindowsSafeFile safeTempDll = null;
             try
             {
                 BootstrapMissingInstallRoot(installRoot);
@@ -90,11 +95,14 @@ namespace Unity.FoxgloveSDK.Editor
                     if (!safeRoot.TryOpenLockedDirectory(versionName, out safeVersion, out var safeVersionError))
                         return Fail(safeVersionError);
                 }
+                if (!OpenH264ArtifactPairPublisher.TryRecover(safeVersion, dllName, helperName, stagingNames, out var recoveryError))
+                    return Fail("OpenH264 could not recover the previous install transaction: " + recoveryError);
                 if (!safeVersion.TryDeleteFile(compressedDownloadName, out var cleanupError))
                     return Fail(cleanupError);
                 if (!safeVersion.TryDeleteFile(tempDllName, out cleanupError))
                     return Fail(cleanupError);
                 TryDelete(tempHelper);
+                RecordInstallState(safeVersion, OpenH264InstallJournalState.Prepared);
                 EnsureInstallRootStillAllowed(installRoot, InstallPhase.Download);
                 if (!safeVersion.TryCreateProtectedFile(
                         compressedDownloadName,
@@ -123,36 +131,36 @@ namespace Unity.FoxgloveSDK.Editor
                             + ", and compare SHA256 before installing.");
                     }
 
+                    RecordInstallState(safeVersion, OpenH264InstallJournalState.Downloaded);
                     EnsureInstallRootStillAllowed(installRoot, InstallPhase.Decompress);
-                    if (!safeVersion.TryCreateProtectedFile(tempDllName, out var safeTempDll, out var safeTempError))
+                    if (!safeVersion.TryCreateProtectedFile(tempDllName, out safeTempDll, out var safeTempError))
                         return Fail(safeTempError);
-                    using (safeTempDll)
-                    {
-                        if (!TryDecompressBZip2(safeCompressedDownload, safeTempDll, validateDestination, out var decompressError))
-                        {
-                            return Fail(
-                                decompressError
-                                + "\nManual fallback: download "
-                                + OpenH264OfficialBinaryManifest.AssetName
-                                + ", decompress it, then choose the resulting DLL with ...");
-                        }
 
-                        if (!OpenH264ArtifactHashVerifier.TryVerifySha256(
-                                safeTempDll,
-                                OpenH264OfficialBinaryManifest.DllSha256,
-                                "OpenH264 DLL",
-                                out _,
-                                out var dllHashError))
-                        {
-                            return Fail(
-                                dllHashError
-                                + "\nManual fallback: open "
-                                + OpenH264OfficialBinaryManifest.ReleasePageUrl
-                                + ", download and decompress the pinned asset, and compare SHA256 before installing.");
-                        }
+                    if (!TryDecompressBZip2(safeCompressedDownload, safeTempDll, validateDestination, out var decompressError))
+                    {
+                        return Fail(
+                            decompressError
+                            + "\nManual fallback: download "
+                            + OpenH264OfficialBinaryManifest.AssetName
+                            + ", decompress it, then choose the resulting DLL with ...");
+                    }
+
+                    if (!OpenH264ArtifactHashVerifier.TryVerifySha256(
+                            safeTempDll,
+                            OpenH264OfficialBinaryManifest.DllSha256,
+                            "OpenH264 DLL",
+                            out _,
+                            out var dllHashError))
+                    {
+                        return Fail(
+                            dllHashError
+                            + "\nManual fallback: open "
+                            + OpenH264OfficialBinaryManifest.ReleasePageUrl
+                            + ", download and decompress the pinned asset, and compare SHA256 before installing.");
                     }
                 }
 
+                RecordInstallState(safeVersion, OpenH264InstallJournalState.Decompressed);
                 EnsureInstallRootStillAllowed(installRoot, InstallPhase.BuildHelper);
                 if (!BuildHelperExecutable(
                         versionDir,
@@ -166,18 +174,23 @@ namespace Unity.FoxgloveSDK.Editor
                     return Fail(buildError);
                 }
 
+                RecordInstallState(safeVersion, OpenH264InstallJournalState.HelperBuilt);
                 EnsureInstallRootStillAllowed(installRoot, InstallPhase.Publish);
                 OpenH264ArtifactPairPublisher.Publish(
-                    tempDll,
-                    tempHelper,
-                    finalDllPath,
-                    finalHelperPath,
-                    validateDestination: validateDestination);
+                    safeVersion,
+                    safeTempDll,
+                    tempHelperName,
+                    dllName,
+                    helperName,
+                    stagingNames);
 
                 return new OpenH264InstallResult(true, finalHelperPath, finalDllPath, "");
             }
             catch (Exception ex)
             {
+                safeTempDll?.Dispose();
+                if (safeVersion != null)
+                    OpenH264ArtifactPairPublisher.TryRecover(safeVersion, dllName, helperName, stagingNames, out _);
                 TryDelete(compressedDownloadPath);
                 TryDelete(tempDll);
                 TryDelete(tempHelper);
@@ -191,6 +204,7 @@ namespace Unity.FoxgloveSDK.Editor
             }
             finally
             {
+                safeTempDll?.Dispose();
                 if (safeVersion != null)
                 {
                     safeVersion.TryDeleteFile(compressedDownloadName, out _);
@@ -208,6 +222,13 @@ namespace Unity.FoxgloveSDK.Editor
 
             throw new IOException(
                 "OpenH264 install destination changed during " + phase + ": " + reason);
+        }
+
+        /// <summary>Records one pre-publication install state in the version-directory journal.</summary>
+        private static void RecordInstallState(OpenH264WindowsSafeDirectory safeVersion, OpenH264InstallJournalState state)
+        {
+            if (!OpenH264InstallJournal.TryWrite(safeVersion, new OpenH264InstallJournalRecord(state, false, false), out var reason))
+                throw new IOException("OpenH264 install journal could not record " + state + ": " + reason);
         }
 
         /// <summary>Creates a missing install root as ordinary bootstrap, outside the hostile-race guarantee.</summary>
