@@ -3,56 +3,65 @@
     {
       "file": "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase134_19Validation.cs",
       "validation_flag": "--phase134-19",
-      "class": "C",
-        "base_signature": "4e69cc85c46b2cab61e6875a9263b7e9d795c2df2f345ddf47f9bc614bd657ba",
-        "head_signature": "62452749ad3655864555734418de5dfdcb0bbc2731d37aeef2037bc294581433",
-        "reason": "Stage the exact current-base approval for the Phase134-19 ordering consumer before its validation-only consumer PR.",
-        "replacement": "Phase134_19Validation current-base ordering consumer"
+      "class": "HARNESS",
+      "base_signature": "f966d058b470309f2b658a1a2d4a1deefb196d330de4e30f50b1194294d215d6",
+      "head_signature": "290d5950f728ca1a45f87c5f04b5f0ba4dd0f78ba9d58293c24363578ea14570",
+      "reason": "Plan 208 stream install edits only the reviewed OpenH264 installer assertions in this validation.",
+      "replacement": "Phase134_19Validation Plan208 safe-stream HARNESS"
     },
     {
       "file": "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase134_19Validation.cs",
       "validation_flag": "--phase134-19",
+      "class": "A",
+      "base_signature": "0d5a47ae1b35b9f69406451024323afb309dcfcbbb0b0cd326fd02329583c4b5",
+      "head_signature": "97225417e5a13d6152250e3e410b4c41fbdfd26357fb9f17c199927d2ed6695d",
+      "reason": "Plan 208 stream install keeps the VS-year probe check while retargeting its shared OpenH264 cleanup assertion.",
+      "replacement": "Phase134_19Validation Plan208 safe-stream A"
+    },
+    {
+      "file": "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase134_19Validation.cs",
+      "validation_flag": "--phase134-19",
+      "class": "C",
+      "base_signature": "4e69cc85c46b2cab61e6875a9263b7e9d795c2df2f345ddf47f9bc614bd657ba",
+      "head_signature": "4159ef4928600bcaded4750f6682e4d960dc11eee0f1c50ce94de09878d3ec9b",
+      "reason": "Plan 208 stream install retargets the OpenH264 installer checks to the safe-handle download and decompression flow.",
+      "replacement": "Phase134_19Validation Plan208 safe-stream C"
+    },
+    {
+      "file": "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase163_16Validation.cs",
+      "validation_flag": "--phase163-16",
       "class": "HARNESS",
-      "base_signature": "d3d2aa722a1f5c4d0bf5e8b0d0ef4d2f01bb6c0266224a80a85f7dd1562f71fb",
-      "head_signature": "3790f6699cf2201ffca0f809d9b62743dd58ab45c59463be255b1ee576c890ac",
-      "reason": "Approve the exact Phase134-19 harness transition for the follow-up validation consumer.",
-      "replacement": "Phase134_19Validation exact harness consumer"
+      "base_signature": "56e1bbebd807b6a6c9e29011ac190f29500b71ce8049a877af21bb7e156d9307",
+      "head_signature": "5faf6ec9c0e733f024795438982306f6251ae497e629fd8c61dd031523bb306d",
+      "reason": "Plan 208 stream install edits only the reviewed OpenH264 installer assertions in this validation.",
+      "replacement": "Phase163_16Validation Plan208 safe-stream HARNESS"
     },
     {
       "file": "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase163_16Validation.cs",
       "validation_flag": "--phase163-16",
       "class": "C",
       "base_signature": "3b77887db9e8a7e0400ed0fd9d499623a82a1a5602fd6d8a0013e2fcf3498bb6",
-      "head_signature": "828c6a6b72b9f2e3114f490a4b9103d27b3f7762cf911ea4df34a1c9a7d8c54e",
-      "reason": "Plan207 keeps Phase163-16 download and decompression checks stable across path-based and safe-stream installer implementations.",
-      "replacement": "Phase163_16Validation Plan207 safe-stream compatibility"
+      "head_signature": "9a7fc8f62df8f7d1e4e99285ebac0f3a0d6397b8929e105f8683f6dee42edf98",
+      "reason": "Plan 208 stream install retargets the OpenH264 installer checks to the safe-handle download and decompression flow.",
+      "replacement": "Phase163_16Validation Plan208 safe-stream C"
+    },
+    {
+      "file": "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase163_26Validation.cs",
+      "validation_flag": "--phase163-26",
+      "class": "HARNESS",
+      "base_signature": "6f8db07ed52fe0e40906ade0df7710d28a7995df7168490dbbed997652df4b8e",
+      "head_signature": "dd3cc55471ffcb0a8f72d6623a0b64cbf827ba0ef7c805cbf8e8d278f0dba643",
+      "reason": "Plan 208 stream install edits only the reviewed OpenH264 installer assertions in this validation.",
+      "replacement": "Phase163_26Validation Plan208 safe-stream HARNESS"
     },
     {
       "file": "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase163_26Validation.cs",
       "validation_flag": "--phase163-26",
       "class": "C",
       "base_signature": "2fc1c100d6eac0d76a45bf3a3fd1957ba9a07bcf36097883d8004d3fd1ad1b1d",
-      "head_signature": "db3696a0f4fee5eb7cf8aa105f01e781c7b95e4dea2843f0040d26e380ddfaf2",
-      "reason": "Plan207 keeps Phase163-26 OpenH264 digest, timeout, and decompressor diagnostics checks valid for safe streams.",
-      "replacement": "Phase163_26Validation Plan207 safe-stream compatibility"
-    },
-    {
-      "file": "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase81Validation.cs",
-      "validation_flag": "--phase81",
-      "class": "C",
-      "base_signature": "94366ecd082e4f721a628a3df03706e515c30ec53765e2399a379144319d6af9",
-      "head_signature": "6470192e63a26cd7268a6391dbef651fb29de61713a06fa747197e5087e599f4",
-      "reason": "Plan207 keeps Phase81 OpenH264 installer source checks compatible with the safe-stream helper composition.",
-      "replacement": "Phase81Validation Plan207 safe-stream compatibility"
-    },
-    {
-      "file": "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Decomposed/PhaseValidationSourceHelpers/RepositoryReaders.cs",
-      "validation_flag": "ReadGenericCSharpSource",
-      "class": "READER",
-      "base_signature": "7733cb54e5797900b47524c745198de819cb96536fafae27c3c39df88a76b228",
-      "head_signature": "ab5351509e8a6a310bef0c63f4ca9699b489ecde6587469e295314c1d784da52",
-      "reason": "Plan207 composes the OpenH264 facade with registered partial sources while preserving the existing generic source reader contract.",
-      "replacement": "Phase207 OpenH264 safe-stream source composition"
+      "head_signature": "886ce8c8c25e3841bd7c6e2aa039fce49f88e7f5ea5572201f273f3bf8736332",
+      "reason": "Plan 208 stream install retargets the OpenH264 installer checks to the safe-handle download and decompression flow.",
+      "replacement": "Phase163_26Validation Plan208 safe-stream C"
     },
     {
       "file": "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase134_30Validation.cs",
