@@ -231,7 +231,7 @@ def _load_ratchet_replacements(
         if key in seen:
             entry_errors.append(f"replacement {index} is duplicated")
         seen.add(key)
-        if entry["class"] not in {"C", "READER", "HARNESS", "DELEGATE"}:
+        if entry["class"] not in {"A", "C", "READER", "HARNESS", "DELEGATE"}:
             entry_errors.append(f"replacement {index} has invalid class")
         if entry["class"] == "DELEGATE" and (
             not isinstance(entry["validation_flag"], str)
@@ -261,13 +261,13 @@ def _apply_ratchet_replacements(
     base: tuple[dict[tuple[str, str, str], Counter[str]], dict[tuple[str, str, str], Counter[tuple[str, ...]]]],
     head: tuple[dict[tuple[str, str, str], Counter[str]], dict[tuple[str, str, str], Counter[tuple[str, ...]]]],
 ) -> list[str]:
-    """Clear Class C assertion changes whose exact signatures the trusted base approves."""
+    """Clear Class A or C assertion changes whose exact signatures the trusted base approves."""
     replacements, errors = _load_ratchet_replacements(root, revision)
     for entry in replacements:
-        if entry["class"] != "C":
+        if entry["class"] not in {"A", "C"}:
             continue
-        key = (_ratchet_path(entry["file"]), str(entry["validation_flag"]).strip(), "C")
-        message = f"SOURCE_TEXT_RATCHET_ASSERTION_CHANGED file={key[0]} flag={key[1]} class=C"
+        key = (_ratchet_path(entry["file"]), str(entry["validation_flag"]).strip(), entry["class"])
+        message = f"SOURCE_TEXT_RATCHET_ASSERTION_CHANGED file={key[0]} flag={key[1]} class={key[2]}"
         if message not in failures:
             continue
         base_signature = _ratchet_key_signature(base[0].get(key), base[1].get(key))
@@ -291,8 +291,22 @@ def _apply_harness_replacements(
     changed_helpers: set[tuple[str, str]],
     changed_source_paths: set[str],
 ) -> list[str]:
-    """Clear only exact harness transitions within the approved path and helper scope."""
+    """Clear exact harness transitions when every changed existing test source has a harness approval."""
     replacements, errors = _load_ratchet_replacements(root, revision)
+    harness_paths = {_ratchet_path(item["file"]) for item in replacements if item["class"] == "HARNESS"}
+    added = subprocess.run(
+        ["git", "diff", "--name-only", "--diff-filter=A", revision, "--", "*.cs"],
+        cwd=root,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout if harness_paths else ""
+    added_paths = {_ratchet_path(path) for path in added.splitlines() if path.strip()}
+    scoped_paths = {
+        path
+        for path in changed_source_paths - added_paths
+        if path.startswith("packages/") and path.split("/")[2:3] == ["tests"]
+    }
     for entry in replacements:
         if entry["class"] != "HARNESS":
             continue
@@ -306,12 +320,11 @@ def _apply_harness_replacements(
         }
         if not messages:
             continue
-        approved_path = _ratchet_path(entry["file"])
-        if changed_source_paths != {approved_path}:
-            actual_paths = ",".join(sorted(changed_source_paths))
+        if not scoped_paths <= harness_paths:
             print(
                 f"SOURCE_TEXT_RATCHET_HARNESS_SCOPE_CHANGED file={key[0]} "
-                f"flag={key[1]} expected={approved_path} actual={actual_paths}"
+                f"flag={key[1]} expected={','.join(sorted(harness_paths))} "
+                f"actual={','.join(sorted(scoped_paths))}"
             )
             continue
         if changed_helpers:
