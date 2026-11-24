@@ -126,6 +126,192 @@ class SourceTextInventoryReviewTests(_FixtureSupport, unittest.TestCase):
             self.assertNotIn("SOURCE_TEXT_RATCHET_HARNESS_REPLACEMENT_APPROVED", output)
             self.assertIn("SOURCE_TEXT_RATCHET_HARNESS_SCOPE_CHANGED", output)
 
+    def _approval_fixture(self, directory, validations, approved, mismatch=()):
+        """Create trusted exact approvals for base-to-head edits across several validation files."""
+        from Scripts.validation.source_text_inventory import inventory
+        from Scripts.validation.source_text_inventory_ratchet_helpers import (
+            _ratchet_assertion_semantics,
+            _ratchet_change_tokens,
+            _ratchet_harness_signature,
+            _ratchet_key_signature,
+        )
+
+        root = self._git_fixture(directory)
+        runtime = root / "Packages/fixture/Tests/Runtime"
+        registry = root / "Packages/dev.unity2foxglove.sdk/Tests/Runtime/PhaseValidationRegistry.cs"
+        registry.write_text(
+            "".join(
+                f'Ci("{flag}", "fixture", {name}.Validate, evidence: ValidationEvidence.Behavior),\n'
+                for name, (flag, _, _) in validations.items()
+            ),
+            encoding="utf-8",
+        )
+
+        def write(index):
+            """Write the base (1) or head (2) text of every fixture validation."""
+            for name, texts in validations.items():
+                (runtime / f"{name}.cs").write_text(texts[index], encoding="utf-8")
+
+        def signature(rows, name, row_class):
+            """Return the ratchet signature one approval entry pins."""
+            key = (f"packages/fixture/tests/runtime/{name.lower()}.cs", validations[name][0])
+            if row_class == "HARNESS":
+                return _ratchet_harness_signature(rows, key)
+            key = (*key, row_class)
+            return _ratchet_key_signature(
+                _ratchet_change_tokens(rows).get(key), _ratchet_assertion_semantics(rows).get(key)
+            )
+
+        write(1)
+        base_rows = inventory(root)
+        write(2)
+        head_rows = inventory(root)
+        write(1)
+        entries = [
+            {
+                "file": f"Packages/fixture/Tests/Runtime/{name}.cs",
+                "validation_flag": validations[name][0],
+                "class": row_class,
+                "base_signature": signature(base_rows, name, row_class),
+                "head_signature": "0" * 64 if (name, row_class) in mismatch else signature(head_rows, name, row_class),
+                "reason": "Approve the exact reviewed transition for this validation consumer.",
+                "replacement": f"{name}-{row_class}",
+            }
+            for name, row_class in approved
+        ]
+        (root / "Scripts/validation/source_text_ratchet_replacements.json").write_text(
+            json.dumps({"replacements": entries}) + "\n", encoding="utf-8"
+        )
+        subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+        subprocess.run(["git", "-C", str(root), "commit", "-qm", "trusted-approvals"], check=True)
+        write(2)
+        return root
+
+    @staticmethod
+    def _validation(name, base_check, head_check):
+        """Return one flag plus base and head texts for a source-reading validation."""
+        def text(check):
+            """Return one validation whose helper runs the given check."""
+            return (
+                f"public static class {name} {{\n"
+                "    public static void Validate() { Run(); }\n"
+                "    private static void Run() {\n"
+                '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                f"        {check}\n"
+                "    }\n}\n"
+            )
+        return f"--phase-{name.lower()}", text(base_check), text(head_check)
+
+    def test_harness_replacement_allows_changed_product_source_outside_tests(self):
+        """Allow an exact harness approval when only product code outside Tests also changes."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._harness_replacement_fixture(directory)
+            (root / "Packages/fixture/Runtime/Product.cs").write_text(
+                "public sealed class Product { public int Value; }\n", encoding="utf-8"
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(0, code, output)
+            self.assertIn("SOURCE_TEXT_RATCHET_HARNESS_REPLACEMENT_APPROVED", output)
+
+    def test_harness_replacement_rejects_test_source_renamed_out_of_tests(self):
+        """Reject an exact harness approval when an existing test source moves out of Tests."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._harness_replacement_fixture(directory)
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            head_validation = validation.read_text(encoding="utf-8")
+            validation.write_text(head_validation.replace("Check(false);", "Check(true);"), encoding="utf-8")
+            external = root / "Packages/fixture/Tests/Runtime/External.cs"
+            external.write_text(
+                "public static class External {\n"
+                "    public static string Normalize(string source) => source.Trim();\n"
+                "}\n",
+                encoding="utf-8",
+            )
+            subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+            subprocess.run(["git", "-C", str(root), "commit", "-qm", "trusted-external"], check=True)
+            validation.write_text(head_validation, encoding="utf-8")
+            subprocess.run(
+                ["git", "-C", str(root), "mv", str(external), str(root / "Packages/fixture/Runtime/External.cs")],
+                check=True,
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code, output)
+            self.assertNotIn("SOURCE_TEXT_RATCHET_HARNESS_REPLACEMENT_APPROVED", output)
+            self.assertIn("SOURCE_TEXT_RATCHET_HARNESS_SCOPE_CHANGED", output)
+
+    def test_harness_replacement_allows_added_test_source(self):
+        """Allow an exact harness approval when the change also adds a new test source file."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._harness_replacement_fixture(directory)
+            added = root / "Packages/fixture/Tests/Unit/AddedBehaviorTests.cs"
+            added.parent.mkdir(parents=True)
+            added.write_text("public sealed class AddedBehaviorTests { }\n", encoding="utf-8")
+            subprocess.run(["git", "-C", str(root), "add", "-N", str(added)], check=True)
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(0, code, output)
+            self.assertIn("SOURCE_TEXT_RATCHET_HARNESS_REPLACEMENT_APPROVED", output)
+
+    def test_harness_replacements_cover_several_validation_files(self):
+        """Allow exact harness approvals for every changed validation file in one change."""
+        with tempfile.TemporaryDirectory() as directory:
+            validations = {
+                "FirstValidation": self._validation("FirstValidation", 'Check(source.Contains("Product"));', 'Check(source.Contains("class Product"));'),
+                "SecondValidation": self._validation("SecondValidation", 'Check(source.Contains("sealed"));', 'Check(source.Contains("sealed class"));'),
+            }
+            root = self._approval_fixture(
+                directory,
+                validations,
+                [("FirstValidation", "HARNESS"), ("FirstValidation", "C"), ("SecondValidation", "HARNESS"), ("SecondValidation", "C")],
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(0, code, output)
+            self.assertEqual(2, output.count("SOURCE_TEXT_RATCHET_HARNESS_REPLACEMENT_APPROVED"), output)
+
+    def test_harness_replacements_reject_unapproved_changed_validation_file(self):
+        """Reject harness approvals when another changed validation file has no harness approval."""
+        with tempfile.TemporaryDirectory() as directory:
+            validations = {
+                "FirstValidation": self._validation("FirstValidation", 'Check(source.Contains("Product"));', 'Check(source.Contains("class Product"));'),
+                "SecondValidation": self._validation("SecondValidation", 'Check(source.Contains("sealed"));', 'Check(source.Contains("sealed class"));'),
+            }
+            root = self._approval_fixture(
+                directory,
+                validations,
+                [("FirstValidation", "HARNESS"), ("FirstValidation", "C"), ("SecondValidation", "C")],
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code, output)
+            self.assertNotIn("SOURCE_TEXT_RATCHET_HARNESS_REPLACEMENT_APPROVED", output)
+            self.assertIn("SOURCE_TEXT_RATCHET_HARNESS_SCOPE_CHANGED", output)
+
+    def test_exact_class_a_replacement_passes(self):
+        """Allow one exact trusted Class A assertion replacement."""
+        with tempfile.TemporaryDirectory() as directory:
+            validations = {
+                "FixtureValidation": self._validation("FixtureValidation", 'Check(!source.Contains("Forbidden"));', 'Check(!source.Contains("Banned"));'),
+            }
+            root = self._approval_fixture(directory, validations, [("FixtureValidation", "HARNESS"), ("FixtureValidation", "A")])
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(0, code, output)
+            self.assertIn("SOURCE_TEXT_RATCHET_REPLACEMENT_APPROVED", output)
+
+    def test_class_a_replacement_signature_mismatch_fails(self):
+        """Reject a Class A replacement whose trusted head signature differs."""
+        with tempfile.TemporaryDirectory() as directory:
+            validations = {
+                "FixtureValidation": self._validation("FixtureValidation", 'Check(!source.Contains("Forbidden"));', 'Check(!source.Contains("Banned"));'),
+            }
+            root = self._approval_fixture(
+                directory,
+                validations,
+                [("FixtureValidation", "HARNESS"), ("FixtureValidation", "A")],
+                mismatch=[("FixtureValidation", "A")],
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code, output)
+            self.assertIn("SOURCE_TEXT_RATCHET_REPLACEMENT_MISMATCH", output)
+            self.assertIn("SOURCE_TEXT_RATCHET_ASSERTION_CHANGED file=packages/fixture/tests/runtime/fixturevalidation.cs flag=--phase-fixturevalidation class=A", output)
+
     def _run_migration_cli(self, root, approval=None, trusted_base=None):
         """Run the proposed checker with an optional workflow migration approval."""
         args = [
