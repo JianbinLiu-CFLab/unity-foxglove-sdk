@@ -132,7 +132,7 @@ namespace Unity.FoxgloveSDK.Editor
         }
     }
 
-    internal static class OpenH264ArtifactPairPublisher
+    internal static partial class OpenH264ArtifactPairPublisher
     {
         internal static void Publish(
             string stagedDllPath,
