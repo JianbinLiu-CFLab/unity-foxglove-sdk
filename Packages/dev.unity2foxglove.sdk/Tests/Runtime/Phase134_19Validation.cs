@@ -96,10 +96,10 @@ namespace Unity.FoxgloveSDK.Tests
         private static void VerifyInstallerChecksHashesBeforeMovingDll()
         {
             var installer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.cs");
-            var downloadIndex = installer.IndexOf("DownloadFile(OpenH264OfficialBinaryManifest.DownloadUrl, compressedDownloadPath)", StringComparison.Ordinal);
+            var downloadIndex = installer.IndexOf("OpenH264OfficialBinaryManifest.DownloadUrl", StringComparison.Ordinal);
             var compressedVerifyIndex = installer.IndexOf("OpenH264OfficialBinaryManifest.CompressedAssetSha256", StringComparison.Ordinal);
-            var promoteDownloadIndex = installer.IndexOf("File.Move(compressedDownloadPath, compressedPath)", StringComparison.Ordinal);
-            var decompressIndex = installer.IndexOf("TryDecompressBZip2(compressedPath, tempDll", StringComparison.Ordinal);
+            var promoteDownloadIndex = installer.IndexOf("TryCreateProtectedFile(tempDllName", StringComparison.Ordinal);
+            var decompressIndex = installer.IndexOf("TryDecompressBZip2(safeCompressedDownload, safeTempDll", StringComparison.Ordinal);
             var dllVerifyIndex = installer.IndexOf("OpenH264OfficialBinaryManifest.DllSha256", StringComparison.Ordinal);
             var publishIndex = installer.IndexOf("OpenH264ArtifactPairPublisher.Publish(", StringComparison.Ordinal);
 
@@ -175,7 +175,7 @@ namespace Unity.FoxgloveSDK.Tests
         {
             var installer = ReadRepoText("Packages/dev.unity2foxglove.sdk/Editor/Publishers/OpenH264OfficialBinaryInstaller.cs");
             Check(!installer.Contains("\"2026\", \"2022\", \"2019\"", StringComparison.Ordinal)
-                  && installer.Contains("TryDelete(compressedPath, warnOnFailure: true)", StringComparison.Ordinal)
+                  && installer.Contains("safeVersion.TryDeleteFile(compressedDownloadName, out _);", StringComparison.Ordinal)
                   && installer.Contains("Could not delete temporary OpenH264 installer file", StringComparison.Ordinal),
                 "134-19-H1: OpenH264 installer removes dead VS year probe and cleans successful download cache");
 

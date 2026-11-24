@@ -97,15 +97,15 @@ namespace Unity.FoxgloveSDK.Tests
             var install = ExtractMethod(source, "internal static OpenH264InstallResult Install");
             var download = ExtractMethod(source, "private static void DownloadFile");
 
-            Check(install.Contains("compressedDownloadPath = compressedPath + \".download\"", StringComparison.Ordinal)
-                  && CheckOrdered(install, "DownloadFile(OpenH264OfficialBinaryManifest.DownloadUrl, compressedDownloadPath);", "TryVerifySha256(")
-                  && CheckOrdered(install, "TryVerifySha256(", "File.Move(compressedDownloadPath, compressedPath);"),
+            Check(install.Contains("OpenH264OfficialBinaryManifest.AssetName + \".download\"", StringComparison.Ordinal)
+                  && CheckOrdered(install, "OpenH264OfficialBinaryManifest.DownloadUrl,", "TryVerifySha256(")
+                  && CheckOrdered(install, "TryVerifySha256(", "TryCreateProtectedFile(tempDllName"),
                 "163-16C-1: OpenH264 installer verifies downloaded archive before moving it to the final path");
-            Check(download.Contains("tempDestination = destination + \".partial\"", StringComparison.Ordinal)
-                  && download.Contains("File.Create(tempDestination)", StringComparison.Ordinal)
-                  && download.Contains("CopyToAsync(destinationStream, 81920, cts.Token)", StringComparison.Ordinal)
-                  && download.Contains("File.Move(tempDestination, destination)", StringComparison.Ordinal)
-                  && download.Contains("TryDelete(tempDestination)", StringComparison.Ordinal),
+            Check(download.Contains("OpenH264WindowsSafeFile destination", StringComparison.Ordinal)
+                  && download.Contains("CancellationTokenSource(DownloadBodyTimeoutMs)", StringComparison.Ordinal)
+                  && download.Contains("destination.WriteFromStream(", StringComparison.Ordinal)
+                  && download.Contains("MaxCompressedAssetBytes", StringComparison.Ordinal)
+                  && download.Contains("cts.Token", StringComparison.Ordinal),
                 "163-16C-2: OpenH264 downloader bounds body copy and avoids leaving partial bytes at the requested destination");
             Check(source.Contains("CombineDecompressErrors(bzip2Error, pythonError)", StringComparison.Ordinal)
                   && source.Contains("bzip2 failed: ", StringComparison.Ordinal)
