@@ -5,6 +5,8 @@
 // Purpose: Verified Windows file handles for OpenH264 transactions.
 
 using System;
+using System.IO;
+using System.Threading;
 using Microsoft.Win32.SafeHandles;
 
 namespace Unity.FoxgloveSDK.Editor
@@ -28,6 +30,29 @@ namespace Unity.FoxgloveSDK.Editor
         /// <summary>Writes bytes through the verified handle.</summary>
         internal bool WriteAllBytes(byte[] bytes, out string reason)
             => OpenH264WindowsNativeApi.TryWriteAllBytes(_handle, bytes, out reason);
+
+        /// <summary>Copies a bounded stream into this verified file.</summary>
+        internal bool WriteFromStream(Stream source, long maxBytes, out long bytesWritten, out string reason)
+            => WriteFromStream(source, maxBytes, CancellationToken.None, out bytesWritten, out reason);
+
+        /// <summary>Copies a bounded cancellable stream into this verified file.</summary>
+        internal bool WriteFromStream(
+            Stream source,
+            long maxBytes,
+            CancellationToken cancellationToken,
+            out long bytesWritten,
+            out string reason)
+            => OpenH264WindowsNativeApi.TryWriteStream(
+                _handle,
+                source,
+                maxBytes,
+                cancellationToken,
+                out bytesWritten,
+                out reason);
+
+        /// <summary>Reads this verified file into a bounded parent-owned buffer.</summary>
+        internal bool ReadAllBytes(int maxBytes, out byte[] bytes, out string reason)
+            => OpenH264WindowsNativeApi.TryReadAllBytes(_handle, maxBytes, out bytes, out reason);
 
         /// <summary>Renames this file through the verified destination directory handle.</summary>
         internal bool RenameTo(

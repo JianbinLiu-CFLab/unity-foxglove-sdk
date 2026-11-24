@@ -62,12 +62,12 @@ namespace Unity.FoxgloveSDK.Tests
                   && manifest.Contains("DllSha256", StringComparison.Ordinal),
                 "163-26B-1: OpenH264 manifest pins HTTPS source and SHA256 digests");
             Check(installer.Contains("TryVerifySha256", StringComparison.Ordinal)
-                  && CheckOrdered(installer, "DownloadFile(OpenH264OfficialBinaryManifest.DownloadUrl, compressedDownloadPath);", "OpenH264OfficialBinaryManifest.CompressedAssetSha256")
-                  && CheckOrdered(installer, "TryDecompressBZip2(compressedPath, tempDll", "OpenH264OfficialBinaryManifest.DllSha256"),
+                  && CheckOrdered(installer, "OpenH264OfficialBinaryManifest.DownloadUrl", "OpenH264OfficialBinaryManifest.CompressedAssetSha256")
+                  && CheckOrdered(installer, "TryDecompressBZip2(safeCompressedDownload, safeTempDll", "OpenH264OfficialBinaryManifest.DllSha256"),
                 "163-26B-2: installer verifies archive before final move and DLL after decompression");
             Check(installer.Contains("DownloadBodyTimeoutMs", StringComparison.Ordinal)
                   && installer.Contains("CancellationTokenSource(DownloadBodyTimeoutMs)", StringComparison.Ordinal)
-                  && installer.Contains("CopyToAsync(destinationStream, 81920, cts.Token)", StringComparison.Ordinal),
+                  && installer.Contains("destination.WriteFromStream(", StringComparison.Ordinal),
                 "163-26B-4: installer bounds response-body copy after receiving OpenH264 headers");
             Check(installer.Contains("CombineDecompressErrors", StringComparison.Ordinal)
                   && installer.Contains("bzip2 failed: ", StringComparison.Ordinal)

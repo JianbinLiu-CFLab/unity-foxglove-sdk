@@ -5,8 +5,10 @@
 // Purpose: Windows native handle mutation primitives for the OpenH264 safe-file layer.
 
 using System;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 using Microsoft.Win32.SafeHandles;
 
 namespace Unity.FoxgloveSDK.Editor
@@ -102,6 +104,116 @@ namespace Unity.FoxgloveSDK.Editor
             }
 
             return true;
+        }
+
+        /// <summary>Copies a bounded stream into an opened file handle and flushes it.</summary>
+        internal static bool TryWriteStream(
+            SafeFileHandle file,
+            Stream source,
+            long maxBytes,
+            CancellationToken cancellationToken,
+            out long bytesWritten,
+            out string reason)
+        {
+            bytesWritten = 0;
+            reason = "";
+            if (source == null || maxBytes < 0)
+            {
+                reason = "The safe-file stream input is invalid.";
+                return false;
+            }
+
+            if (!SetFilePointerEx(file, 0, out _, FileBegin) || !SetEndOfFile(file))
+            {
+                reason = "Handle truncate failed with Win32 error " + Marshal.GetLastWin32Error() + ".";
+                return false;
+            }
+
+            var buffer = new byte[81920];
+            try
+            {
+                while (true)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var read = source.ReadAsync(buffer, 0, buffer.Length, cancellationToken).GetAwaiter().GetResult();
+                    if (read == 0)
+                        break;
+                    if (bytesWritten + read > maxBytes)
+                    {
+                        reason = "Safe-file stream input exceeded its configured bound.";
+                        return false;
+                    }
+
+                    if (!WriteFile(file, buffer, (uint)read, out var written, IntPtr.Zero)
+                        || written != read)
+                    {
+                        reason = "Handle write failed with Win32 error " + Marshal.GetLastWin32Error() + ".";
+                        return false;
+                    }
+
+                    bytesWritten += written;
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                reason = "Safe-file stream input was cancelled.";
+                return false;
+            }
+
+            if (!FlushFileBuffers(file))
+            {
+                reason = "Handle flush failed with Win32 error " + Marshal.GetLastWin32Error() + ".";
+                return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>Reads a bounded file handle into memory for a parent-owned process transfer.</summary>
+        internal static bool TryReadAllBytes(
+            SafeFileHandle file,
+            int maxBytes,
+            out byte[] bytes,
+            out string reason)
+        {
+            bytes = Array.Empty<byte>();
+            reason = "";
+            if (maxBytes < 0)
+            {
+                reason = "The safe-file read bound is invalid.";
+                return false;
+            }
+
+            if (!SetFilePointerEx(file, 0, out _, FileBegin))
+            {
+                reason = "Handle seek failed with Win32 error " + Marshal.GetLastWin32Error() + ".";
+                return false;
+            }
+
+            using (var output = new MemoryStream())
+            {
+                var buffer = new byte[81920];
+                while (true)
+                {
+                    if (!ReadFile(file, buffer, (uint)buffer.Length, out var read, IntPtr.Zero))
+                    {
+                        reason = "Handle read failed with Win32 error " + Marshal.GetLastWin32Error() + ".";
+                        return false;
+                    }
+                    if (read == 0)
+                        break;
+                    if (output.Length + read > maxBytes)
+                    {
+                        reason = "Safe-file read exceeded its configured bound.";
+                        return false;
+                    }
+
+                    output.Write(buffer, 0, (int)read);
+                }
+
+                bytes = output.ToArray();
+                return true;
+            }
         }
     }
 }
