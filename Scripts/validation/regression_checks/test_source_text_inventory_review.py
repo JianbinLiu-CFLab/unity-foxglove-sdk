@@ -213,6 +213,18 @@ class SourceTextInventoryReviewTests(_FixtureSupport, unittest.TestCase):
             self.assertEqual(0, code, output)
             self.assertIn("SOURCE_TEXT_RATCHET_HARNESS_REPLACEMENT_APPROVED", output)
 
+    def test_harness_replacement_allows_added_test_source(self):
+        """Allow an exact harness approval when the change also adds a new test source file."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._harness_replacement_fixture(directory)
+            added = root / "Packages/fixture/Tests/Unit/AddedBehaviorTests.cs"
+            added.parent.mkdir(parents=True)
+            added.write_text("public sealed class AddedBehaviorTests { }\n", encoding="utf-8")
+            subprocess.run(["git", "-C", str(root), "add", "-N", str(added)], check=True)
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(0, code, output)
+            self.assertIn("SOURCE_TEXT_RATCHET_HARNESS_REPLACEMENT_APPROVED", output)
+
     def test_harness_replacements_cover_several_validation_files(self):
         """Allow exact harness approvals for every changed validation file in one change."""
         with tempfile.TemporaryDirectory() as directory:
