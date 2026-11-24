@@ -294,17 +294,16 @@ def _apply_harness_replacements(
     """Clear exact harness transitions when every changed existing test source has a harness approval."""
     replacements, errors = _load_ratchet_replacements(root, revision)
     harness_paths = {_ratchet_path(item["file"]) for item in replacements if item["class"] == "HARNESS"}
-    added = subprocess.run(
-        ["git", "diff", "--name-only", "--diff-filter=A", revision, "--", "*.cs"],
+    existing = subprocess.run(
+        ["git", "diff", "--no-renames", "--name-only", "--diff-filter=a", revision, "--", "*.cs"],
         cwd=root,
         check=True,
         capture_output=True,
         text=True,
     ).stdout if harness_paths else ""
-    added_paths = {_ratchet_path(path) for path in added.splitlines() if path.strip()}
     scoped_paths = {
         path
-        for path in changed_source_paths - added_paths
+        for path in (_ratchet_path(line) for line in existing.splitlines() if line.strip())
         if path.startswith("packages/") and path.split("/")[2:3] == ["tests"]
     }
     for entry in replacements:

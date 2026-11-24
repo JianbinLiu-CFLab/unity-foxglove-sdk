@@ -213,6 +213,32 @@ class SourceTextInventoryReviewTests(_FixtureSupport, unittest.TestCase):
             self.assertEqual(0, code, output)
             self.assertIn("SOURCE_TEXT_RATCHET_HARNESS_REPLACEMENT_APPROVED", output)
 
+    def test_harness_replacement_rejects_test_source_renamed_out_of_tests(self):
+        """Reject an exact harness approval when an existing test source moves out of Tests."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._harness_replacement_fixture(directory)
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            head_validation = validation.read_text(encoding="utf-8")
+            validation.write_text(head_validation.replace("Check(false);", "Check(true);"), encoding="utf-8")
+            external = root / "Packages/fixture/Tests/Runtime/External.cs"
+            external.write_text(
+                "public static class External {\n"
+                "    public static string Normalize(string source) => source.Trim();\n"
+                "}\n",
+                encoding="utf-8",
+            )
+            subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+            subprocess.run(["git", "-C", str(root), "commit", "-qm", "trusted-external"], check=True)
+            validation.write_text(head_validation, encoding="utf-8")
+            subprocess.run(
+                ["git", "-C", str(root), "mv", str(external), str(root / "Packages/fixture/Runtime/External.cs")],
+                check=True,
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code, output)
+            self.assertNotIn("SOURCE_TEXT_RATCHET_HARNESS_REPLACEMENT_APPROVED", output)
+            self.assertIn("SOURCE_TEXT_RATCHET_HARNESS_SCOPE_CHANGED", output)
+
     def test_harness_replacement_allows_added_test_source(self):
         """Allow an exact harness approval when the change also adds a new test source file."""
         with tempfile.TemporaryDirectory() as directory:
