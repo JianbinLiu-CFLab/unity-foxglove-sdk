@@ -48,7 +48,7 @@ class SourceTextInventoryGateTests(unittest.TestCase):
 
 
 
-    def _git_fixture(self, directory: str, validation_text: str | None = None) -> Path:
+    def _git_fixture(self, directory: str, validation_text: str | None = None, delegate_manifest: str = "") -> Path:
         """Create a small Git fixture containing the current checker modules."""
         root = Path(directory)
         for source in (
@@ -59,7 +59,7 @@ class SourceTextInventoryGateTests(unittest.TestCase):
             shutil.copy2(source, destination)
         approvals = root / "Scripts/validation/source_text_ratchet_approvals.json"
         approvals.write_text('{"approvals": []}\n', encoding="utf-8")
-        (root / "Scripts/validation/source_text_delegate_targets.tsv").write_bytes(b"")
+        (root / "Scripts/validation/source_text_delegate_targets.tsv").write_bytes(delegate_manifest.encode("utf-8"))
         runtime = root / "Packages/fixture/Tests/Runtime"
         runtime.mkdir(parents=True)
         product = root / "Packages/fixture/Runtime/Product.cs"
@@ -572,11 +572,19 @@ class SourceTextRatchetTests(unittest.TestCase):
             self.assertEqual(0, code, output)
             self.assertNotIn("SOURCE_TEXT_RATCHET_HELPER_CHANGED", output)
 
+    def _delegate_target_line(self, target: str) -> str:
+        """Return one manifest line binding the fixture Validate member to a delegate target."""
+        return (
+            "runtime\tPackages/fixture/Tests/Runtime/FixtureValidation.cs\t"
+            f"M:FixtureValidation.Validate\tM:FixtureValidation.{target}\t1\n"
+        )
+
     def test_delegate_rebinding_to_noop_fails_closed(self):
         """Reject a delegate rebinding that removes the source assertion from execution."""
         with tempfile.TemporaryDirectory() as directory:
             root = self._git_fixture(
                 directory,
+                delegate_manifest=self._delegate_target_line("Used"),
                 validation_text=(
                     "using System;\n"
                     "public static class FixtureValidation {\n"
@@ -598,16 +606,19 @@ class SourceTextRatchetTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
+            (root / "Scripts/validation/source_text_delegate_targets.tsv").write_bytes(
+                self._delegate_target_line("Noop").encode("utf-8")
+            )
             code, output = self._run_fixture_gate(root)
             self.assertEqual(1, code, output)
-            self.assertIn("SOURCE_TEXT_RATCHET_HARNESS_CHANGED", output)
-            self.assertIn("helper=binding:run", output)
+            self.assertIn("SOURCE_TEXT_RATCHET_DELEGATE_TARGETS_CHANGED", output)
 
     def test_casted_var_delegate_rebinding_to_noop_fails_closed(self):
         """Reject a casted var delegate rebinding that removes the source assertion."""
         with tempfile.TemporaryDirectory() as directory:
             root = self._git_fixture(
                 directory,
+                delegate_manifest=self._delegate_target_line("Used"),
                 validation_text=(
                     "using System;\n"
                     "public static class FixtureValidation {\n"
@@ -629,9 +640,42 @@ class SourceTextRatchetTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
+            (root / "Scripts/validation/source_text_delegate_targets.tsv").write_bytes(
+                self._delegate_target_line("Noop").encode("utf-8")
+            )
             code, output = self._run_fixture_gate(root)
             self.assertEqual(1, code, output)
-            self.assertIn("SOURCE_TEXT_RATCHET_HARNESS_CHANGED", output)
+            self.assertIn("SOURCE_TEXT_RATCHET_DELEGATE_TARGETS_CHANGED", output)
+
+    def test_direct_lambda_forward_to_noop_fails_closed(self):
+        """Reject a lambda argument whose forwarded call no longer reaches the source assertion."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._git_fixture(
+                directory,
+                validation_text=(
+                    "using System;\n"
+                    "public static class FixtureValidation {\n"
+                    "    private static void Used() {\n"
+                    '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
+                    '        Check(source.Contains("Product"));\n'
+                    "    }\n"
+                    "    private static void Noop() { }\n"
+                    "    private static void Run(Action action) { action(); }\n"
+                    "    public static void Validate() {\n"
+                    "        Run(() => Used());\n"
+                    "    }\n}\n"
+                ),
+            )
+            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
+            validation.write_text(
+                validation.read_text(encoding="utf-8").replace(
+                    "Run(() => Used());", "Run(() => Noop());"
+                ),
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code, output)
+            self.assertIn("SOURCE_TEXT_RATCHET_ASSERTION_CHANGED", output)
 
     def test_inline_delegate_forwarding_to_noop_fails_closed(self):
         """Reject a forwarding helper that stops invoking an assertion lambda."""
@@ -655,36 +699,6 @@ class SourceTextRatchetTests(unittest.TestCase):
                 validation.read_text(encoding="utf-8").replace(
                     "private static void Run(Action action) { action(); }",
                     "private static void Run(Action action) { }",
-                ),
-                encoding="utf-8",
-            )
-            code, output = self._run_fixture_gate(root)
-            self.assertEqual(1, code, output)
-            self.assertIn("SOURCE_TEXT_RATCHET_HARNESS_CHANGED", output)
-
-    def test_delegate_factory_rebinding_to_noop_fails_closed(self):
-        """Reject a delegate factory change that removes its source assertion."""
-        with tempfile.TemporaryDirectory() as directory:
-            root = self._git_fixture(
-                directory,
-                validation_text=(
-                    "using System;\n"
-                    "public static class FixtureValidation {\n"
-                    "    private static Action Make() => () => {\n"
-                    '        var source = ReadRequiredRepoText("Packages/fixture/Runtime/Product.cs");\n'
-                    '        Check(source.Contains("Product"));\n'
-                    "    };\n"
-                    "    private static Action Noop() => () => { };\n"
-                    "    public static void Validate() {\n"
-                    "        Action run = Make();\n"
-                    "        run();\n"
-                    "    }\n}\n"
-                ),
-            )
-            validation = root / "Packages/fixture/Tests/Runtime/FixtureValidation.cs"
-            validation.write_text(
-                validation.read_text(encoding="utf-8").replace(
-                    "Action run = Make();", "Action run = Noop();"
                 ),
                 encoding="utf-8",
             )

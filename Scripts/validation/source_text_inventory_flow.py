@@ -632,78 +632,7 @@ def _validation_harness_signature(
     lambda_signature = _lambda_binding_signature(text, masked, methods)
     if lambda_signature:
         pieces.append(f"lambda:{lambda_signature}")
-    delegate_signature = _delegate_binding_signature(text, masked, methods)
-    if delegate_signature:
-        pieces.append(f"delegate:{delegate_signature}")
     return hashlib.sha256("\n".join(pieces).encode()).hexdigest() if pieces else ""
-
-def _delegate_binding_signature(
-    text: str, masked: str, methods: list[MethodInfo]
-) -> str:
-    """Hash delegate assignments, method-group arguments, and forwarding calls."""
-    delegate_methods = {
-        method.name
-        for method in methods
-        if _normalize_type(method.return_type)
-        .removeprefix("System.")
-        .startswith(("Action", "Func", "Predicate"))
-    }
-    delegate_methods.update(
-        match.group("name")
-        for match in re.finditer(
-            r"\b(?:System\.)?(?:Action|Func|Predicate)(?:<[^;{}]+>)?\s+"
-            r"(?P<name>[A-Za-z_]\w*)\s*\([^;{}]*\)\s*=>",
-            masked,
-        )
-    )
-    pieces: list[str] = []
-    method_names = {method.name for method in methods}
-    delegate_variables: set[str] = set()
-    assignment_pattern = re.compile(
-        r"\b(?:(?P<type>(?:(?:System\.)?(?:Action|Func|Predicate)(?:<[^;=]+>)?|var))\s+)?"
-        r"(?P<name>[A-Za-z_]\w*)\s*=\s*(?P<target>[^;]+);"
-    )
-    for match in assignment_pattern.finditer(masked):
-        target = re.sub(r"\s+", " ", match.group("target")).strip()
-        target_names = set(re.findall(r"\b[A-Za-z_]\w*\b", target))
-        explicit_delegate = bool(match.group("type")) and match.group("type") != "var"
-        is_delegate = (
-            explicit_delegate
-            or match.group("name") in delegate_variables
-            or bool(target_names & delegate_methods)
-            or re.search(
-                r"\(\s*(?:System\.)?(?:Action|Func|Predicate)(?:<[^;=]+>)?\s*\)",
-                target,
-            ) is not None
-            or "=>" in target
-            or re.search(r"\bdelegate\s*\(", target) is not None
-        )
-        if not is_delegate:
-            continue
-        name = match.group("name")
-        delegate_variables.add(name)
-        invocation = re.search(
-            rf"\b{re.escape(name)}(?:\s*\([^;]*\)|\s*\?\.\s*Invoke\s*\([^;]*\)|"
-            rf"\s*\.\s*Invoke\s*\([^;]*\))\s*;|"
-            rf"\b[A-Za-z_]\w*\s*\(\s*{re.escape(name)}\s*\)\s*;",
-            masked[match.end() :],
-        )
-        invocation_text = re.sub(r"\s+", " ", invocation.group()).strip() if invocation else ""
-        pieces.append(f"assign:{match.group('type') or ''} {name}={target}|invoke:{invocation_text}")
-    for method in methods:
-        for call_name, open_index in _call_sites(text, masked, method):
-            arguments = _call_arguments(text, masked, open_index)
-            if arguments is None:
-                continue
-            argument_names = set(re.findall(r"\b[A-Za-z_]\w*\b", arguments))
-            if not argument_names & method_names and not re.search(
-                r"=>|\bdelegate\s*\(", arguments
-            ):
-                continue
-            normalized = _normalize_csharp_expression(arguments)
-            pieces.append(f"call:{call_name}({normalized})")
-    return hashlib.sha256("\n".join(sorted(pieces)).encode()).hexdigest() if pieces else ""
-
 
 def _lambda_binding_signature(
     text: str, masked: str, methods: list[MethodInfo] | None = None
