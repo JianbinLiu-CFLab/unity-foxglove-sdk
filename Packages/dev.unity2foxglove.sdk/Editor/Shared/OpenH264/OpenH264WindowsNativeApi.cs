@@ -54,7 +54,7 @@ namespace Unity.FoxgloveSDK.Editor
                     GenericRead | Delete | Synchronize | FileListDirectory | FileAddFile | FileAddSubdirectory,
                     FileDirectoryFile | FileOpenReparsePoint | FileOpenForBackupIntent | FileSynchronousIoNonAlert,
                     FileOpen,
-                    ShareReadWrite,
+                    ShareRead,
                     out handle,
                     out reason))
                 return false;
@@ -116,6 +116,34 @@ namespace Unity.FoxgloveSDK.Editor
             return VerifyOpenedObject(handle, "directory", out identity, out reason);
         }
 
+        /// <summary>Opens a child directory while retaining a replacement-blocking handle.</summary>
+        internal static bool TryOpenRelativeLockedDirectory(
+            SafeFileHandle parent,
+            string name,
+            out SafeFileHandle handle,
+            out OpenH264WindowsFileIdentity identity,
+            out string reason)
+        {
+            handle = null;
+            identity = default;
+            reason = "";
+            if (!IsSimpleName(name, out reason))
+                return false;
+
+            if (!TryOpen(
+                    name,
+                    parent.DangerousGetHandle(),
+                    GenericRead | Delete | Synchronize | FileListDirectory | FileAddFile | FileAddSubdirectory,
+                    FileDirectoryFile | FileOpenReparsePoint | FileOpenForBackupIntent | FileSynchronousIoNonAlert,
+                    FileOpen,
+                    ShareRead,
+                    out handle,
+                    out reason))
+                return false;
+
+            return VerifyOpenedObject(handle, "directory", out identity, out reason);
+        }
+
         /// <summary>Opens a child directory with the minimal access needed for a relative rename.</summary>
         internal static bool TryOpenRelativeRenameDirectory(
             SafeFileHandle parent,
@@ -151,7 +179,8 @@ namespace Unity.FoxgloveSDK.Editor
             bool createNew,
             out SafeFileHandle handle,
             out OpenH264WindowsFileIdentity identity,
-            out string reason)
+            out string reason,
+            uint shareMode = ShareAll)
         {
             handle = null;
             identity = default;
@@ -166,13 +195,29 @@ namespace Unity.FoxgloveSDK.Editor
                     GenericRead | GenericWrite | Delete | Synchronize,
                     FileNonDirectoryFile | FileOpenReparsePoint | FileOpenForBackupIntent | FileSynchronousIoNonAlert,
                     disposition,
-                    ShareAll,
+                    shareMode,
                     out handle,
                     out reason))
                 return false;
 
             return VerifyOpenedObject(handle, "file", out identity, out reason);
         }
+
+        /// <summary>Creates a child file while denying other processes write and delete sharing.</summary>
+        internal static bool TryCreateProtectedRelativeFile(
+            SafeFileHandle parent,
+            string name,
+            out SafeFileHandle handle,
+            out OpenH264WindowsFileIdentity identity,
+            out string reason)
+            => TryOpenRelativeFile(
+                parent,
+                name,
+                createNew: true,
+                out handle,
+                out identity,
+                out reason,
+                ShareRead);
 
         /// <summary>Checks identity and rejects a reparse point after a native open.</summary>
         private static bool VerifyOpenedObject(
