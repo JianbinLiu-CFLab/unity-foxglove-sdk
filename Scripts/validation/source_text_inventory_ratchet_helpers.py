@@ -358,9 +358,9 @@ def _ratchet_assertion_semantics(
     return semantics
 
 def _helper_signature_records(text: str, readers: frozenset[str] = frozenset()) -> dict[str, str]:
-    """Return hashes for recognized assertion/read/source helpers, discovered readers and bindings."""
+    """Return hashes for recognized assertion/read/source helpers and discovered readers."""
     if not readers and not re.search(
-        r"\b(?:Check|Assert\w*|Read\w*|Source\w*|Validate\w*|Action|Func|Predicate|delegate)\b|=>",
+        r"\b(?:Check|Assert\w*|Read\w*|Source\w*|Validate\w*|Action|Func|Predicate)\b",
         text,
     ):
         return {}
@@ -390,22 +390,6 @@ def _helper_signature_records(text: str, readers: frozenset[str] = frozenset()) 
         records[helper_name] = hashlib.sha256(
             text[method.body_start : method.body_end + 1].encode("utf-8")
         ).hexdigest()
-
-    binding_pattern = re.compile(
-        r"\b(?P<type>(?:(?:System\.)?(?:Action|Func|Predicate)(?:<[^;=]+>)?|var))?\s*"
-        r"(?P<name>[A-Za-z_]\w*)\s*=\s*(?P<target>[^;]+);"
-    )
-    for match in binding_pattern.finditer(masked):
-        target = match.group("target")
-        declared_type = match.group("type") or ""
-        if (
-            (not declared_type or declared_type == "var")
-            and "=>" not in target
-            and "delegate" not in target
-        ):
-            continue
-        name = "binding:" + match.group("name")
-        records[name] = hashlib.sha256(text[match.start() : match.end()].encode("utf-8")).hexdigest()
     return records
 
 def _archive_revision(root: Path, revision: str, destination: Path) -> None:
