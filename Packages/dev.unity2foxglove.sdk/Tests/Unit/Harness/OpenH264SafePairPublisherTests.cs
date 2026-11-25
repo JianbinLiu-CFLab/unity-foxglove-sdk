@@ -173,11 +173,64 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         {
             using (var fixture = new Fixture(withOriginals: true))
             {
-                fixture.WriteArtifact(OpenH264InstallJournal.FileName, "state=5\ndll_original=1\nhelper_original=1\n");
+                foreach (var state in new[] { "5", "8", "999", "-1" })
+                {
+                    fixture.WriteArtifact(
+                        OpenH264InstallJournal.FileName,
+                        "state=" + state + "\ndll_original=0\nhelper_original=0\n");
 
-                Assert.False(fixture.Recover(out var reason));
-                Assert.Contains("malformed", reason, StringComparison.OrdinalIgnoreCase);
+                    Assert.False(fixture.Recover(out var reason), state);
+                    Assert.Contains("malformed", reason, StringComparison.OrdinalIgnoreCase);
+                    fixture.AssertPair("old");
+                }
+            }
+        }
+
+        [WindowsSafeFileFact]
+        /// <summary>A stale backup left by an earlier install never replaces the current pair.</summary>
+        public void InterruptAfterBackupsMovedIgnoresStaleBackup()
+        {
+            using (var fixture = new Fixture(withOriginals: true))
+            {
+                fixture.WriteArtifact(Dll + ".bak", "stale");
+                fixture.WriteArtifact(Helper + ".bak", "stale");
+
+                Assert.Throws<InvalidOperationException>(() => fixture.Publish(Interrupt(OpenH264InstallJournalState.BackupsMoved)));
+
                 fixture.AssertPair("old");
+                fixture.AssertClean();
+            }
+        }
+
+        [WindowsSafeFileFact]
+        /// <summary>A leftover temporary journal from an interrupted write is discarded by recovery.</summary>
+        public void RecoverDiscardsLeftoverTemporaryJournal()
+        {
+            using (var fixture = new Fixture(withOriginals: true))
+            {
+                fixture.WriteJournal(OpenH264InstallJournalState.Decompressed, dllOriginal: false, helperOriginal: false);
+                fixture.WriteArtifact(OpenH264InstallJournal.TemporaryFileName, "state=");
+
+                Assert.True(fixture.Recover(out var reason), reason);
+
+                fixture.AssertPair("old");
+                fixture.AssertClean();
+            }
+        }
+
+        [WindowsSafeFileFact]
+        /// <summary>A journal write replaces the record through a temporary file and leaves none behind.</summary>
+        public void JournalWriteLeavesNoTemporaryJournal()
+        {
+            using (var fixture = new Fixture(withOriginals: true))
+            {
+                fixture.WriteJournal(OpenH264InstallJournalState.Prepared, dllOriginal: false, helperOriginal: false);
+                fixture.WriteJournal(OpenH264InstallJournalState.Downloaded, dllOriginal: false, helperOriginal: false);
+
+                Assert.Equal(
+                    "state=Downloaded\ndll_original=0\nhelper_original=0\n",
+                    File.ReadAllText(fixture.PathOf(OpenH264InstallJournal.FileName)));
+                Assert.False(File.Exists(fixture.PathOf(OpenH264InstallJournal.TemporaryFileName)));
             }
         }
 
@@ -261,7 +314,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
 
             internal void AssertClean()
             {
-                foreach (var name in new[] { Dll + ".bak", Helper + ".bak", OpenH264InstallJournal.FileName, Download, StagedDll, StagedHelper })
+                foreach (var name in new[] { Dll + ".bak", Helper + ".bak", OpenH264InstallJournal.FileName, OpenH264InstallJournal.TemporaryFileName, Download, StagedDll, StagedHelper })
                     Assert.False(File.Exists(PathOf(name)), name);
             }
 
