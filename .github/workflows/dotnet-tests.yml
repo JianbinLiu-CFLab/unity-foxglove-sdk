@@ -792,7 +792,8 @@ jobs:
   optional-ros2-native:
     # This lane validates managed compile-surface contracts only. Win64 generated
     # message loading runs in windows-ros2-native; ROS/RMW runtime certification
-    # remains in the phase186 live workflow.
+    # remains in the phase186 live workflow. The manual live ROS2 probes are
+    # built here against every packaged distro but are not run.
     name: "Linux: optional ROS2 Native compile surface"
     runs-on: ubuntu-latest
     steps:
@@ -809,6 +810,16 @@ jobs:
 
       - name: Run optional ROS2 Native compile-surface xUnit gate
         run: dotnet test --no-restore Packages/dev.unity2foxglove.sdk/Tests/Unit/FoxgloveSdk.UnitTests.csproj -p:IncludeRos2ForUnityNative=true --logger "trx;LogFileName=unit-tests-native.trx" --results-directory build/TestResults/OptionalRos2Native
+
+      - name: Build manual live ROS2 probes
+        run: |
+          for distro in humble jazzy lyrical; do
+            for project in \
+              Scripts/smoke/ros2/pointcloud2_inbound_topic_switch/PointCloud2InboundTopicSwitchProbe/PointCloud2InboundTopicSwitchProbe.csproj \
+              Scripts/smoke/ros2/imu_inbound_frame_id_limit/ImuInboundFrameIdLimitProbe/ImuInboundFrameIdLimitProbe.csproj; do
+              dotnet build "$project" --nologo -p:Distro="$distro"
+            done
+          done
 
       - name: Upload optional ROS2 Native test results
         if: always()
