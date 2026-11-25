@@ -184,7 +184,8 @@ ROS2ForUnity.PrewarmUnityMainThreadPaths();
                         throw new InvalidOperationException("Cannot create node " + name + ". A node with this name already exists!");
                     }
                 }
-                ROS2Node node = new ROS2Node(name, spinGate);
+                ROS2Node node = new ROS2Node(name);
+                node.spinGate = spinGate;
                 nodes.Add(node);
                 ros2csNodes.Add(node.NativeNode);
                 collectionVersion++;

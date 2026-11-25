@@ -47,7 +47,8 @@ public class ROS2Node : IDisposable
     /// </summary>
     public string name { get; }
     private readonly object mutex = new object();
-    private readonly object spinGate;
+    /// <summary>Spin gate of the executor that spins this node; the executor sets it before publishing the node.</summary>
+    internal object spinGate;
     private readonly int ownerThreadId;
     private volatile bool disposed;
     private bool disposing;
@@ -67,11 +68,10 @@ public class ROS2Node : IDisposable
     }
 
     // Use ROS2UnityComponent to create a node
-    internal ROS2Node(string unityROS2NodeName = DefaultNodeName, object spinGate = null)
+    internal ROS2Node(string unityROS2NodeName = DefaultNodeName)
     {
         ownerThreadId = Environment.CurrentManagedThreadId;
         name = unityROS2NodeName;
-        this.spinGate = spinGate;
         node = Ros2cs.CreateNode(name);
         NativeNode = node;
         clock = new ROS2Clock();
