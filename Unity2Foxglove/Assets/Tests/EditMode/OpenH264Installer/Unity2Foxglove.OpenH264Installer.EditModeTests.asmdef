@@ -1,0 +1,26 @@
+{
+  "name": "Unity2Foxglove.OpenH264Installer.EditModeTests",
+  "rootNamespace": "Unity2Foxglove.Tests.EditMode.OpenH264Installer",
+  "references": [
+    "Unity.FoxgloveSDK",
+    "Unity.FoxgloveSDK.Editor",
+    "UnityEngine.TestRunner",
+    "UnityEditor.TestRunner"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": true,
+  "precompiledReferences": [
+    "nunit.framework.dll"
+  ],
+  "autoReferenced": false,
+  "defineConstraints": [
+    "UNITY_INCLUDE_TESTS",
+    "UNITY_EDITOR_WIN"
+  ],
+  "versionDefines": [],
+  "noEngineReferences": false
+}
