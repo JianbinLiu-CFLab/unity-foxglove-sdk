@@ -4,6 +4,7 @@
 #
 # Purpose: Run the live IMU inbound frame_id limit probe per ROS2 distro, or receive external publishers.
 # Usage: python Scripts/smoke/ros2/imu_inbound_frame_id_limit/probe_imu_inbound_frame_id_limit.py --distro all
+#        ... --distro jazzy --receive-topic /imu/data   (then type `negative` and `end` on stdin)
 # Outputs: Builds under repo build/ and prints one PASS/FAIL result per fresh distro process.
 
 """Run the real IMU inbound bridge over live ros2cs DDS at and above the 256-byte frame_id limit."""
@@ -59,8 +60,12 @@ def main() -> int:
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--distro", choices=("all",) + DISTROS, default="all")
-    parser.add_argument("--receive-topic", help="Receive external publishers on this topic instead of running the limit probe.")
-    parser.add_argument("--seconds", type=int, default=20, help="Receive window length. Default: 20")
+    parser.add_argument(
+        "--receive-topic",
+        help="Receive external publishers on this topic. Keeps the caller's ROS_DOMAIN_ID (default 0) and reads "
+             "`negative` and then `end` from stdin.",
+    )
+    parser.add_argument("--seconds", type=int, default=300, help="Receive timeout. Default: 300")
     parser.add_argument("--expect", default="trusted", help="frame_id of the authorized liveness publisher.")
     parser.add_argument("--forbid", default="unauthorized", help="frame_id of the publisher that must not be delivered.")
     args = parser.parse_args()
@@ -73,12 +78,14 @@ def main() -> int:
         for distro in distros:
             env = distro_environment(root, distro)
             probe_dll = build_probe(root, distro, env)
-            command = ["dotnet", str(probe_dll), distro, "limit"]
-            timeout = PROBE_TIMEOUT_SECONDS
-            if args.receive_topic:
-                command[3:] = ["receive", args.receive_topic, str(args.seconds), args.expect, args.forbid]
-                timeout += args.seconds
-            run_checked(command, cwd=root, env=env, timeout=timeout)
+            if not args.receive_topic:
+                run_checked(["dotnet", str(probe_dll), distro, "limit"], cwd=root, env=env, timeout=PROBE_TIMEOUT_SECONDS)
+                continue
+            env["ROS_DOMAIN_ID"] = os.environ.get("ROS_DOMAIN_ID", "0")
+            command = ["dotnet", str(probe_dll), distro, "receive", args.receive_topic, str(args.seconds), args.expect, args.forbid]
+            result = subprocess.run(command, cwd=root, env=env, timeout=PROBE_TIMEOUT_SECONDS + args.seconds, check=False)
+            if result.returncode != 0:
+                raise RuntimeError(f"{distro}: receive classification failed with exit code {result.returncode}")
     except (RuntimeError, subprocess.TimeoutExpired) as error:
         print(f"PROBE_FAILURE {error}", file=sys.stderr)
         return 1
