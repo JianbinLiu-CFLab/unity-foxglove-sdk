@@ -223,7 +223,7 @@ $env:FASTDDS_DEFAULT_PROFILES_FILE = 'C:\path\to\phase201-fastdds.xml'
 # Manual Cyclone DDS: replace the RMW and Fast DDS lines above with these two lines.
 # $env:RMW_IMPLEMENTATION = 'rmw_cyclonedds_cpp'
 # $env:CYCLONEDDS_URI = 'file:///C:/path/to/cyclonedds-phase201.xml'
-ros2 topic pub /imu/data sensor_msgs/msg/Imu "{header: {frame_id: imu_link}}" --qos-reliability best_effort --qos-durability volatile
+ros2 topic pub --node-name phase201_trusted_publisher /imu/data sensor_msgs/msg/Imu "{header: {frame_id: imu_link}}" --qos-reliability best_effort --qos-durability volatile
 ```
 
 ### Bash
@@ -242,10 +242,10 @@ export FASTDDS_DEFAULT_PROFILES_FILE="$HOME/path/to/phase201-fastdds.xml"
 # Manual Cyclone DDS: replace the RMW and Fast DDS lines above with these two lines.
 # export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 # export CYCLONEDDS_URI='file:///path/to/cyclonedds-phase201.xml'
-ros2 topic pub /imu/data sensor_msgs/msg/Imu "{header: {frame_id: imu_link}}" --qos-reliability best_effort --qos-durability volatile
+ros2 topic pub --node-name phase201_trusted_publisher /imu/data sensor_msgs/msg/Imu "{header: {frame_id: imu_link}}" --qos-reliability best_effort --qos-durability volatile
 ```
 
-Use the topic and message type that match the Unity bridge under test. For PointCloud2 and CompressedImage, use a publisher that can produce a known serialized payload size. The publisher permission must contain that topic before the publisher starts.
+Use the topic and message type that match the Unity bridge under test. For PointCloud2 and CompressedImage, use a publisher that can produce a known serialized payload size. The publisher permission must contain that topic before the publisher starts. Run the trusted publisher until Unity receives the expected frame, record the `phase201_trusted_publisher` endpoint and Unity receive count, then stop it with Ctrl+C. Before starting the negative case, confirm that the trusted endpoint has disappeared and keep the receive count as the negative baseline. If the endpoint remains or the baseline cannot be recorded, classify the procedure as `INVALID_TEST`.
 
 ## 5. Verify the negative case
 
@@ -278,7 +278,7 @@ $negativeJob = Start-Job -ArgumentList $keystore -ScriptBlock {
   $env:FASTDDS_DEFAULT_PROFILES_FILE = 'C:\path\to\phase201-fastdds.xml'
   # Fast DDS 2.x: replace the 3.x variable above with FASTRTPS_DEFAULT_PROFILES_FILE.
   # Manual Cyclone DDS: replace the RMW and Fast DDS lines above with the Cyclone values.
-  $jobOutput = @(ros2 topic pub --times 30 --rate 1 --wait-matching-subscriptions 0 --keep-alive 3 /imu/data sensor_msgs/msg/Imu "{header: {frame_id: unauthorized}}" --qos-reliability best_effort --qos-durability volatile 2>&1)
+  $jobOutput = @(ros2 topic pub --node-name phase201_untrusted_publisher --times 30 --rate 1 --wait-matching-subscriptions 0 --keep-alive 3 /imu/data sensor_msgs/msg/Imu "{header: {frame_id: unauthorized}}" --qos-reliability best_effort --qos-durability volatile 2>&1)
   [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = $jobOutput }
 }
 Start-Sleep -Seconds 2
@@ -288,7 +288,7 @@ $negativeResult = Receive-Job -Job $negativeJob -Wait
 $negativeExitCode = [int]$negativeResult.ExitCode
 $negativeResult.Output
 Remove-Job -Job $negativeJob
-if ($negativeExitCode -eq 0) { Write-Host 'The CLI started. Accept the negative case only after secured graph inspection and Unity no-frame evidence show that no publish was authorized.' }
+if ($negativeExitCode -eq 0) { Write-Host 'The CLI started. Accept the negative case only after phase201_untrusted_publisher endpoint inspection and Unity no-frame evidence show that no publish was authorized.' } else { Write-Host 'A non-zero exit is inconclusive. Classify SECURITY_REJECTED only with explicit security-denial output and valid startup evidence; otherwise classify INVALID_TEST.' }
 ```
 
 ### Bash
@@ -310,7 +310,7 @@ export FASTDDS_DEFAULT_PROFILES_FILE="$HOME/path/to/phase201-fastdds.xml"
 evidence_root="$(pwd)/build/phase201"
 negative_log="$evidence_root/sros2/negative-publisher.log"
 mkdir -p "$(dirname "$negative_log")"
-ros2 topic pub --times 30 --rate 1 --wait-matching-subscriptions 0 --keep-alive 3 /imu/data sensor_msgs/msg/Imu "{header: {frame_id: unauthorized}}" --qos-reliability best_effort --qos-durability volatile >"$negative_log" 2>&1 &
+ros2 topic pub --node-name phase201_untrusted_publisher --times 30 --rate 1 --wait-matching-subscriptions 0 --keep-alive 3 /imu/data sensor_msgs/msg/Imu "{header: {frame_id: unauthorized}}" --qos-reliability best_effort --qos-durability volatile >"$negative_log" 2>&1 &
 negative_pid=$!
 sleep 2
 echo 'Inspect the secured graph and Unity no-frame result now while the negative publisher remains alive.'
@@ -321,11 +321,11 @@ cat "$negative_log"
 if [ "$negative_exit_code" -eq 0 ]; then
   echo 'The CLI started. Accept the negative case only after secured graph inspection and Unity no-frame evidence show that no publish was authorized.'
 else
-  echo 'The CLI was rejected by the local security path. Continue with the Unity no-frame check.'
+  echo 'The process did not complete successfully. Classify SECURITY_REJECTED only with explicit security-denial output and valid startup evidence; otherwise classify INVALID_TEST.'
 fi
 ```
 
-The negative result must show no new inbound frame in Unity and no authorized publisher endpoint in secured graph inspection. A permissive launch, a missing enclave override, or a CLI process that never reaches node startup is not evidence of authorization. The CLI exit code alone is not the pass criterion because a process can start and fail to match an authorized endpoint. Classify the outcome as `SECURITY_REJECTED` only after the process reaches startup, endpoint inspection shows no unauthorized publisher, and Unity receives no frame. Classify an endpoint or frame as `SECURITY_ACCEPTED`. Classify argument parsing errors, missing dependencies, invalid keystores, timeouts, or missing endpoint and frame evidence as `INVALID_TEST`.
+The negative result must show no new inbound frame in Unity and no authorized publisher endpoint in secured graph inspection. A permissive launch, a missing enclave override, or a CLI process that never reaches node startup is not evidence of authorization. The CLI exit code alone is not the pass criterion because a process can start and fail to match an authorized endpoint. Classify the outcome as `SECURITY_REJECTED` only after the negative process reaches startup, endpoint inspection shows no `phase201_untrusted_publisher` endpoint, the trusted endpoint is already absent, and Unity receives no frame after the recorded baseline. Classify an endpoint named `phase201_untrusted_publisher` or a frame carrying the `unauthorized` marker as `SECURITY_ACCEPTED`. A trusted endpoint or frame, an unattributed endpoint or frame, argument parsing errors, missing dependencies, invalid keystores, or timeouts are `INVALID_TEST`.
 
 Use the same untrusted process environment for a parameter-service negative check. Choose a real node, parameter, and current value from the secured graph inspection, then verify that the untrusted enclave cannot write it:
 
@@ -367,10 +367,10 @@ $env:FASTDDS_DEFAULT_PROFILES_FILE = 'C:\path\to\phase201-fastdds.xml'
 # Manual Cyclone DDS: replace the RMW and Fast DDS lines above with these two lines.
 # $env:RMW_IMPLEMENTATION = 'rmw_cyclonedds_cpp'
 # $env:CYCLONEDDS_URI = 'file:///C:/path/to/cyclonedds-phase201.xml'
-ros2 topic info /imu/data --verbose --no-daemon
+ros2 topic info /imu/data --verbose --no-daemon --spin-time 4
 ```
 
-For Bash, set the same `ROS_SECURITY_KEYSTORE`, `ROS_SECURITY_ENABLE`, `ROS_SECURITY_STRATEGY`, `ROS_SECURITY_ENCLAVE_OVERRIDE`, `ROS_DOMAIN_ID`, RMW, and Fast DDS profile variables in a separate process before running the same `ros2 topic info /imu/data --verbose --no-daemon` command. Inspect the publisher count and node names. Do not use `ros2 topic list` alone as endpoint evidence. On the manual Cyclone path, set the same `RMW_IMPLEMENTATION` and `CYCLONEDDS_URI` used by the Unity and publisher processes.
+For Bash, set the same `ROS_SECURITY_KEYSTORE`, `ROS_SECURITY_ENABLE`, `ROS_SECURITY_STRATEGY`, `ROS_SECURITY_ENCLAVE_OVERRIDE`, `ROS_DOMAIN_ID`, RMW, and Fast DDS profile variables in a separate process before running the same `ros2 topic info /imu/data --verbose --no-daemon --spin-time 4` command. Inspect the publisher count and node names. Do not use `ros2 topic list` alone as endpoint evidence. On the manual Cyclone path, set the same `RMW_IMPLEMENTATION` and `CYCLONEDDS_URI` used by the Unity and publisher processes.
 
 ## 6. Failure modes and boundaries
 
