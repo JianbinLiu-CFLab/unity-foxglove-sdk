@@ -174,9 +174,11 @@ namespace Unity.FoxgloveSDK.Tests
         private static void Phase162ZenohSetupRestoresSessionState()
         {
             var setup = ReadRepoText("Unity2Foxglove/Assets/Editor/Phase162LocalZenohPlaySetup.cs");
-            var configureAndPlay = PhaseValidationSourceHelpers.RequiredSourceMethod(
+            var configureAndPlay = PhaseValidationSourceHelpers.SourceMethodWithPreprocessorSymbols(
                 setup,
-                "private static void TryConfigureAndPlay()");
+                "private static void TryConfigureAndPlay()",
+                "UNITY2FOXGLOVE_ROS2_FOR_UNITY",
+                "UNITY_EDITOR_WIN");
 
             Check(setup.Contains("CaptureEnvironmentBeforeOverride", StringComparison.Ordinal)
                   && setup.Contains("RestoreEnvironmentAfterOverride", StringComparison.Ordinal)

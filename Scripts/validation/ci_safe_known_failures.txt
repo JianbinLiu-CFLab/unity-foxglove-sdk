@@ -20,7 +20,6 @@
 --phase163-19  # Phase 163-19: validation for ROS2 CDR writer and generator review fixes
 --phase163-20  # Phase 163-20: validation for ROS2 Bridge and R2FU boundary review fixes
 --phase163-21  # Phase 163-21: validation for FoxRun runtime bus, sinks, and inbound gates
---phase163-26  # Phase 163-26: validation for editor native helper, certificate,
 --phase163-27  # Phase 163-27: validation for R2FU runtime selection and play-mode guards
 --phase163-28  # Phase 163-28: validation for R2FU native bridge lifecycle hardening
 --phase163-29  # Phase 163-29: validation for R2FU runtime package governance
