@@ -133,10 +133,10 @@ namespace Unity.FoxgloveSDK.Editor
             if (!TryOpen(
                     name,
                     parent.DangerousGetHandle(),
-                    GenericRead | Delete | Synchronize | FileListDirectory | FileAddFile | FileAddSubdirectory,
+                    GenericRead | Synchronize | FileListDirectory | FileAddFile | FileAddSubdirectory,
                     FileDirectoryFile | FileOpenReparsePoint | FileOpenForBackupIntent | FileSynchronousIoNonAlert,
                     FileOpen,
-                    ShareRead,
+                    ShareReadWrite,
                     out handle,
                     out reason))
                 return false;
