@@ -71,11 +71,11 @@ namespace Unity.FoxgloveSDK.Editor
             var stagingNames = new[] { compressedDownloadName, tempDllName, tempHelperName };
             Func<bool> validateDestination = () =>
                 OpenH264InstallLocation.IsAllowedInstallRoot(installRoot, out _);
-            bool TryDelete(string path, bool warnOnFailure = false)
-                => OpenH264OfficialBinaryInstaller.TryDelete(path, warnOnFailure, validateDestination);
             OpenH264WindowsSafeDirectory safeRoot = null;
             OpenH264WindowsSafeDirectory safeVersion = null;
             OpenH264WindowsSafeFile safeTempDll = null;
+            var ownsStaging = false;
+            bool TryDelete(string path) => OpenH264OfficialBinaryInstaller.TryDelete(safeVersion, path);
             try
             {
                 BootstrapMissingInstallRoot(installRoot);
@@ -97,6 +97,7 @@ namespace Unity.FoxgloveSDK.Editor
                 }
                 if (!OpenH264ArtifactPairPublisher.TryRecover(safeVersion, dllName, helperName, stagingNames, out var recoveryError))
                     return Fail("OpenH264 could not recover the previous install transaction: " + recoveryError);
+                ownsStaging = true;
                 if (!safeVersion.TryDeleteFile(compressedDownloadName, out var cleanupError))
                     return Fail(cleanupError);
                 if (!safeVersion.TryDeleteFile(tempDllName, out cleanupError))
@@ -189,13 +190,16 @@ namespace Unity.FoxgloveSDK.Editor
             catch (Exception ex)
             {
                 safeTempDll?.Dispose();
-                if (safeVersion != null)
-                    OpenH264ArtifactPairPublisher.TryRecover(safeVersion, dllName, helperName, stagingNames, out _);
-                TryDelete(compressedDownloadPath);
-                TryDelete(tempDll);
-                TryDelete(tempHelper);
+                var recoveryFailure = "";
+                if (ownsStaging
+                    && !OpenH264ArtifactPairPublisher.TryRecover(safeVersion, dllName, helperName, stagingNames, out var failedRecoveryError))
+                {
+                    ownsStaging = false;
+                    recoveryFailure = "\nOpenH264 could not recover the install transaction: " + failedRecoveryError;
+                }
                 return Fail(
                     ex.Message
+                    + recoveryFailure
                     + "\nManual fallback: open "
                     + OpenH264OfficialBinaryManifest.ReleasePageUrl
                     + ", download the pinned "
@@ -205,7 +209,7 @@ namespace Unity.FoxgloveSDK.Editor
             finally
             {
                 safeTempDll?.Dispose();
-                if (safeVersion != null)
+                if (ownsStaging)
                 {
                     safeVersion.TryDeleteFile(compressedDownloadName, out _);
                     safeVersion.TryDeleteFile(tempDllName, out _);

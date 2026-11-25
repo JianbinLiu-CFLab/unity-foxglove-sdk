@@ -195,29 +195,18 @@ namespace Unity.FoxgloveSDK.Editor
         private static string QuoteBatchPath(string value)
             => "\"" + (value ?? "").Replace("%", "%%").Replace("\"", "\"\"") + "\"";
 
-        /// <summary>Deletes a legacy path-based helper artifact after validating its destination.</summary>
+        /// <summary>Deletes an install staging file through the locked version directory; missing files succeed.</summary>
         private static bool TryDelete(
+            OpenH264WindowsSafeDirectory directory,
             string path,
-            bool warnOnFailure = false,
-            Func<bool> validateDestination = null)
+            bool warnOnFailure = false)
         {
-            try
-            {
-                EnsureDestinationAllowed(validateDestination);
-                if (File.Exists(path))
-                {
-                    EnsureDestinationAllowed(validateDestination);
-                    File.Delete(path);
-                }
-
+            var reason = "The OpenH264 version directory is not open.";
+            if (directory != null && directory.TryDeleteFile(Path.GetFileName(path), out reason))
                 return true;
-            }
-            catch (Exception ex)
-            {
-                if (warnOnFailure)
-                    UnityEngine.Debug.LogWarning("[Foxglove] Could not delete temporary OpenH264 installer file '" + path + "': " + ex.Message);
-                return false;
-            }
+            if (warnOnFailure)
+                UnityEngine.Debug.LogWarning("[Foxglove] Could not delete temporary OpenH264 installer file '" + path + "': " + reason);
+            return false;
         }
 
         /// <summary>Rejects a path operation when the validated install root changed.</summary>
