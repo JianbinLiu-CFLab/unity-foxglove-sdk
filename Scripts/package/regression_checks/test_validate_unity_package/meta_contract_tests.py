@@ -21,9 +21,9 @@ class PackageMetaContractTests:
             self.assertFalse(self._has_literal_backslash_n_suffix(data), data)
 
     def test_tracked_metadata_rejects_literal_backslash_n_suffixes(self) -> None:
-        """Unity metadata in every package must not end with escaped backslash-n text."""
+        """Unity metadata under Packages, including package folder sidecars, must not end with escaped backslash-n text."""
         packages = sorted(path for path in (ROOT / "Packages").iterdir() if path.is_dir())
-        metas = [path for package in packages for path in package.rglob("*.meta")]
+        metas = list((ROOT / "Packages").rglob("*.meta"))
         offenders = [path for path in metas if self._has_literal_backslash_n_suffix(path.read_bytes())]
 
         self.assertIn(self.validator.PACKAGE.resolve(), [package.resolve() for package in packages])
