@@ -8,22 +8,26 @@ from .foundation import *
 class PackageMetaContractTests:
     """Exercise package .meta presence, importer, orphan, and GUID uniqueness contracts."""
 
-    def test_tracked_metadata_rejects_literal_backslash_n_suffixes(self) -> None:
-        """Tracked Unity metadata must end with real newlines, not escaped text."""
-        roots = (
-            self.validator.PACKAGE,
-            self.validator.ROS2_FOR_UNITY_PACKAGE,
-            self.validator.ROS2_BRIDGE_PACKAGE,
-            self.validator.REMOTE_GATEWAY_PACKAGE,
-        )
-        offenders = [
-            path
-            for root in roots
-            if root.is_dir()
-            for path in root.rglob("*.meta")
-            if path.read_bytes().endswith(b"\\n")
-        ]
+    @staticmethod
+    def _has_literal_backslash_n_suffix(data: bytes) -> bool:
+        """Return whether metadata ends with escaped backslash-n text, ignoring real trailing line endings."""
+        return data.rstrip(b"\r\n").endswith(b"\\n")
 
+    def test_literal_backslash_n_suffix_detection_ignores_real_line_endings(self) -> None:
+        """Escaped backslash-n is detected before LF or CRLF; real line endings alone pass."""
+        for data in (b"guid: x\\n", b"guid: x\\n\n", b"guid: x\\n\r\n"):
+            self.assertTrue(self._has_literal_backslash_n_suffix(data), data)
+        for data in (b"guid: x\n", b"guid: x\r\n", b"guid: x"):
+            self.assertFalse(self._has_literal_backslash_n_suffix(data), data)
+
+    def test_tracked_metadata_rejects_literal_backslash_n_suffixes(self) -> None:
+        """Unity metadata in every package must not end with escaped backslash-n text."""
+        packages = sorted(path for path in (ROOT / "Packages").iterdir() if path.is_dir())
+        metas = [path for package in packages for path in package.rglob("*.meta")]
+        offenders = [path for path in metas if self._has_literal_backslash_n_suffix(path.read_bytes())]
+
+        self.assertIn(self.validator.PACKAGE.resolve(), [package.resolve() for package in packages])
+        self.assertTrue(metas)
         self.assertEqual([], offenders)
 
     def test_bridge_asset_inventory_excludes_documentation(self) -> None:
