@@ -32,6 +32,8 @@ namespace Unity.FoxgloveSDK.Editor
             {
                 var dllOriginal = Exists(directory, dllName);
                 var helperOriginal = Exists(directory, helperName);
+                Require(directory.TryDeleteFile(dllName + BackupSuffix, out var staleDll), staleDll);
+                Require(directory.TryDeleteFile(helperName + BackupSuffix, out var staleHelper), staleHelper);
                 Record(directory, OpenH264InstallJournalState.BackupsMoved, dllOriginal, helperOriginal, afterJournal);
                 if (dllOriginal)
                     MoveToBackup(directory, dllName);
@@ -77,7 +79,7 @@ namespace Unity.FoxgloveSDK.Editor
             if (!OpenH264InstallJournal.TryRead(directory, out var present, out var record, out reason))
                 return false;
             if (!present)
-                return true;
+                return directory.TryDeleteFile(OpenH264InstallJournal.TemporaryFileName, out reason);
 
             if (record.State == OpenH264InstallJournalState.Committed)
                 return directory.TryDeleteFile(dllName + BackupSuffix, out reason)

@@ -45,21 +45,23 @@ namespace Unity.FoxgloveSDK.Editor
     internal static class OpenH264InstallJournal
     {
         internal const string FileName = "openh264-install.journal";
+        internal const string TemporaryFileName = FileName + ".tmp";
         private const int MaxBytes = 256;
         private const string MissingStatus = "0xC0000034";
 
-        /// <summary>Writes and flushes one record, creating the journal when it is missing.</summary>
+        /// <summary>Writes and flushes one record to a temporary file, then renames it over the journal.</summary>
         internal static bool TryWrite(
             OpenH264WindowsSafeDirectory directory,
             OpenH264InstallJournalRecord record,
             out string reason)
         {
-            if (!directory.TryOpenFile(FileName, out var file, out reason)
-                && (!IsMissing(reason) || !directory.TryCreateFile(FileName, out file, out reason)))
+            if (!directory.TryDeleteFile(TemporaryFileName, out reason)
+                || !directory.TryCreateFile(TemporaryFileName, out var file, out reason))
                 return false;
 
             using (file)
-                return file.WriteAllBytes(Encoding.ASCII.GetBytes(Format(record)), out reason);
+                return file.WriteAllBytes(Encoding.ASCII.GetBytes(Format(record)), out reason)
+                       && file.RenameTo(directory, FileName, replaceExisting: true, out reason);
         }
 
         /// <summary>Reads the journal; a missing journal succeeds with <paramref name="present"/> false.</summary>
@@ -95,9 +97,10 @@ namespace Unity.FoxgloveSDK.Editor
             return true;
         }
 
-        /// <summary>Deletes the journal; a missing journal succeeds.</summary>
+        /// <summary>Deletes the journal and any leftover temporary journal; missing files succeed.</summary>
         internal static bool TryDelete(OpenH264WindowsSafeDirectory directory, out string reason)
-            => directory.TryDeleteFile(FileName, out reason);
+            => directory.TryDeleteFile(TemporaryFileName, out reason)
+               && directory.TryDeleteFile(FileName, out reason);
 
         /// <summary>Returns whether a safe-file open failure means the name does not exist.</summary>
         internal static bool IsMissing(string reason)
@@ -120,6 +123,7 @@ namespace Unity.FoxgloveSDK.Editor
 
             var stateName = lines[0].Substring("state=".Length);
             if (!Enum.TryParse(stateName, ignoreCase: false, out OpenH264InstallJournalState state)
+                || !Enum.IsDefined(typeof(OpenH264InstallJournalState), state)
                 || !string.Equals(state.ToString(), stateName, StringComparison.Ordinal)
                 || !TryParseFlag(lines[1], "dll_original=", out var dllOriginal)
                 || !TryParseFlag(lines[2], "helper_original=", out var helperOriginal))
