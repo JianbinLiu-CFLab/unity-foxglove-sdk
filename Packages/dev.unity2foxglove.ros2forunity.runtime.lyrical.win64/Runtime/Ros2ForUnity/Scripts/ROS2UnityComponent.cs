@@ -60,6 +60,8 @@ public class ROS2UnityComponent : MonoBehaviour
     private int interval = 2;  // Spinning / executor interval in ms
     private readonly object mutex = new object();
     private double spinTimeout = 0.0001;
+    /// <summary>Held around SpinOnce; ROS2Node removals take it so they never overlap rcl_wait.</summary>
+    private readonly object spinGate = new object();
 
     private void Awake()
     {
@@ -210,7 +212,7 @@ public class ROS2UnityComponent : MonoBehaviour
                     throw new InvalidOperationException("Cannot create node " + name + ". A node with this name already exists!");
                 }
             }
-            ROS2Node node = new ROS2Node(name);
+            ROS2Node node = new ROS2Node(name, spinGate);
             nodes.Add(node);
             ros2csNodes.Add(node.NativeNode);
             collectionVersion++;
@@ -390,7 +392,10 @@ public class ROS2UnityComponent : MonoBehaviour
                     {
                         try
                         {
-                            Ros2cs.SpinOnce(nodesSnapshot, spinTimeout);
+                            lock (spinGate)
+                            {
+                                Ros2cs.SpinOnce(nodesSnapshot, spinTimeout);
+                            }
                         }
                         catch (Exception e)
                         {

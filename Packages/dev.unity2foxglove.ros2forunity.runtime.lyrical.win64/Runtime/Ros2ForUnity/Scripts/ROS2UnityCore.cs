@@ -53,6 +53,8 @@ namespace ROS2
         private int shutdownDispatchScheduled;
         private int shutdownRetryPending;
         private double spinTimeout = 0.0001;
+        /// <summary>Held around SpinOnce; ROS2Node removals take it so they never overlap rcl_wait.</summary>
+        private readonly object spinGate = new object();
 
         public bool Ok()
         {
@@ -177,7 +179,7 @@ Thread threadToStart = null;
                         throw new InvalidOperationException("Cannot create node " + name + ". A node with this name already exists!");
                     }
                 }
-                ROS2Node node = new ROS2Node(name);
+                ROS2Node node = new ROS2Node(name, spinGate);
                 nodes.Add(node);
                 ros2csNodes.Add(node.NativeNode);
                 collectionVersion++;
@@ -342,7 +344,10 @@ Thread threadToStart = null;
                     {
                         try
                         {
-                            Ros2cs.SpinOnce(nodesSnapshot, spinTimeout);
+                            lock (spinGate)
+                            {
+                                Ros2cs.SpinOnce(nodesSnapshot, spinTimeout);
+                            }
                         }
                         catch (Exception e)
                         {
