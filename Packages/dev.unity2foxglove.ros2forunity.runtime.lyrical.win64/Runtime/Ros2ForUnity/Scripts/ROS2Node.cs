@@ -5,7 +5,7 @@
 // - Added disposal-safe node facade helpers and timestamp update support for sensor utilities.
 // - Centralized node liveness checks through WithLiveNode() before delegating to ros2cs.
 // - Preserved compatibility overloads for existing generic remove-call sites.
-// - Serialized entity removal with the owning executor's SpinOnce.
+// - Serialized entity and node removal with the owning executor's SpinOnce.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -125,7 +125,18 @@ public class ROS2Node : IDisposable
                     return false;
                 }
 
-                Ros2cs.RemoveNode(nodeToDispose);
+                if (!WithSpinGate(() =>
+                    {
+                        Ros2cs.RemoveNode(nodeToDispose);
+                        return true;
+                    }))
+                {
+                    lock (mutex)
+                    {
+                        disposing = false;
+                    }
+                    return false;
+                }
             }
         }
         catch (Exception e)
@@ -236,7 +247,7 @@ public class ROS2Node : IDisposable
     }
 
     /// <summary>
-    /// Runs an entity removal outside the owning executor's SpinOnce, because rcl_wait may still use the entity handle.
+    /// Runs an entity or node removal outside the owning executor's SpinOnce, because rcl_wait may still use its handles.
     /// Returns false without touching the entity when the executor keeps the gate longer than SpinGateTimeout, so a
     /// callback that does not return cannot block the caller, and the caller keeps ownership for a retry.
     /// </summary>

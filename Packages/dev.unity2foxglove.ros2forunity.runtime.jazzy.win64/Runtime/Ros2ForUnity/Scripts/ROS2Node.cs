@@ -82,7 +82,7 @@ public class ROS2Node : IDisposable
     }
 
     /// <summary>
-    /// Runs an entity removal outside the owning executor's SpinOnce, because rcl_wait may still use the entity handle.
+    /// Runs an entity or node removal outside the owning executor's SpinOnce, because rcl_wait may still use its handles.
     /// Returns false without touching the entity when the executor keeps the gate longer than SpinGateTimeout, so a
     /// callback that does not return cannot block the caller, and the caller keeps ownership for a retry.
     /// </summary>
@@ -311,7 +311,18 @@ public class ROS2Node : IDisposable
                     return false;
                 }
 
-                Ros2cs.RemoveNode(nodeToDispose);
+                if (!WithSpinGate(() =>
+                    {
+                        Ros2cs.RemoveNode(nodeToDispose);
+                        return true;
+                    }))
+                {
+                    lock (mutex)
+                    {
+                        disposing = false;
+                    }
+                    return false;
+                }
             }
         }
         catch (Exception exception)
