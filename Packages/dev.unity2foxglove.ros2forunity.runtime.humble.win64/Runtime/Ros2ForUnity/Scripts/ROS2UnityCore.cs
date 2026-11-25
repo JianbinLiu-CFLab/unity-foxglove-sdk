@@ -53,6 +53,8 @@ namespace ROS2
         private int shutdownDispatchScheduled;
         private int shutdownRetryPending;
         private double spinTimeout = 0.0001;
+        /// <summary>Held around SpinOnce; ROS2Node removals take it so they never overlap rcl_wait.</summary>
+        private readonly object spinGate = new object();
 
         public bool Ok()
         {
@@ -178,6 +180,7 @@ namespace ROS2
                     }
                 }
                 ROS2Node node = new ROS2Node(name);
+                node.spinGate = spinGate;
                 nodes.Add(node);
                 ros2csNodes.Add(node.NativeNode);
                 collectionVersion++;
@@ -342,7 +345,10 @@ namespace ROS2
                     {
                         try
                         {
-                            Ros2cs.SpinOnce(nodesSnapshot, spinTimeout);
+                            lock (spinGate)
+                            {
+                                Ros2cs.SpinOnce(nodesSnapshot, spinTimeout);
+                            }
                         }
                         catch (Exception e)
                         {

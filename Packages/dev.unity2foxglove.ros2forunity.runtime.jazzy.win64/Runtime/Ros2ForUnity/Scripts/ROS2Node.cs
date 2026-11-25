@@ -14,6 +14,7 @@
 // limitations under the License.
 
 using System;
+using System.Threading;
 using UnityEngine;
 
 namespace ROS2
@@ -41,6 +42,9 @@ public class ROS2Node : IDisposable
     /// </summary>
     public string name { get; }
     private readonly object mutex = new object();
+    /// <summary>Spin gate of the executor that spins this node; the executor sets it before publishing the node.</summary>
+    internal object spinGate;
+    private static readonly TimeSpan SpinGateTimeout = TimeSpan.FromMilliseconds(250);
     private readonly int ownerThreadId;
     private volatile bool disposed;
     private bool disposing;
@@ -74,6 +78,29 @@ public class ROS2Node : IDisposable
         if (disposed || disposing || node == null || !Ros2cs.Ok())
         {
             throw new InvalidOperationException("Ros2 For Unity is not initialized, can't " + callContext);
+        }
+    }
+
+    /// <summary>
+    /// Runs an entity removal outside the owning executor's SpinOnce, because rcl_wait may still use the entity handle.
+    /// Returns false without touching the entity when the executor keeps the gate longer than SpinGateTimeout, so a
+    /// callback that does not return cannot block the caller, and the caller keeps ownership for a retry.
+    /// </summary>
+    private bool WithSpinGate(Func<bool> action)
+    {
+        if (spinGate == null)
+            return action();
+
+        if (!Monitor.TryEnter(spinGate, SpinGateTimeout))
+            return false;
+
+        try
+        {
+            return action();
+        }
+        finally
+        {
+            Monitor.Exit(spinGate);
         }
     }
 
@@ -160,7 +187,7 @@ public class ROS2Node : IDisposable
         if (disposed)
             return false;
 
-        return WithLiveNode("remove subscription", liveNode => liveNode.RemoveSubscription(subscription));
+        return WithSpinGate(() => WithLiveNode("remove subscription", liveNode => liveNode.RemoveSubscription(subscription)));
     }
 
     /// <summary>
@@ -181,7 +208,7 @@ public class ROS2Node : IDisposable
         if (disposed)
             return false;
 
-        return WithLiveNode("remove publisher", liveNode => liveNode.RemovePublisher(publisher));
+        return WithSpinGate(() => WithLiveNode("remove publisher", liveNode => liveNode.RemovePublisher(publisher)));
     }
 
     /// <summary>
@@ -212,7 +239,7 @@ public class ROS2Node : IDisposable
         if (disposed)
             return false;
 
-        return WithLiveNode("remove service", liveNode => liveNode.RemoveService(service));
+        return WithSpinGate(() => WithLiveNode("remove service", liveNode => liveNode.RemoveService(service)));
     }
 
     /// <inheritdoc cref="INode.CreateClient"/>
@@ -235,7 +262,7 @@ public class ROS2Node : IDisposable
         if (disposed)
             return false;
 
-        return WithLiveNode("remove client", liveNode => liveNode.RemoveClient(client));
+        return WithSpinGate(() => WithLiveNode("remove client", liveNode => liveNode.RemoveClient(client)));
     }
 
     /// <summary>

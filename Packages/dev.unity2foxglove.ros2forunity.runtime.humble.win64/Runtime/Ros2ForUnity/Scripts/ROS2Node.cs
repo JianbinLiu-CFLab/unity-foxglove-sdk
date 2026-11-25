@@ -5,6 +5,7 @@
 // - Added disposal-safe node facade helpers and timestamp update support for sensor utilities.
 // - Centralized node liveness checks through WithLiveNode() before delegating to ros2cs.
 // - Preserved compatibility overloads for existing generic remove-call sites.
+// - Serialized entity removal with the owning executor's SpinOnce.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,6 +20,7 @@
 // limitations under the License.
 
 using System;
+using System.Threading;
 using UnityEngine;
 
 namespace ROS2
@@ -46,6 +48,9 @@ public class ROS2Node : IDisposable
     /// </summary>
     public string name { get; }
     private readonly object mutex = new object();
+    /// <summary>Spin gate of the executor that spins this node; the executor sets it before publishing the node.</summary>
+    internal object spinGate;
+    private static readonly TimeSpan SpinGateTimeout = TimeSpan.FromMilliseconds(250);
     private readonly int ownerThreadId;
     private volatile bool disposed;
     private bool disposing;
@@ -230,6 +235,29 @@ public class ROS2Node : IDisposable
         }
     }
 
+    /// <summary>
+    /// Runs an entity removal outside the owning executor's SpinOnce, because rcl_wait may still use the entity handle.
+    /// Returns false without touching the entity when the executor keeps the gate longer than SpinGateTimeout, so a
+    /// callback that does not return cannot block the caller, and the caller keeps ownership for a retry.
+    /// </summary>
+    private bool WithSpinGate(Func<bool> action)
+    {
+        if (spinGate == null)
+            return action();
+
+        if (!Monitor.TryEnter(spinGate, SpinGateTimeout))
+            return false;
+
+        try
+        {
+            return action();
+        }
+        finally
+        {
+            Monitor.Exit(spinGate);
+        }
+    }
+
     // Acquires mutex, asserts node is live, then executes action under the lock.
     // All factory/removal methods should go through this helper to share the liveness contract.
     private TResult WithLiveNode<TResult>(string callContext, Func<INode, TResult> action)
@@ -304,7 +332,7 @@ public class ROS2Node : IDisposable
     /// <param name="subscription">subscrition to remove, returned from CreateSubscription</param>
     public bool RemoveSubscription(ISubscriptionBase subscription)
     {
-        return WithLiveNode("remove subscription", liveNode => liveNode.RemoveSubscription(subscription));
+        return WithSpinGate(() => WithLiveNode("remove subscription", liveNode => liveNode.RemoveSubscription(subscription)));
     }
 
     /// <summary>
@@ -322,7 +350,7 @@ public class ROS2Node : IDisposable
     /// <param name="publisher">publisher to remove, returned from CreatePublisher or CreateSensorPublisher</param>
     public bool RemovePublisher(IPublisherBase publisher)
     {
-        return WithLiveNode("remove publisher", liveNode => liveNode.RemovePublisher(publisher));
+        return WithSpinGate(() => WithLiveNode("remove publisher", liveNode => liveNode.RemovePublisher(publisher)));
     }
 
     /// <summary>
@@ -344,7 +372,7 @@ public class ROS2Node : IDisposable
     /// <inheritdoc cref="INode.RemoveService"/>
     public bool RemoveService(IServiceBase service)
     {
-        return WithLiveNode("remove service", liveNode => liveNode.RemoveService(service));
+        return WithSpinGate(() => WithLiveNode("remove service", liveNode => liveNode.RemoveService(service)));
     }
 
     /// <inheritdoc cref="INode.CreateClient"/>
@@ -358,7 +386,7 @@ public class ROS2Node : IDisposable
     /// <inheritdoc cref="INode.RemoveClient"/>
     public bool RemoveClient(IClientBase client)
     {
-        return WithLiveNode("remove client", liveNode => liveNode.RemoveClient(client));
+        return WithSpinGate(() => WithLiveNode("remove client", liveNode => liveNode.RemoveClient(client)));
     }
 }
 
