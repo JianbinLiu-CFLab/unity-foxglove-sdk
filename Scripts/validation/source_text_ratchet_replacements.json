@@ -49,19 +49,19 @@
       "file": "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase163_26Validation.cs",
       "validation_flag": "--phase163-26",
       "class": "HARNESS",
-      "base_signature": "6f8db07ed52fe0e40906ade0df7710d28a7995df7168490dbbed997652df4b8e",
-      "head_signature": "dd3cc55471ffcb0a8f72d6623a0b64cbf827ba0ef7c805cbf8e8d278f0dba643",
-      "reason": "Plan 208 stream install edits only the reviewed OpenH264 installer assertions in this validation.",
-      "replacement": "Phase163_26Validation Plan208 safe-stream HARNESS"
+      "base_signature": "dd3cc55471ffcb0a8f72d6623a0b64cbf827ba0ef7c805cbf8e8d278f0dba643",
+      "head_signature": "e7128a27131651d78c3b473a7069cb7edb161893e58a61b19a0e7c6a04fffe24",
+      "reason": "Switch only the Phase162 TryConfigureAndPlay lookup to the existing preprocessor-symbol source helper.",
+      "replacement": "Phase163_26Validation preprocessor-guarded lookup HARNESS"
     },
     {
       "file": "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase163_26Validation.cs",
       "validation_flag": "--phase163-26",
       "class": "C",
-      "base_signature": "2fc1c100d6eac0d76a45bf3a3fd1957ba9a07bcf36097883d8004d3fd1ad1b1d",
-      "head_signature": "886ce8c8c25e3841bd7c6e2aa039fce49f88e7f5ea5572201f273f3bf8736332",
-      "reason": "Plan 208 stream install retargets the OpenH264 installer checks to the safe-handle download and decompression flow.",
-      "replacement": "Phase163_26Validation Plan208 safe-stream C"
+      "base_signature": "886ce8c8c25e3841bd7c6e2aa039fce49f88e7f5ea5572201f273f3bf8736332",
+      "head_signature": "5fbcdefd045deac0b0677e6914931cb9ccc037407f8024ae73a7c06b1fbdbf60",
+      "reason": "Resolve the Phase162 setup method with its UNITY2FOXGLOVE_ROS2_FOR_UNITY and UNITY_EDITOR_WIN guard symbols so the TryConfigureAndPlay assertions read real source.",
+      "replacement": "Phase163_26Validation preprocessor-guarded lookup C"
     },
     {
       "file": "Packages/dev.unity2foxglove.sdk/Tests/Runtime/Phase134_30Validation.cs",
