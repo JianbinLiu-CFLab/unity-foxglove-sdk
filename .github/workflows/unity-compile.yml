@@ -409,6 +409,19 @@ jobs:
         shell: pwsh
         run: python -B Scripts/release/run_unity_batch_compile.py --project-path Unity2Foxglove --timeout-seconds 3600
 
+      - name: Run distro R2FU executor race EditMode test
+        if: steps.select_distro.outputs.run_distro == 'true'
+        shell: pwsh
+        run: >-
+          python -B Scripts/release/run_unity_tests.py
+          --project-path Unity2Foxglove
+          --test-platform EditMode
+          --test-category R2fuExecutorRace
+          --test-results build/unity-batch-compile/r2fu-executor-race/results.xml
+          --log-file build/unity-batch-compile/r2fu-executor-race/unity.log
+          --timeout-seconds 1800
+          --nographics
+
       - name: Restore distro manifest and Library
         if: always() && steps.select_distro.outputs.run_distro == 'true'
         shell: pwsh
