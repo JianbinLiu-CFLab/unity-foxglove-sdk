@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Purpose: Drive the real IMU inbound bridge over live ros2cs DDS for the frame_id limit and SROS2 receive checks.
-// Usage: <distro> limit | <distro> receive <topic> <seconds> <expected-frame-id> <forbidden-frame-id>
+// Usage: <distro> limit | <distro> receive <topic> <timeout-seconds> <expected-frame-id> <forbidden-frame-id>
+// Receive mode reads `negative` and then `end` from stdin to switch from the trusted phase to the negative phase.
 
 using System;
 using System.Globalization;
@@ -17,7 +18,6 @@ internal static class Program
 
         ROS2.ROS2UnityComponent unity = null;
         ImuBridgeHarness harness = null;
-        FrameIdLimitScenario scenario = null;
         var result = "FAIL";
         try
         {
@@ -26,23 +26,19 @@ internal static class Program
             unity.StartExecutor();
             if (mode == "limit")
             {
-                var topic = "/u2f_probe/imu_frame_id_limit_" + Environment.ProcessId;
-                harness = new ImuBridgeHarness(unity, topic);
-                harness.Enable();
-                scenario = new FrameIdLimitScenario(unity, harness, topic);
-                scenario.Run();
+                new FrameIdLimitScenario(unity, "/u2f_probe/imu_frame_id_limit_" + Environment.ProcessId).Run();
                 result = "PASS";
             }
             else if (mode == "receive" && args.Length == 6)
             {
                 harness = new ImuBridgeHarness(unity, args[2]);
                 harness.Enable();
-                var window = TimeSpan.FromSeconds(int.Parse(args[3], CultureInfo.InvariantCulture));
-                result = new ReceiveScenario(harness, window, args[4], args[5]).Run();
+                var timeout = TimeSpan.FromSeconds(int.Parse(args[3], CultureInfo.InvariantCulture));
+                result = new ReceiveScenario(harness, timeout, args[4], args[5]).Run();
             }
             else
             {
-                throw new ArgumentException("Usage: <distro> limit | <distro> receive <topic> <seconds> <expected> <forbidden>");
+                throw new ArgumentException("Usage: <distro> limit | <distro> receive <topic> <timeout-seconds> <expected> <forbidden>");
             }
         }
         catch (Exception error)
@@ -53,12 +49,11 @@ internal static class Program
         {
             unity?.StopExecutor();
             harness?.Disable();
-            scenario?.Dispose();
             if (ROS2.Ros2cs.Ok())
                 ROS2.Ros2cs.Shutdown();
         }
 
         Console.WriteLine("RESULT distro=" + distro + " mode=" + mode + " status=" + result);
-        return result == "PASS" ? 0 : 1;
+        return result == "PASS" || result == "NEGATIVE_NO_FRAMES" ? 0 : 1;
     }
 }
