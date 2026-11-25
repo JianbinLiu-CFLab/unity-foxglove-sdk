@@ -123,10 +123,10 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         {
             using (var fixture = new Fixture(withOriginals: false))
             {
-                fixture.Write(Dll, "new");
-                fixture.Write(Dll + ".bak", "old");
-                fixture.Write(Helper + ".bak", "old");
-                fixture.Write(StagedHelper, "new");
+                fixture.WriteArtifact(Dll, "new");
+                fixture.WriteArtifact(Dll + ".bak", "old");
+                fixture.WriteArtifact(Helper + ".bak", "old");
+                fixture.WriteArtifact(StagedHelper, "new");
                 fixture.WriteJournal(OpenH264InstallJournalState.DllPublished, dllOriginal: true, helperOriginal: true);
 
                 Assert.True(fixture.Recover(out var reason), reason);
@@ -143,7 +143,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         {
             using (var fixture = new Fixture(withOriginals: true))
             {
-                fixture.Write(Download, "asset");
+                fixture.WriteArtifact(Download, "asset");
                 fixture.WriteJournal(OpenH264InstallJournalState.Decompressed, dllOriginal: false, helperOriginal: false);
 
                 Assert.True(fixture.Recover(out var reason), reason);
@@ -173,7 +173,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
         {
             using (var fixture = new Fixture(withOriginals: true))
             {
-                fixture.Write(OpenH264InstallJournal.FileName, "state=5\ndll_original=1\nhelper_original=1\n");
+                fixture.WriteArtifact(OpenH264InstallJournal.FileName, "state=5\ndll_original=1\nhelper_original=1\n");
 
                 Assert.False(fixture.Recover(out var reason));
                 Assert.Contains("malformed", reason, StringComparison.OrdinalIgnoreCase);
@@ -219,8 +219,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
                 Directory.CreateDirectory(Version);
                 if (withOriginals)
                 {
-                    Write(Dll, "old");
-                    Write(Helper, "old");
+                    WriteArtifact(Dll, "old");
+                    WriteArtifact(Helper, "old");
                 }
 
                 Assert.True(OpenH264WindowsSafeDirectory.TryOpenExisting(_root, out _safeRoot, out var rootReason), rootReason);
@@ -231,7 +231,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
 
             internal string PathOf(string name) => Path.Combine(Version, name);
 
-            internal void Write(string name, string text) => File.WriteAllText(PathOf(name), text);
+            internal void WriteArtifact(string name, string text) => File.WriteAllText(PathOf(name), text);
 
             internal void WriteJournal(OpenH264InstallJournalState state, bool dllOriginal, bool helperOriginal)
                 => Assert.True(
@@ -243,7 +243,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Harness
 
             internal void Publish(Action<OpenH264InstallJournalState> afterJournal = null)
             {
-                Write(StagedHelper, "new");
+                WriteArtifact(StagedHelper, "new");
                 Assert.True(_version.TryCreateProtectedFile(StagedDll, out var stagedDll, out var reason), reason);
                 Assert.True(stagedDll.WriteAllBytes(new byte[] { (byte)'n', (byte)'e', (byte)'w' }, out reason), reason);
                 using (stagedDll)
