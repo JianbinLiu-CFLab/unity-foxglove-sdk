@@ -96,10 +96,10 @@ namespace Unity.FoxgloveSDK.Schemas.Imu
         /// <summary>Whether orientation is valid and should be emitted.</summary>
         public bool HasOrientation { get; }
 
-        /// <summary>Whether linear acceleration is a measurement (ROS covariance element 0 is not -1).</summary>
+        /// <summary>Whether a linear acceleration measurement is available.</summary>
         public bool HasLinearAcceleration { get; }
 
-        /// <summary>Whether angular velocity is a measurement (ROS covariance element 0 is not -1).</summary>
+        /// <summary>Whether an angular velocity measurement is available.</summary>
         public bool HasAngularVelocity { get; }
     }
 }

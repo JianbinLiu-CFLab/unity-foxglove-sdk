@@ -291,6 +291,58 @@ namespace Unity.FoxgloveSDK.Tests.Unit.Sensors
             Assert.Equal(0, currentSlot.Count);
         }
 
+        [Unity.FoxgloveSDK.UnitTests.Ros2ForUnity.GeneratedImuFact]
+        public void OnImuKeepsMeasurementsWhoseCovarianceIsUnknown()
+        {
+            var frame = DeliverImuThroughBridge(orientationMarker: 0d);
+
+            Assert.True(frame.HasOrientation);
+            Assert.True(frame.HasLinearAcceleration);
+            Assert.True(frame.HasAngularVelocity);
+            Assert.Equal(0.5f, frame.Orientation.X);
+            Assert.Equal(0.5f, frame.Orientation.W);
+            Assert.Equal(4f, frame.LinearAcceleration.X);
+            Assert.Equal(1f, frame.AngularVelocity.X);
+        }
+
+        [Unity.FoxgloveSDK.UnitTests.Ros2ForUnity.GeneratedImuFact]
+        public void OnImuDropsOnlyTheFieldMarkedWithoutMeasurement()
+        {
+            var frame = DeliverImuThroughBridge(orientationMarker: -1d);
+
+            Assert.False(frame.HasOrientation);
+            Assert.Equal(System.Numerics.Quaternion.Identity, frame.Orientation);
+            Assert.True(frame.HasLinearAcceleration);
+            Assert.True(frame.HasAngularVelocity);
+            Assert.Equal(4f, frame.LinearAcceleration.X);
+        }
+
+        private static ImuNativeFrame DeliverImuThroughBridge(double orientationMarker)
+        {
+            var bridge = new Ros2ForUnityImuInboundBridge { gameObject = new UnityEngine.GameObject("imu") };
+            InvokeBridge(bridge, "OnEnable");
+            var generation = ((ImuInboundLifecycleState)BridgeField(bridge, "_lifecycle")).CurrentGeneration;
+            var slot = (ImuNativeFrameSlot)BridgeField(bridge, "_slot");
+            var message = new Ros2ForUnityGuardedImuMessage
+            {
+                Header = new std_msgs.msg.Header
+                {
+                    Stamp = new builtin_interfaces.msg.Time { Sec = 42, Nanosec = 7 },
+                    Frame_id = "imu_link"
+                },
+                Orientation = new geometry_msgs.msg.Quaternion { X = 0.5d, Y = 0.5d, Z = 0.5d, W = 0.5d },
+                Angular_velocity = new geometry_msgs.msg.Vector3 { X = 1d, Y = 2d, Z = 3d },
+                Linear_acceleration = new geometry_msgs.msg.Vector3 { X = 4d, Y = 5d, Z = 6d }
+            };
+            message.Orientation_covariance[0] = orientationMarker;
+
+            InvokeBridge(bridge, "OnImu", message, generation, slot);
+
+            Assert.Equal(0, slot.Stats.Rejected);
+            Assert.True(slot.TryTake(out var frame));
+            return frame;
+        }
+
         private static (Ros2ForUnityImuInboundBridge Bridge, ROS2.ROS2UnityComponent Unity, ROS2.ROS2Node Node, ROS2.ISubscriptionBase Subscription)
             CreateBridgeWithNativeHandles()
         {
