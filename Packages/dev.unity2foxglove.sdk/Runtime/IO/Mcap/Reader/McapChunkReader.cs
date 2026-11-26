@@ -22,6 +22,23 @@ namespace Unity.FoxgloveSDK.IO
             long recordEnd,
             out bool crcValid,
             ulong uncompressedSizeLimit)
+            => ReadChunkRecords(
+                opcode, content, contentLength, chunkStartOffset, chunkLength, recordStart, recordEnd,
+                out crcValid, uncompressedSizeLimit, null, out _);
+
+        /// <summary>Read chunk records into <paramref name="reusable"/> when it is large enough; <paramref name="length"/> is the decoded byte count.</summary>
+        internal static byte[] ReadChunkRecords(
+            byte opcode,
+            byte[] content,
+            int contentLength,
+            ulong chunkStartOffset,
+            ulong chunkLength,
+            long recordStart,
+            long recordEnd,
+            out bool crcValid,
+            ulong uncompressedSizeLimit,
+            byte[] reusable,
+            out int length)
         {
             var actualChunkLength = (ulong)(recordEnd - recordStart);
             if (chunkLength != 0 && actualChunkLength != chunkLength)
@@ -30,7 +47,8 @@ namespace Unity.FoxgloveSDK.IO
             if (opcode != McapWriter.OpcodeChunk)
                 throw new InvalidDataException($"Expected Chunk (0x06) at offset {chunkStartOffset}, got 0x{opcode:X2}");
 
-            return DecodeChunkRecordsContent(content, 0, contentLength, out crcValid, uncompressedSizeLimit);
+            return McapRecordDecoder.DecodeChunkRecordsContent(
+                content, 0, contentLength, out crcValid, uncompressedSizeLimit, reusable, out length);
         }
 
         internal static byte[] DecodeChunkRecordsContent(

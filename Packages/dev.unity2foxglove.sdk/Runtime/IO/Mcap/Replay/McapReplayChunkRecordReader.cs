@@ -45,6 +45,10 @@ namespace Unity.FoxgloveSDK.IO
     internal static class McapReplayChunkRecordReader
     {
         internal static McapReplayChunkRecord ReadNext(byte[] chunk, ref int offset)
+            => ReadNext(chunk, chunk.Length, ref offset);
+
+        /// <summary>Reads one record from the first <paramref name="length"/> bytes of a reusable chunk buffer.</summary>
+        internal static McapReplayChunkRecord ReadNext(byte[] chunk, int length, ref int offset)
         {
             var recordOffset = offset;
             var opcode = chunk[offset++];
@@ -55,7 +59,7 @@ namespace Unity.FoxgloveSDK.IO
             if (len > int.MaxValue)
                 throw new InvalidDataException("MCAP chunk inner record length exceeds supported size.");
             var recordLength = (int)len;
-            if (recordLength > chunk.Length - offset)
+            if (recordLength > length - offset)
                 throw new InvalidDataException("MCAP chunk inner record is truncated.");
 
             if (opcode != McapWriter.OpcodeMessage)
@@ -70,7 +74,7 @@ namespace Unity.FoxgloveSDK.IO
             var logTime = McapBinaryReader.ReadU64LE(chunk, ref offset);
             var publishTime = McapBinaryReader.ReadU64LE(chunk, ref offset);
             var dataLength = recordLength - (offset - startOffset);
-            if (dataLength < 0 || dataLength > chunk.Length - offset)
+            if (dataLength < 0 || dataLength > length - offset)
                 throw new InvalidDataException("MCAP chunk message record is truncated.");
 
             var dataOffset = offset;

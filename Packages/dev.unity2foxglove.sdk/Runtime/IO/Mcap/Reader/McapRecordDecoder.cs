@@ -69,6 +69,17 @@ namespace Unity.FoxgloveSDK.IO
             int contentLen,
             out bool crcValid,
             ulong uncompressedSizeLimit)
+            => DecodeChunkRecordsContent(content, offset, contentLen, out crcValid, uncompressedSizeLimit, null, out _);
+
+        /// <summary>Decode chunk records into <paramref name="reusable"/> when it is large enough; <paramref name="length"/> is the decoded byte count.</summary>
+        internal static byte[] DecodeChunkRecordsContent(
+            byte[] content,
+            int offset,
+            int contentLen,
+            out bool crcValid,
+            ulong uncompressedSizeLimit,
+            byte[] reusable,
+            out int length)
         {
             var end = ValidateRecordSegment(content, offset, contentLen, "chunk");
             var off = offset;
@@ -96,9 +107,11 @@ namespace Unity.FoxgloveSDK.IO
                 compression,
                 new ArraySegment<byte>(content, off, (int)compSize),
                 (int)uncompSize,
-                maxOutputBytes);
+                maxOutputBytes,
+                reusable);
+            length = (int)uncompSize;
             if (crc != 0)
-                crcValid = Crc32Helper.Compute(uncompressed) == crc;
+                crcValid = Crc32Helper.Compute(new ReadOnlySpan<byte>(uncompressed, 0, length)) == crc;
             else
                 crcValid = true;
 

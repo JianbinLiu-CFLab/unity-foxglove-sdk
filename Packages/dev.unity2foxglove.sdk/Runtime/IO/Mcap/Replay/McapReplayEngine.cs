@@ -160,6 +160,7 @@ namespace Unity.FoxgloveSDK.IO
         /// Decompressed record data for the current chunk.
         /// </summary>
         private byte[] _currentUncompressed;
+        private int _currentUncompressedTail;
         /// <summary>
         /// Read cursor position within the current decompressed chunk.
         /// </summary>

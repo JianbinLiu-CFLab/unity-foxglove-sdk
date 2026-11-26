@@ -587,6 +587,20 @@ namespace Unity.FoxgloveSDK.IO
             out bool crcValid,
             ulong uncompressedSizeLimit = DefaultChunkUncompressedSizeLimit,
             ulong recordSizeLimit = DefaultRecordSizeLimit)
+            => ReadChunkRecords(chunkStartOffset, chunkLength, out crcValid, null, out _, uncompressedSizeLimit, recordSizeLimit);
+
+        /// <summary>
+        /// Reads a chunk's records into <paramref name="reusable"/> when it is large enough, otherwise into a new array.
+        /// <paramref name="length"/> is the decoded byte count; bytes past it are not part of this chunk.
+        /// </summary>
+        internal byte[] ReadChunkRecords(
+            ulong chunkStartOffset,
+            ulong chunkLength,
+            out bool crcValid,
+            byte[] reusable,
+            out int length,
+            ulong uncompressedSizeLimit = DefaultChunkUncompressedSizeLimit,
+            ulong recordSizeLimit = DefaultRecordSizeLimit)
         {
             _stream.Seek(ToSeekOffset(chunkStartOffset, "chunk"), SeekOrigin.Begin);
             var recordStart = _stream.Position;
@@ -601,7 +615,9 @@ namespace Unity.FoxgloveSDK.IO
                 recordStart,
                 recordEnd,
                 out crcValid,
-                uncompressedSizeLimit);
+                uncompressedSizeLimit,
+                reusable,
+                out length);
         }
 
         /// <summary>

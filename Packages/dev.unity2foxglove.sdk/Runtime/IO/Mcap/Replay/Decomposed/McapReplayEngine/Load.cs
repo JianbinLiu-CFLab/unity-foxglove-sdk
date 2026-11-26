@@ -161,10 +161,10 @@ namespace Unity.FoxgloveSDK.IO
 
             // Advance through chunks
             var chunkIndexes = _summary.ChunkIndexes;
-            while (_currentChunkIdx < chunkIndexes.Count - 1 || _readOffset < (_currentUncompressed?.Length ?? 0))
+            while (_currentChunkIdx < chunkIndexes.Count - 1 || _readOffset < (_currentUncompressed?.Length ?? 0) - _currentUncompressedTail)
             {
                 // Need next chunk?
-                if (_currentChunkIdx < 0 || _readOffset >= (_currentUncompressed?.Length ?? 0))
+                if (_currentChunkIdx < 0 || _readOffset >= (_currentUncompressed?.Length ?? 0) - _currentUncompressedTail)
                 {
                     var nextChunkIdx = _currentChunkIdx + 1;
                     if (nextChunkIdx < chunkIndexes.Count
@@ -179,10 +179,10 @@ namespace Unity.FoxgloveSDK.IO
                 // be retained under the owner bound, retain only its cursor
                 // and keep scanning for due records. The cursor is retried
                 // from the source once it becomes due.
-                while (_readOffset + 9 <= _currentUncompressed.Length)
+                while (_readOffset + 9 <= (_currentUncompressed?.Length ?? 0) - _currentUncompressedTail)
                 {
                     var recordStart = _readOffset;
-                    var record = McapReplayChunkRecordReader.ReadNext(_currentUncompressed, ref _readOffset);
+                    var record = McapReplayChunkRecordReader.ReadNext(_currentUncompressed, (_currentUncompressed?.Length ?? 0) - _currentUncompressedTail, ref _readOffset);
                     LastTickScannedRecordCount++;
                     if (!record.IsMessage)
                         continue;
