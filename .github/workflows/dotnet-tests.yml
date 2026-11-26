@@ -369,7 +369,8 @@ jobs:
             && [ "$trusted_revision" != "90b44193b091af2c75bdd37fa7533322f49dcfe1" ] \
             && [ "$trusted_revision" != "c9207199630b811c6e36daa63b2a4d9e8459e3a3" ] \
             && [ "$trusted_revision" != "192633841f1c533a12c48dbd4fe869229a67391f" ] \
-            && [ "$trusted_revision" != "d45cd5a3bba5812cacbd040bbb790133b8b11a56" ]; then
+            && [ "$trusted_revision" != "d45cd5a3bba5812cacbd040bbb790133b8b11a56" ] \
+            && [ "$trusted_revision" != "815cbe520ae95f744258c1848a989783c631d3a3" ]; then
             if [ "$actual_migration_checker_sha" != "$trusted_checker_sha" ]; then
               echo "Current checker differs from immutable base checker without a reviewed migration approval" >&2
               exit 1
@@ -683,8 +684,28 @@ jobs:
               exit 1
             fi
             migration_args=(--parser-migration-approval "$migration_approval_file")
+          elif [ "$trusted_revision" = "815cbe520ae95f744258c1848a989783c631d3a3" ]; then
+            migration_approval_file="$RUNNER_TEMP/source-text-parser-maintenance-approval.json"
+            cat > "$migration_approval_file" <<'MIGRATION_APPROVAL'
+          {
+            "base_revision": "815cbe520ae95f744258c1848a989783c631d3a3",
+            "checker_sha256": "bc7e6bdf5d180f8bd69e142d1405ff1701e7a12e24a69183b06d75f55904bb19",
+            "trusted_checker_sha256": "24de6784a9c2af1f28802393b79ccf0abbca449cbe480d649e396da3e66b4e31",
+            "base_inventory_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+            "current_inventory_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+            "parser_changes_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+            "scope": "versioned-parser-maintenance",
+            "reason": "User approved accessibility-aware unresolved-receiver helper binding after PR #835 renamed private helpers to avoid false harness changes."
+          }
+          MIGRATION_APPROVAL
+            expected_migration_checker_sha=$(python3 -I -B -c 'import json,sys; print(json.load(open(sys.argv[1]))["checker_sha256"])' "$migration_approval_file")
+            if [ "$actual_migration_checker_sha" != "$expected_migration_checker_sha" ]; then
+              echo "Reviewed parser maintenance checker SHA-256 does not match: actual=$actual_migration_checker_sha expected=$expected_migration_checker_sha" >&2
+              exit 1
+            fi
+            migration_args=(--parser-migration-approval "$migration_approval_file")
           fi
-          if [ "$trusted_revision" = "a71a7d862299aab28cc5e89a4e01db5b0ae1039a" ] || [ "$trusted_revision" = "5bc3de2627481dfa616280942317246e99b74675" ] || [ "$trusted_revision" = "c9207199630b811c6e36daa63b2a4d9e8459e3a3" ] || [ "$trusted_revision" = "192633841f1c533a12c48dbd4fe869229a67391f" ] || [ "$trusted_revision" = "d45cd5a3bba5812cacbd040bbb790133b8b11a56" ]; then
+          if [ "$trusted_revision" = "a71a7d862299aab28cc5e89a4e01db5b0ae1039a" ] || [ "$trusted_revision" = "5bc3de2627481dfa616280942317246e99b74675" ] || [ "$trusted_revision" = "c9207199630b811c6e36daa63b2a4d9e8459e3a3" ] || [ "$trusted_revision" = "192633841f1c533a12c48dbd4fe869229a67391f" ] || [ "$trusted_revision" = "d45cd5a3bba5812cacbd040bbb790133b8b11a56" ] || [ "$trusted_revision" = "815cbe520ae95f744258c1848a989783c631d3a3" ]; then
             expected_trusted_checker_sha=$(python3 -I -B -c 'import json,sys; print(json.load(open(sys.argv[1])).get("trusted_checker_sha256", ""))' "$migration_approval_file")
             if [ "$trusted_checker_sha" != "$expected_trusted_checker_sha" ]; then
               echo "Trusted source-text checker SHA-256 does not match the migration approval" >&2
