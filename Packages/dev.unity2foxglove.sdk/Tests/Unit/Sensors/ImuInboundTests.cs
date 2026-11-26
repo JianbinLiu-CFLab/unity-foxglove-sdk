@@ -321,26 +321,33 @@ namespace Unity.FoxgloveSDK.Tests.Unit.Sensors
         {
             var bridge = new Ros2ForUnityImuInboundBridge { gameObject = new UnityEngine.GameObject("imu") };
             InvokeBridge(bridge, "OnEnable");
-            var generation = ((ImuInboundLifecycleState)BridgeField(bridge, "_lifecycle")).CurrentGeneration;
-            var slot = (ImuNativeFrameSlot)BridgeField(bridge, "_slot");
-            var message = new Ros2ForUnityGuardedImuMessage
+            try
             {
-                Header = new std_msgs.msg.Header
+                var generation = ((ImuInboundLifecycleState)BridgeField(bridge, "_lifecycle")).CurrentGeneration;
+                var slot = (ImuNativeFrameSlot)BridgeField(bridge, "_slot");
+                using var message = new Ros2ForUnityGuardedImuMessage
                 {
-                    Stamp = new builtin_interfaces.msg.Time { Sec = 42, Nanosec = 7 },
-                    Frame_id = "imu_link"
-                },
-                Orientation = new geometry_msgs.msg.Quaternion { X = 0.5d, Y = 0.5d, Z = 0.5d, W = 0.5d },
-                Angular_velocity = new geometry_msgs.msg.Vector3 { X = 1d, Y = 2d, Z = 3d },
-                Linear_acceleration = new geometry_msgs.msg.Vector3 { X = 4d, Y = 5d, Z = 6d }
-            };
-            message.Orientation_covariance[0] = orientationMarker;
+                    Header = new std_msgs.msg.Header
+                    {
+                        Stamp = new builtin_interfaces.msg.Time { Sec = 42, Nanosec = 7 },
+                        Frame_id = "imu_link"
+                    },
+                    Orientation = new geometry_msgs.msg.Quaternion { X = 0.5d, Y = 0.5d, Z = 0.5d, W = 0.5d },
+                    Angular_velocity = new geometry_msgs.msg.Vector3 { X = 1d, Y = 2d, Z = 3d },
+                    Linear_acceleration = new geometry_msgs.msg.Vector3 { X = 4d, Y = 5d, Z = 6d }
+                };
+                message.Orientation_covariance[0] = orientationMarker;
 
-            InvokeBridge(bridge, "OnImu", message, generation, slot);
+                InvokeBridge(bridge, "OnImu", message, generation, slot);
 
-            Assert.Equal(0, slot.Stats.Rejected);
-            Assert.True(slot.TryTake(out var frame));
-            return frame;
+                Assert.Equal(0, slot.Stats.Rejected);
+                Assert.True(slot.TryTake(out var frame));
+                return frame;
+            }
+            finally
+            {
+                InvokeBridge(bridge, "OnDisable");
+            }
         }
 
         private static (Ros2ForUnityImuInboundBridge Bridge, ROS2.ROS2UnityComponent Unity, ROS2.ROS2Node Node, ROS2.ISubscriptionBase Subscription)
