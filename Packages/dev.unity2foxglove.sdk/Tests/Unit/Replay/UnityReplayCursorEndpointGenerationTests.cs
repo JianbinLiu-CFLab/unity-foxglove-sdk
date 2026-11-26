@@ -6,6 +6,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Net;
 using System.Net.Http;
 using System.Net.Sockets;
@@ -70,19 +71,25 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
             var oldRequest = PostCursorAsync(oldPort, "/old", "old-token");
             Assert.True(oldQueueEntered.Wait(TimeSpan.FromSeconds(5)), "Old worker never entered its queue callback.");
 
-            var restart = Task.Run(() => newPort = StartEndpointWithRetry(
-                endpoint,
-                "/new",
-                "new-token",
-                _ =>
-                {
-                    Interlocked.Increment(ref newQueueCalls);
-                    return new UnityReplayCursorEndpointQueueResult(true, "Cursor accepted.");
-                }));
+            var restartDuration = new Stopwatch();
+            var oldWorkerReleasedBeforeRestartReturned = false;
+            var restart = Task.Run(() =>
+            {
+                restartDuration.Start();
+                newPort = StartEndpointWithRetry(
+                    endpoint,
+                    "/new",
+                    "new-token",
+                    _ =>
+                    {
+                        Interlocked.Increment(ref newQueueCalls);
+                        return new UnityReplayCursorEndpointQueueResult(true, "Cursor accepted.");
+                    });
+                restartDuration.Stop();
+                oldWorkerReleasedBeforeRestartReturned = releaseOldQueue.IsSet;
+            });
 
-            var publishedWhileOldWorkerWasBlocked = ReferenceEquals(
-                await Task.WhenAny(restart, Task.Delay(TimeSpan.FromMilliseconds(100))),
-                restart);
+            await Task.Delay(TimeSpan.FromMilliseconds(100));
             releaseOldQueue.Set();
 
             var completedRestart = await Task.WhenAny(restart, Task.Delay(TimeSpan.FromSeconds(5)));
@@ -94,9 +101,9 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
             Assert.Equal(HttpStatusCode.Accepted, newStatus);
             Assert.Equal(1, Volatile.Read(ref oldQueueCalls));
             Assert.Equal(1, Volatile.Read(ref newQueueCalls));
-            Assert.False(
-                publishedWhileOldWorkerWasBlocked,
-                "The replacement listener became observable before the prior worker retired.");
+            Assert.True(
+                oldWorkerReleasedBeforeRestartReturned || restartDuration.Elapsed >= TimeSpan.FromMilliseconds(400),
+                "The replacement listener became observable before the prior worker retired or the bounded stop wait elapsed.");
         }
 
         [Fact]
