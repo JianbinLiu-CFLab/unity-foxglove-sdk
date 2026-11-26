@@ -691,9 +691,9 @@ jobs:
             "base_revision": "815cbe520ae95f744258c1848a989783c631d3a3",
             "checker_sha256": "c778fc8f26e9d741def88dd8bb4fb0ffe563bac3cacc0d59034bea5d3812efd8",
             "trusted_checker_sha256": "24de6784a9c2af1f28802393b79ccf0abbca449cbe480d649e396da3e66b4e31",
-            "base_inventory_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
-            "current_inventory_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
-            "parser_changes_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+            "base_inventory_sha256": "6681630df886a378571d724c21026e0e6faa7c5614e145f9c370209df16befa9",
+            "current_inventory_sha256": "51aa885b2ac8fb66cf69adea2710f279d3ea6aef229f920df022f845dc7e34f7",
+            "parser_changes_sha256": "e30df6a3fc4342e2926c4c59f6d91ddb5d6bafadbb4131ed35fdf9bc00ae6e6f",
             "scope": "versioned-parser-maintenance",
             "reason": "User approved accessibility-aware unresolved-receiver helper binding after PR #835 renamed private helpers to avoid false harness changes."
           }
