@@ -14,6 +14,7 @@ using Xunit;
 namespace Unity.FoxgloveSDK.Tests.FoxRun
 {
     /// <summary>Drives the FoxRun hub frame loop and observes publishes per source.</summary>
+    /// <remarks>Helper names are unique on purpose: the source-text inventory binds unresolved calls by method name across all test sources.</remarks>
     public sealed class FoxgloveLogHubSchedulingTests
     {
         private const BindingFlags InstanceFlags = BindingFlags.Instance | BindingFlags.NonPublic;
@@ -21,102 +22,115 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
         [Fact]
         /// <summary>An explicit topic rate overrides the inherited Manager default rate.</summary>
         public void ExplicitHzOverridesInheritedDefaultRate()
-        {
-            using var fixture = new Fixture(defaultRateHz: 4f);
-            var source = fixture.Add(FoxRunPolicy.FixedRate, hz: 1f, hasExplicitHz: true);
+            => WithSchedulingHub(4f, hub =>
+            {
+                var source = hub.AddCountingSource(FoxRunPolicy.FixedRate, hz: 1f, hasExplicitHz: true);
 
-            fixture.RunFrames(8, 0.25);
+                hub.RunHubFrames(8, 0.25);
 
-            Assert.Equal(2, source.Publishes);
-        }
+                Assert.Equal(2, source.Publishes);
+            });
 
         [Fact]
         /// <summary>An omitted topic rate inherits the Manager default rate.</summary>
         public void OmittedHzInheritsManagerDefaultRate()
-        {
-            using var fixture = new Fixture(defaultRateHz: 4f);
-            var source = fixture.Add(FoxRunPolicy.FixedRate, hz: 1f, hasExplicitHz: false);
+            => WithSchedulingHub(4f, hub =>
+            {
+                var source = hub.AddCountingSource(FoxRunPolicy.FixedRate, hz: 1f, hasExplicitHz: false);
 
-            fixture.RunFrames(8, 0.25);
+                hub.RunHubFrames(8, 0.25);
 
-            Assert.Equal(8, source.Publishes);
-        }
+                Assert.Equal(8, source.Publishes);
+            });
 
         [Fact]
         /// <summary>An explicit non-positive rate disables scheduled publishing instead of publishing every frame.</summary>
         public void ExplicitNonPositiveRateDisablesScheduledPublishing()
-        {
-            using var fixture = new Fixture(defaultRateHz: 4f);
-            var source = fixture.Add(FoxRunPolicy.FixedRate, hz: 0f, hasExplicitHz: true);
+            => WithSchedulingHub(4f, hub =>
+            {
+                var source = hub.AddCountingSource(FoxRunPolicy.FixedRate, hz: 0f, hasExplicitHz: true);
 
-            fixture.RunFrames(8, 0.25);
+                hub.RunHubFrames(8, 0.25);
 
-            Assert.Equal(0, source.Publishes);
-        }
+                Assert.Equal(0, source.Publishes);
+            });
 
         [Fact]
         /// <summary>Trigger topics publish on every trigger without frame cadence; scheduled topics reject triggers.</summary>
         public void TriggerPublishesOnlyTriggerTopicsAndBypassesCadence()
-        {
-            using var fixture = new Fixture(defaultRateHz: 4f);
-            var triggered = fixture.Add(FoxRunPolicy.Trigger, hz: 1f, hasExplicitHz: true);
-            var scheduled = fixture.Add(FoxRunPolicy.FixedRate, hz: 1f, hasExplicitHz: true);
+            => WithSchedulingHub(4f, hub =>
+            {
+                var triggered = hub.AddCountingSource(FoxRunPolicy.Trigger, hz: 1f, hasExplicitHz: true);
+                var scheduled = hub.AddCountingSource(FoxRunPolicy.FixedRate, hz: 1f, hasExplicitHz: true);
 
-            Assert.False(FoxgloveLogHub.Trigger(scheduled, 0));
-            Assert.Equal(0, scheduled.Publishes);
+                Assert.False(FoxgloveLogHub.Trigger(scheduled, 0));
+                Assert.Equal(0, scheduled.Publishes);
 
-            fixture.RunFrames(3, 0d);
-            Assert.Equal(0, triggered.Publishes);
+                hub.RunHubFrames(3, 0d);
+                Assert.Equal(0, triggered.Publishes);
 
-            Assert.True(FoxgloveLogHub.Trigger(triggered, 0));
-            Assert.True(FoxgloveLogHub.Trigger(triggered, 0));
-            Assert.True(FoxgloveLogHub.Trigger(triggered, 0));
-            Assert.Equal(3, triggered.Publishes);
-        }
+                Assert.True(FoxgloveLogHub.Trigger(triggered, 0));
+                Assert.True(FoxgloveLogHub.Trigger(triggered, 0));
+                Assert.True(FoxgloveLogHub.Trigger(triggered, 0));
+                Assert.Equal(3, triggered.Publishes);
+            });
 
         [Fact]
         /// <summary>Unregistering while sources are enumerated defers removal until the enumeration ends.</summary>
         public void UnregisterDuringEnumerationDefersRemoval()
-        {
-            using var fixture = new Fixture(defaultRateHz: 4f);
-            var source = fixture.Add(FoxRunPolicy.FixedRate, hz: 1f, hasExplicitHz: true);
-            var sources = fixture.Sources;
+            => WithSchedulingHub(4f, hub =>
+            {
+                var source = hub.AddCountingSource(FoxRunPolicy.FixedRate, hz: 1f, hasExplicitHz: true);
+                var sources = hub.RegisteredHubSources;
 
-            fixture.SetIterating(true);
-            FoxgloveLogHub.UnregisterSource(source);
-            Assert.True(sources.Contains(source));
+                hub.SetHubIterating(true);
+                FoxgloveLogHub.UnregisterSource(source);
+                Assert.True(sources.Contains(source));
 
-            fixture.SetIterating(false);
-            fixture.Invoke("ApplyDeferred");
-            Assert.False(sources.Contains(source));
-        }
+                hub.SetHubIterating(false);
+                hub.InvokeHubMethod("ApplyDeferred");
+                Assert.False(sources.Contains(source));
+            });
 
         [Fact]
         /// <summary>A registration deferred by an aborted frame is applied before the next frame schedules sources.</summary>
         public void DeferredRegistrationFromAbortedFrameAppliesBeforeNextSchedulingPass()
-        {
-            using var fixture = new Fixture(defaultRateHz: 4f);
-            var late = fixture.Create(FoxRunPolicy.FixedRate, hz: 1f, hasExplicitHz: true);
-            var thrower = fixture.Add(FoxRunPolicy.FixedRate, hz: 1f, hasExplicitHz: true);
-            thrower.BeforeShouldPublish = () =>
+            => WithSchedulingHub(4f, hub =>
             {
-                thrower.BeforeShouldPublish = null;
-                FoxgloveLogHub.RegisterSource(late);
-                throw new InvalidOperationException("source failed during the frame");
-            };
+                var late = hub.CreateCountingSource(FoxRunPolicy.FixedRate, hz: 1f, hasExplicitHz: true);
+                var thrower = hub.AddCountingSource(FoxRunPolicy.FixedRate, hz: 1f, hasExplicitHz: true);
+                thrower.BeforeShouldPublish = () =>
+                {
+                    thrower.BeforeShouldPublish = null;
+                    FoxgloveLogHub.RegisterSource(late);
+                    throw new InvalidOperationException("source failed during the frame");
+                };
 
-            UnityEngine.Time.realtimeSinceStartupAsDouble = 0d;
-            var frameFailure = Assert.Throws<TargetInvocationException>(() => fixture.Invoke("Update"));
-            Assert.IsType<InvalidOperationException>(frameFailure.InnerException);
-            Assert.False(fixture.Sources.Contains(late));
+                UnityEngine.Time.realtimeSinceStartupAsDouble = 0d;
+                var frameFailure = Assert.Throws<TargetInvocationException>(() => hub.InvokeHubMethod("Update"));
+                Assert.IsType<InvalidOperationException>(frameFailure.InnerException);
+                Assert.False(hub.RegisteredHubSources.Contains(late));
 
-            UnityEngine.Time.realtimeSinceStartupAsDouble = 0.25d;
-            fixture.Invoke("Update");
+                UnityEngine.Time.realtimeSinceStartupAsDouble = 0.25d;
+                hub.InvokeHubMethod("Update");
 
-            Assert.Equal(1, late.Publishes);
+                Assert.Equal(1, late.Publishes);
+            });
+
+        private static void WithSchedulingHub(float defaultRateHz, Action<SchedulingHubHarness> body)
+        {
+            var harness = new SchedulingHubHarness(defaultRateHz);
+            try
+            {
+                body(harness);
+            }
+            finally
+            {
+                harness.ReleaseSchedulingHub();
+            }
         }
 
-        private sealed class Fixture : IDisposable
+        private sealed class SchedulingHubHarness
         {
             private static readonly FieldInfo InstanceField =
                 typeof(FoxgloveLogHub).GetField("_instance", BindingFlags.Static | BindingFlags.NonPublic);
@@ -124,7 +138,7 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
             private readonly FoxgloveLogHub _hub = new FoxgloveLogHub();
             private int _nextSource;
 
-            internal Fixture(float defaultRateHz)
+            internal SchedulingHubHarness(float defaultRateHz)
             {
                 var manager = new FoxgloveManager
                 {
@@ -143,56 +157,56 @@ namespace Unity.FoxgloveSDK.Tests.FoxRun
                         subscribeTransport: null,
                         allSessions: Array.Empty<IFoxRunTransportSession>())
                 };
-                SetField("_manager", manager);
-                SetField("_enableFallbackSceneScan", false);
+                SetHubField("_manager", manager);
+                SetHubField("_enableFallbackSceneScan", false);
                 InstanceField.SetValue(null, _hub);
             }
 
-            internal IDictionary Sources => (IDictionary)GetField("_sources").GetValue(_hub);
+            internal IDictionary RegisteredHubSources => (IDictionary)HubField("_sources").GetValue(_hub);
 
-            internal CountingSource Create(FoxRunPolicy policy, float hz, bool hasExplicitHz)
+            internal CountingSource CreateCountingSource(FoxRunPolicy policy, float hz, bool hasExplicitHz)
                 => new CountingSource(_nextSource++, policy, hz, hasExplicitHz);
 
-            internal CountingSource Add(FoxRunPolicy policy, float hz, bool hasExplicitHz)
+            internal CountingSource AddCountingSource(FoxRunPolicy policy, float hz, bool hasExplicitHz)
             {
-                var source = Create(policy, hz, hasExplicitHz);
-                Assert.True((bool)Invoke("AddSourceNow", source));
+                var source = CreateCountingSource(policy, hz, hasExplicitHz);
+                Assert.True((bool)InvokeHubMethod("AddSourceNow", source));
                 return source;
             }
 
-            internal void RunFrames(int count, double frameSeconds)
+            internal void RunHubFrames(int count, double frameSeconds)
             {
                 for (var frame = 0; frame < count; frame++)
                 {
                     UnityEngine.Time.realtimeSinceStartupAsDouble = frame * frameSeconds;
-                    Invoke("Update");
+                    InvokeHubMethod("Update");
                 }
             }
 
-            internal void SetIterating(bool value) => SetField("_iterating", value);
+            internal void SetHubIterating(bool value) => SetHubField("_iterating", value);
 
-            internal object Invoke(string method, params object[] arguments)
+            internal object InvokeHubMethod(string method, params object[] arguments)
             {
                 var info = typeof(FoxgloveLogHub).GetMethod(method, InstanceFlags);
                 Assert.NotNull(info);
                 return info.Invoke(_hub, arguments.Length == 0 ? null : arguments);
             }
 
-            public void Dispose()
+            internal void ReleaseSchedulingHub()
             {
                 InstanceField.SetValue(null, null);
                 UnityEngine.Time.realtimeSinceStartupAsDouble = 0d;
                 _hub.TopicSinkRouter.Dispose();
             }
 
-            private static FieldInfo GetField(string name)
+            private static FieldInfo HubField(string name)
             {
                 var field = typeof(FoxgloveLogHub).GetField(name, InstanceFlags);
                 Assert.NotNull(field);
                 return field;
             }
 
-            private void SetField(string name, object value) => GetField(name).SetValue(_hub, value);
+            private void SetHubField(string name, object value) => HubField(name).SetValue(_hub, value);
         }
 
         private sealed class CountingSource :
