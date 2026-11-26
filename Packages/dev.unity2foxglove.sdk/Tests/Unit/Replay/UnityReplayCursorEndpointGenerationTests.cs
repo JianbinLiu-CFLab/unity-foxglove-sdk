@@ -55,6 +55,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
             var oldQueueCalls = 0;
             var newQueueCalls = 0;
             var newPort = 0;
+            var newListenerVisibleWhenOldWorkerResumed = false;
 
             var oldPort = StartEndpointWithRetry(
                 endpoint,
@@ -65,14 +66,15 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
                     Interlocked.Increment(ref oldQueueCalls);
                     oldQueueEntered.Set();
                     releaseOldQueue.Wait(TimeSpan.FromSeconds(5));
+                    Volatile.Write(ref newListenerVisibleWhenOldWorkerResumed, endpoint.IsRunning);
                     return new UnityReplayCursorEndpointQueueResult(true, "Cursor accepted.");
                 });
 
             var oldRequest = PostCursorAsync(oldPort, "/old", "old-token");
             Assert.True(oldQueueEntered.Wait(TimeSpan.FromSeconds(5)), "Old worker never entered its queue callback.");
 
+            var restartPorts = new List<int>(FreeLoopbackPorts(5));
             var restartDuration = new Stopwatch();
-            var oldWorkerReleasedBeforeRestartReturned = false;
             var restart = Task.Run(() =>
             {
                 restartDuration.Start();
@@ -84,11 +86,14 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
                     {
                         Interlocked.Increment(ref newQueueCalls);
                         return new UnityReplayCursorEndpointQueueResult(true, "Cursor accepted.");
-                    });
+                    },
+                    restartPorts);
                 restartDuration.Stop();
-                oldWorkerReleasedBeforeRestartReturned = releaseOldQueue.IsSet;
             });
 
+            Assert.True(
+                SpinWait.SpinUntil(() => !endpoint.IsRunning || restart.IsCompleted, TimeSpan.FromSeconds(5)),
+                "Restart never began stopping the old generation.");
             await Task.Delay(TimeSpan.FromMilliseconds(100));
             releaseOldQueue.Set();
 
@@ -102,7 +107,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
             Assert.Equal(1, Volatile.Read(ref oldQueueCalls));
             Assert.Equal(1, Volatile.Read(ref newQueueCalls));
             Assert.True(
-                oldWorkerReleasedBeforeRestartReturned || restartDuration.Elapsed >= TimeSpan.FromMilliseconds(400),
+                !Volatile.Read(ref newListenerVisibleWhenOldWorkerResumed)
+                || restartDuration.Elapsed >= TimeSpan.FromMilliseconds(400),
                 "The replacement listener became observable before the prior worker retired or the bounded stop wait elapsed.");
         }
 
