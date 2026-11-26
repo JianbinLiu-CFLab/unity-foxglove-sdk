@@ -72,6 +72,7 @@ class _ExternalHelperIndex:
         self.receivers = {}
         self.clr_builder_receivers = {}
         self.fallbacks = {}
+        self.access_scopes = {}
         self.type_candidates_cache = {}
         self.declaration_files = None
         source_files = {
@@ -247,6 +248,19 @@ class _ExternalHelperIndex:
             ]
         return self.fallbacks[name]
 
+    def _access_scope(self, record) -> str | None:
+        """Return the innermost type body that can call a candidate, or None when access is not type-limited."""
+        path, owner, method = record
+        key = (path, method.start)
+        if key not in self.access_scopes:
+            self.access_scopes[key] = _member_access_scope(self.units[path]["masked"], self.units[path]["regions"], owner, method)
+        return self.access_scopes[key]
+
+    def _reachable_from(self, record, caller: str) -> bool:
+        """Return whether a caller type may legally invoke one unresolved-receiver candidate."""
+        scope = self._access_scope(record)
+        return scope is None or caller == scope or caller.startswith(scope + ".")
+
     def _is_clr_builder(self, reference: str, path: Path) -> bool:
         """Recognize the sealed CLR builder only through qualified or imported type evidence."""
         imports = self.units[path]["imports"]
@@ -284,7 +298,9 @@ class _ExternalHelperIndex:
         }
         if not candidates and separator and (instance or not framework):
             if declared not in primitives and qualifier not in primitives:
-                candidates = self._unresolved_candidates(terminal)
+                candidates = [
+                    record for record in self._unresolved_candidates(terminal) if self._reachable_from(record, owner)
+                ]
                 if instance and not types and qualifier in self.clr_builder_receivers.get((path, method.start), ()):
                     candidates = [record for record in candidates if re.search(r"\bstatic\b", record[2].signature)]
         return candidates

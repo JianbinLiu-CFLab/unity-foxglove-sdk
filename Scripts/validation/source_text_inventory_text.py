@@ -852,3 +852,55 @@ def _constant_values(text: str, masked: str) -> dict[str, str]:
     ):
         values[match.group("name")] = _normalize_csharp_expression(text[match.start("value") : match.end("value")])
     return values
+
+
+def _member_access_scope(masked: str, regions: list[tuple[int, int, str]], owner, method) -> str | None:
+    """Return the type body that provably limits calls to a member, or None when access is reachable or unknown.
+
+    Whitelist contract: a limit is returned only when every declaration involved matches one closed
+    grammar below. Any other shape is UNKNOWN and keeps the candidate bound (fail closed).
+    """
+    attributes = r"\s*(?:\[[^\[\]]*\]\s*)*"
+    return_type = r"[A-Za-z_][\w.]*(?:<[^<>;{}()]*>)?(?:\[\s*,*\s*\])*\??"
+    member_grammar = re.compile(
+        attributes + r"(?P<modifiers>(?:(?:private|internal|public|static|async|unsafe|extern|new)\s+)*)"
+        + return_type + r"\s+" + re.escape(method.name) + r"\s*"
+    )
+    type_grammar = re.compile(
+        attributes + r"(?P<modifiers>(?:(?:private|internal|public|static|sealed|abstract|unsafe|readonly|new)\s+)*)"
+        r"(?:record\s+(?:class|struct)|class|struct|record)\s+[A-Za-z_]\w*(?:<[^<>;{}()]*>)?\s*(?P<bases>:[^;{}]*)?"
+    )
+
+    def header(start: int, end: int) -> str:
+        """Return one declaration header from the previous statement or member boundary to an end offset."""
+        return masked[max(masked.rfind(character, 0, start) for character in ";{}") + 1 : end]
+
+    def modifiers(grammar, text: str, allow_bases: bool = True) -> set[str] | None:
+        """Return the declared modifiers of one fully recognized header, or None when it is not recognized."""
+        match = grammar.fullmatch(text)
+        if match is None or not allow_bases and match.groupdict().get("bases"):
+            return None
+        return set(match.group("modifiers").split())
+
+    if any(
+        owner[0] < match.end() - 1 < method.start and method.start < (_balanced_brace_end(masked, match.end() - 1) or 0)
+        for match in re.finditer(r"\binterface\s+[A-Za-z_]\w*[^;{}]*\{", masked)
+    ):
+        return None
+    parameters = masked.find("(", method.start)
+    member = modifiers(member_grammar, header(method.start, parameters)) if parameters >= 0 else None
+    if member is None:
+        return None
+    if not member & {"public", "internal"}:
+        return owner[2]
+    if "public" in member and modifiers(type_grammar, header(owner[0], owner[0]), allow_bases=False) is None:
+        return None
+    chain = sorted(
+        (region for region in regions if region[0] <= owner[0] and owner[1] <= region[1]),
+        key=lambda region: region[1] - region[0],
+    )
+    for nested, parent in zip(chain, chain[1:]):
+        declared = modifiers(type_grammar, header(nested[0], nested[0]))
+        if declared is not None and not declared & {"public", "internal"}:
+            return parent[2]
+    return None
