@@ -38,7 +38,7 @@ namespace Unity.FoxgloveSDK.Schemas.Imu
         }
 
         /// <summary>
-        /// Create a schema-neutral IMU handoff frame with covariance availability flags.
+        /// Create a schema-neutral IMU handoff frame with per-field measurement availability flags.
         /// </summary>
         public ImuNativeFrame(
             ulong unixNs,
@@ -96,10 +96,10 @@ namespace Unity.FoxgloveSDK.Schemas.Imu
         /// <summary>Whether orientation is valid and should be emitted.</summary>
         public bool HasOrientation { get; }
 
-        /// <summary>Whether linear acceleration covariance was provided.</summary>
+        /// <summary>Whether a linear acceleration measurement is available.</summary>
         public bool HasLinearAcceleration { get; }
 
-        /// <summary>Whether angular velocity covariance was provided.</summary>
+        /// <summary>Whether an angular velocity measurement is available.</summary>
         public bool HasAngularVelocity { get; }
     }
 }
