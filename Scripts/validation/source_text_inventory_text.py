@@ -855,29 +855,52 @@ def _constant_values(text: str, masked: str) -> dict[str, str]:
 
 
 def _member_access_scope(masked: str, regions: list[tuple[int, int, str]], owner, method) -> str | None:
-    """Return the innermost type body that may call a member, or None when its access is not type-limited."""
+    """Return the type body that provably limits calls to a member, or None when access is reachable or unknown.
 
-    def access(start: int, end: int) -> set[str]:
-        """Collect access modifiers declared between the previous member boundary and one keyword."""
-        boundary = max(masked.rfind(character, 0, start) for character in ";{}]") + 1
-        return set(re.findall(r"\b(public|private|protected|internal)\b", masked[boundary:end]))
+    Whitelist contract: a limit is returned only when every declaration involved matches one closed
+    grammar below. Any other shape is UNKNOWN and keeps the candidate bound (fail closed).
+    """
+    attributes = r"\s*(?:\[[^\[\]]*\]\s*)*"
+    return_type = r"[A-Za-z_][\w.]*(?:<[^<>;{}()]*>)?(?:\[\s*,*\s*\])*\??"
+    member_grammar = re.compile(
+        attributes + r"(?P<modifiers>(?:(?:private|internal|public|static|async|unsafe|extern|new)\s+)*)"
+        + return_type + r"\s+" + re.escape(method.name) + r"\s*"
+    )
+    type_grammar = re.compile(
+        attributes + r"(?P<modifiers>(?:(?:private|internal|public|static|sealed|abstract|unsafe|readonly|new)\s+)*)"
+        r"(?:record\s+(?:class|struct)|class|struct|record)\s+[A-Za-z_]\w*(?:<[^<>;{}()]*>)?\s*(?P<bases>:[^;{}]*)?"
+    )
 
-    for match in re.finditer(r"\binterface\s+[A-Za-z_]\w*[^;{}]*\{", masked):
-        end = _balanced_brace_end(masked, match.end() - 1)
-        if owner[0] < match.end() - 1 < method.start and end is not None and method.start < end:
+    def header(start: int, end: int) -> str:
+        """Return one declaration header from the previous statement or member boundary to an end offset."""
+        return masked[max(masked.rfind(character, 0, start) for character in ";{}") + 1 : end]
+
+    def modifiers(grammar, text: str, allow_bases: bool = True) -> set[str] | None:
+        """Return the declared modifiers of one fully recognized header, or None when it is not recognized."""
+        match = grammar.fullmatch(text)
+        if match is None or not allow_bases and match.groupdict().get("bases"):
             return None
-    boundary = max(masked.rfind(character, 0, method.start) for character in ";{}]") + 1
-    if masked[boundary : method.start].rstrip().endswith("."):
+        return set(match.group("modifiers").split())
+
+    if any(
+        owner[0] < match.end() - 1 < method.start and method.start < (_balanced_brace_end(masked, match.end() - 1) or 0)
+        for match in re.finditer(r"\binterface\s+[A-Za-z_]\w*[^;{}]*\{", masked)
+    ):
         return None
-    if access(method.start, masked.find("(", method.start)) <= {"private"}:
+    parameters = masked.find("(", method.start)
+    member = modifiers(member_grammar, header(method.start, parameters)) if parameters >= 0 else None
+    if member is None:
+        return None
+    if not member & {"public", "internal"}:
         return owner[2]
+    if "public" in member and modifiers(type_grammar, header(owner[0], owner[0]), allow_bases=False) is None:
+        return None
     chain = sorted(
         (region for region in regions if region[0] <= owner[0] and owner[1] <= region[1]),
         key=lambda region: region[1] - region[0],
     )
     for nested, parent in zip(chain, chain[1:]):
-        header = max(masked.rfind(character, 0, nested[0]) for character in ";{}") + 1
-        keyword = re.search(r"\b(?:class|struct|record)\b", masked[header : nested[0]])
-        if keyword is not None and access(header + keyword.start(), header + keyword.start()) <= {"private"}:
+        declared = modifiers(type_grammar, header(nested[0], nested[0]))
+        if declared is not None and not declared & {"public", "internal"}:
             return parent[2]
     return None

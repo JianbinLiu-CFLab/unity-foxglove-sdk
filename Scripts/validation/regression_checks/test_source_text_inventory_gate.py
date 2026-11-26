@@ -768,6 +768,10 @@ class SourceTextRatchetTests(unittest.TestCase):
                 "    static bool Probe(int value) => false;\n"
                 "    private sealed class Harness { internal bool Probe(string source) => false; }\n"
                 "    sealed class Fixture { public bool Probe(string source) => false; }\n"
+                "    private sealed class Disposer : System.IDisposable {\n"
+                "        internal bool Probe(string source) => false;\n"
+                "        public void Dispose() { }\n"
+                "    }\n"
                 "}\n",
                 encoding="utf-8",
             )
@@ -816,6 +820,84 @@ class SourceTextRatchetTests(unittest.TestCase):
             subprocess.run(["git", "-C", str(root), "commit", "-q", "-m", "own-probe"], check=True)
             helper.write_text(
                 "public static partial class FixtureValidation { private static bool Probe(string source) => true; }\n",
+                encoding="utf-8",
+            )
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code, output)
+            self.assertIn("SOURCE_TEXT_RATCHET_HARNESS_CHANGED", output)
+
+    def _assert_reachable_helper_change_fails_closed(self, files: dict[str, tuple[str, str]], partial: bool = False):
+        """Commit helper sources, weaken them, and require the gate to report the harness change."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._unresolved_probe_fixture(directory, partial=partial)
+            for name, (before, _) in files.items():
+                path = root / "Packages/fixture/Tests/Unit" / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(before, encoding="utf-8")
+            subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+            subprocess.run(["git", "-C", str(root), "commit", "-q", "-m", "reachable-helper"], check=True)
+            for name, (_, after) in files.items():
+                (root / "Packages/fixture/Tests/Unit" / name).write_text(after, encoding="utf-8")
+            code, output = self._run_fixture_gate(root)
+            self.assertEqual(1, code, output)
+            self.assertIn("SOURCE_TEXT_RATCHET_HARNESS_CHANGED", output)
+
+    def test_private_nested_interface_implementation_stays_bound(self):
+        """Keep members of private nested types reachable through an implemented interface."""
+        template = (
+            "public interface IProbe { bool Probe(string source); }\n"
+            "public static class Factory {\n"
+            "    public static IProbe Create() => new Impl();\n"
+            "    private sealed class Impl : IProbe { public bool Probe(string source) => BODY; }\n"
+            "}\n"
+        )
+        self._assert_reachable_helper_change_fails_closed({
+            "Factory.cs": (template.replace("BODY", 'source.Contains("Product")'), template.replace("BODY", "true")),
+        })
+
+    def test_private_nested_virtual_override_stays_bound(self):
+        """Keep overrides in private nested types reachable through a public base class."""
+        template = (
+            "public class ProbeBase { public virtual bool Probe(string source) => false; }\n"
+            "public static class Factory {\n"
+            "    public static ProbeBase Create() => new Impl();\n"
+            "    sealed class Impl : ProbeBase { public override bool Probe(string source) => BODY; }\n"
+            "}\n"
+        )
+        self._assert_reachable_helper_change_fails_closed({
+            "Factory.cs": (template.replace("BODY", 'source.Contains("Product")'), template.replace("BODY", "true")),
+        })
+
+    def test_public_helper_with_array_return_type_stays_bound(self):
+        """Keep public helpers whose return type ends with an array rank specifier."""
+        template = "public static class ArrayProbes { public static string[] Probe(string source) => BODY; }\n"
+        self._assert_reachable_helper_change_fails_closed({
+            "ArrayProbes.cs": (
+                template.replace("BODY", 'source.Split(",")'), template.replace("BODY", "new string[0]")
+            ),
+        })
+
+    def test_nested_partial_type_without_local_modifier_stays_bound(self):
+        """Keep nested partial members whose type accessibility is declared in another file."""
+        template = (
+            "public partial class Outer { partial class Nested {"
+            " public bool Probe(string source) => BODY; } }\n"
+        )
+        self._assert_reachable_helper_change_fails_closed({
+            "Outer.cs": ("public partial class Outer { public partial class Nested { } }\n",) * 2,
+            "Outer.Probe.cs": (template.replace("BODY", 'source.Contains("Product")'), template.replace("BODY", "true")),
+        })
+
+    def test_unrecognized_private_declaration_shape_stays_bound(self):
+        """Treat declarations outside the access whitelist grammar as reachable."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = self._unresolved_probe_fixture(directory)
+            unit = root / "Packages/fixture/Tests/Unit"
+            unit.mkdir(parents=True)
+            (unit / "NestedGenericProbes.cs").write_text(
+                "public sealed class NestedGenericProbes {\n"
+                "    private static Dictionary<string, List<int>> Probe(string source) => null;\n"
+                "}\n",
                 encoding="utf-8",
             )
             code, output = self._run_fixture_gate(root)
