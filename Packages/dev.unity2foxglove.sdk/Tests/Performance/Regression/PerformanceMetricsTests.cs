@@ -8,6 +8,7 @@ using System.Reflection;
 using Foxglove;
 using Google.Protobuf;
 using Newtonsoft.Json;
+using Unity.FoxgloveSDK.IO;
 using Unity.FoxgloveSDK.Performance;
 using Xunit;
 
@@ -197,6 +198,31 @@ namespace Unity.FoxgloveSDK.Performance.Tests
             Assert.Equal(1, decoded.Translation.Y);
             Assert.Equal(2, decoded.Translation.Z);
             Assert.Equal(1, decoded.Rotation.W);
+        }
+
+        [Theory]
+        [InlineData("RunMcapDataLoaderIterateTopicFilterIndexed", "CreateDataLoaderIndexedFixture", 1, McapDataLoaderQuery.DefaultMaxMessages + 1, McapDataLoaderQuery.DefaultMaxMessages)]
+        [InlineData("RunMcapDataLoaderIterateTimeWindowIndexed", "CreateDataLoaderIndexedFixture", 41, 200, McapDataLoaderQuery.DefaultMaxMessages)]
+        [InlineData("RunMcapDataLoaderIterateAllDirect", "CreateDataLoaderDirectFixture", 1, McapSequentialReadLimits.DefaultMaxMessages + 1, McapSequentialReadLimits.DefaultMaxMessages)]
+        public void DataLoaderIterationsReturnEveryMatchAboveTheDefaultLimits(
+            string scenario,
+            string fixtureBuilder,
+            int topics,
+            int messagesPerChannel,
+            int defaultLimit)
+        {
+            var runnerType = typeof(PerformanceRunner);
+            var createFixture = runnerType.GetMethod(fixtureBuilder, BindingFlags.NonPublic | BindingFlags.Static);
+            var run = runnerType.GetMethod(scenario, BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.NotNull(createFixture);
+            Assert.NotNull(run);
+            var fixture = createFixture.Invoke(null, new object[] { topics, messagesPerChannel });
+
+            var result = (PerformanceScenarioResult)run.Invoke(
+                null,
+                new[] { fixture, new PerformanceThresholdConfig { enabled = false } });
+
+            Assert.True(result.returnedMessageCount > defaultLimit, $"{scenario} returned {result.returnedMessageCount} messages.");
         }
 
         [Fact]

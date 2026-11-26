@@ -90,7 +90,7 @@ namespace Unity.FoxgloveSDK.Performance
             return RunMcapDataLoaderIteration(
                 "McapDataLoaderIterateTopicFilterIndexed",
                 fixture,
-                new McapDataLoaderQuery { Topics = new List<string> { fixture.FirstTopic } },
+                new McapDataLoaderQuery { Topics = new List<string> { fixture.FirstTopic }, MaxMessages = 0 },
                 fixture.MessagesPerChannel,
                 0,
                 1,
@@ -109,7 +109,8 @@ namespace Unity.FoxgloveSDK.Performance
                 new McapDataLoaderQuery
                 {
                     StartTimeNs = fixture.WindowStartTimeNs,
-                    EndTimeNs = fixture.WindowEndTimeNs
+                    EndTimeNs = fixture.WindowEndTimeNs,
+                    MaxMessages = 0
                 },
                 fixture.WindowMessageCount,
                 fixture.ChannelCount,
@@ -149,14 +150,14 @@ namespace Unity.FoxgloveSDK.Performance
             var returnedMessageCount = 0;
             var result = TimedScenario(name, expectedCount, expectedCount, () =>
             {
-                using var loader = new McapDataLoader(fixture.Path);
+                using var loader = new McapDataLoader(fixture.Path, McapSequentialReadLimits.UnlimitedForTests);
                 EnsureDataLoaderInitialization(fixture, loader.Initialize());
                 var count = CountDataLoaderMessages(loader.CreateIterator(query));
                 if (count != expectedCount)
                     throw new Exception($"{name}: expected {expectedCount} warmup messages, got {count}");
             }, _ =>
             {
-                using var loader = new McapDataLoader(fixture.Path);
+                using var loader = new McapDataLoader(fixture.Path, McapSequentialReadLimits.UnlimitedForTests);
                 EnsureDataLoaderInitialization(fixture, loader.Initialize());
                 returnedMessageCount = CountDataLoaderMessages(loader.CreateIterator(query));
                 if (returnedMessageCount != expectedCount)
@@ -218,14 +219,14 @@ namespace Unity.FoxgloveSDK.Performance
             var backfillHitCount = 0;
             var result = TimedScenario(name, fixture.TotalMessageCount, fixture.TotalMessageCount, () =>
             {
-                using var loader = new McapDataLoader(fixture.Path);
+                using var loader = new McapDataLoader(fixture.Path, McapSequentialReadLimits.UnlimitedForTests);
                 EnsureDataLoaderInitialization(fixture, loader.Initialize());
                 var count = loader.GetBackfill(query).Count;
                 if (count != expectedCount)
                     throw new Exception($"{name}: expected {expectedCount} warmup backfill hits, got {count}");
             }, _ =>
             {
-                using var loader = new McapDataLoader(fixture.Path);
+                using var loader = new McapDataLoader(fixture.Path, McapSequentialReadLimits.UnlimitedForTests);
                 EnsureDataLoaderInitialization(fixture, loader.Initialize());
                 backfillHitCount = loader.GetBackfill(query).Count;
                 if (backfillHitCount != expectedCount)
