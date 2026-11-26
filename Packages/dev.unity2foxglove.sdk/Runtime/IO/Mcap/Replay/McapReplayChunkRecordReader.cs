@@ -68,6 +68,10 @@ namespace Unity.FoxgloveSDK.IO
                 return default;
             }
 
+            const int messageHeaderLength = 2 + 4 + 8 + 8;
+            if (recordLength < messageHeaderLength)
+                throw new InvalidDataException("MCAP chunk message record is truncated.");
+
             var startOffset = offset;
             var channelId = McapBinaryReader.ReadU16LE(chunk, ref offset);
             var sequence = McapBinaryReader.ReadU32LE(chunk, ref offset);

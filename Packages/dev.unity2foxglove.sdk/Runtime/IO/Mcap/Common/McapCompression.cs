@@ -121,7 +121,11 @@ namespace Unity.FoxgloveSDK.IO
         }
 
         private static byte[] OutputBuffer(byte[] reusable, int size)
-            => reusable != null && reusable.Length >= size ? reusable : new byte[size];
+            => reusable != null
+                && reusable.Length >= size
+                && reusable.Length <= (long)size * 2
+                    ? reusable
+                    : new byte[size];
 
         /// <summary>Compress raw bytes using the specified compression algorithm.</summary>
         public static byte[] Compress(string compression, byte[] data)
