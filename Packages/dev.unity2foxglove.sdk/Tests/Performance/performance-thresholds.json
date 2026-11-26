@@ -196,9 +196,9 @@
           "maxElapsedMs": 120000,
           "minMessagesPerSecond": 1.0,
           "maxAllocatedBytesPerMessage": 4194304,
-          "maxAllocatedBytesTotal": 17179869184,
-          "maxGen0Collections": 2000,
-          "maxGen1Collections": 2000,
+          "maxAllocatedBytesTotal": 423003550696,
+          "maxGen0Collections": 49245,
+          "maxGen1Collections": 49245,
           "maxGen2Collections": 2000
         },
         "FoxRunStreamIngest": {
@@ -214,9 +214,9 @@
           "maxElapsedMs": 600000,
           "minMessagesPerSecond": 0.0,
           "maxAllocatedBytesPerMessage": 8388608,
-          "maxAllocatedBytesTotal": 268435456,
-          "maxGen0Collections": 100,
-          "maxGen1Collections": 20,
+          "maxAllocatedBytesTotal": 33554432000,
+          "maxGen0Collections": 12500,
+          "maxGen1Collections": 2500,
           "maxGen2Collections": 50
         },
         "WsSendQueueLargeFrame": {
@@ -250,72 +250,72 @@
           "maxElapsedMs": 600000,
           "minMessagesPerSecond": 0.0,
           "maxAllocatedBytesPerMessage": 8388608,
-          "maxAllocatedBytesTotal": 268435456,
-          "maxGen0Collections": 100,
-          "maxGen1Collections": 20,
+          "maxAllocatedBytesTotal": 33554432000,
+          "maxGen0Collections": 12500,
+          "maxGen1Collections": 2500,
           "maxGen2Collections": 50
         },
         "FoxRunPublishPayload.Json.4": {
           "maxElapsedMs": 600000,
           "minMessagesPerSecond": 0.0,
           "maxAllocatedBytesPerMessage": 8388608,
-          "maxAllocatedBytesTotal": 268435456,
-          "maxGen0Collections": 100,
-          "maxGen1Collections": 20,
+          "maxAllocatedBytesTotal": 33554432000,
+          "maxGen0Collections": 12500,
+          "maxGen1Collections": 2500,
           "maxGen2Collections": 50
         },
         "FoxRunPublishPayload.Protobuf.1": {
           "maxElapsedMs": 600000,
           "minMessagesPerSecond": 0.0,
           "maxAllocatedBytesPerMessage": 8388608,
-          "maxAllocatedBytesTotal": 268435456,
-          "maxGen0Collections": 100,
-          "maxGen1Collections": 20,
+          "maxAllocatedBytesTotal": 33554432000,
+          "maxGen0Collections": 12500,
+          "maxGen1Collections": 2500,
           "maxGen2Collections": 50
         },
         "FoxRunPublishPayload.Protobuf.4": {
           "maxElapsedMs": 600000,
           "minMessagesPerSecond": 0.0,
           "maxAllocatedBytesPerMessage": 8388608,
-          "maxAllocatedBytesTotal": 268435456,
-          "maxGen0Collections": 100,
-          "maxGen1Collections": 20,
+          "maxAllocatedBytesTotal": 33554432000,
+          "maxGen0Collections": 12500,
+          "maxGen1Collections": 2500,
           "maxGen2Collections": 50
         },
         "FoxRunPublishPayload.MessagePack.1": {
           "maxElapsedMs": 600000,
           "minMessagesPerSecond": 0.0,
           "maxAllocatedBytesPerMessage": 8388608,
-          "maxAllocatedBytesTotal": 268435456,
-          "maxGen0Collections": 100,
-          "maxGen1Collections": 20,
+          "maxAllocatedBytesTotal": 33554432000,
+          "maxGen0Collections": 12500,
+          "maxGen1Collections": 2500,
           "maxGen2Collections": 50
         },
         "FoxRunPublishPayload.MessagePack.4": {
           "maxElapsedMs": 600000,
           "minMessagesPerSecond": 0.0,
           "maxAllocatedBytesPerMessage": 8388608,
-          "maxAllocatedBytesTotal": 268435456,
-          "maxGen0Collections": 100,
-          "maxGen1Collections": 20,
+          "maxAllocatedBytesTotal": 33554432000,
+          "maxGen0Collections": 12500,
+          "maxGen1Collections": 2500,
           "maxGen2Collections": 50
         },
         "LargePayloadFanout.WebSocket.1": {
           "maxElapsedMs": 600000,
           "minMessagesPerSecond": 0.0,
           "maxAllocatedBytesPerMessage": 8388608,
-          "maxAllocatedBytesTotal": 17179869184,
-          "maxGen0Collections": 2000,
-          "maxGen1Collections": 2000,
+          "maxAllocatedBytesTotal": 429496729600,
+          "maxGen0Collections": 50000,
+          "maxGen1Collections": 50000,
           "maxGen2Collections": 2000
         },
         "LargePayloadFanout.WebSocket.4": {
           "maxElapsedMs": 600000,
           "minMessagesPerSecond": 0.0,
           "maxAllocatedBytesPerMessage": 8388608,
-          "maxAllocatedBytesTotal": 17179869184,
-          "maxGen0Collections": 2000,
-          "maxGen1Collections": 2000,
+          "maxAllocatedBytesTotal": 429496729600,
+          "maxGen0Collections": 50000,
+          "maxGen1Collections": 50000,
           "maxGen2Collections": 2000
         },
         "LargePayloadFanout.Mcap": {
@@ -326,6 +326,46 @@
           "maxGen0Collections": 2000,
           "maxGen1Collections": 2000,
           "maxGen2Collections": 2000
+        },
+        "PublishJsonFanout": {
+          "maxAllocatedBytesTotal": 33554432000,
+          "maxGen0Collections": 12500,
+          "maxGen1Collections": 2500
+        },
+        "PublishJsonFanoutPrebuiltPayload": {
+          "maxAllocatedBytesTotal": 33554432000,
+          "maxGen0Collections": 12500,
+          "maxGen1Collections": 2500
+        },
+        "PublishProtoFanout": {
+          "maxAllocatedBytesTotal": 33554432000,
+          "maxGen0Collections": 12500,
+          "maxGen1Collections": 2500
+        },
+        "McapRecordNone": {
+          "maxAllocatedBytesTotal": 33554432000,
+          "maxGen0Collections": 12500,
+          "maxGen1Collections": 2500
+        },
+        "McapRecordLz4": {
+          "maxAllocatedBytesTotal": 33554432000,
+          "maxGen0Collections": 12500,
+          "maxGen1Collections": 2500
+        },
+        "McapRecordZstd": {
+          "maxAllocatedBytesTotal": 33554432000,
+          "maxGen0Collections": 12500,
+          "maxGen1Collections": 2500
+        },
+        "McapRecordNonePrebuiltPayload": {
+          "maxAllocatedBytesTotal": 33554432000,
+          "maxGen0Collections": 12500,
+          "maxGen1Collections": 2500
+        },
+        "McapReplayTick": {
+          "maxAllocatedBytesTotal": 33554432000,
+          "maxGen0Collections": 12500,
+          "maxGen1Collections": 2500
         }
       }
     },
