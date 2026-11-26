@@ -56,6 +56,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
             var newQueueCalls = 0;
             var newPort = 0;
             var newListenerVisibleWhenOldWorkerResumed = false;
+            Thread oldWorker = null;
 
             var oldPort = StartEndpointWithRetry(
                 endpoint,
@@ -64,6 +65,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
                 _ =>
                 {
                     Interlocked.Increment(ref oldQueueCalls);
+                    oldWorker = Thread.CurrentThread;
                     oldQueueEntered.Set();
                     releaseOldQueue.Wait(TimeSpan.FromSeconds(5));
                     Volatile.Write(ref newListenerVisibleWhenOldWorkerResumed, endpoint.IsRunning);
@@ -75,6 +77,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
 
             var restartPorts = new List<int>(FreeLoopbackPorts(5));
             var restartDuration = new Stopwatch();
+            var retiringWhenRestartReturned = -1;
+            var oldWorkerAliveWhenRestartReturned = true;
             var restart = Task.Run(() =>
             {
                 restartDuration.Start();
@@ -89,6 +93,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
                     },
                     restartPorts);
                 restartDuration.Stop();
+                retiringWhenRestartReturned = endpoint.RetiringGenerationCount;
+                oldWorkerAliveWhenRestartReturned = oldWorker.IsAlive;
             });
 
             Assert.True(
@@ -106,9 +112,12 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
             Assert.Equal(HttpStatusCode.Accepted, newStatus);
             Assert.Equal(1, Volatile.Read(ref oldQueueCalls));
             Assert.Equal(1, Volatile.Read(ref newQueueCalls));
+            var boundedWaitElapsed = restartDuration.Elapsed >= TimeSpan.FromMilliseconds(400)
+                && retiringWhenRestartReturned == 1;
+            var publishedAfterOldWorkerExited = !Volatile.Read(ref newListenerVisibleWhenOldWorkerResumed)
+                && !oldWorkerAliveWhenRestartReturned;
             Assert.True(
-                !Volatile.Read(ref newListenerVisibleWhenOldWorkerResumed)
-                || restartDuration.Elapsed >= TimeSpan.FromMilliseconds(400),
+                boundedWaitElapsed || publishedAfterOldWorkerExited,
                 "The replacement listener became observable before the prior worker retired or the bounded stop wait elapsed.");
         }
 
@@ -155,6 +164,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
                 var completedRestart = await Task.WhenAny(restart, Task.Delay(TimeSpan.FromSeconds(3)));
                 Assert.Same(restart, completedRestart);
                 await restart;
+                Assert.Equal(1, endpoint.RetiringGenerationCount);
                 Assert.Equal(
                     HttpStatusCode.Accepted,
                     await PostCursorAsync(newPort, "/new-timeout", "new-timeout-token"));
