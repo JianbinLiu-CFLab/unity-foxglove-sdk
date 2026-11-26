@@ -234,14 +234,14 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
             }
 
             var hasOrientation = message.Orientation != null
-                                 && Ros2ForUnityImuInboundSemantics.HasCovariance(
+                                 && Ros2ForUnityImuInboundSemantics.IsMeasurementAvailable(
                                      message.Orientation_covariance);
             var orientation = hasOrientation && TryReadQuaternion(message.Orientation, out var parsedOrientation)
                 ? parsedOrientation
                 : NumericsQuaternion.Identity;
-            var hasLinearAcceleration = Ros2ForUnityImuInboundSemantics.HasCovariance(
+            var hasLinearAcceleration = Ros2ForUnityImuInboundSemantics.IsMeasurementAvailable(
                 message.Linear_acceleration_covariance);
-            var hasAngularVelocity = Ros2ForUnityImuInboundSemantics.HasCovariance(
+            var hasAngularVelocity = Ros2ForUnityImuInboundSemantics.IsMeasurementAvailable(
                 message.Angular_velocity_covariance);
 
             var neutral = new ImuInboundMessage(
@@ -401,19 +401,12 @@ namespace Unity2Foxglove.Ros2ForUnity.Native
 
     internal static class Ros2ForUnityImuInboundSemantics
     {
-        internal static bool HasCovariance(double[] covariance)
-        {
-            if (covariance == null || covariance.Length == 0 || covariance[0] < 0d)
-                return false;
-
-            for (var index = 0; index < covariance.Length; index++)
-            {
-                if (covariance[index] != 0d)
-                    return true;
-            }
-
-            return false;
-        }
+        /// <summary>
+        /// Returns whether the paired IMU field carries a measurement. Per sensor_msgs/Imu, element 0 set to -1
+        /// marks a missing measurement, while an all-zero covariance only means the covariance is unknown.
+        /// </summary>
+        internal static bool IsMeasurementAvailable(double[] covariance)
+            => covariance == null || covariance.Length == 0 || covariance[0] >= 0d;
 
         internal static bool TryCreateUnixNanoseconds(
             int seconds,

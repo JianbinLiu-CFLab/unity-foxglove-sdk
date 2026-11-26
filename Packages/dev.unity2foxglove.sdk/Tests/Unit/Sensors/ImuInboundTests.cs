@@ -179,16 +179,19 @@ namespace Unity.FoxgloveSDK.Tests.Unit.Sensors
         }
 
         [Theory]
-        [InlineData(false, 0)]
-        [InlineData(false, -1)]
-        [InlineData(true, 1)]
-        public void ImuCovarianceAvailabilityTreatsZeroAndNegativeMarkersAsUnknown(
+        [InlineData(true, 0d, 0d)]
+        [InlineData(true, 0.01d, 0.01d)]
+        [InlineData(false, -1d, 0d)]
+        public void ImuMeasurementAvailabilityFollowsRosCovarianceMarkers(
             bool expected,
-            double firstValue)
+            double firstValue,
+            double diagonalValue)
         {
             var covariance = new double[9];
             covariance[0] = firstValue;
-            Assert.Equal(expected, Ros2ForUnityImuInboundSemantics.HasCovariance(covariance));
+            covariance[4] = diagonalValue;
+            covariance[8] = diagonalValue;
+            Assert.Equal(expected, Ros2ForUnityImuInboundSemantics.IsMeasurementAvailable(covariance));
         }
 
         [Fact]
