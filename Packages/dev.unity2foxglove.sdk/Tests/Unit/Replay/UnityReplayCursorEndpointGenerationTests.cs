@@ -49,7 +49,8 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
         [Fact]
         public async Task RestartDoesNotPublishTheNextListenerBeforeTheOldWorkerRetires()
         {
-            using var endpoint = new UnityReplayCursorEndpoint();
+            var logger = new RecordingLogger();
+            using var endpoint = new UnityReplayCursorEndpoint(logger);
             using var oldQueueEntered = new ManualResetEventSlim();
             using var releaseOldQueue = new ManualResetEventSlim();
             var oldQueueCalls = 0;
@@ -77,7 +78,6 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
 
             var restartPorts = new List<int>(FreeLoopbackPorts(5));
             var restartDuration = new Stopwatch();
-            var retiringWhenRestartReturned = -1;
             var oldWorkerAliveWhenRestartReturned = true;
             var restart = Task.Run(() =>
             {
@@ -93,7 +93,6 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
                     },
                     restartPorts);
                 restartDuration.Stop();
-                retiringWhenRestartReturned = endpoint.RetiringGenerationCount;
                 oldWorkerAliveWhenRestartReturned = oldWorker.IsAlive;
             });
 
@@ -113,7 +112,7 @@ namespace Unity.FoxgloveSDK.UnitTests.Replay
             Assert.Equal(1, Volatile.Read(ref oldQueueCalls));
             Assert.Equal(1, Volatile.Read(ref newQueueCalls));
             var boundedWaitElapsed = restartDuration.Elapsed >= TimeSpan.FromMilliseconds(400)
-                && retiringWhenRestartReturned == 1;
+                && logger.Warnings.Contains("Replay cursor endpoint worker did not retire within the bounded stop wait.");
             var publishedAfterOldWorkerExited = !Volatile.Read(ref newListenerVisibleWhenOldWorkerResumed)
                 && !oldWorkerAliveWhenRestartReturned;
             Assert.True(
