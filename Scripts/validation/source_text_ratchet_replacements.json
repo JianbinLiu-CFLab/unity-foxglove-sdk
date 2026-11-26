@@ -71,6 +71,15 @@
       "head_signature": "228d67633939fa0c6696b55727fc40d61a25f1d5fce931db9d55201769e65b46",
       "reason": "PR #760 makes the shared ROS2 env helpers pass ros_distro=\"jazzy\" explicitly because build_ros_env rejects roots without an authenticated distro marker; 134-30C/F pin the new call.",
       "replacement": "Phase134_30Validation 134-30C and 134-30F shared ROS2 env checks"
+    },
+    {
+      "file": "Packages/dev.unity2foxglove.sdk/Tests/Unit/Replay/UnityReplayCursorEndpointGenerationTests.cs",
+      "validation_flag": "",
+      "class": "HARNESS",
+      "base_signature": "30fb1c206d559c059134bca082679120b360b422306ddca9390d5593482e6ea1",
+      "head_signature": "51734eb6879e122579c842fa71263f2df7dea8526da15f3f2b5c9e5cfe4624df",
+      "reason": "The replay restart ordering test stops racing a thread-pool timer and checks worker exit or bounded retirement directly.",
+      "replacement": "UnityReplayCursorEndpointGenerationTests restart ordering HARNESS"
     }
   ]
 }
