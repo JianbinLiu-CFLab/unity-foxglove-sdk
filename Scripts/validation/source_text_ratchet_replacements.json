@@ -77,7 +77,7 @@
       "validation_flag": "",
       "class": "HARNESS",
       "base_signature": "30fb1c206d559c059134bca082679120b360b422306ddca9390d5593482e6ea1",
-      "head_signature": "51734eb6879e122579c842fa71263f2df7dea8526da15f3f2b5c9e5cfe4624df",
+      "head_signature": "97b2cc5c488b263f602a2e4149e90d8e0a19479a7d8518a91ed30e2d0c0abb77",
       "reason": "The replay restart ordering test stops racing a thread-pool timer and checks worker exit or bounded retirement directly.",
       "replacement": "UnityReplayCursorEndpointGenerationTests restart ordering HARNESS"
     }
