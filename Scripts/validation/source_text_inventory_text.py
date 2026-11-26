@@ -852,3 +852,32 @@ def _constant_values(text: str, masked: str) -> dict[str, str]:
     ):
         values[match.group("name")] = _normalize_csharp_expression(text[match.start("value") : match.end("value")])
     return values
+
+
+def _member_access_scope(masked: str, regions: list[tuple[int, int, str]], owner, method) -> str | None:
+    """Return the innermost type body that may call a member, or None when its access is not type-limited."""
+
+    def access(start: int, end: int) -> set[str]:
+        """Collect access modifiers declared between the previous member boundary and one keyword."""
+        boundary = max(masked.rfind(character, 0, start) for character in ";{}]") + 1
+        return set(re.findall(r"\b(public|private|protected|internal)\b", masked[boundary:end]))
+
+    for match in re.finditer(r"\binterface\s+[A-Za-z_]\w*[^;{}]*\{", masked):
+        end = _balanced_brace_end(masked, match.end() - 1)
+        if owner[0] < match.end() - 1 < method.start and end is not None and method.start < end:
+            return None
+    boundary = max(masked.rfind(character, 0, method.start) for character in ";{}]") + 1
+    if masked[boundary : method.start].rstrip().endswith("."):
+        return None
+    if access(method.start, masked.find("(", method.start)) <= {"private"}:
+        return owner[2]
+    chain = sorted(
+        (region for region in regions if region[0] <= owner[0] and owner[1] <= region[1]),
+        key=lambda region: region[1] - region[0],
+    )
+    for nested, parent in zip(chain, chain[1:]):
+        header = max(masked.rfind(character, 0, nested[0]) for character in ";{}") + 1
+        keyword = re.search(r"\b(?:class|struct|record)\b", masked[header : nested[0]])
+        if keyword is not None and access(header + keyword.start(), header + keyword.start()) <= {"private"}:
+            return parent[2]
+    return None
