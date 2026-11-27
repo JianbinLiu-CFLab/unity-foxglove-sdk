@@ -35,6 +35,7 @@ namespace Unity.FoxgloveSDK.Transport
         private const byte Payload16BitLengthMarker = 126;
         /// <summary>RFC 6455 marker for the 64-bit extended payload-length field.</summary>
         private const byte Payload64BitLengthMarker = 127;
+        private const int MaxInlinePrefixBytes = 32;
         /// <summary>Hard payload ceiling; configured read limits are clamped to 4 MiB.</summary>
         internal const int MaxPayloadBytes = 4 * 1024 * 1024;
         private static readonly UTF8Encoding StrictUtf8 = new UTF8Encoding(false, true);
@@ -90,11 +91,18 @@ namespace Unity.FoxgloveSDK.Transport
                 payload ??= Array.Empty<byte>();
                 if (prefix.Length > int.MaxValue - payload.Length)
                     throw new ArgumentOutOfRangeException(nameof(payload));
-                Span<byte> header = stackalloc byte[MaxFrameHeaderBytes];
+                Span<byte> header = stackalloc byte[MaxFrameHeaderBytes + MaxInlinePrefixBytes];
                 var headerLength = WriteFrameHeader(opcode, prefix.Length + payload.Length, header);
-                stream.Write(header.Slice(0, headerLength));
-                if (prefix.Length > 0)
+                if (prefix.Length <= MaxInlinePrefixBytes)
+                {
+                    prefix.AsSpan().CopyTo(header.Slice(headerLength));
+                    stream.Write(header.Slice(0, headerLength + prefix.Length));
+                }
+                else
+                {
+                    stream.Write(header.Slice(0, headerLength));
                     stream.Write(prefix, 0, prefix.Length);
+                }
                 if (payload.Length > 0)
                     stream.Write(payload, 0, payload.Length);
                 if (flush)
