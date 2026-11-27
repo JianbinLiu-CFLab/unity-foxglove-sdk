@@ -44,6 +44,18 @@ namespace Unity.FoxgloveSDK.IO
             ArraySegment<byte> data,
             int uncompressedSize,
             int maxOutputBytes)
+            => Decompress(compression, data, uncompressedSize, maxOutputBytes, null);
+
+        /// <summary>
+        /// Decompress into <paramref name="reusable"/> when it can hold <paramref name="uncompressedSize"/> bytes,
+        /// otherwise into a new exact-size array. The decoded records occupy the first <paramref name="uncompressedSize"/> bytes.
+        /// </summary>
+        internal static byte[] Decompress(
+            string compression,
+            ArraySegment<byte> data,
+            int uncompressedSize,
+            int maxOutputBytes,
+            byte[] reusable)
         {
             if (uncompressedSize < 0)
                 throw new InvalidDataException("Uncompressed chunk size cannot be negative.");
@@ -63,7 +75,7 @@ namespace Unity.FoxgloveSDK.IO
                         return Array.Empty<byte>();
                     if (data.Array == null)
                         throw new InvalidDataException("Uncompressed chunk data is null.");
-                    var uncompressedCopy = new byte[data.Count];
+                    var uncompressedCopy = OutputBuffer(reusable, data.Count);
                     Buffer.BlockCopy(data.Array, data.Offset, uncompressedCopy, 0, data.Count);
                     return uncompressedCopy;
                 case "lz4":
@@ -72,7 +84,7 @@ namespace Unity.FoxgloveSDK.IO
                     using (var ms = new MemoryStream(data.Array, data.Offset, data.Count, writable: false))
                     using (var lz4 = LZ4Stream.Decode(ms, leaveOpen: false))
                     {
-                        var buf = new byte[uncompressedSize];
+                        var buf = OutputBuffer(reusable, uncompressedSize);
                         var total = 0;
                         while (total < uncompressedSize)
                         {
@@ -91,14 +103,14 @@ namespace Unity.FoxgloveSDK.IO
                         throw new InvalidDataException("Zstd chunk data is null.");
                     using (var decompressor = new Decompressor())
                     {
-                        var output = new byte[uncompressedSize];
+                        var output = OutputBuffer(reusable, uncompressedSize);
                         var written = decompressor.Unwrap(
                             data.Array,
                             data.Offset,
                             data.Count,
                             output,
                             0,
-                            output.Length);
+                            uncompressedSize);
                         if (written != uncompressedSize)
                             throw new InvalidDataException($"Zstd decompressed size mismatch: expected {uncompressedSize}, got {written}");
                         return output;
@@ -107,6 +119,13 @@ namespace Unity.FoxgloveSDK.IO
                     throw new NotSupportedException($"Unsupported MCAP compression: '{compression}'");
             }
         }
+
+        private static byte[] OutputBuffer(byte[] reusable, int size)
+            => reusable != null
+                && reusable.Length >= size
+                && reusable.Length <= (long)size * 2
+                    ? reusable
+                    : new byte[size];
 
         /// <summary>Compress raw bytes using the specified compression algorithm.</summary>
         public static byte[] Compress(string compression, byte[] data)

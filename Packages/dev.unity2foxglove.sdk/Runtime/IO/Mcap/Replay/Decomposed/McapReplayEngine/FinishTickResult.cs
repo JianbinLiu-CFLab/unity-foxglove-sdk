@@ -67,7 +67,7 @@ namespace Unity.FoxgloveSDK.IO
                 _summary?.ChunkIndexes != null &&
                 DeferredRetryCount == 0 &&
                 _currentChunkIdx >= _summary.ChunkIndexes.Count - 1 &&
-                _readOffset >= (_currentUncompressed?.Length ?? 0))
+                _readOffset >= (_currentUncompressed?.Length ?? 0) - _currentUncompressedTail)
             {
                 CurrentStatus = Status.Ended;
                 return;

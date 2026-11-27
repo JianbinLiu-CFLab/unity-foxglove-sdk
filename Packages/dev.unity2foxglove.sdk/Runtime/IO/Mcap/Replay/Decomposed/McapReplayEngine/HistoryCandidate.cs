@@ -230,7 +230,7 @@ namespace Unity.FoxgloveSDK.IO
             ClearDeferredPending();
             _currentChunkIdx = -1;
             _currentChunkStartOffset = 0;
-            _currentUncompressed = null;
+            (_currentUncompressed, _currentUncompressedTail) = (null, 0);
             _readOffset = 0;
             _lastEmitTime = 0;
             _currentTimeNs = 0;
@@ -253,9 +253,8 @@ namespace Unity.FoxgloveSDK.IO
 
             var ci = _summary.ChunkIndexes[_currentChunkIdx];
             _currentChunkStartOffset = ci.ChunkStartOffset;
-            _currentUncompressed = _reader.ReadChunkRecords(ci.ChunkStartOffset, ci.ChunkLength, out var crcValid);
-            if (!ShouldUseChunkRecords($"Chunk {_currentChunkIdx}", crcValid))
-                _currentUncompressed = Array.Empty<byte>();
+            _currentUncompressed = _reader.ReadChunkRecords(ci.ChunkStartOffset, ci.ChunkLength, out var crcValid, _currentUncompressed?.Length > 0 && !_deferredOwnerReferences.ContainsKey(_currentUncompressed) ? _currentUncompressed : null, out var length);
+            (_currentUncompressed, _currentUncompressedTail) = ShouldUseChunkRecords($"Chunk {_currentChunkIdx}", crcValid) ? (_currentUncompressed, _currentUncompressed.Length - length) : (Array.Empty<byte>(), 0);
             _readOffset = 0;
             return true;
         }
