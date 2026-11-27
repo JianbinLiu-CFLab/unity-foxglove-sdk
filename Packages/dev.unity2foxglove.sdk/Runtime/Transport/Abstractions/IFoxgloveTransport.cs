@@ -59,7 +59,12 @@ namespace Unity.FoxgloveSDK.Transport
         void BroadcastDataBinary(byte[] data);
     }
 
-    /// <summary>Optional transport extension for a shared body and per-client data header.</summary>
+    /// <summary>
+    /// Optional transport extension for a shared body and per-client data header.
+    /// The transport may retain both arrays asynchronously after the call returns.
+    /// Callers must not mutate either array after delivery, and implementations
+    /// must not mutate the shared body. Multiple queued clients may retain the same body.
+    /// </summary>
     internal interface ISegmentedDataFoxgloveTransport : IPrioritizedFoxgloveTransport
     {
         void SendDataBinary(uint clientId, byte[] header, byte[] sharedBody);

@@ -207,16 +207,16 @@ namespace Unity.FoxgloveSDK.Core
             }
             payload ??= Array.Empty<byte>();
             topic ??= channel.Topic;
-            var sender = new FoxgloveSessionDataFrameSender(_transport, _prioritizedTransport, _logger);
-            var sharedBody = sender.SupportsSegments && subscriptions.Count > 0
-                ? payload.Length == 0 ? Array.Empty<byte>() : (byte[])payload.Clone()
-                : null;
             try
             {
+                var sender = new FoxgloveSessionDataFrameSender(_transport, _prioritizedTransport, _logger);
+                byte[] sharedBody = null;
                 foreach (var (subscriptionId, subscribedChannelId) in subscriptions)
                 {
                     if (subscribedChannelId != channelId)
                         continue;
+                    if (sender.SupportsSegments && sharedBody == null)
+                        sharedBody = payload.Length == 0 ? Array.Empty<byte>() : (byte[])payload.Clone();
                     sender.Send(clientId, subscriptionId, channelId, topic, source, logTimeNs, payload, sharedBody);
                 }
             }
@@ -226,7 +226,6 @@ namespace Unity.FoxgloveSDK.Core
                 Monitor.Exit(_publishQueueLock);
             }
         }
-
 
         private static void SendSubscribers(
             IFoxgloveTransport transport,
@@ -239,12 +238,12 @@ namespace Unity.FoxgloveSDK.Core
             byte[] payload,
             ulong logTimeNs)
         {
-            var sender = new FoxgloveSessionDataFrameSender(transport, prioritizedTransport, logger);
-            var sharedBody = sender.SupportsSegments && subscribers.Count > 0
-                ? payload.Length == 0 ? Array.Empty<byte>() : (byte[])payload.Clone()
-                : null;
             try
             {
+                var sender = new FoxgloveSessionDataFrameSender(transport, prioritizedTransport, logger);
+                var sharedBody = sender.SupportsSegments && subscribers.Count > 0
+                    ? payload.Length == 0 ? Array.Empty<byte>() : (byte[])payload.Clone()
+                    : null;
                 foreach (var (clientId, subscriptionId) in subscribers)
                     sender.Send(clientId, subscriptionId, channelId, topic, source, logTimeNs, payload, sharedBody);
             }
@@ -253,6 +252,7 @@ namespace Unity.FoxgloveSDK.Core
                 subscribers.Clear();
             }
         }
+
 
         /// <summary>Serialize an object to JSON and publish to the channel at the current clock time.</summary>
         public void PublishJson(uint channelId, object message) => PublishJson(channelId, message, _clock.NowNs);

@@ -145,6 +145,19 @@ namespace Unity.FoxgloveSDK.UnitTests.Transport
         }
 
         [Fact]
+        public void ReplayToClientWithoutMatchingSubscriptionDoesNotQueueSegments()
+        {
+            var transport = new Plan199SegmentedCaptureTransport();
+            using var session = Plan199BuildSession(transport);
+            session.RegisterSchemaChannel(2, "/plan199/other", "test.Plan199Payload", "json");
+            Plan199ConnectSubscriberForChannel(transport, 11, 202, 2);
+
+            session.PublishReplayToClient(11, 1, new byte[] { 31, 32, 33 }, 100UL);
+
+            Assert.Empty(transport.SegmentedFrames);
+        }
+
+        [Fact]
         public void ManagedBackendExposesSegmentedDataCapability()
         {
             using var backend = new ManagedWsBackend();
@@ -171,10 +184,19 @@ namespace Unity.FoxgloveSDK.UnitTests.Transport
             uint clientId,
             uint subscriptionId)
         {
+            Plan199ConnectSubscriberForChannel(transport, clientId, subscriptionId, 1);
+        }
+
+        private static void Plan199ConnectSubscriberForChannel(
+            Plan199PlainCaptureTransport transport,
+            uint clientId,
+            uint subscriptionId,
+            uint channelId)
+        {
             transport.Plan199ConnectClient(clientId);
             transport.Plan199ReceiveText(
                 clientId,
-                $"{{\"op\":\"subscribe\",\"subscriptions\":[{{\"id\":{subscriptionId},\"channelId\":1}}]}}");
+                $"{{\"op\":\"subscribe\",\"subscriptions\":[{{\"id\":{subscriptionId},\"channelId\":{channelId}}}]}}");
         }
 
         private static byte[] Plan199JoinFrame(byte[] header, byte[] body)

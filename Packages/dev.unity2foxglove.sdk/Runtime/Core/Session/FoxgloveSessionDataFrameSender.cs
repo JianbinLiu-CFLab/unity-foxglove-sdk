@@ -11,7 +11,7 @@ using Unity.FoxgloveSDK.Transport;
 namespace Unity.FoxgloveSDK.Core
 {
     /// <summary>Routes session data through single-frame or segmented transport capabilities.</summary>
-    internal sealed class FoxgloveSessionDataFrameSender
+    internal readonly struct FoxgloveSessionDataFrameSender
     {
         private readonly IFoxgloveTransport _transport;
         private readonly IPrioritizedFoxgloveTransport _prioritizedTransport;
