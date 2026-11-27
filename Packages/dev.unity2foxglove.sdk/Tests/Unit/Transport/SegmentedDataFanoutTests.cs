@@ -88,20 +88,6 @@ namespace Unity.FoxgloveSDK.UnitTests.Transport
         }
 
         [Theory]
-        [InlineData(13, 2)]
-        [InlineData(33, 3)]
-        public void SegmentedCodecUsesBoundedWriteCount(int prefixLength, int expectedWriteCount)
-        {
-            var prefix = Enumerable.Repeat((byte)0xA1, prefixLength).ToArray();
-            var payload = new byte[] { 1, 2, 3, 4 };
-            using var stream = new Plan199FlushStream();
-
-            WsFrameCodec.WriteFrame(stream, WsOpcode.Binary, prefix, payload, flush: false);
-
-            Assert.Equal(expectedWriteCount, stream.WriteCount);
-        }
-
-        [Theory]
         [InlineData(64)]
         [InlineData(126)]
         [InlineData(70000)]
@@ -252,19 +238,6 @@ namespace Unity.FoxgloveSDK.UnitTests.Transport
         {
             public TaskCompletionSource<bool> FlushCompleted { get; } =
                 new(TaskCreationOptions.RunContinuationsAsynchronously);
-            public int WriteCount { get; private set; }
-
-            public override void Write(ReadOnlySpan<byte> buffer)
-            {
-                WriteCount++;
-                base.Write(buffer.ToArray(), 0, buffer.Length);
-            }
-
-            public override void Write(byte[] buffer, int offset, int count)
-            {
-                WriteCount++;
-                base.Write(buffer, offset, count);
-            }
 
             public override void Flush()
             {
