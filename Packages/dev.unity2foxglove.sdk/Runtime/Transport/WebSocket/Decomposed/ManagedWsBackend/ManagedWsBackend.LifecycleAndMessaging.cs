@@ -237,6 +237,17 @@ namespace Unity.FoxgloveSDK.Transport
             HandleEnqueueResult(clientId, conn, conn.SendBinary(data, FramePriority.Data), "SendDataBinary");
         }
 
+        /// <summary>Send droppable live data with a shared body and client-specific prefix.</summary>
+        void ISegmentedDataFoxgloveTransport.SendDataBinary(uint clientId, byte[] header, byte[] sharedBody)
+        {
+            if (!_clients.TryGetValue(clientId, out var conn)) return;
+            HandleEnqueueResult(
+                clientId,
+                conn,
+                conn.SendSegmentedBinary(header, sharedBody, FramePriority.Data),
+                "SendDataBinary");
+        }
+
         /// <summary>Send a UTF-8 text frame to every connected client.</summary>
         public void BroadcastText(string json)
         {

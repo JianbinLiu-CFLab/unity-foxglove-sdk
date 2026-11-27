@@ -60,6 +60,17 @@ namespace Unity.FoxgloveSDK.Transport
     }
 
     /// <summary>
+    /// Optional transport extension for a shared body and per-client data header.
+    /// The transport may retain both arrays asynchronously after the call returns.
+    /// Callers must not mutate either array after delivery, and implementations
+    /// must not mutate the shared body. Multiple queued clients may retain the same body.
+    /// </summary>
+    internal interface ISegmentedDataFoxgloveTransport : IPrioritizedFoxgloveTransport
+    {
+        void SendDataBinary(uint clientId, byte[] header, byte[] sharedBody);
+    }
+
+    /// <summary>
     /// Optional transport extension used when playback seeks to an older
     /// timestamp. Implementations may drop queued data frames while preserving
     /// control frames so stale pre-seek data cannot arrive after a reset.
