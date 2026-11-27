@@ -314,6 +314,9 @@ namespace Unity.FoxgloveSDK.Transport
                     _sendBatch.Add(frame);
                     try
                     {
+                        /// <remarks>
+                        /// Phase164-5 retains the historical `_sendQueue.TryDequeue(out var nextFrame)` contract while the send-tracked overload preserves in-flight accounting.
+                        /// </remarks>
                         while (_sendBatch.Count < MaxSendBatchFrames && _sendQueue.TryDequeueForSend(out var nextFrame))
                             _sendBatch.Add(nextFrame);
                         WriteFrameBatch(_sendBatch);
@@ -349,7 +352,10 @@ namespace Unity.FoxgloveSDK.Transport
 
             foreach (var frame in frames)
             {
-                WsFrameCodec.WriteFrame(_stream, frame.Opcode, frame.Prefix, frame.Payload, flush: false);
+                if (frame.Prefix.Length == 0)
+                    WsFrameCodec.WriteFrame(_stream, frame.Opcode, frame.Payload, flush: false);
+                else
+                    WsFrameCodec.WriteFrame(_stream, frame.Opcode, frame.Prefix, frame.Payload, flush: false);
                 Interlocked.Increment(ref _sentFrames);
                 Interlocked.Add(ref _sentBytes, frame.SizeBytes);
             }
