@@ -27,7 +27,7 @@ namespace Unity.FoxgloveSDK.Performance
 {
     public static partial class PerformanceRunner
     {
-        public const string DefaultTransportScope = "In-memory transport serialization/dispatch paths only; excludes ManagedWsBackend sockets and TLS";
+        public const string DefaultTransportScope = "FakePerformanceTransport serialization/dispatch path only; excludes ManagedWsBackend sockets and TLS; LargePayloadFanout uses a segmented in-memory sink";
 
         internal readonly struct AllocationMetricSample
         {
