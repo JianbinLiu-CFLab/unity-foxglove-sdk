@@ -24,14 +24,23 @@ namespace Unity.FoxgloveSDK.Transport
     internal readonly struct QueuedFrame
     {
         public QueuedFrame(byte opcode, byte[] payload, FramePriority priority)
+            : this(opcode, Array.Empty<byte>(), payload, priority)
+        {
+        }
+
+        public QueuedFrame(byte opcode, byte[] prefix, byte[] payload, FramePriority priority)
         {
             Opcode = opcode;
+            Prefix = prefix ?? Array.Empty<byte>();
             Payload = payload ?? Array.Empty<byte>();
             Priority = priority;
-            SizeBytes = Payload.Length;
+            if (Prefix.Length > int.MaxValue - Payload.Length)
+                throw new ArgumentOutOfRangeException(nameof(payload));
+            SizeBytes = Prefix.Length + Payload.Length;
         }
 
         public byte Opcode { get; }
+        public byte[] Prefix { get; }
         public byte[] Payload { get; }
         public FramePriority Priority { get; }
         public int SizeBytes { get; }

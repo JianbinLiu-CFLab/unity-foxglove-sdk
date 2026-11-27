@@ -59,6 +59,12 @@ namespace Unity.FoxgloveSDK.Transport
         void BroadcastDataBinary(byte[] data);
     }
 
+    /// <summary>Optional transport extension for a shared body and per-client data header.</summary>
+    internal interface ISegmentedDataFoxgloveTransport : IPrioritizedFoxgloveTransport
+    {
+        void SendDataBinary(uint clientId, byte[] header, byte[] sharedBody);
+    }
+
     /// <summary>
     /// Optional transport extension used when playback seeks to an older
     /// timestamp. Implementations may drop queued data frames while preserving

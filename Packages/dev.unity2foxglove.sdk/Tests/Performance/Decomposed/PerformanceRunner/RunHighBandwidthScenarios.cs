@@ -645,30 +645,30 @@ namespace Unity.FoxgloveSDK.Performance
                 Encoding = "jsonschema",
                 Content = "{\"type\":\"array\"}"
             });
-            var transport = new FakePerformanceTransport();
+            var transport = new SegmentedPerformanceTransport();
             var session = new FoxgloveSession($"perf-large-payload-{clients}", transport, schemaRegistry: registry);
             session.RegisterSchemaChannel(1, "/perf/large", "test.LargePayload", "json");
             for (var c = 0; c < clients; c++)
             {
                 var clientId = (uint)(c + 1);
-                transport.SimulateConnect(clientId);
-                transport.SimulateSubscribe(clientId, clientId, 1);
+                transport.Plan199ConnectClient(clientId);
+                transport.Plan199ReceiveSubscribe(clientId, clientId);
             }
             var payload = new byte[1024 * 1024];
             var result = PerformanceRunner.TimedScenario($"LargePayloadFanout.WebSocket.{clients}", warmup, messages, () =>
             {
                 for (var i = 0; i < warmup; i++)
                     session.Publish(1, payload);
-                transport.ResetCounters();
+                transport.Plan199ResetCounters();
             }, count =>
             {
                 for (var i = 0; i < count; i++)
                     session.Publish(1, payload);
             }, thresholds);
-            result.notes = $"sink=websocket-fake;clients={clients};payloadBytes={payload.Length};"
+            result.notes = $"sink=websocket-segmented-fake;clients={clients};payloadBytes={payload.Length};"
                 + $"dataFrames={transport.DataBinaryCount}";
             result.clientCount = clients;
-            result.helperProvenance = "FoxgloveSession.Publish with FakePerformanceTransport";
+            result.helperProvenance = "FoxgloveSession.Publish with SegmentedPerformanceTransport";
             result.egressBytes = transport.DataBinaryBytes;
             result.bytesPerSecond = result.elapsedSeconds > 0 ? result.egressBytes / result.elapsedSeconds : 0;
             result.publishBytesPerSecond = RateBytes(result, (long)result.messageCount * payload.Length);

@@ -27,7 +27,7 @@ namespace Unity.FoxgloveSDK.Transport
     /// No http.sys dependency; works on all platforms without admin rights.
     /// </summary>
     /// <remarks>Phase192 source sections: ManagedWsBackend.LifecycleAndMessaging.cs, ManagedWsBackend.AdmissionAndHandshake.cs, ManagedWsBackend.PublicationAndShutdown.cs, ManagedWsBackend.ReceiveAndDisconnect.cs</remarks>
-    public partial class ManagedWsBackend : IFoxgloveTransport, IPrioritizedFoxgloveTransport, IReplayResettableFoxgloveTransport, IClientDataQueueResettableFoxgloveTransport, IFoxgloveTransportStatsProvider, IOriginGuardedFoxgloveTransport, IFoxgloveTransportCapacityProvider, IDisposable
+    public partial class ManagedWsBackend : IFoxgloveTransport, IPrioritizedFoxgloveTransport, ISegmentedDataFoxgloveTransport, IReplayResettableFoxgloveTransport, IClientDataQueueResettableFoxgloveTransport, IFoxgloveTransportStatsProvider, IOriginGuardedFoxgloveTransport, IFoxgloveTransportCapacityProvider, IDisposable
     {
         private const int CloseDrainTimeoutMs = 250;
         private const int CloseHandshakeTimeoutMs = 1000;

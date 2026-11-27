@@ -74,14 +74,27 @@ namespace Unity.FoxgloveSDK.Transport
             => WriteFrame(stream, opcode, payload, flush: true);
 
         internal static void WriteFrame(Stream stream, byte opcode, byte[] payload, bool flush)
+            => WriteFrame(stream, opcode, Array.Empty<byte>(), payload, flush);
+
+        internal static void WriteFrame(
+            Stream stream,
+            byte opcode,
+            byte[] prefix,
+            byte[] payload,
+            bool flush)
         {
             FoxgloveProfiler.Global.BeginSample("WsFrameCodec.Encode");
             try
             {
+                prefix ??= Array.Empty<byte>();
                 payload ??= Array.Empty<byte>();
+                if (prefix.Length > int.MaxValue - payload.Length)
+                    throw new ArgumentOutOfRangeException(nameof(payload));
                 Span<byte> header = stackalloc byte[MaxFrameHeaderBytes];
-                var headerLength = WriteFrameHeader(opcode, payload.Length, header);
+                var headerLength = WriteFrameHeader(opcode, prefix.Length + payload.Length, header);
                 stream.Write(header.Slice(0, headerLength));
+                if (prefix.Length > 0)
+                    stream.Write(prefix, 0, prefix.Length);
                 if (payload.Length > 0)
                     stream.Write(payload, 0, payload.Length);
                 if (flush)

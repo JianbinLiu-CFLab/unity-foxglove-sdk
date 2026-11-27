@@ -185,6 +185,11 @@ namespace Unity.FoxgloveSDK.Transport
             return _sendQueue.Enqueue(new QueuedFrame(OpBinary, data == null ? Array.Empty<byte>() : (byte[])data.Clone(), priority));
         }
 
+        internal EnqueueResult SendSegmentedBinary(byte[] prefix, byte[] payload, FramePriority priority)
+        {
+            return _sendQueue.Enqueue(new QueuedFrame(OpBinary, prefix, payload, priority));
+        }
+
         public int ClearDataFrames()
         {
             return _sendQueue.ClearDataFrames();
@@ -344,9 +349,9 @@ namespace Unity.FoxgloveSDK.Transport
 
             foreach (var frame in frames)
             {
-                WsFrameCodec.WriteFrame(_stream, frame.Opcode, frame.Payload, flush: false);
+                WsFrameCodec.WriteFrame(_stream, frame.Opcode, frame.Prefix, frame.Payload, flush: false);
                 Interlocked.Increment(ref _sentFrames);
-                Interlocked.Add(ref _sentBytes, frame.Payload.Length);
+                Interlocked.Add(ref _sentBytes, frame.SizeBytes);
             }
 
             _stream.Flush();
