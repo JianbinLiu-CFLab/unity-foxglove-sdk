@@ -96,6 +96,49 @@ namespace FoxgloveSdk.UnitTests.Mcap
             }
         }
 
+        [Theory]
+        [InlineData("")]
+        [InlineData("lz4")]
+        [InlineData("zstd")]
+        /// <summary>A smaller later chunk reuses a larger buffer within the two-times bound.</summary>
+        public void ReplayReusesLargerChunkBufferForSmallerChunkWithinBound(string compression)
+        {
+            var path = CreateChunkReuseMcap("chunk-reuse-smaller-" + compression, 64 * 1024, recorder =>
+            {
+                for (var index = 0; index < 5; index++)
+                    recorder.WriteMessage(1, (ulong)(index + 1) * 10UL, Enumerable.Repeat((byte)index, 16 * 1024).ToArray());
+            }, compression);
+            try
+            {
+                AssertChunkCrcsValid(path);
+                using var engine = new McapReplayEngine();
+                engine.Load(path);
+                engine.Play();
+
+                var first = engine.Tick(30UL);
+                var firstBuffer = CurrentReplayChunkBuffer(engine);
+                var firstLength = CurrentReplayChunkLogicalLength(engine);
+                Assert.Equal(new ulong[] { 10UL, 20UL, 30UL }, first.Select(message => message.LogTime).ToArray());
+                Assert.All(first, message => Assert.All(message.Data, value => Assert.Equal((byte)(message.LogTime / 10UL - 1UL), value)));
+                Assert.True(firstLength > 48 * 1024);
+
+                var second = engine.Tick(50UL);
+                var secondBuffer = CurrentReplayChunkBuffer(engine);
+                var secondLength = CurrentReplayChunkLogicalLength(engine);
+                Assert.Equal(new ulong[] { 40UL, 50UL }, second.Select(message => message.LogTime).ToArray());
+                Assert.All(second, message => Assert.All(message.Data, value => Assert.Equal((byte)(message.LogTime / 10UL - 1UL), value)));
+                Assert.True(firstLength > secondLength);
+                Assert.True(firstLength <= secondLength * 2L);
+                Assert.Same(firstBuffer, secondBuffer);
+                Assert.Empty(engine.Tick(60UL));
+                Assert.Equal(McapReplayEngine.Status.Ended, engine.CurrentStatus);
+            }
+            finally
+            {
+                DeleteChunkReuseMcap(path);
+            }
+        }
+
         [Fact]
         /// <summary>Do not retain a reusable buffer that is more than twice the decoded size.</summary>
         public void DecompressionDoesNotReuseAnOversizedBuffer()
@@ -135,6 +178,26 @@ namespace FoxgloveSdk.UnitTests.Mcap
             var field = typeof(McapReplayEngine).GetField("_currentUncompressed", BindingFlags.Instance | BindingFlags.NonPublic);
             Assert.NotNull(field);
             return (byte[])field.GetValue(engine);
+        }
+
+        private static int CurrentReplayChunkLogicalLength(McapReplayEngine engine)
+        {
+            var buffer = CurrentReplayChunkBuffer(engine);
+            var tailField = typeof(McapReplayEngine).GetField("_currentUncompressedTail", BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(tailField);
+            return buffer.Length - (int)tailField.GetValue(engine);
+        }
+
+        private static void AssertChunkCrcsValid(string path)
+        {
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            using var reader = new McapReader(stream);
+            var summary = reader.ReadSummary();
+            foreach (var chunk in summary.ChunkIndexes)
+            {
+                reader.ReadChunkRecords(chunk.ChunkStartOffset, chunk.ChunkLength, out var crcValid);
+                Assert.True(crcValid, $"chunk at {chunk.ChunkStartOffset} failed CRC validation");
+            }
         }
 
         private static string CreateChunkReuseMcap(
